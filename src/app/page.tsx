@@ -11,12 +11,11 @@ export default function Home() {
 
         <div className="text-center sm:text-left max-w-2xl">
           <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed">
-            This is the personal website of JccL. Here you&apos;ll find information about my projects, 
-            thoughts, and experiences in software development and technology.
+            Unavailable to public yet. Stay tuned.
           </p>
         </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
+        <div className="flex gap-4 items-center flex-col sm:flex-row opacity-50 pointer-events-none">
           <a
             className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
             href="https://github.com/JcxaL"
@@ -36,7 +35,7 @@ export default function Home() {
           </a>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
+      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center opacity-50 pointer-events-none">
         <a
           className="flex items-center gap-2 hover:underline hover:underline-offset-4"
           href="/projects"
