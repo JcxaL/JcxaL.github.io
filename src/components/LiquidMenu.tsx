@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 
 const menuItems = [
-  { name: "JccL", href: "/", isLogo: true },
+  { name: "JcxaL", href: "/", isLogo: true },
   { name: "Travel", href: "/travel", emoji: "✈️" },
   { name: "Photography", href: "/photography", emoji: "📸" },
   { name: "Music", href: "/music", emoji: "🎵" },
@@ -40,23 +40,43 @@ export default function LiquidMenu() {
         className="relative"
         onHoverEnd={() => setHoveredIndex(null)}
       >
-        {/* Glass background */}
-        <div className="absolute inset-0 bg-white/20 backdrop-blur-md rounded-full border border-white/30 shadow-lg" />
+        {/* Futuristic glass background */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-gray-900/40 to-black/40 backdrop-blur-md rounded-full border border-cyan-400/30 shadow-lg" 
+             style={{
+               boxShadow: `
+                 0 0 20px rgba(0, 255, 255, 0.2),
+                 inset 0 0 20px rgba(255, 31, 75, 0.1),
+                 0 8px 32px rgba(0, 0, 0, 0.3)
+               `
+             }} />
 
-        {/* Liquid hover effect */}
+        {/* Liquid hover effect with futuristic colors */}
         <AnimatePresence>
           {hoveredIndex !== null && (
             <motion.div
               layoutId="liquid-hover"
-              className="absolute inset-0 bg-gradient-to-r from-blue-400/30 via-purple-400/30 to-pink-400/30 rounded-full"
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: `
+                  linear-gradient(45deg, 
+                    rgba(255, 31, 75, 0.3), 
+                    rgba(0, 255, 255, 0.3), 
+                    rgba(0, 128, 255, 0.3)
+                  )
+                `,
+                boxShadow: `
+                  0 0 30px rgba(0, 255, 255, 0.4),
+                  inset 0 0 30px rgba(255, 31, 75, 0.2)
+                `
+              }}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{
                 opacity: 1,
                 scale: 1,
                 background: [
-                  "linear-gradient(45deg, rgba(59, 130, 246, 0.3), rgba(147, 51, 234, 0.3), rgba(236, 72, 153, 0.3))",
-                  "linear-gradient(90deg, rgba(147, 51, 234, 0.3), rgba(236, 72, 153, 0.3), rgba(59, 130, 246, 0.3))",
-                  "linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(59, 130, 246, 0.3), rgba(147, 51, 234, 0.3))",
+                  "linear-gradient(45deg, rgba(255, 31, 75, 0.3), rgba(0, 255, 255, 0.3), rgba(0, 128, 255, 0.3))",
+                  "linear-gradient(90deg, rgba(0, 255, 255, 0.3), rgba(0, 128, 255, 0.3), rgba(255, 31, 75, 0.3))",
+                  "linear-gradient(135deg, rgba(0, 128, 255, 0.3), rgba(255, 31, 75, 0.3), rgba(0, 255, 255, 0.3))",
                 ],
               }}
               exit={{
@@ -92,8 +112,8 @@ export default function LiquidMenu() {
                 <motion.div
                   className={`relative px-6 py-3 rounded-full transition-all duration-300 ${
                     item.isLogo 
-                      ? "font-mono font-bold text-xl text-gray-700 mr-6 bg-white/15 backdrop-blur-md border border-white/30 shadow-lg hover:bg-white/25 hover:shadow-xl hover:border-white/40" 
-                      : "text-gray-700 hover:text-gray-900"
+                      ? "font-mono font-bold text-xl text-cyan-400 mr-6 bg-black/20 backdrop-blur-md border border-cyan-400/30 shadow-lg hover:bg-black/30 hover:shadow-xl hover:border-cyan-400/50" 
+                      : "text-gray-300 hover:text-cyan-400"
                   }`}
                   whileHover={{
                     scale: item.isLogo ? 1.08 : 1.05,
@@ -103,26 +123,44 @@ export default function LiquidMenu() {
                     scale: 0.95,
                     transition: { type: "spring", damping: 20, stiffness: 600 },
                   }}
+                  style={item.isLogo ? {
+                    boxShadow: `
+                      0 0 20px rgba(0, 255, 255, 0.3),
+                      inset 0 0 20px rgba(255, 31, 75, 0.1)
+                    `
+                  } : {}}
                 >
-                  {/* Liquid white matte glass effect for J c c L logo */}
+                  {/* Futuristic glow effect for JcxaL logo */}
                   {item.isLogo && hoveredIndex === index && (
                     <motion.div
-                      className="absolute inset-0 bg-white/40 backdrop-blur-lg rounded-full border border-white/50 shadow-2xl"
+                      className="absolute inset-0 backdrop-blur-lg rounded-full border"
+                      style={{
+                        background: `
+                          linear-gradient(45deg, 
+                            rgba(255, 31, 75, 0.4), 
+                            rgba(0, 255, 255, 0.4), 
+                            rgba(0, 128, 255, 0.4)
+                          )
+                        `,
+                        borderColor: 'rgba(0, 255, 255, 0.6)',
+                        boxShadow: `
+                          0 0 30px rgba(0, 255, 255, 0.6),
+                          inset 0 0 30px rgba(255, 31, 75, 0.3)
+                        `
+                      }}
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ 
                         opacity: 1, 
                         scale: 1,
                         background: [
-                          "rgba(255,255,255,0.4)",
-                          "rgba(255,255,255,0.5)",
-                          "rgba(255,255,255,0.45)",
-                          "rgba(255,255,255,0.4)",
+                          "linear-gradient(45deg, rgba(255, 31, 75, 0.4), rgba(0, 255, 255, 0.4), rgba(0, 128, 255, 0.4))",
+                          "linear-gradient(90deg, rgba(0, 255, 255, 0.5), rgba(0, 128, 255, 0.4), rgba(255, 31, 75, 0.4))",
+                          "linear-gradient(135deg, rgba(0, 128, 255, 0.4), rgba(255, 31, 75, 0.5), rgba(0, 255, 255, 0.4))",
                         ],
-                        borderColor: [
-                          "rgba(255,255,255,0.5)",
-                          "rgba(255,255,255,0.7)",
-                          "rgba(255,255,255,0.6)",
-                          "rgba(255,255,255,0.5)",
+                        boxShadow: [
+                          "0 0 30px rgba(0, 255, 255, 0.6), inset 0 0 30px rgba(255, 31, 75, 0.3)",
+                          "0 0 40px rgba(255, 31, 75, 0.6), inset 0 0 30px rgba(0, 255, 255, 0.3)",
+                          "0 0 30px rgba(0, 255, 255, 0.6), inset 0 0 30px rgba(255, 31, 75, 0.3)",
                         ]
                       }}
                       exit={{ opacity: 0, scale: 0.9 }}
@@ -136,7 +174,7 @@ export default function LiquidMenu() {
                           repeatType: "reverse",
                           ease: "easeInOut",
                         },
-                        borderColor: {
+                        boxShadow: {
                           duration: 2.5,
                           repeat: Number.POSITIVE_INFINITY,
                           repeatType: "reverse",
@@ -150,7 +188,19 @@ export default function LiquidMenu() {
                   {!item.isLogo && hoveredIndex === index && (
                     <motion.div
                       layoutId={`item-liquid-${index}`}
-                      className="absolute inset-0 bg-white/40 rounded-full"
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: `
+                          linear-gradient(45deg, 
+                            rgba(0, 255, 255, 0.3), 
+                            rgba(255, 31, 75, 0.3)
+                          )
+                        `,
+                        boxShadow: `
+                          0 0 20px rgba(0, 255, 255, 0.4),
+                          inset 0 0 20px rgba(255, 31, 75, 0.2)
+                        `
+                      }}
                       initial={{ opacity: 0, scale: 0.6 }}
                       animate={{
                         opacity: 1,
@@ -171,13 +221,20 @@ export default function LiquidMenu() {
                     />
                   )}
 
-                  {/* Text with liquid animation and special styling for JccL */}
+                  {/* Text with futuristic styling */}
                   <motion.span
                     className={`relative z-10 ${
                       item.isLogo 
-                        ? "tracking-[0.4em] text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-blue-500 to-purple-600 font-mono uppercase text-shadow-lg" 
-                        : ""
+                        ? "tracking-[0.4em] text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-red-400 font-mono uppercase" 
+                        : "font-medium"
                     }`}
+                    style={item.isLogo ? {
+                      textShadow: `
+                        0 0 10px rgba(0, 255, 255, 0.8),
+                        0 0 20px rgba(0, 255, 255, 0.4),
+                        0 0 30px rgba(0, 255, 255, 0.2)
+                      `
+                    } : {}}
                     animate={
                       hoveredIndex === index
                         ? {
@@ -194,14 +251,31 @@ export default function LiquidMenu() {
                     {item.name}
                   </motion.span>
 
-                  {/* Liquid droplet effect for non-logo items */}
+                  {/* Futuristic droplet effect for non-logo items */}
                   {!item.isLogo && hoveredIndex === index && (
                     <motion.div
-                      className="absolute -bottom-1 left-1/2 w-2 h-2 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"
-                      initial={{ opacity: 0, scale: 0, x: "-50%" }}
+                      className="absolute -bottom-1 left-1/2 w-2 h-2 rounded-full"
+                      style={{
+                        background: `
+                          linear-gradient(45deg, 
+                            rgba(0, 255, 255, 0.8), 
+                            rgba(255, 31, 75, 0.8)
+                          )
+                        `,
+                        boxShadow: `
+                          0 0 10px rgba(0, 255, 255, 0.6),
+                          0 0 20px rgba(0, 255, 255, 0.3)
+                        `
+                      }}
+                      initial={{ 
+                        opacity: 0, 
+                        scale: 0, 
+                        x: "-50%",
+                        y: 0,
+                      }}
                       animate={{
                         opacity: [0, 1, 0],
-                        scale: [0, 1, 0],
+                        scale: [0, 1, 0.5],
                         y: [0, 8, 16],
                       }}
                       transition={{
@@ -210,6 +284,36 @@ export default function LiquidMenu() {
                         ease: "easeOut",
                       }}
                     />
+                  )}
+
+                  {/* Tech particle effects */}
+                  {hoveredIndex === index && (
+                    <>
+                      {[...Array(3)].map((_, i) => (
+                        <motion.div
+                          key={i}
+                          className="absolute w-1 h-1 rounded-full"
+                          style={{
+                            background: i % 2 === 0 ? 'rgba(0, 255, 255, 0.8)' : 'rgba(255, 31, 75, 0.8)',
+                            boxShadow: `0 0 6px ${i % 2 === 0 ? 'rgba(0, 255, 255, 0.6)' : 'rgba(255, 31, 75, 0.6)'}`,
+                            top: `${20 + i * 20}%`,
+                            left: `${20 + i * 30}%`,
+                          }}
+                          initial={{ opacity: 0, scale: 0 }}
+                          animate={{
+                            opacity: [0, 1, 0],
+                            scale: [0, 1, 0],
+                            x: [0, Math.random() * 20 - 10],
+                            y: [0, Math.random() * 20 - 10],
+                          }}
+                          transition={{
+                            duration: 1 + Math.random(),
+                            repeat: Number.POSITIVE_INFINITY,
+                            delay: i * 0.2,
+                          }}
+                        />
+                      ))}
+                    </>
                   )}
                 </motion.div>
               </Link>
