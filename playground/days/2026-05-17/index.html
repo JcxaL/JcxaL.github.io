@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Particle Constellation Universe · Day 1</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #020010;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      position: fixed;
+      inset: 0;
+      cursor: crosshair;
+    }
+
+    /* ── Day badge (top center) ── */
+    .badge {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(139, 92, 246, 0.9);
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(139, 92, 246, 0.22);
+      padding: 5px 14px;
+      border-radius: 20px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      opacity: 0;
+      animation: fadein 1s ease 0.8s forwards;
+      z-index: 10;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    /* ── Stat counter (top-right) ── */
+    .stats {
+      position: fixed;
+      top: 18px;
+      right: 20px;
+      display: flex;
+      gap: 14px;
+      z-index: 10;
+      opacity: 0;
+      animation: fadein 1s ease 1.2s forwards;
+      pointer-events: none;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 1px;
+    }
+
+    .stat-val {
+      font-size: 18px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.85);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.25);
+    }
+
+    /* ── Hint pill (bottom center) ── */
+    .hints {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 40px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      z-index: 10;
+      white-space: nowrap;
+      opacity: 0;
+      animation: fadein 1s ease 1.5s forwards;
+      transition: opacity 1s ease;
+    }
+
+    .hints.fade { opacity: 0 !important; pointer-events: none; }
+
+    .hint { font-size: 11px; color: rgba(255,255,255,0.38); }
+    .hint strong { color: rgba(255,255,255,0.72); font-weight: 600; }
+    .hint-sep { width: 1px; height: 11px; background: rgba(255,255,255,0.08); }
+
+    /* ── Ripple burst label ── */
+    .burst-label {
+      position: fixed;
+      pointer-events: none;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: rgba(124,58,237,0.7);
+      z-index: 20;
+      opacity: 0;
+      transform: translateY(0);
+      transition: none;
+    }
+
+    @keyframes fadein { to { opacity: 1; } }
+  </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div class="badge">Day 1 &nbsp;&middot;&nbsp; Particle Constellation Universe</div>
+
+<div class="stats">
+  <div class="stat">
+    <span class="stat-val" id="stat-links">0</span>
+    <span class="stat-label">Links</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val" id="stat-blasts">0</span>
+    <span class="stat-label">Blasts</span>
+  </div>
+</div>
+
+<div class="hints" id="hints">
+  <span class="hint"><strong>Move</strong> to attract</span>
+  <div class="hint-sep"></div>
+  <span class="hint"><strong>Click</strong> to detonate</span>
+  <div class="hint-sep"></div>
+  <span class="hint"><strong>Touch</strong> friendly</span>
+</div>
+
+<script>
+/* ─────────────────────────────────────────
+   Particle Constellation Universe — Day 1
+   ───────────────────────────────────────── */
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const hints  = document.getElementById('hints');
+const $links = document.getElementById('stat-links');
+const $blasts= document.getElementById('stat-blasts');
+
+// ── Config ────────────────────────────────
+const CFG = {
+  count:       180,
+  connDist:    130,
+  mouseRadius: 190,
+  mouseForce:  0.07,
+  maxSpeed:    3.8,
+  damping:     0.983,
+  swStrength:  4.2,
+  swSpeed:     0.022,
+};
+
+const COLORS = [
+  '#8b5cf6', '#7c3aed', '#6d28d9',
+  '#06b6d4', '#0ea5e9',
+  '#f472b6', '#ec4899',
+  '#a78bfa', '#818cf8',
+];
+
+// ── State ─────────────────────────────────
+let W, H;
+let particles  = [];
+let shockwaves = [];
+const mouse = { x: -9999, y: -9999, active: false };
+let blastCount = 0;
+let hintFaded  = false;
+let raf;
+
+// ── Resize ────────────────────────────────
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+
+// ── Particle ──────────────────────────────
+class Particle {
+  constructor() { this.spawn(); }
+
+  spawn() {
+    this.x   = Math.random() * W;
+    this.y   = Math.random() * H;
+    this.vx  = (Math.random() - 0.5) * 0.7;
+    this.vy  = (Math.random() - 0.5) * 0.7;
+    this.r   = Math.random() * 1.6 + 0.7;
+    this.col = COLORS[Math.floor(Math.random() * COLORS.length)];
+    this.a   = Math.random() * 0.35 + 0.45;
+    this.phi = Math.random() * Math.PI * 2;
+    this.dphi= Math.random() * 0.018 + 0.004;
+  }
+
+  update() {
+    this.phi += this.dphi;
+    this.curA = this.a + Math.sin(this.phi) * 0.12;
+
+    /* mouse gravity */
+    const dx = mouse.x - this.x;
+    const dy = mouse.y - this.y;
+    const d  = Math.sqrt(dx * dx + dy * dy);
+    if (mouse.active && d < CFG.mouseRadius && d > 1) {
+      const f = (1 - d / CFG.mouseRadius) * CFG.mouseForce;
+      this.vx += (dx / d) * f;
+      this.vy += (dy / d) * f;
+    }
+
+    /* shockwave repulsion */
+    for (const sw of shockwaves) {
+      const sx = this.x - sw.x;
+      const sy = this.y - sw.y;
+      const sd = Math.sqrt(sx * sx + sy * sy);
+      const band = 28;
+      if (sd > sw.r - band && sd < sw.r + band && sd > 1) {
+        const power = (1 - Math.abs(sd - sw.r) / band)
+                    * CFG.swStrength * (1 - sw.t);
+        this.vx += (sx / sd) * power;
+        this.vy += (sy / sd) * power;
+      }
+    }
+
+    /* speed cap */
+    const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    if (spd > CFG.maxSpeed) {
+      this.vx = (this.vx / spd) * CFG.maxSpeed;
+      this.vy = (this.vy / spd) * CFG.maxSpeed;
+    }
+    this.vx *= CFG.damping;
+    this.vy *= CFG.damping;
+    this.x  += this.vx;
+    this.y  += this.vy;
+
+    /* wrap */
+    if (this.x < -20) this.x = W + 20;
+    if (this.x > W + 20) this.x = -20;
+    if (this.y < -20) this.y = H + 20;
+    if (this.y > H + 20) this.y = -20;
+  }
+
+  draw() {
+    /* halo */
+    ctx.globalAlpha = this.curA * 0.3;
+    ctx.shadowColor = this.col;
+    ctx.shadowBlur  = 18;
+    ctx.fillStyle   = this.col;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r * 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    /* core */
+    ctx.globalAlpha = this.curA;
+    ctx.shadowBlur  = 7;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ── Shockwave ─────────────────────────────
+class Shockwave {
+  constructor(x, y) {
+    this.x    = x;
+    this.y    = y;
+    this.r    = 0;
+    this.t    = 0;           /* 0–1 progress */
+    this.maxR = Math.hypot(W, H) * 0.75;
+    this.dead = false;
+  }
+
+  update() {
+    this.t += CFG.swSpeed;
+    this.r  = this.t * this.maxR;
+    if (this.t >= 1) this.dead = true;
+  }
+
+  draw() {
+    const a = (1 - this.t) * 0.65;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = '#7c3aed';
+    ctx.lineWidth   = 1.5;
+    ctx.shadowColor = '#a78bfa';
+    ctx.shadowBlur  = 22;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    /* inner ring */
+    ctx.globalAlpha = a * 0.35;
+    ctx.lineWidth   = 0.7;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r * 0.7, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ── Perspective grid ──────────────────────
+function drawGrid() {
+  const vy = H * 0.44;
+  ctx.save();
+  ctx.lineWidth = 0.5;
+
+  /* horizontal horizon lines — compressed at vanishing point */
+  for (let i = 0; i < 22; i++) {
+    const t = i / 21;
+    const y = vy + (H - vy) * Math.pow(t, 1.6);
+    ctx.globalAlpha = t * 0.18;
+    ctx.strokeStyle = '#5a3c96';
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  }
+
+  /* vertical lines converging to center horizon */
+  const vLines = 18;
+  for (let i = 0; i <= vLines; i++) {
+    const t = i / vLines;
+    const bx = t * W;
+    ctx.globalAlpha = 0.07;
+    ctx.strokeStyle = '#5a3c96';
+    ctx.beginPath();
+    ctx.moveTo(W / 2, vy);
+    ctx.lineTo(bx, H);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── Star field (static bg dots) ───────────
+const stars = Array.from({ length: 220 }, () => ({
+  x: Math.random(),
+  y: Math.random(),
+  r: Math.random() * 0.8 + 0.2,
+  a: Math.random() * 0.35 + 0.05,
+}));
+
+function drawStars() {
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  for (const s of stars) {
+    ctx.globalAlpha = s.a;
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ── Connections ───────────────────────────
+let linkCount = 0;
+function drawConnections() {
+  linkCount = 0;
+  const cd2 = CFG.connDist * CFG.connDist;
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const dx  = particles[i].x - particles[j].x;
+      const dy  = particles[i].y - particles[j].y;
+      const d2  = dx * dx + dy * dy;
+      if (d2 > cd2) continue;
+
+      const d   = Math.sqrt(d2);
+      const t   = 1 - d / CFG.connDist;
+      const a   = Math.pow(t, 2) * 0.38;
+
+      ctx.save();
+      ctx.globalAlpha = a;
+      const g = ctx.createLinearGradient(
+        particles[i].x, particles[i].y,
+        particles[j].x, particles[j].y
+      );
+      g.addColorStop(0, particles[i].col);
+      g.addColorStop(1, particles[j].col);
+      ctx.strokeStyle = g;
+      ctx.lineWidth   = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(particles[i].x, particles[i].y);
+      ctx.lineTo(particles[j].x, particles[j].y);
+      ctx.stroke();
+      ctx.restore();
+      linkCount++;
+    }
+  }
+}
+
+// ── Render loop ───────────────────────────
+function frame() {
+  ctx.fillStyle = '#020010';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalAlpha = 1;
+  drawStars();
+  drawGrid();
+
+  for (const p of particles) p.update();
+  drawConnections();
+  for (const p of particles) { ctx.save(); p.draw(); ctx.restore(); }
+
+  /* update & draw shockwaves */
+  for (const sw of shockwaves) { sw.update(); sw.draw(); }
+  for (let i = shockwaves.length - 1; i >= 0; i--) {
+    if (shockwaves[i].dead) shockwaves.splice(i, 1);
+  }
+
+  ctx.globalAlpha = 1;
+
+  /* live stat update (throttled) */
+  if (Math.random() < 0.05) $links.textContent = linkCount;
+
+  raf = requestAnimationFrame(frame);
+}
+
+// ── Interaction ───────────────────────────
+function maybeHideHints() {
+  if (!hintFaded) {
+    hintFaded = true;
+    setTimeout(() => hints.classList.add('fade'), 2200);
+  }
+}
+
+function blast(x, y) {
+  shockwaves.push(new Shockwave(x, y));
+  blastCount++;
+  $blasts.textContent = blastCount;
+  maybeHideHints();
+}
+
+window.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+  mouse.active = true;
+  maybeHideHints();
+});
+window.addEventListener('mouseleave', () => { mouse.active = false; });
+window.addEventListener('click',      e => blast(e.clientX, e.clientY));
+
+window.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  mouse.x = t.clientX;
+  mouse.y = t.clientY;
+  mouse.active = true;
+  maybeHideHints();
+}, { passive: false });
+
+window.addEventListener('touchend', e => {
+  mouse.active = false;
+  const t = e.changedTouches[0];
+  if (t) blast(t.clientX, t.clientY);
+});
+
+// ── Init ──────────────────────────────────
+window.addEventListener('resize', resize);
+resize();
+particles = Array.from({ length: CFG.count }, () => new Particle());
+frame();
+</script>
+</body>
+</html>
