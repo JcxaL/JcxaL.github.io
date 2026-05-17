@@ -10,12 +10,63 @@ permissions:
   pages: write
   id-token: write
 
+# Separate concurrency group from the Next.js workflow so neither can
+# block or cancel the other when both branches are active.
 concurrency:
-  group: "pages"
+  group: "playground-pages"
   cancel-in-progress: false
 
 jobs:
+  # ── 1. Validate ────────────────────────────────────────────────────────────
+  # Catches broken manifests or missing day files before anything deploys.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate manifest and active day
+        run: |
+          python3 - <<'EOF'
+          import json, sys, os
+
+          manifest_path = "playground/days/manifest.json"
+          if not os.path.exists(manifest_path):
+              print("ERROR: playground/days/manifest.json not found")
+              sys.exit(1)
+
+          with open(manifest_path) as f:
+              try:
+                  m = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"ERROR: manifest.json is not valid JSON — {e}")
+                  sys.exit(1)
+
+          days = m.get("days", [])
+          if not days:
+              print("ERROR: manifest.json has no days entries")
+              sys.exit(1)
+
+          active = [d for d in days if d.get("status") == "active"]
+          if len(active) != 1:
+              print(f"ERROR: Expected exactly 1 active day, found {len(active)}")
+              sys.exit(1)
+
+          day = active[0]
+          html = f"playground/days/{day['date']}/index.html"
+          if not os.path.exists(html):
+              print(f"ERROR: Active day HTML missing — {html}")
+              sys.exit(1)
+
+          archived = [d for d in days if d.get("status") == "archived"]
+          print(f"OK  active  : Day {day['day_number']} — {day['title']} ({day['date']})")
+          print(f"OK  archive : {len(archived)} past day(s) preserved")
+          print(f"OK  total   : {len(days)} day(s) in manifest")
+          EOF
+
+  # ── 2. Deploy ──────────────────────────────────────────────────────────────
   deploy:
+    needs: validate
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -26,10 +77,13 @@ jobs:
 
       - name: Assemble static bundle
         run: |
-          mkdir -p _bundle
+          rm -rf _bundle
+          mkdir _bundle
           cp -r playground/. _bundle/
           cp CNAME _bundle/CNAME
           touch _bundle/.nojekyll
+          echo "Bundle contents:"
+          find _bundle -type f | sort
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
