@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Chemical Life — Day 2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; width: 100vw; height: 100vh; touch-action: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+
+  #ui {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 90vw;
+  }
+  .btn {
+    background: rgba(20, 20, 30, 0.7);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.75);
+    padding: 7px 16px;
+    border-radius: 99px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.02em;
+    backdrop-filter: blur(12px);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.5); color: #fff; }
+  .btn.active { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.7); color: #fff; }
+
+  #hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255,255,255,0.45);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    pointer-events: none;
+    text-align: center;
+    line-height: 1.6;
+    transition: opacity 1.5s;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+  }
+
+  #label {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.35);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="label">Reaction Diffusion</div>
+<div id="hint">Draw to seed life<br><span style="font-size:12px;opacity:0.7">click &amp; drag · tap &amp; slide</span></div>
+<div id="ui">
+  <button class="btn active" data-p="0">Coral</button>
+  <button class="btn" data-p="1">Spots</button>
+  <button class="btn" data-p="2">Stripes</button>
+  <button class="btn" data-p="3">Spirals</button>
+  <button class="btn" data-p="4">Worms</button>
+  <button class="btn" id="clearBtn">Clear</button>
+</div>
+
+<script>
+// Gray-Scott reaction diffusion — GPU ping-pong via WebGL
+// dA/dt = Da·∇²A − A·B² + f·(1−A)
+// dB/dt = Db·∇²B + A·B² − (f+k)·B
+
+const PRESETS = [
+  { name:'Coral',   f:0.039, k:0.058, Da:1.0, Db:0.5, pal:0 },
+  { name:'Spots',   f:0.035, k:0.065, Da:1.0, Db:0.5, pal:1 },
+  { name:'Stripes', f:0.060, k:0.062, Da:1.0, Db:0.5, pal:2 },
+  { name:'Spirals', f:0.014, k:0.054, Da:1.0, Db:0.5, pal:3 },
+  { name:'Worms',   f:0.025, k:0.060, Da:1.0, Db:0.5, pal:4 },
+];
+
+let preset = PRESETS[0];
+const mouse = { x: 0.5, y: 0.5, down: false };
+
+// Canvas at device pixel ratio for crisp display
+const canvas = document.getElementById('c');
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+const W = canvas.width  = Math.floor(window.innerWidth  * dpr);
+const H = canvas.height = Math.floor(window.innerHeight * dpr);
+
+const gl = canvas.getContext('webgl', { antialias: false, depth: false, stencil: false });
+if (!gl) {
+  document.body.innerHTML = '<p style="color:white;padding:40px;font:16px system-ui">WebGL not available</p>';
+  throw new Error('no webgl');
+}
+
+// Simulation grid — half pixel resolution is plenty for RD
+const SW = Math.floor(W / 2);
+const SH = Math.floor(H / 2);
+
+// ── Shaders ─────────────────────────────────────────────────────────────────
+
+const VS = `
+attribute vec2 a_pos;
+varying vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+// Simulation: one step of Gray-Scott with optional B injection
+const FS_SIM = `
+precision highp float;
+uniform sampler2D u_tex;
+uniform vec2 u_res;
+uniform float u_f, u_k, u_Da, u_Db;
+uniform vec2 u_mouse;
+uniform float u_paint;
+uniform float u_brushR;
+varying vec2 v_uv;
+
+void main() {
+  vec2 px = 1.0 / u_res;
+  vec4 c = texture2D(u_tex, v_uv);
+  float a = c.r, b = c.g;
+
+  // 9-point weighted Laplacian
+  float la = -a;
+  float lb = -b;
+  la += 0.2  * texture2D(u_tex, v_uv + vec2(-px.x, 0.0)).r;
+  la += 0.2  * texture2D(u_tex, v_uv + vec2( px.x, 0.0)).r;
+  la += 0.2  * texture2D(u_tex, v_uv + vec2(0.0, -px.y)).r;
+  la += 0.2  * texture2D(u_tex, v_uv + vec2(0.0,  px.y)).r;
+  la += 0.05 * texture2D(u_tex, v_uv + vec2(-px.x,-px.y)).r;
+  la += 0.05 * texture2D(u_tex, v_uv + vec2( px.x,-px.y)).r;
+  la += 0.05 * texture2D(u_tex, v_uv + vec2(-px.x, px.y)).r;
+  la += 0.05 * texture2D(u_tex, v_uv + vec2( px.x, px.y)).r;
+  lb += 0.2  * texture2D(u_tex, v_uv + vec2(-px.x, 0.0)).g;
+  lb += 0.2  * texture2D(u_tex, v_uv + vec2( px.x, 0.0)).g;
+  lb += 0.2  * texture2D(u_tex, v_uv + vec2(0.0, -px.y)).g;
+  lb += 0.2  * texture2D(u_tex, v_uv + vec2(0.0,  px.y)).g;
+  lb += 0.05 * texture2D(u_tex, v_uv + vec2(-px.x,-px.y)).g;
+  lb += 0.05 * texture2D(u_tex, v_uv + vec2( px.x,-px.y)).g;
+  lb += 0.05 * texture2D(u_tex, v_uv + vec2(-px.x, px.y)).g;
+  lb += 0.05 * texture2D(u_tex, v_uv + vec2( px.x, px.y)).g;
+
+  float reaction = a * b * b;
+  float na = clamp(a + u_Da * la - reaction + u_f * (1.0 - a), 0.0, 1.0);
+  float nb = clamp(b + u_Db * lb + reaction - (u_f + u_k) * b, 0.0, 1.0);
+
+  // Brush injection
+  if (u_paint > 0.5) {
+    float dx = (v_uv.x - u_mouse.x);
+    float dy = (v_uv.y - u_mouse.y);
+    float aspect = u_res.x / u_res.y;
+    float d2 = dx * dx * aspect * aspect + dy * dy;
+    if (d2 < u_brushR * u_brushR) {
+      float t = 1.0 - sqrt(d2) / u_brushR;
+      nb = mix(nb, 1.0, t * t);
+      na = mix(na, 0.0, t * t * 0.3);
+    }
+  }
+
+  gl_FragColor = vec4(na, nb, 0.0, 1.0);
+}`;
+
+// Display: map B concentration to color via cosine palette
+const FS_DISP = `
+precision mediump float;
+uniform sampler2D u_tex;
+uniform int u_pal;
+varying vec2 v_uv;
+
+vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+  return a + b * cos(6.28318 * (c * t + d));
+}
+
+void main() {
+  float b = texture2D(u_tex, v_uv).g;
+  float a = texture2D(u_tex, v_uv).r;
+  // b: 0 = no chemical B (empty), 1 = saturated with B
+  // Map so that t=0 → background, t=1 → active foreground
+  float t = b;
+
+  vec3 color;
+  if (u_pal == 0) {
+    // Coral: warm amber-orange on near-black
+    color = pal(t,
+      vec3(0.05,0.02,0.0),
+      vec3(0.6, 0.35, 0.15),
+      vec3(0.8, 0.6,  0.4),
+      vec3(0.0, 0.15, 0.35));
+  } else if (u_pal == 1) {
+    // Spots: violet→cyan on deep space black
+    color = pal(t,
+      vec3(0.02, 0.0,  0.05),
+      vec3(0.5,  0.4,  0.6),
+      vec3(0.9,  0.7,  1.0),
+      vec3(0.0,  0.33, 0.67));
+  } else if (u_pal == 2) {
+    // Stripes: electric neon cyan/lime on dark navy
+    color = pal(t,
+      vec3(0.0,  0.04, 0.1),
+      vec3(0.2,  0.5,  0.4),
+      vec3(0.0,  1.0,  0.6),
+      vec3(0.35, 0.2,  0.1));
+  } else if (u_pal == 3) {
+    // Spirals: full rainbow psychedelic
+    color = pal(t,
+      vec3(0.5,  0.5,  0.5),
+      vec3(0.5,  0.5,  0.5),
+      vec3(2.0,  1.0,  0.0),
+      vec3(0.5,  0.2,  0.25));
+  } else {
+    // Worms: deep ocean bioluminescent
+    color = pal(t,
+      vec3(0.0,  0.02, 0.08),
+      vec3(0.1,  0.4,  0.5),
+      vec3(1.0,  0.5,  0.3),
+      vec3(0.0,  0.1,  0.6));
+  }
+
+  gl_FragColor = vec4(color, 1.0);
+}`;
+
+// ── GL helpers ───────────────────────────────────────────────────────────────
+
+function shader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error('Shader error:', gl.getShaderInfoLog(s));
+  return s;
+}
+
+function program(vsSrc, fsSrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, shader(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+    console.error('Program error:', gl.getProgramInfoLog(p));
+  // Cache uniform locations
+  p.u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const info = gl.getActiveUniform(p, i);
+    p.u[info.name] = gl.getUniformLocation(p, info.name);
+  }
+  return p;
+}
+
+function texFBO(w, h, data) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data || null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return { tex, fbo };
+}
+
+// ── Quad ─────────────────────────────────────────────────────────────────────
+
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function bindQuad(prog) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  const loc = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+// ── Initial state ─────────────────────────────────────────────────────────────
+
+function makeInitData(f, k) {
+  const d = new Uint8Array(SW * SH * 4);
+  // A=1 everywhere, B=0
+  for (let i = 0; i < SW * SH; i++) {
+    d[i * 4 + 0] = 255;
+    d[i * 4 + 3] = 255;
+  }
+  // Seed random B blobs across the field
+  const numSeeds = 24;
+  for (let s = 0; s < numSeeds; s++) {
+    const cx = Math.floor(Math.random() * SW);
+    const cy = Math.floor(Math.random() * SH);
+    const r  = 4 + Math.floor(Math.random() * 8);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx + dy*dy <= r*r) {
+          const px = (cx + dx + SW) % SW;
+          const py = (cy + dy + SH) % SH;
+          d[(py * SW + px) * 4 + 0] = 0;
+          d[(py * SW + px) * 4 + 1] = 255;
+        }
+      }
+    }
+  }
+  // Plus a centered cluster
+  const cr = Math.floor(Math.min(SW, SH) * 0.08);
+  for (let dy = -cr; dy <= cr; dy++) {
+    for (let dx = -cr; dx <= cr; dx++) {
+      if (dx*dx + dy*dy <= cr*cr) {
+        const px = Math.floor(SW/2 + dx);
+        const py = Math.floor(SH/2 + dy);
+        if (px >= 0 && px < SW && py >= 0 && py < SH) {
+          d[(py * SW + px) * 4 + 0] = 0;
+          d[(py * SW + px) * 4 + 1] = 255;
+        }
+      }
+    }
+  }
+  return d;
+}
+
+// ── Programs & framebuffers ───────────────────────────────────────────────────
+
+const simProg  = program(VS, FS_SIM);
+const dispProg = program(VS, FS_DISP);
+
+let ping = texFBO(SW, SH, makeInitData());
+let pong = texFBO(SW, SH, null);
+
+// ── Simulation step ───────────────────────────────────────────────────────────
+
+function simStep() {
+  gl.useProgram(simProg);
+  bindQuad(simProg);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo);
+  gl.viewport(0, 0, SW, SH);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, ping.tex);
+  gl.uniform1i(simProg.u['u_tex'], 0);
+  gl.uniform2f(simProg.u['u_res'], SW, SH);
+  gl.uniform1f(simProg.u['u_f'],  preset.f);
+  gl.uniform1f(simProg.u['u_k'],  preset.k);
+  gl.uniform1f(simProg.u['u_Da'], preset.Da);
+  gl.uniform1f(simProg.u['u_Db'], preset.Db);
+  // Convert screen coords to sim UV (y is flipped: screen y=0 is top)
+  gl.uniform2f(simProg.u['u_mouse'], mouse.x, 1.0 - mouse.y);
+  gl.uniform1f(simProg.u['u_paint'], mouse.down ? 1.0 : 0.0);
+  gl.uniform1f(simProg.u['u_brushR'], 0.03);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // Swap buffers
+  const tmp = ping; ping = pong; pong = tmp;
+}
+
+// ── Display ───────────────────────────────────────────────────────────────────
+
+function display() {
+  gl.useProgram(dispProg);
+  bindQuad(dispProg);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, ping.tex);
+  gl.uniform1i(dispProg.u['u_tex'], 0);
+  gl.uniform1i(dispProg.u['u_pal'], preset.pal);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+
+let frameCount = 0;
+const hint = document.getElementById('hint');
+
+function loop() {
+  // Multiple sim steps per frame to speed up pattern emergence
+  const steps = mouse.down ? 6 : 10;
+  for (let i = 0; i < steps; i++) simStep();
+  display();
+
+  frameCount++;
+  if (frameCount === 90) hint.style.opacity = '0';
+  if (frameCount === 200) hint.style.display = 'none';
+
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+
+function setMouse(cx, cy, down) {
+  mouse.x = cx / window.innerWidth;
+  mouse.y = cy / window.innerHeight;
+  if (down !== undefined) mouse.down = down;
+}
+
+canvas.addEventListener('mousedown',  e => setMouse(e.clientX, e.clientY, true));
+canvas.addEventListener('mousemove',  e => setMouse(e.clientX, e.clientY));
+canvas.addEventListener('mouseup',   () => mouse.down = false);
+canvas.addEventListener('mouseleave',() => mouse.down = false);
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  setMouse(e.touches[0].clientX, e.touches[0].clientY, true);
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  setMouse(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+canvas.addEventListener('touchend', () => mouse.down = false, { passive: false });
+
+// ── Preset buttons ────────────────────────────────────────────────────────────
+
+function resetSim() {
+  gl.bindTexture(gl.TEXTURE_2D, ping.tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SW, SH, 0, gl.RGBA, gl.UNSIGNED_BYTE, makeInitData());
+  gl.bindTexture(gl.TEXTURE_2D, pong.tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SW, SH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+}
+
+document.querySelectorAll('.btn[data-p]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.btn.active').classList.remove('active');
+    btn.classList.add('active');
+    preset = PRESETS[parseInt(btn.dataset.p)];
+    resetSim();
+  });
+});
+
+document.getElementById('clearBtn').addEventListener('click', resetSim);
+</script>
+</body>
+</html>
