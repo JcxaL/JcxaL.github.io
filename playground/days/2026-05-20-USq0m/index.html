@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Graph Studio</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #080c14;
+    --surface: #0f1623;
+    --panel: #131c2b;
+    --border: #1e2d42;
+    --accent: #3b82f6;
+    --accent2: #8b5cf6;
+    --accent3: #06b6d4;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --node-r: 22px;
+  }
+
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; }
+
+  /* ── layout ── */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  #toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; z-index: 10; flex-shrink: 0;
+  }
+
+  .tool-group { display: flex; gap: 4px; align-items: center; }
+  .sep { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
+
+  button {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; gap: 6px; transition: all 0.15s; white-space: nowrap;
+  }
+  button:hover { background: var(--border); border-color: var(--accent); }
+  button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { border-color: #ef4444; }
+  button.danger:hover { background: #ef4444; }
+  button.success { border-color: #22c55e; }
+  button.success:hover { background: #22c55e; color: #000; }
+
+  #title { font-size: 14px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent); margin-right: 8px; }
+
+  select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 8px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  }
+
+  /* ── canvas area ── */
+  #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+  #canvas { display: block; width: 100%; height: 100%; cursor: default; touch-action: none; }
+
+  /* ── side panel ── */
+  #side-panel {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 220px;
+    background: var(--panel); border-left: 1px solid var(--border);
+    padding: 12px; overflow-y: auto; transform: translateX(100%);
+    transition: transform 0.25s; z-index: 5;
+  }
+  #side-panel.open { transform: translateX(0); }
+  .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 8px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+  .field input[type=text], .field input[type=range] { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 5px 8px; border-radius: 5px; font-size: 12px; }
+  .field input[type=range] { padding: 0; height: 6px; border: none; accent-color: var(--accent); }
+
+  /* ── color swatches ── */
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .swatch { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: border-color 0.15s; }
+  .swatch.active { border-color: #fff; }
+
+  /* ── stats ── */
+  #stats {
+    position: absolute; bottom: 12px; left: 12px;
+    background: rgba(8,12,20,0.85); backdrop-filter: blur(6px);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 11px; color: var(--text-dim); line-height: 1.8;
+    pointer-events: none;
+  }
+  #stats span { color: var(--text); font-weight: 600; }
+
+  /* ── tooltip ── */
+  #tooltip {
+    position: absolute; background: rgba(8,12,20,0.95); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 8px; font-size: 11px; pointer-events: none;
+    opacity: 0; transition: opacity 0.15s; z-index: 20; white-space: nowrap;
+  }
+
+  /* ── mode badge ── */
+  #mode-badge {
+    position: absolute; top: 12px; left: 12px;
+    background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4);
+    border-radius: 20px; padding: 4px 12px; font-size: 11px; color: var(--accent);
+    pointer-events: none; transition: all 0.2s;
+  }
+
+  /* ── mobile fab ── */
+  #fab-panel-toggle {
+    display: none; position: absolute; bottom: 12px; right: 12px;
+    width: 44px; height: 44px; border-radius: 50%; background: var(--accent);
+    border: none; color: #fff; font-size: 20px; cursor: pointer;
+    justify-content: center; align-items: center; z-index: 30;
+  }
+  @media (max-width: 600px) {
+    #fab-panel-toggle { display: flex; }
+    #side-panel { width: 100%; }
+  }
+
+  /* ── help ── */
+  #help {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(8,12,20,0.7); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 14px; font-size: 11px; color: var(--text-dim);
+    pointer-events: none; white-space: nowrap;
+  }
+
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+  .simulating { animation: pulse 1.5s infinite; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <div id="title">◈ Graph Studio</div>
+
+    <div class="tool-group">
+      <button id="btn-select" class="active" title="Select / Pan">⬖ Select</button>
+      <button id="btn-node" title="Add node (click canvas)">⬤ Node</button>
+      <button id="btn-edge" title="Draw edge (drag node → node)">↗ Edge</button>
+      <button id="btn-delete" title="Delete selected">✕ Delete</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="tool-group">
+      <select id="layout-select" title="Layout algorithm">
+        <option value="force">Force-Directed</option>
+        <option value="circular">Circular</option>
+        <option value="radial">Radial Tree</option>
+        <option value="grid">Grid</option>
+        <option value="spectral">Spectral</option>
+      </select>
+      <button id="btn-run-layout">▶ Apply</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="tool-group">
+      <select id="preset-select">
+        <option value="">— Presets —</option>
+        <option value="social">Social Network</option>
+        <option value="org">Org Chart</option>
+        <option value="concept">Concept Map</option>
+        <option value="mesh">Mesh Topology</option>
+        <option value="star">Star Topology</option>
+      </select>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="tool-group">
+      <button id="btn-save" class="success">💾 Save</button>
+      <button id="btn-load">📂 Load</button>
+      <button id="btn-export">⬇ SVG</button>
+      <button id="btn-clear" class="danger">🗑 Clear</button>
+    </div>
+
+    <div class="tool-group" style="margin-left:auto;">
+      <button id="btn-props" title="Node properties panel">⚙</button>
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div id="mode-badge">SELECT</div>
+    <div id="stats">
+      Nodes <span id="st-nodes">0</span> &nbsp; Edges <span id="st-edges">0</span> &nbsp; Selected <span id="st-sel">—</span>
+    </div>
+    <div id="tooltip"></div>
+    <div id="help">Click to add nodes · Drag between nodes to connect · Scroll to zoom</div>
+
+    <div id="side-panel">
+      <div class="panel-title">Node Properties</div>
+      <div class="field">
+        <label>Label</label>
+        <input type="text" id="prop-label" placeholder="Node label" maxlength="20">
+      </div>
+      <div class="field">
+        <label>Color</label>
+        <div class="swatches" id="color-swatches"></div>
+      </div>
+      <div class="field">
+        <label>Size <span id="size-val">22</span>px</label>
+        <input type="range" id="prop-size" min="10" max="50" value="22">
+      </div>
+      <div class="panel-title" style="margin-top:12px;">Physics</div>
+      <div class="field">
+        <label>Charge strength <span id="charge-val">-300</span></label>
+        <input type="range" id="physics-charge" min="-800" max="-50" value="-300">
+      </div>
+      <div class="field">
+        <label>Link distance <span id="link-val">120</span></label>
+        <input type="range" id="physics-link" min="40" max="300" value="120">
+      </div>
+      <div class="field">
+        <label>Gravity <span id="grav-val">0.05</span></label>
+        <input type="range" id="physics-gravity" min="0" max="30" value="5">
+      </div>
+    </div>
+
+    <button id="fab-panel-toggle">⚙</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// Graph Studio — Force-Directed Graph Explorer
+// Playground Day 5 · 2026-05-20
+// ═══════════════════════════════════════════════════════
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+
+// ── state ──────────────────────────────────────────────
+let nodes = [], edges = [];
+let selected = null;
+let mode = 'select'; // select | node | edge | delete
+let edgeSrc = null;
+let hoveredNode = null;
+let panning = false, panStart = {x:0,y:0};
+let transform = { x: 0, y: 0, scale: 1 };
+let simRunning = false;
+let animFrame = null;
+let nextId = 1;
+
+// physics params
+let physCharge = -300;
+let physLink = 120;
+let physGravity = 0.05;
+
+const NODE_COLORS = [
+  '#3b82f6','#8b5cf6','#06b6d4','#10b981',
+  '#f59e0b','#ef4444','#f472b6','#ffffff'
+];
+
+// ── resize ─────────────────────────────────────────────
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  canvas.style.width = r.width + 'px';
+  canvas.style.height = r.height + 'px';
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  draw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── coordinate helpers ─────────────────────────────────
+function toWorld(cx, cy) {
+  const r = wrap.getBoundingClientRect();
+  return {
+    x: (cx - r.left - transform.x) / transform.scale,
+    y: (cy - r.top - transform.y) / transform.scale
+  };
+}
+function toScreen(wx, wy) {
+  return {
+    x: wx * transform.scale + transform.x,
+    y: wy * transform.scale + transform.y
+  };
+}
+
+function nodeAt(wx, wy) {
+  let best = null, bestD = Infinity;
+  for (const n of nodes) {
+    const d = Math.hypot(n.x - wx, n.y - wy);
+    if (d < (n.r + 6) && d < bestD) { best = n; bestD = d; }
+  }
+  return best;
+}
+
+// ── node factory ───────────────────────────────────────
+function makeNode(x, y, label, color, r) {
+  return {
+    id: nextId++,
+    x, y, vx: 0, vy: 0,
+    r: r || 22,
+    label: label || 'N' + (nodes.length + 1),
+    color: color || NODE_COLORS[nodes.length % NODE_COLORS.length],
+    pinned: false
+  };
+}
+
+// ── draw ───────────────────────────────────────────────
+function draw() {
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(transform.x, transform.y);
+  ctx.scale(transform.scale, transform.scale);
+
+  // grid
+  drawGrid(W, H);
+
+  // edges
+  for (const e of edges) {
+    const s = nodes.find(n => n.id === e.src);
+    const t = nodes.find(n => n.id === e.tgt);
+    if (!s || !t) continue;
+    drawEdge(s, t, e);
+  }
+
+  // edge-in-progress
+  if (mode === 'edge' && edgeSrc && mouseWorld) {
+    ctx.beginPath();
+    ctx.moveTo(edgeSrc.x, edgeSrc.y);
+    ctx.lineTo(mouseWorld.x, mouseWorld.y);
+    ctx.strokeStyle = 'rgba(59,130,246,0.5)';
+    ctx.lineWidth = 2 / transform.scale;
+    ctx.setLineDash([6 / transform.scale, 4 / transform.scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // nodes
+  for (const n of nodes) drawNode(n);
+
+  ctx.restore();
+}
+
+function drawGrid(W, H) {
+  const step = 40;
+  const ox = (transform.x % (step * transform.scale)) / transform.scale;
+  const oy = (transform.y % (step * transform.scale)) / transform.scale;
+  const x0 = -transform.x / transform.scale;
+  const y0 = -transform.y / transform.scale;
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(30,45,66,0.6)';
+  ctx.lineWidth = 1 / transform.scale;
+  const cols = Math.ceil(W / (step * transform.scale)) + 2;
+  const rows = Math.ceil(H / (step * transform.scale)) + 2;
+  for (let i = -1; i <= cols; i++) {
+    const gx = x0 + ox + i * step;
+    ctx.moveTo(gx, y0 - 10);
+    ctx.lineTo(gx, y0 + H / transform.scale + 10);
+  }
+  for (let j = -1; j <= rows; j++) {
+    const gy = y0 + oy + j * step;
+    ctx.moveTo(x0 - 10, gy);
+    ctx.lineTo(x0 + W / transform.scale + 10, gy);
+  }
+  ctx.stroke();
+}
+
+function drawEdge(s, t, e) {
+  const dx = t.x - s.x, dy = t.y - s.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const x1 = s.x + ux * s.r;
+  const y1 = s.y + uy * s.r;
+  const x2 = t.x - ux * t.r;
+  const y2 = t.y - uy * t.r;
+
+  const sel = (e === selectedEdge);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.strokeStyle = sel ? '#f59e0b' : 'rgba(100,116,139,0.6)';
+  ctx.lineWidth = (sel ? 2.5 : 1.5) / transform.scale;
+  ctx.stroke();
+
+  // arrowhead
+  const headLen = 10 / transform.scale;
+  const angle = Math.atan2(uy, ux);
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - headLen * Math.cos(angle - 0.4), y2 - headLen * Math.sin(angle - 0.4));
+  ctx.lineTo(x2 - headLen * Math.cos(angle + 0.4), y2 - headLen * Math.sin(angle + 0.4));
+  ctx.closePath();
+  ctx.fillStyle = sel ? '#f59e0b' : 'rgba(100,116,139,0.7)';
+  ctx.fill();
+}
+
+function drawNode(n) {
+  const isSel = (n === selected);
+  const isHov = (n === hoveredNode);
+
+  // glow
+  if (isSel || isHov) {
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r + 8 / transform.scale, 0, Math.PI * 2);
+    const g = ctx.createRadialGradient(n.x, n.y, n.r, n.x, n.y, n.r + 14 / transform.scale);
+    g.addColorStop(0, n.color + '44');
+    g.addColorStop(1, n.color + '00');
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+
+  // shadow
+  ctx.shadowColor = n.color + '88';
+  ctx.shadowBlur = 16 / transform.scale;
+
+  // circle
+  ctx.beginPath();
+  ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+  const fill = ctx.createRadialGradient(n.x - n.r * 0.3, n.y - n.r * 0.3, 0, n.x, n.y, n.r);
+  fill.addColorStop(0, lighten(n.color, 30));
+  fill.addColorStop(1, n.color);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // border
+  ctx.strokeStyle = isSel ? '#fff' : n.color + 'cc';
+  ctx.lineWidth = (isSel ? 2.5 : 1.5) / transform.scale;
+  ctx.stroke();
+
+  // pin indicator
+  if (n.pinned) {
+    ctx.beginPath();
+    ctx.arc(n.x + n.r * 0.6, n.y - n.r * 0.6, 4 / transform.scale, 0, Math.PI * 2);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fill();
+  }
+
+  // label
+  const fs = Math.max(10, n.r * 0.65) / transform.scale;
+  ctx.font = `600 ${fs}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 4 / transform.scale;
+  ctx.fillText(n.label.slice(0, 4), n.x, n.y);
+  ctx.shadowBlur = 0;
+}
+
+function lighten(hex, pct) {
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  r = Math.min(255, r + pct); g = Math.min(255, g + pct); b = Math.min(255, b + pct);
+  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+// ── physics simulation ─────────────────────────────────
+let simTick = 0;
+function startSim() {
+  if (simRunning) return;
+  simRunning = true;
+  document.getElementById('btn-run-layout').classList.add('simulating');
+  loop();
+}
+function stopSim() {
+  simRunning = false;
+  document.getElementById('btn-run-layout').classList.remove('simulating');
+  if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+}
+
+function loop() {
+  if (!simRunning) return;
+  const cooled = tick();
+  draw();
+  if (!cooled) animFrame = requestAnimationFrame(loop);
+  else { simRunning = false; document.getElementById('btn-run-layout').classList.remove('simulating'); draw(); }
+}
+
+function tick() {
+  const alpha = Math.max(0, 1 - simTick / 400);
+  simTick++;
+  if (alpha < 0.002) return true;
+
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  const cx = W / 2 - transform.x / transform.scale;
+  const cy = H / 2 - transform.y / transform.scale;
+
+  // repulsion
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      const d2 = dx*dx + dy*dy + 1;
+      const f = physCharge / d2 * alpha;
+      const len = Math.sqrt(d2);
+      dx /= len; dy /= len;
+      if (!a.pinned) { a.vx -= dx * f; a.vy -= dy * f; }
+      if (!b.pinned) { b.vx += dx * f; b.vy += dy * f; }
+    }
+  }
+
+  // attraction along edges
+  for (const e of edges) {
+    const s = nodes.find(n => n.id === e.src);
+    const t = nodes.find(n => n.id === e.tgt);
+    if (!s || !t) continue;
+    const dx = t.x - s.x, dy = t.y - s.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const f = (d - physLink) * 0.2 * alpha;
+    const ux = dx/d, uy = dy/d;
+    if (!s.pinned) { s.vx += ux * f; s.vy += uy * f; }
+    if (!t.pinned) { t.vx -= ux * f; t.vy -= uy * f; }
+  }
+
+  // gravity toward center
+  for (const n of nodes) {
+    if (n.pinned) continue;
+    n.vx += (cx - n.x) * physGravity * alpha;
+    n.vy += (cy - n.y) * physGravity * alpha;
+  }
+
+  // integrate + damp
+  for (const n of nodes) {
+    if (n.pinned) continue;
+    n.vx *= 0.7; n.vy *= 0.7;
+    n.x += n.vx; n.y += n.vy;
+  }
+  return false;
+}
+
+// ── layout algorithms ──────────────────────────────────
+function applyLayout(type) {
+  stopSim();
+  simTick = 0;
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  const cx = W/2 - transform.x/transform.scale;
+  const cy = H/2 - transform.y/transform.scale;
+  const n = nodes.length;
+  if (!n) return;
+
+  switch (type) {
+    case 'circular': {
+      const r = Math.min(W, H) * 0.35 / transform.scale;
+      nodes.forEach((node, i) => {
+        const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+        node.x = cx + r * Math.cos(a);
+        node.y = cy + r * Math.sin(a);
+        node.vx = node.vy = 0;
+      });
+      break;
+    }
+    case 'grid': {
+      const cols = Math.ceil(Math.sqrt(n));
+      const spacing = 80;
+      nodes.forEach((node, i) => {
+        node.x = cx + (i % cols - cols / 2) * spacing;
+        node.y = cy + (Math.floor(i / cols) - Math.ceil(n / cols) / 2) * spacing;
+        node.vx = node.vy = 0;
+      });
+      break;
+    }
+    case 'radial': {
+      const adj = buildAdjacency();
+      const root = nodes[0];
+      const visited = new Set([root.id]);
+      const queue = [{ node: root, depth: 0 }];
+      const byDepth = [[root]];
+      root.x = cx; root.y = cy; root.vx = root.vy = 0;
+      while (queue.length) {
+        const { node, depth } = queue.shift();
+        const children = adj[node.id]?.filter(id => !visited.has(id)) || [];
+        if (children.length) {
+          if (!byDepth[depth+1]) byDepth[depth+1] = [];
+          for (const cid of children) {
+            visited.add(cid);
+            const child = nodes.find(x => x.id === cid);
+            if (child) { byDepth[depth+1].push(child); queue.push({ node: child, depth: depth+1 }); }
+          }
+        }
+      }
+      const radii = [0, 120, 220, 320];
+      byDepth.forEach((level, d) => {
+        const r = radii[Math.min(d, radii.length-1)];
+        level.forEach((node, i) => {
+          const a = (i / level.length) * Math.PI * 2 - Math.PI / 2;
+          node.x = cx + r * Math.cos(a);
+          node.y = cy + r * Math.sin(a);
+          node.vx = node.vy = 0;
+        });
+      });
+      // remaining unvisited
+      nodes.filter(n => !visited.has(n.id)).forEach((node, i) => {
+        node.x = cx + 350 + i * 50; node.y = cy; node.vx = node.vy = 0;
+      });
+      break;
+    }
+    case 'spectral': {
+      // pseudo-spectral: random init with spread
+      nodes.forEach(node => {
+        node.x = cx + (Math.random() - 0.5) * 300;
+        node.y = cy + (Math.random() - 0.5) * 300;
+        node.vx = node.vy = 0;
+      });
+      break;
+    }
+    case 'force':
+    default:
+      nodes.forEach(node => { node.vx = (Math.random()-0.5)*10; node.vy = (Math.random()-0.5)*10; });
+  }
+
+  startSim();
+}
+
+function buildAdjacency() {
+  const adj = {};
+  for (const n of nodes) adj[n.id] = [];
+  for (const e of edges) {
+    adj[e.src]?.push(e.tgt);
+    adj[e.tgt]?.push(e.src);
+  }
+  return adj;
+}
+
+// ── presets ────────────────────────────────────────────
+function loadPreset(name) {
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  const cx = W/2 - transform.x/transform.scale;
+  const cy = H/2 - transform.y/transform.scale;
+
+  nodes = []; edges = []; selected = null; selectedEdge = null; nextId = 1;
+
+  const defs = {
+    social: {
+      labels: ['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Hal','Ivy','Jack'],
+      colors: ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#f472b6','#3b82f6','#8b5cf6','#06b6d4'],
+      pairs: [[0,1],[0,2],[1,2],[1,3],[2,4],[3,4],[3,5],[4,6],[5,6],[6,7],[7,8],[8,9],[5,9],[0,7]]
+    },
+    org: {
+      labels: ['CEO','CTO','CFO','VP Eng','VP Prod','Eng A','Eng B','Eng C','PM A','PM B'],
+      colors: ['#f59e0b','#3b82f6','#10b981','#3b82f6','#10b981','#8b5cf6','#8b5cf6','#8b5cf6','#06b6d4','#06b6d4'],
+      pairs: [[0,1],[0,2],[1,3],[1,4],[3,5],[3,6],[3,7],[4,8],[4,9]]
+    },
+    concept: {
+      labels: ['Web','HTML','CSS','JS','DOM','API','React','Style','Event','Fetch'],
+      colors: ['#ef4444','#f97316','#eab308','#3b82f6','#06b6d4','#10b981','#8b5cf6','#eab308','#06b6d4','#10b981'],
+      pairs: [[0,1],[0,2],[0,3],[3,4],[3,5],[3,6],[1,4],[2,7],[3,8],[5,9]]
+    },
+    mesh: {
+      labels: ['R1','R2','R3','R4','R5','R6'],
+      colors: ['#06b6d4','#06b6d4','#06b6d4','#06b6d4','#06b6d4','#06b6d4'],
+      pairs: [[0,1],[0,2],[1,2],[1,3],[2,3],[2,4],[3,4],[3,5],[4,5],[0,5]]
+    },
+    star: {
+      labels: ['Hub','A','B','C','D','E','F','G'],
+      colors: ['#f59e0b','#3b82f6','#8b5cf6','#06b6d4','#10b981','#ef4444','#f472b6','#3b82f6'],
+      pairs: [[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7]]
+    }
+  };
+
+  const def = defs[name];
+  if (!def) return;
+
+  def.labels.forEach((label, i) => {
+    nodes.push(makeNode(cx + (Math.random()-0.5)*200, cy + (Math.random()-0.5)*200, label, def.colors[i]));
+  });
+  def.pairs.forEach(([s, t]) => {
+    edges.push({ src: nodes[s].id, tgt: nodes[t].id });
+  });
+
+  simTick = 0;
+  startSim();
+  updateStats();
+}
+
+// ── input ──────────────────────────────────────────────
+let dragNode = null, dragOffset = {x:0,y:0};
+let mouseWorld = null;
+let selectedEdge = null;
+
+function getEventPos(e) {
+  const r = wrap.getBoundingClientRect();
+  if (e.touches) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  const pos = getEventPos(e);
+  const w = toWorld(pos.x, pos.y);
+
+  if (mode === 'select') {
+    const hit = nodeAt(w.x, w.y);
+    if (hit) {
+      dragNode = hit; selected = hit; selectedEdge = null;
+      dragOffset = { x: w.x - hit.x, y: w.y - hit.y };
+      showNodePanel(hit);
+    } else {
+      const hitEdge = edgeAt(w.x, w.y);
+      if (hitEdge) {
+        selected = null; selectedEdge = hitEdge;
+      } else {
+        selected = null; selectedEdge = null;
+        panning = true; panStart = { x: pos.x - transform.x, y: pos.y - transform.y };
+        hidePanelIfMobile();
+      }
+    }
+  } else if (mode === 'node') {
+    const n = makeNode(w.x, w.y);
+    nodes.push(n);
+    selected = n;
+    showNodePanel(n);
+    updateStats();
+    if (!simRunning) draw();
+  } else if (mode === 'edge') {
+    const hit = nodeAt(w.x, w.y);
+    if (hit) { edgeSrc = hit; dragNode = null; }
+  } else if (mode === 'delete') {
+    const hit = nodeAt(w.x, w.y);
+    if (hit) {
+      nodes = nodes.filter(n => n !== hit);
+      edges = edges.filter(e => e.src !== hit.id && e.tgt !== hit.id);
+      selected = null;
+      updateStats();
+    } else {
+      const hitEdge = edgeAt(w.x, w.y);
+      if (hitEdge) edges = edges.filter(e => e !== hitEdge);
+    }
+    if (!simRunning) draw();
+  }
+  updateStats();
+  if (!simRunning) draw();
+});
+
+canvas.addEventListener('pointermove', e => {
+  const pos = getEventPos(e);
+  mouseWorld = toWorld(pos.x, pos.y);
+
+  if (dragNode && mode === 'select') {
+    dragNode.x = mouseWorld.x - dragOffset.x;
+    dragNode.y = mouseWorld.y - dragOffset.y;
+    dragNode.vx = 0; dragNode.vy = 0;
+    if (!simRunning) draw();
+  } else if (panning) {
+    transform.x = pos.x - panStart.x;
+    transform.y = pos.y - panStart.y;
+    if (!simRunning) draw();
+  } else if (mode === 'edge' && edgeSrc) {
+    if (!simRunning) draw();
+  } else {
+    const hit = nodeAt(mouseWorld.x, mouseWorld.y);
+    if (hit !== hoveredNode) { hoveredNode = hit; if (!simRunning) draw(); }
+    showTooltip(hit, pos);
+  }
+});
+
+canvas.addEventListener('pointerup', e => {
+  const pos = getEventPos(e);
+  const w = toWorld(pos.x, pos.y);
+
+  if (mode === 'edge' && edgeSrc) {
+    const target = nodeAt(w.x, w.y);
+    if (target && target !== edgeSrc) {
+      const exists = edges.some(e => (e.src===edgeSrc.id&&e.tgt===target.id)||(e.src===target.id&&e.tgt===edgeSrc.id));
+      if (!exists) edges.push({ src: edgeSrc.id, tgt: target.id });
+      updateStats();
+    }
+    edgeSrc = null;
+  }
+  dragNode = null; panning = false;
+  if (!simRunning) draw();
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const pos = { x: e.clientX, y: e.clientY };
+  const r = wrap.getBoundingClientRect();
+  const mx = pos.x - r.left, my = pos.y - r.top;
+  const factor = e.deltaY < 0 ? 1.1 : 0.91;
+  const newScale = Math.max(0.15, Math.min(5, transform.scale * factor));
+  transform.x = mx - (mx - transform.x) * (newScale / transform.scale);
+  transform.y = my - (my - transform.y) * (newScale / transform.scale);
+  transform.scale = newScale;
+  if (!simRunning) draw();
+}, { passive: false });
+
+function edgeAt(wx, wy) {
+  for (const e of edges) {
+    const s = nodes.find(n => n.id === e.src);
+    const t = nodes.find(n => n.id === e.tgt);
+    if (!s || !t) continue;
+    const dx = t.x - s.x, dy = t.y - s.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) continue;
+    const ux = dx/len, uy = dy/len;
+    const px = wx - s.x, py = wy - s.y;
+    const dot = px*ux + py*uy;
+    if (dot < 0 || dot > len) continue;
+    const dist = Math.abs(px*uy - py*ux);
+    if (dist < 8 / transform.scale) return e;
+  }
+  return null;
+}
+
+// ── tooltip ────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+function showTooltip(n, screenPos) {
+  if (!n) { tooltip.style.opacity = '0'; return; }
+  tooltip.textContent = `${n.label} · deg ${edges.filter(e=>e.src===n.id||e.tgt===n.id).length}`;
+  const r = wrap.getBoundingClientRect();
+  tooltip.style.left = (screenPos.x - r.left + 12) + 'px';
+  tooltip.style.top = (screenPos.y - r.top - 32) + 'px';
+  tooltip.style.opacity = '1';
+}
+
+// ── side panel ─────────────────────────────────────────
+const sidePanel = document.getElementById('side-panel');
+function showNodePanel(n) { sidePanel.classList.add('open'); syncPanel(n); }
+function hidePanelIfMobile() { if (window.innerWidth <= 600) sidePanel.classList.remove('open'); }
+
+function syncPanel(n) {
+  if (!n) return;
+  document.getElementById('prop-label').value = n.label;
+  document.getElementById('prop-size').value = n.r;
+  document.getElementById('size-val').textContent = n.r;
+  // highlight active color swatch
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === n.color));
+}
+
+document.getElementById('prop-label').addEventListener('input', e => {
+  if (selected) { selected.label = e.target.value; if (!simRunning) draw(); }
+});
+document.getElementById('prop-size').addEventListener('input', e => {
+  document.getElementById('size-val').textContent = e.target.value;
+  if (selected) { selected.r = +e.target.value; if (!simRunning) draw(); }
+});
+
+// color swatches
+const swatchContainer = document.getElementById('color-swatches');
+NODE_COLORS.forEach(color => {
+  const s = document.createElement('div');
+  s.className = 'swatch';
+  s.dataset.color = color;
+  s.style.background = color;
+  s.addEventListener('click', () => {
+    if (selected) { selected.color = color; document.querySelectorAll('.swatch').forEach(x => x.classList.toggle('active', x === s)); if (!simRunning) draw(); }
+  });
+  swatchContainer.appendChild(s);
+});
+
+// double-click to pin
+canvas.addEventListener('dblclick', e => {
+  const w = toWorld(e.clientX, e.clientY);
+  const hit = nodeAt(w.x, w.y);
+  if (hit) { hit.pinned = !hit.pinned; if (!simRunning) draw(); }
+});
+
+// ── physics sliders ────────────────────────────────────
+document.getElementById('physics-charge').addEventListener('input', e => {
+  physCharge = +e.target.value;
+  document.getElementById('charge-val').textContent = physCharge;
+});
+document.getElementById('physics-link').addEventListener('input', e => {
+  physLink = +e.target.value;
+  document.getElementById('link-val').textContent = physLink;
+});
+document.getElementById('physics-gravity').addEventListener('input', e => {
+  physGravity = e.target.value / 100;
+  document.getElementById('grav-val').textContent = physGravity.toFixed(2);
+});
+
+// ── toolbar buttons ────────────────────────────────────
+const modeButtons = { select: 'btn-select', node: 'btn-node', edge: 'btn-edge', delete: 'btn-delete' };
+function setMode(m) {
+  mode = m;
+  edgeSrc = null;
+  Object.entries(modeButtons).forEach(([k, id]) => document.getElementById(id).classList.toggle('active', k === m));
+  const labels = { select:'SELECT',node:'ADD NODE',edge:'DRAW EDGE',delete:'DELETE' };
+  document.getElementById('mode-badge').textContent = labels[m];
+  canvas.style.cursor = m === 'delete' ? 'not-allowed' : m === 'node' ? 'crosshair' : 'default';
+}
+document.getElementById('btn-select').addEventListener('click', () => setMode('select'));
+document.getElementById('btn-node').addEventListener('click', () => setMode('node'));
+document.getElementById('btn-edge').addEventListener('click', () => setMode('edge'));
+document.getElementById('btn-delete').addEventListener('click', () => setMode('delete'));
+
+document.getElementById('btn-run-layout').addEventListener('click', () => {
+  const layout = document.getElementById('layout-select').value;
+  simTick = 0;
+  applyLayout(layout);
+});
+
+document.getElementById('preset-select').addEventListener('change', e => {
+  if (e.target.value) { loadPreset(e.target.value); e.target.value = ''; }
+});
+
+document.getElementById('btn-props').addEventListener('click', () => sidePanel.classList.toggle('open'));
+document.getElementById('fab-panel-toggle').addEventListener('click', () => sidePanel.classList.toggle('open'));
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  if (nodes.length && !confirm('Clear the graph?')) return;
+  nodes = []; edges = []; selected = null; selectedEdge = null;
+  stopSim(); updateStats(); draw();
+});
+
+// ── save / load ────────────────────────────────────────
+document.getElementById('btn-save').addEventListener('click', () => {
+  const data = { nodes: nodes.map(n => ({...n})), edges: [...edges], transform, nextId };
+  localStorage.setItem('graphstudio_save', JSON.stringify(data));
+  const btn = document.getElementById('btn-save');
+  btn.textContent = '✓ Saved!';
+  setTimeout(() => btn.textContent = '💾 Save', 1500);
+});
+
+document.getElementById('btn-load').addEventListener('click', () => {
+  const raw = localStorage.getItem('graphstudio_save');
+  if (!raw) { alert('No saved graph found.'); return; }
+  const data = JSON.parse(raw);
+  nodes = data.nodes; edges = data.edges; transform = data.transform; nextId = data.nextId || 1;
+  selected = null; selectedEdge = null; stopSim();
+  updateStats(); draw();
+});
+
+// ── SVG export ─────────────────────────────────────────
+document.getElementById('btn-export').addEventListener('click', () => {
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n`;
+  svg += `<rect width="${W}" height="${H}" fill="#080c14"/>\n`;
+  svg += `<g transform="translate(${transform.x},${transform.y}) scale(${transform.scale})">\n`;
+
+  // edges
+  for (const e of edges) {
+    const s = nodes.find(n => n.id === e.src);
+    const t = nodes.find(n => n.id === e.tgt);
+    if (!s || !t) continue;
+    svg += `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="rgba(100,116,139,0.6)" stroke-width="1.5"/>\n`;
+  }
+  // nodes
+  for (const n of nodes) {
+    svg += `<circle cx="${n.x}" cy="${n.y}" r="${n.r}" fill="${n.color}" stroke="${n.color}cc" stroke-width="1.5"/>\n`;
+    svg += `<text x="${n.x}" y="${n.y}" text-anchor="middle" dominant-baseline="central" font-family="system-ui" font-size="${Math.max(10,n.r*0.65)}" font-weight="600" fill="#fff">${n.label.slice(0,4)}</text>\n`;
+  }
+
+  svg += `</g>\n</svg>`;
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'graph-studio.svg';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+// ── stats ──────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('st-nodes').textContent = nodes.length;
+  document.getElementById('st-edges').textContent = edges.length;
+  document.getElementById('st-sel').textContent = selected ? selected.label : (selectedEdge ? 'edge' : '—');
+}
+
+// ── keyboard ───────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'n') setMode('node');
+  else if (e.key === 's') setMode('select');
+  else if (e.key === 'e') setMode('edge');
+  else if (e.key === 'd') setMode('delete');
+  else if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (selected) { nodes = nodes.filter(n => n !== selected); edges = edges.filter(e => e.src!==selected.id&&e.tgt!==selected.id); selected = null; updateStats(); }
+    else if (selectedEdge) { edges = edges.filter(e => e !== selectedEdge); selectedEdge = null; }
+    if (!simRunning) draw();
+  } else if (e.key === ' ') {
+    e.preventDefault();
+    if (simRunning) stopSim(); else { simTick = 0; startSim(); }
+  } else if (e.key === 'p' && selected) {
+    selected.pinned = !selected.pinned;
+    if (!simRunning) draw();
+  }
+});
+
+// ── init ───────────────────────────────────────────────
+loadPreset('social');
+setMode('select');
+</script>
+</body>
+</html>

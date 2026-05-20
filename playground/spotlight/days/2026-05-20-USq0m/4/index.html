@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spring Rubber-Band Drag — CSS linear() Easing</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #07080f;
+    --surface: #0e0f1c;
+    --border: #1a1b30;
+    --text: #e2e8f0;
+    --dim: #4a5568;
+    --accent: #f59e0b;
+  }
+
+  html, body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+    overflow-x: hidden;
+    user-select: none;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: clamp(1rem, 3vw, 1.4rem);
+    font-weight: 700;
+    padding: 28px 20px 6px;
+    letter-spacing: -0.02em;
+  }
+  .subtitle { text-align: center; color: var(--dim); font-size: 12px; padding: 0 20px 24px; }
+
+  /* ── spring cards ── */
+  .card-row {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 20px; padding: 0 20px 20px;
+  }
+
+  .spring-card {
+    position: relative;
+    width: 200px; height: 260px;
+    border-radius: 18px;
+    cursor: grab;
+    touch-action: none;
+    will-change: transform;
+    /* spring snap-back uses CSS linear() spring function */
+    --spring: linear(
+      0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%,
+      0.721 25.2%, 0.826 31.2%, 0.891 37.2%, 0.927 43.2%,
+      0.945 49.3%, 0.946 55.3%, 0.941 61.3%, 0.942 67.3%,
+      0.951 73.4%, 0.962 79.4%, 0.973 85.4%, 0.983 91.4%, 0.991 97.4%, 1
+    );
+  }
+  .spring-card:active { cursor: grabbing; }
+
+  .spring-card .face {
+    width: 100%; height: 100%;
+    border-radius: 18px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    position: relative; overflow: hidden;
+    transition: box-shadow 0.2s;
+  }
+
+  .spring-card.dragging .face { box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+
+  .card-emoji { font-size: 48px; line-height: 1; }
+  .card-title { font-size: 15px; font-weight: 600; }
+  .card-sub { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; padding: 0 16px; line-height: 1.5; }
+
+  /* spring snap-back transition */
+  .spring-card.snapping {
+    transition: transform 0.8s var(--spring);
+  }
+
+  /* drag hint */
+  .drag-hint {
+    position: absolute; bottom: 10px; left: 0; right: 0;
+    text-align: center; font-size: 10px; color: rgba(255,255,255,0.25);
+    pointer-events: none;
+  }
+
+  /* ── physics meters ── */
+  .meters {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 16px;
+    padding: 0 20px 28px;
+  }
+  .meter {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; min-width: 160px;
+  }
+  .meter-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); margin-bottom: 8px; }
+  .meter-track { height: 4px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: 2px; transition: width 0.05s; }
+  .meter-val { font-size: 11px; color: var(--accent); margin-top: 5px; text-align: right; }
+
+  /* ── easing visualiser ── */
+  .easing-wrap {
+    display: flex; justify-content: center; padding: 0 20px 28px;
+  }
+  .easing-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    width: min(500px, 100%);
+  }
+  .easing-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); margin-bottom: 10px; }
+  canvas#easing-canvas { display: block; width: 100%; }
+
+  /* ── controls ── */
+  .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 0 20px 24px; }
+  .ctrl { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; min-width: 160px; }
+  .ctrl label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin-bottom: 8px; }
+  .ctrl input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ctrl-val { font-size: 11px; color: var(--accent); text-align: right; margin-top: 4px; }
+
+  /* info */
+  .info {
+    max-width: 620px; margin: 0 auto 24px;
+    background: rgba(245,158,11,0.07);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 10px; padding: 14px 18px;
+    font-size: 12px; color: var(--dim); line-height: 1.7;
+    margin-left: 20px; margin-right: 20px;
+  }
+  .info code { color: var(--accent); background: rgba(245,158,11,0.1); border-radius: 4px; padding: 1px 5px; font-family: monospace; }
+
+  footer { font-size: 10px; color: var(--dim); text-align: center; padding-bottom: 20px; }
+</style>
+</head>
+<body>
+
+<h1>Spring Rubber-Band Drag</h1>
+<p class="subtitle">Drag any card — it stretches in 3D and snaps back with CSS <code>linear()</code> spring easing</p>
+
+<div class="card-row" id="card-row">
+  <!-- cards injected by JS -->
+</div>
+
+<div class="meters">
+  <div class="meter">
+    <div class="meter-label">Pull X</div>
+    <div class="meter-track"><div class="meter-fill" id="m-x" style="background:#6366f1;width:50%"></div></div>
+    <div class="meter-val" id="mv-x">0px</div>
+  </div>
+  <div class="meter">
+    <div class="meter-label">Pull Y</div>
+    <div class="meter-track"><div class="meter-fill" id="m-y" style="background:#38bdf8;width:50%"></div></div>
+    <div class="meter-val" id="mv-y">0px</div>
+  </div>
+  <div class="meter">
+    <div class="meter-label">Rotation</div>
+    <div class="meter-track"><div class="meter-fill" id="m-r" style="background:#f472b6;width:50%"></div></div>
+    <div class="meter-val" id="mv-r">0°</div>
+  </div>
+  <div class="meter">
+    <div class="meter-label">Scale</div>
+    <div class="meter-track"><div class="meter-fill" id="m-s" style="background:#34d399;width:50%"></div></div>
+    <div class="meter-val" id="mv-s">1.00</div>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="ctrl">
+    <label>Rubber-band resistance</label>
+    <input type="range" id="ctrl-resist" min="1" max="10" value="4" step="0.1">
+    <div class="ctrl-val" id="val-resist">4.0</div>
+  </div>
+  <div class="ctrl">
+    <label>Max rotation</label>
+    <input type="range" id="ctrl-maxrot" min="0" max="40" value="18">
+    <div class="ctrl-val" id="val-maxrot">18°</div>
+  </div>
+  <div class="ctrl">
+    <label>Perspective depth</label>
+    <input type="range" id="ctrl-persp" min="200" max="1200" value="600">
+    <div class="ctrl-val" id="val-persp">600px</div>
+  </div>
+  <div class="ctrl">
+    <label>Spring bounce</label>
+    <input type="range" id="ctrl-bounce" min="0" max="2" value="1" step="0.05">
+    <div class="ctrl-val" id="val-bounce">1.0×</div>
+  </div>
+</div>
+
+<div class="easing-wrap">
+  <div class="easing-box">
+    <div class="easing-title">Spring Easing Curve (CSS linear())</div>
+    <canvas id="easing-canvas" height="80"></canvas>
+  </div>
+</div>
+
+<div class="info">
+  <strong style="color:var(--accent)">The mechanism:</strong>
+  While dragging, the card's translate + rotateX/Y is set directly via JS for immediate feedback.
+  The rubber-band effect is simulated by dividing displacement by a resistance factor, so the card
+  "fights back" as it moves further from its resting position.
+  On release, the <code>snapping</code> class applies a CSS <code>transition</code> using a hand-crafted
+  <code>linear()</code> timing function that encodes overshoot and settle — the browser GPU does the rest.
+</div>
+
+<footer>Technique: CSS linear() spring easing (ICS Media / CSS-Tricks) · UI Spotlight Day 4 · Drop #4</footer>
+
+<script>
+const cards = [
+  { emoji:'🎵', title:'SoundKit', sub:'Audio samples &\nloop packs', bg:'linear-gradient(135deg,#1a0533,#2d0b6e)', border:'#6366f1' },
+  { emoji:'📸', title:'Lenscraft', sub:'AI photo\nenhancement', bg:'linear-gradient(135deg,#0f2027,#2c5364)', border:'#38bdf8' },
+  { emoji:'🎮', title:'PixelDen', sub:'Retro game\nassets library', bg:'linear-gradient(135deg,#0d0221,#1a0a00)', border:'#f59e0b' },
+  { emoji:'🌿', title:'Botanica', sub:'Plant care\ntracker', bg:'linear-gradient(135deg,#031a0a,#0a3318)', border:'#34d399' },
+  { emoji:'🔭', title:'Cosmos', sub:'Space weather\ndashboard', bg:'linear-gradient(135deg,#060416,#0a0820)', border:'#a78bfa' },
+];
+
+let resist = 4;
+let maxRot = 18;
+let persp = 600;
+
+const row = document.getElementById('card-row');
+
+cards.forEach((c, idx) => {
+  const card = document.createElement('div');
+  card.className = 'spring-card';
+  card.innerHTML = `
+    <div class="face" style="background:${c.bg};border-color:${c.border}40">
+      <div class="card-emoji">${c.emoji}</div>
+      <div class="card-title">${c.title}</div>
+      <div class="card-sub">${c.sub.replace('\n','<br>')}</div>
+      <div class="drag-hint">↕ drag me</div>
+    </div>`;
+  row.appendChild(card);
+  attachSpring(card);
+});
+
+function attachSpring(card) {
+  let startX = 0, startY = 0;
+  let dx = 0, dy = 0;
+  let isDragging = false;
+
+  function onStart(e) {
+    e.preventDefault();
+    isDragging = true;
+    card.classList.add('dragging');
+    card.classList.remove('snapping');
+    const pt = e.touches ? e.touches[0] : e;
+    startX = pt.clientX; startY = pt.clientY;
+  }
+
+  function onMove(e) {
+    if (!isDragging) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const rawDx = pt.clientX - startX;
+    const rawDy = pt.clientY - startY;
+    // rubber-band: resistance grows with distance
+    dx = rubberBand(rawDx, resist);
+    dy = rubberBand(rawDy, resist);
+    applyTransform(card, dx, dy);
+    updateMeters(dx, dy);
+  }
+
+  function onEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    card.classList.remove('dragging');
+    card.classList.add('snapping');
+    card.style.transform = `perspective(${persp}px) translate3d(0,0,0) rotateX(0deg) rotateY(0deg) scale3d(1,1,1)`;
+    dx = dy = 0;
+    updateMeters(0, 0);
+    card.addEventListener('transitionend', () => card.classList.remove('snapping'), { once: true });
+  }
+
+  card.addEventListener('pointerdown', onStart);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onEnd);
+}
+
+function rubberBand(x, k) {
+  // rubber band: resistance increases with displacement
+  const sign = x < 0 ? -1 : 1;
+  return sign * Math.pow(Math.abs(x), 1 / k) * Math.pow(80, 1 - 1/k);
+}
+
+function applyTransform(card, dx, dy) {
+  const rotY = Math.max(-maxRot, Math.min(maxRot, dx * 0.3));
+  const rotX = Math.max(-maxRot, Math.min(maxRot, -dy * 0.3));
+  const scale = 1 + Math.min(0.12, Math.hypot(dx, dy) / 600);
+  card.style.transform = `perspective(${persp}px) translate3d(${dx}px,${dy}px,0) rotateX(${rotX}deg) rotateY(${rotY}deg) scale3d(${scale},${scale},1)`;
+}
+
+function updateMeters(dx, dy) {
+  const maxD = 80, maxR = maxRot, absX = Math.abs(dx), absY = Math.abs(dy);
+  const rotY = Math.max(-maxRot, Math.min(maxRot, dx * 0.3));
+  const rotX = Math.max(-maxRot, Math.min(maxRot, -dy * 0.3));
+  const scale = 1 + Math.min(0.12, Math.hypot(dx, dy) / 600);
+  const pct = v => Math.min(100, Math.max(0, 50 + v));
+
+  document.getElementById('m-x').style.width = `${pct(dx/maxD*50)}%`;
+  document.getElementById('m-y').style.width = `${pct(dy/maxD*50)}%`;
+  document.getElementById('m-r').style.width = `${pct(rotY/maxRot*50)}%`;
+  document.getElementById('m-s').style.width = `${((scale-1)/0.12)*100}%`;
+  document.getElementById('mv-x').textContent = `${dx.toFixed(0)}px`;
+  document.getElementById('mv-y').textContent = `${dy.toFixed(0)}px`;
+  document.getElementById('mv-r').textContent = `${rotY.toFixed(1)}°`;
+  document.getElementById('mv-s').textContent = scale.toFixed(3);
+}
+
+// ── controls ───────────────────────────────────────────
+document.getElementById('ctrl-resist').addEventListener('input', e => {
+  resist = +e.target.value;
+  document.getElementById('val-resist').textContent = resist.toFixed(1);
+});
+document.getElementById('ctrl-maxrot').addEventListener('input', e => {
+  maxRot = +e.target.value;
+  document.getElementById('val-maxrot').textContent = `${maxRot}°`;
+});
+document.getElementById('ctrl-persp').addEventListener('input', e => {
+  persp = +e.target.value;
+  document.getElementById('val-persp').textContent = `${persp}px`;
+});
+document.getElementById('ctrl-bounce').addEventListener('input', e => {
+  document.getElementById('val-bounce').textContent = `${(+e.target.value).toFixed(2)}×`;
+  // update all cards' spring variable
+  // spring points scale by bounce factor
+  document.querySelectorAll('.spring-card').forEach(c => {
+    c.style.setProperty('--spring-dur', `${0.6 + (+e.target.value) * 0.2}s`);
+  });
+});
+
+// ── easing curve visualiser ────────────────────────────
+const easingCanvas = document.getElementById('easing-canvas');
+function drawEasing() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = easingCanvas.offsetWidth;
+  const h = 80;
+  easingCanvas.width = w * dpr;
+  easingCanvas.height = h * dpr;
+  const ctx = easingCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const springPoints = [0,0.006,0.025,0.101,0.539,0.721,0.826,0.891,0.927,0.945,0.946,0.941,0.942,0.951,0.962,0.973,0.983,0.991,1];
+  const n = springPoints.length - 1;
+
+  ctx.clearRect(0,0,w,h);
+
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = (i / 4) * h;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+  // 1.0 line
+  ctx.strokeStyle = 'rgba(245,158,11,0.2)';
+  ctx.beginPath(); ctx.moveTo(0, h * 0); ctx.lineTo(w, h * 0); ctx.stroke();
+
+  // curve
+  ctx.beginPath();
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 2;
+  springPoints.forEach((v, i) => {
+    const x = (i / n) * w;
+    const y = h - v * h;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // dots
+  springPoints.forEach((v, i) => {
+    const x = (i / n) * w;
+    const y = h - v * h;
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2);
+    ctx.fillStyle = '#f59e0b88'; ctx.fill();
+  });
+}
+new ResizeObserver(drawEasing).observe(easingCanvas);
+drawEasing();
+</script>
+</body>
+</html>
