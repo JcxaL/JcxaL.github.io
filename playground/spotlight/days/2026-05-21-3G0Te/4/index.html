@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Firefly Cursor Trail — UI Spotlight</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:100dvw;height:100dvh;overflow:hidden;background:#03030a;
+  cursor:none;font-family:system-ui,-apple-system,sans-serif;color:#e8e0f8;
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+.hero{text-align:center;pointer-events:none;z-index:2;position:relative}
+.hero h1{font-size:clamp(2rem,8vw,5rem);font-weight:900;letter-spacing:-.03em;
+  background:linear-gradient(135deg,#c084fc,#38bdf8,#34d399);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  line-height:1}
+.hero p{color:rgba(232,224,248,.4);font-size:clamp(.8rem,2vw,1rem);margin-top:12px;
+  max-width:360px;line-height:1.5}
+.hero .hint{margin-top:24px;font-size:.78rem;opacity:.25;letter-spacing:.05em}
+
+/* Custom cursor dot */
+#cursor{position:fixed;width:8px;height:8px;border-radius:50%;
+  background:#c084fc;pointer-events:none;z-index:100;
+  transform:translate(-50%,-50%);transition:transform .05s;
+  box-shadow:0 0 8px 2px rgba(192,132,252,.7)}
+
+.panel{position:fixed;top:16px;right:16px;background:rgba(10,8,20,.88);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:14px 16px;
+  font-size:11px;display:flex;flex-direction:column;gap:10px;z-index:10;min-width:170px}
+.panel h3{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.4}
+.pc{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pc label{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.5}
+input[type=range]{-webkit-appearance:none;appearance:none;height:3px;border-radius:2px;
+  background:rgba(255,255,255,.12);outline:none;cursor:pointer;width:80px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;
+  border-radius:50%;background:#7c3aed;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;
+  background:#7c3aed;border:none;cursor:pointer}
+.pv{font-size:10px;opacity:.35;min-width:20px;text-align:right}
+
+.palette{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.pc-swatch{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid transparent;
+  transition:transform .12s,border-color .12s}
+.pc-swatch:hover{transform:scale(1.2)}.pc-swatch.on{border-color:#fff}
+
+.footer{position:fixed;bottom:10px;left:0;right:0;text-align:center;
+  font-size:10px;opacity:.2;letter-spacing:.04em;z-index:10}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="cursor"></div>
+<div class="hero">
+  <h1>Firefly</h1>
+  <p>Move your cursor — or drag on mobile — to leave glowing particle trails. Click for a burst explosion.</p>
+  <p class="hint">MOVE · CLICK · DRAG</p>
+</div>
+
+<div class="panel">
+  <h3>Controls</h3>
+  <div class="pc">
+    <label>Count</label>
+    <input type="range" id="cntR" min="1" max="12" value="4">
+    <span class="pv" id="cntV">4</span>
+  </div>
+  <div class="pc">
+    <label>Life</label>
+    <input type="range" id="lifeR" min="20" max="120" value="60">
+    <span class="pv" id="lifeV">60</span>
+  </div>
+  <div class="pc">
+    <label>Size</label>
+    <input type="range" id="szR" min="1" max="8" value="3">
+    <span class="pv" id="szV">3</span>
+  </div>
+  <div class="pc" style="flex-direction:column;align-items:flex-start;gap:6px">
+    <label>Color</label>
+    <div class="palette">
+      <div class="pc-swatch on" data-c="0" title="Violet" style="background:#c084fc"></div>
+      <div class="pc-swatch" data-c="1" title="Cyan"   style="background:#38bdf8"></div>
+      <div class="pc-swatch" data-c="2" title="Green"  style="background:#34d399"></div>
+      <div class="pc-swatch" data-c="3" title="Fire"   style="background:#f97316"></div>
+      <div class="pc-swatch" data-c="4" title="Pink"   style="background:#f472b6"></div>
+      <div class="pc-swatch" data-c="5" title="Gold"   style="background:#fbbf24"></div>
+    </div>
+  </div>
+</div>
+<div class="footer">Inspired by codepen.io/rachsmith — canvas cursor trail technique · UI Spotlight Day 5 · Drop #4</div>
+
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const cursorEl=document.getElementById('cursor');
+
+const PALETTES=[
+  [[192,132,252],[129,140,248],[56,189,248]],  // violet
+  [[56,189,248],[34,211,238],[99,240,185]],     // cyan
+  [[52,211,153],[16,185,129],[6,182,212]],      // green
+  [[249,115,22],[251,191,36],[239,68,68]],      // fire
+  [[244,114,182],[251,113,133],[196,181,253]],  // pink
+  [[251,191,36],[245,158,11],[253,186,116]],    // gold
+];
+
+let palette=0,particles=[],mx=window.innerWidth/2,my=window.innerHeight/2;
+
+const cntR=document.getElementById('cntR'),lifeR=document.getElementById('lifeR'),szR=document.getElementById('szR');
+const cntV=document.getElementById('cntV'),lifeV=document.getElementById('lifeV'),szV=document.getElementById('szV');
+cntR.addEventListener('input',()=>cntV.textContent=cntR.value);
+lifeR.addEventListener('input',()=>lifeV.textContent=lifeR.value);
+szR.addEventListener('input',()=>szV.textContent=szR.value);
+
+document.querySelectorAll('.pc-swatch').forEach(s=>s.addEventListener('click',()=>{
+  palette=+s.dataset.c;
+  document.querySelectorAll('.pc-swatch').forEach(x=>x.classList.toggle('on',x===s));
+}));
+
+function resize(){cv.width=window.innerWidth;cv.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+
+function spawn(x,y,burst=false){
+  const count=burst?30:+cntR.value;
+  const life=+lifeR.value;
+  const maxSz=+szR.value;
+  const cols=PALETTES[palette];
+  for(let i=0;i<count;i++){
+    const ang=burst?Math.random()*Math.PI*2:(Math.random()-.5)*2;
+    const spd=burst?2+Math.random()*4:(.5+Math.random()*1.5);
+    const col=cols[Math.floor(Math.random()*cols.length)];
+    particles.push({
+      x,y,
+      vx:Math.cos(ang)*spd+(Math.random()-.5)*.5,
+      vy:Math.sin(ang)*spd+(Math.random()-.5)*.5-(!burst?.5:0),
+      life,maxLife:life,
+      r:(burst?2:1)+Math.random()*maxSz,
+      col,
+    });
+  }
+}
+
+function frame(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;
+    p.vy+=.04; // gentle gravity
+    p.vx*=.98;p.vy*=.98;
+    p.life--;
+    if(p.life<=0){particles.splice(i,1);continue;}
+    const alpha=p.life/p.maxLife;
+    const r=p.r*(alpha*.7+.3);
+    const [cr,cg,cb]=p.col;
+    // glow
+    const grad=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*3.5);
+    grad.addColorStop(0,`rgba(${cr},${cg},${cb},${alpha*.9})`);
+    grad.addColorStop(.4,`rgba(${cr},${cg},${cb},${alpha*.3})`);
+    grad.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+    ctx.beginPath();ctx.arc(p.x,p.y,r*3.5,0,Math.PI*2);
+    ctx.fillStyle=grad;ctx.fill();
+    // core
+    ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.fill();
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+
+let lastX=0,lastY=0,moveThrottle=0;
+function onMove(x,y){
+  cursorEl.style.left=x+'px';cursorEl.style.top=y+'px';
+  if(++moveThrottle%2!==0)return; // spawn every 2 events
+  const dx=x-lastX,dy=y-lastY;
+  if(dx*dx+dy*dy>4)spawn(x,y);
+  lastX=x;lastY=y;
+}
+document.addEventListener('mousemove',e=>onMove(e.clientX,e.clientY));
+document.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  const t=e.touches[0];onMove(t.clientX,t.clientY);
+},{passive:false});
+document.addEventListener('click',e=>spawn(e.clientX,e.clientY,true));
+document.addEventListener('touchstart',e=>{
+  const t=e.touches[0];spawn(t.clientX,t.clientY,true);
+});
+</script>
+</body>
+</html>
