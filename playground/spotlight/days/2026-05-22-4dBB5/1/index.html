@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gravity Image Mouse Trail · UI Spotlight</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100dvh;background:#060610;color:#e2e8f0;
+  font-family:system-ui,-apple-system,sans-serif;overflow:hidden;
+  cursor:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+}
+.hero{text-align:center;pointer-events:none;user-select:none;z-index:1;position:relative}
+.hero h1{
+  font-size:clamp(2.5rem,8vw,7rem);font-weight:900;line-height:1;
+  background:linear-gradient(135deg,#c084fc 0%,#60a5fa 50%,#34d399 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  letter-spacing:-.03em;margin-bottom:.5rem;
+}
+.hero p{font-size:clamp(.9rem,2vw,1.15rem);color:#64748b;max-width:480px}
+.cursor{
+  position:fixed;width:12px;height:12px;border-radius:50%;
+  background:#c084fc;transform:translate(-50%,-50%);pointer-events:none;z-index:999;
+  transition:transform .1s;mix-blend-mode:screen;
+}
+.trail-item{
+  position:fixed;font-size:2.6rem;line-height:1;pointer-events:none;z-index:50;
+  transform-origin:center center;will-change:transform,opacity;
+}
+.debug{
+  position:fixed;top:12px;right:12px;background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;
+  font-size:11px;color:#64748b;z-index:10;
+}
+.debug b{color:#a78bfa}
+.tip{
+  position:fixed;bottom:20px;left:0;right:0;text-align:center;
+  font-size:.7rem;color:#334155;pointer-events:none;
+}
+</style>
+</head>
+<body>
+<div class="cursor" id="cur"></div>
+<div class="hero">
+  <h1>Move<br>Your Mouse</h1>
+  <p>Objects fall from the cursor with elastic gravity and squash-bounce physics</p>
+</div>
+<div class="debug">Spawned <b id="cnt">0</b> · Active <b id="act">0</b></div>
+<div class="tip">Inspired by Made With GSAP / Codrops (May 2026) · UI Spotlight Day 6 · Drop #1</div>
+<script>
+const emojis = ['🌟','🚀','💎','🎯','⚡','🔥','🌊','🎪','🦋','💫','🍀','🎭','🌸','🎨','🏆','💡','🎲','🌈'];
+const cur = document.getElementById('cur');
+const cnt = document.getElementById('cnt');
+const act = document.getElementById('act');
+
+let lastX = 0, lastY = 0, traveled = 0;
+let totalSpawned = 0, activeCount = 0;
+const THRESHOLD = 85;
+const MAX_ACTIVE = 14;
+
+let mouseX = 0, mouseY = 0;
+document.addEventListener('mousemove', e => {
+  mouseX = e.clientX; mouseY = e.clientY;
+  cur.style.left = e.clientX + 'px';
+  cur.style.top = e.clientY + 'px';
+
+  if (lastX === 0 && lastY === 0) { lastX = e.clientX; lastY = e.clientY; return; }
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  traveled += Math.hypot(dx, dy);
+  lastX = e.clientX; lastY = e.clientY;
+
+  if (traveled >= THRESHOLD && activeCount < MAX_ACTIVE) {
+    traveled = 0;
+    spawnItem(e.clientX, e.clientY);
+  }
+});
+
+// Mobile: tap to burst
+document.addEventListener('click', e => {
+  for (let i = 0; i < 4; i++) {
+    const ox = (Math.random() - 0.5) * 60;
+    const oy = (Math.random() - 0.5) * 40;
+    spawnItem(e.clientX + ox, e.clientY + oy);
+  }
+});
+
+async function spawnItem(x, y) {
+  if (activeCount >= MAX_ACTIVE) return;
+  activeCount++;
+  totalSpawned++;
+  cnt.textContent = totalSpawned;
+  act.textContent = activeCount;
+
+  const el = document.createElement('div');
+  el.className = 'trail-item';
+  el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+
+  const size = 36 + Math.random() * 20;
+  el.style.fontSize = size + 'px';
+
+  const startX = x - size / 2;
+  const startY = y - size / 2;
+  el.style.left = startX + 'px';
+  el.style.top = startY + 'px';
+
+  const rotStart = (Math.random() - 0.5) * 60;
+  const rotEnd = rotStart + (Math.random() - 0.5) * 30;
+  const driftX = (Math.random() - 0.5) * 60;
+
+  document.body.appendChild(el);
+
+  const vh = window.innerHeight;
+  const fallDist = vh - startY - size - 4;
+  if (fallDist < 10) { el.remove(); activeCount--; act.textContent = activeCount; return; }
+
+  // Easing: gravity = quadratic ease-in
+  const fallDur = 350 + fallDist * 1.2;
+
+  try {
+    // Phase 1: scale in + fall
+    await el.animate([
+      { opacity: 0, transform: `scale(0) rotate(${rotStart}deg) translateX(0px)` },
+      { opacity: 1, transform: `scale(1.1) rotate(${rotStart * 0.5}deg) translateX(0px)`, offset: 0.07 },
+      { opacity: 1, transform: `scale(1) rotate(${rotEnd}deg) translateX(${driftX}px) translateY(${fallDist}px)` }
+    ], {
+      duration: fallDur,
+      easing: 'cubic-bezier(0.25, 0, 1, 0.9)',
+      fill: 'forwards'
+    }).finished;
+
+    // Phase 2: squash-bounce (squash on landing, stretch up, settle)
+    await el.animate([
+      { transform: `scaleX(1.5) scaleY(0.55) rotate(${rotEnd}deg) translateX(${driftX}px) translateY(${fallDist + 10}px)` },
+      { transform: `scaleX(0.7) scaleY(1.35) rotate(${rotEnd}deg) translateX(${driftX}px) translateY(${fallDist - 22}px)`, offset: 0.4 },
+      { transform: `scaleX(1.1) scaleY(0.9) rotate(${rotEnd}deg) translateX(${driftX}px) translateY(${fallDist}px)`, offset: 0.75 },
+      { transform: `scaleX(1) scaleY(1) rotate(${rotEnd}deg) translateX(${driftX}px) translateY(${fallDist}px)` }
+    ], {
+      duration: 340,
+      easing: 'ease-out',
+      fill: 'forwards'
+    }).finished;
+
+    // Phase 3: fade out + shrink
+    await el.animate([
+      { opacity: 1, transform: `scale(1) rotate(${rotEnd}deg) translateX(${driftX}px) translateY(${fallDist}px)` },
+      { opacity: 0, transform: `scale(0.2) rotate(${rotEnd + 20}deg) translateX(${driftX}px) translateY(${fallDist + 25}px)` }
+    ], {
+      duration: 280,
+      easing: 'ease-in',
+      fill: 'forwards'
+    }).finished;
+  } catch (_) {}
+
+  el.remove();
+  activeCount--;
+  act.textContent = activeCount;
+}
+</script>
+</body>
+</html>
