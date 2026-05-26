@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dungeon Delver · Day 11</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#030508;--surface:#080d14;--border:#1a2840;
+  --text:#a8bcd4;--dim:#4a6080;
+  --accent:#00d4ff;--green:#00ff88;--red:#ff4455;--gold:#ffd060;
+  --purple:#c084fc;--orange:#ff9844;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Courier New',monospace;overflow:hidden;touch-action:none}
+#app{display:flex;flex-direction:column;height:100dvh;height:100vh}
+
+/* Header */
+#hdr{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 12px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+#hdr-title{font-size:13px;color:var(--accent);letter-spacing:3px;text-transform:uppercase;text-shadow:0 0 12px var(--accent)}
+#hdr-info{font-size:11px;color:var(--dim)}
+
+/* Canvas */
+#cvs-wrap{flex:1;position:relative;overflow:hidden;min-height:0;background:var(--bg)}
+#cvs{display:block;cursor:none}
+
+/* Class Select */
+#cls-screen{position:absolute;inset:0;background:rgba(3,5,8,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;z-index:20;padding:12px}
+#cls-screen h2{color:var(--accent);font-size:clamp(16px,4vw,24px);letter-spacing:4px;text-transform:uppercase;text-shadow:0 0 20px var(--accent)}
+#cls-screen .hint{color:var(--dim);font-size:11px;text-align:center;max-width:360px;line-height:1.6}
+.cls-cards{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.cls-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 14px;cursor:pointer;width:130px;text-align:center;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.cls-card:hover,.cls-card:active{border-color:var(--accent);box-shadow:0 0 20px rgba(0,212,255,.2);transform:translateY(-2px)}
+.cls-glyph{font-size:32px;line-height:1;margin-bottom:8px;text-shadow:0 0 10px currentColor}
+.cls-name{font-size:11px;font-weight:bold;letter-spacing:2px;margin-bottom:6px}
+.cls-stats{font-size:9px;color:var(--dim);line-height:1.8;text-align:left}
+.cls-trait{font-size:9px;color:var(--gold);margin-top:6px;font-style:italic;line-height:1.4}
+
+/* Stats bar */
+#sbar{background:var(--surface);border-top:1px solid var(--border);padding:5px 10px;display:flex;gap:12px;flex-shrink:0;font-size:11px;align-items:center;flex-wrap:wrap}
+.st{display:flex;align-items:baseline;gap:3px}
+.sl{color:var(--dim);font-size:9px;text-transform:uppercase}
+.sv{font-weight:bold}
+.sv-hp{color:var(--green)}
+.sv-atk{color:var(--orange)}
+.sv-def{color:#4499ff}
+.sv-mp{color:var(--purple)}
+.sv-sc{color:var(--gold)}
+.sv-fl{color:var(--accent)}
+.sv-xp{color:#88ffcc}
+#hp-bar-wrap{position:relative;height:4px;background:#0d1824;border-radius:2px;overflow:hidden;width:60px}
+#hp-bar{height:100%;background:var(--green);transition:width .2s;border-radius:2px}
+
+/* Messages */
+#msgs{background:#040a10;border-top:1px solid var(--border);padding:5px 10px;height:50px;overflow:hidden;flex-shrink:0;font-size:10px;line-height:1.6}
+.msg-combat{color:var(--red)}
+.msg-item{color:var(--gold)}
+.msg-good{color:var(--green)}
+.msg-sys{color:var(--accent)}
+.msg-lvl{color:var(--purple)}
+
+/* D-pad */
+#dpad{background:var(--surface);border-top:1px solid var(--border);padding:8px;display:none;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px}
+@media(pointer:coarse){#dpad{display:flex}}
+.dpad-grid{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:3px}
+.dp-btn{background:#0d1520;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .1s;user-select:none}
+.dp-btn:active,.dp-btn.pressed{background:#1e2e44}
+.dp-center{font-size:11px;color:var(--dim)}
+.dpad-actions{display:flex;flex-direction:column;gap:4px}
+.act-btn{background:#0d1520;border:1px solid var(--border);border-radius:6px;color:var(--purple);font-family:inherit;font-size:10px;padding:6px 10px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .1s;letter-spacing:1px}
+.act-btn:active{background:#1e2e44}
+
+/* Overlay */
+#overlay{position:absolute;inset:0;background:rgba(3,5,8,.92);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:20;padding:20px}
+#overlay.show{display:flex}
+#ov-title{font-size:clamp(20px,5vw,32px);letter-spacing:5px;text-transform:uppercase}
+.dead-t{color:var(--red);text-shadow:0 0 24px var(--red)}
+.win-t{color:var(--gold);text-shadow:0 0 24px var(--gold)}
+#ov-score{font-size:16px;color:var(--text)}
+#ov-class{font-size:12px;color:var(--dim)}
+#ov-best{font-size:11px;color:var(--dim)}
+.ov-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.ov-btn{background:transparent;border:1px solid;border-radius:8px;font-family:inherit;font-size:12px;padding:9px 20px;cursor:pointer;letter-spacing:2px;transition:all .2s;text-transform:uppercase}
+.ov-btn-play{border-color:var(--accent);color:var(--accent)}
+.ov-btn-play:hover{background:var(--accent);color:var(--bg)}
+.ov-btn-share{border-color:var(--gold);color:var(--gold)}
+.ov-btn-share:hover{background:var(--gold);color:var(--bg)}
+
+/* Help tooltip */
+#help-tip{position:absolute;bottom:8px;right:8px;background:rgba(8,13,20,.8);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:9px;color:var(--dim);line-height:1.8;z-index:5}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hdr">
+    <div id="hdr-title">⚔ Dungeon Delver</div>
+    <div id="hdr-info">Day 11 · Use Arrow Keys / WASD</div>
+  </div>
+
+  <div id="cvs-wrap">
+    <canvas id="cvs"></canvas>
+
+    <!-- Class selection -->
+    <div id="cls-screen">
+      <h2>Choose Your Class</h2>
+      <p class="hint">Navigate with Arrow/WASD · Diagonal with numpad or QE/ZC keys · Wait with Space or . · Mage: [F] Fireball</p>
+      <div class="cls-cards">
+        <div class="cls-card" onclick="G.startGame('warrior')">
+          <div class="cls-glyph" style="color:var(--green)">@</div>
+          <div class="cls-name" style="color:var(--green)">WARRIOR</div>
+          <div class="cls-stats">HP: 30&nbsp;&nbsp;ATK: 8&nbsp;&nbsp;DEF: 5</div>
+          <div class="cls-trait">Iron Will: +3 max HP per level up</div>
+        </div>
+        <div class="cls-card" onclick="G.startGame('mage')">
+          <div class="cls-glyph" style="color:var(--purple)">@</div>
+          <div class="cls-name" style="color:var(--purple)">MAGE</div>
+          <div class="cls-stats">HP: 15&nbsp;&nbsp;ATK: 13&nbsp;&nbsp;DEF: 2<br>MP: 20</div>
+          <div class="cls-trait">Fireball [F]: 3× ATK, costs 8 MP, AoE</div>
+        </div>
+        <div class="cls-card" onclick="G.startGame('rogue')">
+          <div class="cls-glyph" style="color:var(--gold)">@</div>
+          <div class="cls-name" style="color:var(--gold)">ROGUE</div>
+          <div class="cls-stats">HP: 22&nbsp;&nbsp;ATK: 7&nbsp;&nbsp;DEF: 3</div>
+          <div class="cls-trait">Backstab: first strike does double damage</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game over / win -->
+    <div id="overlay">
+      <div id="ov-title" class="dead-t">GAME OVER</div>
+      <div id="ov-score">Score: 0</div>
+      <div id="ov-class"></div>
+      <div id="ov-best"></div>
+      <div class="ov-btns">
+        <button class="ov-btn ov-btn-share" onclick="G.share()">Share Seed [S]</button>
+        <button class="ov-btn ov-btn-play" onclick="G.restart()">Play Again [R]</button>
+      </div>
+    </div>
+
+    <!-- Help -->
+    <div id="help-tip" id="help-tip">
+      ↑↓←→ Move &nbsp;|&nbsp; YUBN Diagonals<br>
+      Space/. Wait &nbsp;|&nbsp; F Fireball (Mage)<br>
+      &gt; Descend Stairs &nbsp;|&nbsp; R Restart
+    </div>
+  </div>
+
+  <div id="sbar">
+    <div class="st"><span class="sl">HP</span><span class="sv sv-hp" id="s-hp">—</span></div>
+    <div class="st" style="gap:5px"><span class="sl"></span><div id="hp-bar-wrap"><div id="hp-bar"></div></div></div>
+    <div class="st"><span class="sl">ATK</span><span class="sv sv-atk" id="s-atk">—</span></div>
+    <div class="st"><span class="sl">DEF</span><span class="sv sv-def" id="s-def">—</span></div>
+    <div class="st"><span class="sl">LVL</span><span class="sv" id="s-lvl">—</span></div>
+    <div class="st"><span class="sl">XP</span><span class="sv sv-xp" id="s-xp">—</span></div>
+    <div class="st" id="st-mp" style="display:none"><span class="sl">MP</span><span class="sv sv-mp" id="s-mp">—</span></div>
+    <div class="st" style="margin-left:auto"><span class="sl">Floor</span><span class="sv sv-fl" id="s-fl">—</span></div>
+    <div class="st"><span class="sl">Score</span><span class="sv sv-sc" id="s-sc">0</span></div>
+  </div>
+
+  <div id="msgs"><div class="msg-sys">Welcome, adventurer. Find the stairs (&gt;) and descend...</div></div>
+
+  <!-- Touch D-pad -->
+  <div id="dpad">
+    <div class="dpad-grid">
+      <button class="dp-btn" data-d="-1,-1">↖</button>
+      <button class="dp-btn" data-d="0,-1">↑</button>
+      <button class="dp-btn" data-d="1,-1">↗</button>
+      <button class="dp-btn" data-d="-1,0">←</button>
+      <button class="dp-btn dp-center" data-d="0,0">wait</button>
+      <button class="dp-btn" data-d="1,0">→</button>
+      <button class="dp-btn" data-d="-1,1">↙</button>
+      <button class="dp-btn" data-d="0,1">↓</button>
+      <button class="dp-btn" data-d="1,1">↘</button>
+    </div>
+    <div class="dpad-actions">
+      <button class="act-btn" id="fb-btn" style="display:none" onclick="G.fireball()">🔥 Fireball</button>
+      <button class="act-btn" style="border-color:var(--accent);color:var(--accent)" onclick="G.descend()">▼ Descend</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const G = (() => {
+// ─── Constants ───────────────────────────────────────────────────────────────
+const MAP_W = 64, MAP_H = 40, FOV_R = 9;
+const WALL=0, FLOOR=1, STAIRS=2;
+const CLASSES = {
+  warrior:{ name:'Warrior', color:'#00ff88', hp:30, atk:8, def:5, mp:0, maxMp:0 },
+  mage:   { name:'Mage',    color:'#c084fc', hp:15, atk:13, def:2, mp:20, maxMp:20 },
+  rogue:  { name:'Rogue',   color:'#ffd060', hp:22, atk:7, def:3, mp:0, maxMp:0 }
+};
+const MONSTER_DEFS = [
+  { id:'rat',     glyph:'r', color:'#a08060', hp:4,  atk:3,  def:0, xp:2,  sight:6,  name:'Rat' },
+  { id:'goblin',  glyph:'g', color:'#60c040', hp:8,  atk:5,  def:1, xp:5,  sight:7,  name:'Goblin' },
+  { id:'orc',     glyph:'O', color:'#50a030', hp:14, atk:8,  def:3, xp:10, sight:7,  name:'Orc' },
+  { id:'troll',   glyph:'T', color:'#c06040', hp:22, atk:12, def:5, xp:18, sight:8,  name:'Troll' },
+  { id:'wraith',  glyph:'W', color:'#8888ff', hp:12, atk:10, def:2, xp:15, sight:10, name:'Wraith' },
+  { id:'dragon',  glyph:'D', color:'#ff4422', hp:60, atk:18, def:8, xp:80, sight:12, name:'Dragon', boss:true }
+];
+const ITEM_DEFS = [
+  { id:'potion',   glyph:'!', color:'#ff4488', name:'Health Potion', effect:{ hp:15 } },
+  { id:'potion2',  glyph:'!', color:'#ff88bb', name:'Elixir',        effect:{ hp:30 } },
+  { id:'sword',    glyph:'/', color:'#88aaff', name:'Short Sword',   effect:{ atk:3 } },
+  { id:'axe',      glyph:'/', color:'#aaccff', name:'Battle Axe',    effect:{ atk:5 } },
+  { id:'armor',    glyph:']', color:'#aaaaaa', name:'Chainmail',     effect:{ def:2 } },
+  { id:'shield',   glyph:']', color:'#cccccc', name:'Tower Shield',  effect:{ def:3 } },
+  { id:'mpflask',  glyph:'!', color:'#cc88ff', name:'Mana Flask',    effect:{ mp:12 } }
+];
+const FLOOR_TABLES = [
+  // floor 1: rats/goblins
+  [{ def:MONSTER_DEFS[0], w:6 },{ def:MONSTER_DEFS[1], w:4 }],
+  // floor 2: goblins/orcs
+  [{ def:MONSTER_DEFS[0], w:2 },{ def:MONSTER_DEFS[1], w:5 },{ def:MONSTER_DEFS[2], w:3 }],
+  // floor 3: orcs/trolls
+  [{ def:MONSTER_DEFS[1], w:2 },{ def:MONSTER_DEFS[2], w:5 },{ def:MONSTER_DEFS[3], w:3 }],
+  // floor 4: trolls/wraiths
+  [{ def:MONSTER_DEFS[2], w:2 },{ def:MONSTER_DEFS[3], w:4 },{ def:MONSTER_DEFS[4], w:4 }],
+  // floor 5: boss floor
+  [{ def:MONSTER_DEFS[3], w:3 },{ def:MONSTER_DEFS[4], w:3 },{ def:MONSTER_DEFS[5], w:1, boss:true }]
+];
+
+// ─── RNG (xorshift32) ────────────────────────────────────────────────────────
+function makeRng(seed) {
+  let s = (seed ^ 0xdeadbeef) >>> 0 || 1;
+  return {
+    next() { s ^= s<<13; s ^= s>>>17; s ^= s<<5; return (s>>>0)/4294967296; },
+    int(lo,hi) { return lo + Math.floor(this.next()*(hi-lo+1)); },
+    pick(arr) { return arr[this.int(0,arr.length-1)]; }
+  };
+}
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let rng, player, map, explored, visible, monsters, items, rooms, log;
+let floor, score, mode, seed, bossDefeated, lastBackstab;
+let camX=0, camY=0, animFrame=null;
+let ac=null;
+
+// ─── Dungeon Generation (BSP) ─────────────────────────────────────────────────
+function genDungeon(floorNum) {
+  const m = new Uint8Array(MAP_W*MAP_H).fill(WALL);
+  const rs = [];
+  function split(x,y,w,h,depth) {
+    const MIN_ROOM=6, MIN_SPLIT=14;
+    if (depth===0||w<MIN_SPLIT||h<MIN_SPLIT) {
+      const rw=rng.int(Math.max(5,w-6), Math.max(5,w-3));
+      const rh=rng.int(Math.max(4,h-6), Math.max(4,h-3));
+      const rx=x+rng.int(1,Math.max(1,w-rw-2));
+      const ry=y+rng.int(1,Math.max(1,h-rh-2));
+      const room={x:rx,y:ry,w:rw,h:rh,cx:rx+Math.floor(rw/2),cy:ry+Math.floor(rh/2)};
+      rs.push(room);
+      for(let dy=0;dy<rh;dy++) for(let dx=0;dx<rw;dx++) m[(ry+dy)*MAP_W+(rx+dx)]=FLOOR;
+      return room;
+    }
+    let a,b;
+    if (w>=h) {
+      const mid=rng.int(Math.floor(w/3),Math.floor(2*w/3));
+      a=split(x,y,mid,h,depth-1);
+      b=split(x+mid,y,w-mid,h,depth-1);
+    } else {
+      const mid=rng.int(Math.floor(h/3),Math.floor(2*h/3));
+      a=split(x,y,w,mid,depth-1);
+      b=split(x,y+mid,w,h-mid,depth-1);
+    }
+    // L-shaped corridor
+    const hx1=Math.min(a.cx,b.cx), hx2=Math.max(a.cx,b.cx);
+    for(let cx=hx1;cx<=hx2;cx++) { if(m[a.cy*MAP_W+cx]===WALL) m[a.cy*MAP_W+cx]=FLOOR; }
+    const vy1=Math.min(a.cy,b.cy), vy2=Math.max(a.cy,b.cy);
+    for(let cy=vy1;cy<=vy2;cy++) { if(m[cy*MAP_W+b.cx]===WALL) m[cy*MAP_W+b.cx]=FLOOR; }
+    return rng.next()<.5?a:b;
+  }
+  split(0,0,MAP_W,MAP_H,4);
+  // Stairs in last room
+  const stairRoom = rs[rs.length-1];
+  m[stairRoom.cy*MAP_W+stairRoom.cx]=STAIRS;
+  map=m; rooms=rs;
+}
+
+// ─── FOV ─────────────────────────────────────────────────────────────────────
+function hasLOS(x0,y0,x1,y1) {
+  let dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
+  let sx=x0<x1?1:-1, sy=y0<y1?1:-1;
+  let err=dx-dy, cx=x0, cy=y0;
+  while(cx!==x1||cy!==y1) {
+    if(cx!==x0||cy!==y0) if(map[cy*MAP_W+cx]===WALL) return false;
+    const e2=2*err;
+    if(e2>-dy){err-=dy;cx+=sx;}
+    if(e2<dx){err+=dx;cy+=sy;}
+  }
+  return true;
+}
+function computeFOV() {
+  visible.fill(0);
+  const {x:px,y:py}=player;
+  for(let dy=-FOV_R;dy<=FOV_R;dy++) for(let dx=-FOV_R;dx<=FOV_R;dx++) {
+    if(dx*dx+dy*dy>FOV_R*FOV_R) continue;
+    const tx=px+dx,ty=py+dy;
+    if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) continue;
+    if(hasLOS(px,py,tx,ty)) { visible[ty*MAP_W+tx]=1; explored[ty*MAP_W+tx]=1; }
+  }
+}
+
+// ─── BFS Pathfinding ─────────────────────────────────────────────────────────
+function bfsStep(sx,sy,tx,ty,maxSteps) {
+  if(sx===tx&&sy===ty) return {dx:0,dy:0};
+  const visited=new Uint8Array(MAP_W*MAP_H);
+  const queue=[{x:sx,y:sy,px:-1,py:-1,step:0}];
+  visited[sy*MAP_W+sx]=1;
+  const dirs=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+  let head=0;
+  while(head<queue.length) {
+    const cur=queue[head++];
+    if(cur.step>=maxSteps) continue;
+    for(const [ddx,ddy] of dirs) {
+      const nx=cur.x+ddx,ny=cur.y+ddy;
+      if(nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
+      if(visited[ny*MAP_W+nx]) continue;
+      if(map[ny*MAP_W+nx]===WALL) continue;
+      // Avoid other monsters
+      if(!(nx===tx&&ny===ty) && monsters.some(m=>m.x===nx&&m.y===ny)) continue;
+      visited[ny*MAP_W+nx]=1;
+      const node={x:nx,y:ny,px:cur.x,py:cur.y,step:cur.step+1};
+      queue.push(node);
+      if(nx===tx&&ny===ty) {
+        // Trace back to find first step
+        let n=node;
+        while(n.px!==sx||n.py!==sy) {
+          const prev=queue.find(q=>q.x===n.px&&q.y===n.py);
+          if(!prev) break;
+          n=prev;
+        }
+        return {dx:n.x-sx,dy:n.y-sy};
+      }
+    }
+  }
+  return null;
+}
+
+// ─── Audio (beeps) ────────────────────────────────────────────────────────────
+function initAudio() { if(!ac) try{ ac=new AudioContext(); }catch(e){} }
+function beep(freq,dur,vol=.15,type='square') {
+  if(!ac) return;
+  try {
+    const osc=ac.createOscillator();
+    const gain=ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type=type; osc.frequency.value=freq;
+    gain.gain.setValueAtTime(vol,ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
+    osc.start(); osc.stop(ac.currentTime+dur);
+  } catch(e){}
+}
+function sndHit()  { beep(220,.08,.12); }
+function sndDie()  { beep(110,.4,.2,'sawtooth'); beep(80,.6,.15,'sawtooth'); }
+function sndItem() { beep(880,.05,.1); beep(1100,.1,.08); }
+function sndStair(){ beep(440,.1,.1); beep(660,.15,.1); beep(880,.2,.1); }
+function sndLvl()  { beep(660,.08,.15); beep(880,.08,.15); beep(1100,.2,.15); }
+
+// ─── Combat ──────────────────────────────────────────────────────────────────
+function dmg(atk,def) { return Math.max(1, atk-def + rng.int(0,Math.floor(atk/3))); }
+
+function playerAttack(mon) {
+  let d = dmg(player.atk, mon.def);
+  let extra='';
+  if (player.cls==='rogue' && !lastBackstab.has(mon)) {
+    d*=2; extra=' (Backstab!)'; lastBackstab.add(mon);
+  }
+  mon.hp-=d;
+  sndHit();
+  addMsg(`You hit the ${mon.name} for ${d} damage.${extra}`, 'combat');
+  if (mon.hp<=0) {
+    addMsg(`The ${mon.name} dies!`, 'good');
+    sndDie();
+    score+=mon.xp;
+    player.xp+=mon.xp;
+    if (mon.boss) bossDefeated=true;
+    // Drop item
+    const drop=rng.next()<(mon.boss?.5:.3);
+    if (drop) {
+      const pool = ITEM_DEFS.filter(i=>player.cls==='mage'||i.id!=='mpflask');
+      const iDef=rng.pick(pool);
+      items.push({...iDef, x:mon.x, y:mon.y});
+    }
+    monsters=monsters.filter(m=>m!==mon);
+    checkLevelUp();
+  }
+}
+
+function monsterAttack(mon) {
+  const d=dmg(mon.atk, player.def);
+  player.hp-=d;
+  sndHit();
+  addMsg(`The ${mon.name} hits you for ${d} damage!`, 'combat');
+}
+
+function checkLevelUp() {
+  const needed=player.level*12;
+  if (player.xp>=needed) {
+    player.xp-=needed;
+    player.level++;
+    const hpGain=player.cls==='warrior'?8:5;
+    player.maxHp+=hpGain;
+    player.hp=Math.min(player.hp+hpGain,player.maxHp);
+    player.atk++;
+    if (player.cls==='mage') { player.maxMp+=5; player.mp=Math.min(player.mp+5,player.maxMp); }
+    addMsg(`Level Up! You are now level ${player.level}. HP+${hpGain}, ATK+1`, 'lvl');
+    sndLvl();
+  }
+}
+
+// ─── Player Action ───────────────────────────────────────────────────────────
+function movePlayer(dx,dy) {
+  if(mode!=='play') return;
+  initAudio();
+  const nx=player.x+dx, ny=player.y+dy;
+  if(nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) return endTurn();
+  const tile=map[ny*MAP_W+nx];
+  if(tile===WALL) return;
+  const mon=monsters.find(m=>m.x===nx&&m.y===ny);
+  if(mon) { playerAttack(mon); endTurn(); return; }
+  player.x=nx; player.y=ny;
+  // Pick up items
+  const got=items.filter(i=>i.x===nx&&i.y===ny);
+  for(const it of got) pickupItem(it);
+  items=items.filter(i=>!(i.x===nx&&i.y===ny));
+  // Stairs
+  if(tile===STAIRS) addMsg('You stand on stairs (>) — press > or Descend to go deeper.','sys');
+  endTurn();
+}
+
+function pickupItem(it) {
+  sndItem();
+  if(it.effect.hp)  { const gain=Math.min(it.effect.hp,player.maxHp-player.hp); player.hp+=gain; addMsg(`You drink the ${it.name}. +${gain} HP!`,'item'); }
+  if(it.effect.atk) { player.atk+=it.effect.atk; addMsg(`You equip the ${it.name}. ATK +${it.effect.atk}!`,'item'); }
+  if(it.effect.def) { player.def+=it.effect.def; addMsg(`You equip the ${it.name}. DEF +${it.effect.def}!`,'item'); }
+  if(it.effect.mp)  { const gain=Math.min(it.effect.mp,player.maxMp-player.mp); player.mp+=gain; addMsg(`You drink the ${it.name}. +${gain} MP!`,'item'); }
+}
+
+function descend() {
+  if(mode!=='play') return;
+  const t=map[player.y*MAP_W+player.x];
+  if(t!==STAIRS) { addMsg('You need to find the stairs (>) first.','sys'); return; }
+  if(floor===5 && !bossDefeated) { addMsg('The Dragon blocks the path! Defeat it first!','combat'); return; }
+  sndStair();
+  floor++;
+  score+=20;
+  if(floor>5) { winGame(); return; }
+  nextFloor();
+}
+
+function fireball() {
+  if(mode!=='play') return;
+  if(player.cls!=='mage') return;
+  initAudio();
+  if(player.mp<8) { addMsg('Not enough MP! Need 8 MP.','sys'); return; }
+  // Find nearest visible monster
+  let nearest=null, bestDist=Infinity;
+  for(const m of monsters) {
+    if(!visible[m.y*MAP_W+m.x]) continue;
+    const d=Math.abs(m.x-player.x)+Math.abs(m.y-player.y);
+    if(d<bestDist){bestDist=d;nearest=m;}
+  }
+  if(!nearest){ addMsg('No visible target for Fireball!','sys'); return; }
+  player.mp-=8;
+  beep(220,.05,.2,'sawtooth'); beep(440,.1,.2,'sawtooth'); beep(660,.3,.15,'sawtooth');
+  // AoE 1-cell radius
+  const toHit=monsters.filter(m=>Math.abs(m.x-nearest.x)<=1&&Math.abs(m.y-nearest.y)<=1);
+  for(const m of toHit) {
+    const d=dmg(player.atk*3, m.def);
+    m.hp-=d;
+    addMsg(`Fireball hits ${m.name} for ${d}!`,'combat');
+    if(m.hp<=0){
+      addMsg(`The ${m.name} is incinerated!`,'good');
+      score+=m.xp; player.xp+=m.xp;
+      if(m.boss) bossDefeated=true;
+    }
+  }
+  monsters=monsters.filter(m=>m.hp>0);
+  checkLevelUp();
+  endTurn();
+}
+
+// ─── Monster AI ──────────────────────────────────────────────────────────────
+function monsterTurn() {
+  for(const m of monsters) {
+    const dist=Math.abs(m.x-player.x)+Math.abs(m.y-player.y);
+    if(dist<=1) { monsterAttack(m); continue; }
+    if(!visible[m.y*MAP_W+m.x] && dist>m.sight) {
+      // Wander
+      if(rng.next()<.5) {
+        const dirs=[[-1,0],[1,0],[0,-1],[0,1]];
+        const d=rng.pick(dirs);
+        const nx=m.x+d[0],ny=m.y+d[1];
+        if(nx>=0&&ny>=0&&nx<MAP_W&&ny<MAP_H&&map[ny*MAP_W+nx]!==WALL&&!monsters.some(o=>o!==m&&o.x===nx&&o.y===ny))
+          { m.x=nx; m.y=ny; }
+      }
+      continue;
+    }
+    // Pathfind toward player
+    const step=bfsStep(m.x,m.y,player.x,player.y,Math.min(m.sight+2,20));
+    if(step) {
+      const nx=m.x+step.dx,ny=m.y+step.dy;
+      if(nx===player.x&&ny===player.y) monsterAttack(m);
+      else if(!monsters.some(o=>o!==m&&o.x===nx&&o.y===ny)) { m.x=nx; m.y=ny; }
+    }
+  }
+}
+
+function endTurn() {
+  monsterTurn();
+  if(player.hp<=0) { mode='dead'; showOverlay(); return; }
+  computeFOV();
+  updateStats();
+  render();
+  // Tick Mage MP regen
+  if(player.cls==='mage' && player.mp<player.maxMp) player.mp=Math.min(player.maxMp,player.mp+.05);
+  if(bossDefeated && floor===5) addMsg('The Dragon is slain! Find the stairs to escape!','good');
+}
+
+// ─── Floor Setup ─────────────────────────────────────────────────────────────
+function nextFloor() {
+  const floorSeed=seed*100+floor;
+  rng=makeRng(floorSeed);
+  explored=new Uint8Array(MAP_W*MAP_H);
+  visible=new Uint8Array(MAP_W*MAP_H);
+  monsters=[]; items=[]; bossDefeated=false; lastBackstab=new Set();
+  genDungeon(floor);
+  // Place player in first room
+  const startRoom=rooms[0];
+  player.x=startRoom.cx; player.y=startRoom.cy;
+  // Spawn monsters
+  const table=FLOOR_TABLES[Math.min(floor-1,4)];
+  const totalW=table.reduce((s,t)=>s+t.w,0);
+  const monCount=3+floor*2;
+  for(let i=0;i<monCount;i++) {
+    let r=rng.next()*totalW,picked=table[0];
+    for(const t of table){r-=t.w;if(r<=0){picked=t;break;}}
+    const room=rooms[rng.int(1,rooms.length-1)];
+    if(!room) continue;
+    const mx=room.cx+rng.int(-Math.floor(room.w/3),Math.floor(room.w/3));
+    const my=room.cy+rng.int(-Math.floor(room.h/3),Math.floor(room.h/3));
+    if(map[my*MAP_W+mx]!==FLOOR) continue;
+    monsters.push({...picked.def, hp:picked.def.hp, x:mx, y:my});
+  }
+  // On boss floor, ensure dragon spawns
+  if(floor===5&&!monsters.some(m=>m.id==='dragon')) {
+    const bossRoom=rooms[Math.floor(rooms.length/2)];
+    monsters.push({...MONSTER_DEFS[5], hp:MONSTER_DEFS[5].hp, x:bossRoom.cx, y:bossRoom.cy});
+  }
+  // Scatter items
+  const itemCount=2+floor;
+  for(let i=0;i<itemCount;i++) {
+    const room=rooms[rng.int(0,rooms.length-1)];
+    const ix=room.cx+rng.int(-1,1), iy=room.cy+rng.int(-1,1);
+    if(map[iy*MAP_W+ix]!==FLOOR) continue;
+    const pool=player.cls==='mage'?ITEM_DEFS:ITEM_DEFS.filter(d=>d.id!=='mpflask');
+    items.push({...rng.pick(pool),x:ix,y:iy});
+  }
+  computeFOV();
+  updateStats();
+  addMsg(`You descend to floor ${floor}.`,'sys');
+  render();
+}
+
+// ─── Game Control ─────────────────────────────────────────────────────────────
+function startGame(cls) {
+  document.getElementById('cls-screen').style.display='none';
+  initAudio();
+  seed=parseInt(new URLSearchParams(location.hash.slice(1)).get('seed'))||Math.floor(Math.random()*99999)+1;
+  location.hash='seed='+seed;
+  const cd=CLASSES[cls];
+  player={ cls, name:cd.name, color:cd.color, x:0, y:0,
+    hp:cd.hp, maxHp:cd.hp, atk:cd.atk, def:cd.def, mp:cd.mp, maxMp:cd.maxMp, level:1, xp:0 };
+  floor=1; score=0; mode='play';
+  document.getElementById('st-mp').style.display=cls==='mage'?'flex':'none';
+  document.getElementById('fb-btn').style.display=cls==='mage'?'block':'none';
+  nextFloor();
+  sndLvl();
+}
+
+function restart() { document.getElementById('overlay').classList.remove('show'); document.getElementById('cls-screen').style.display=''; }
+function share() {
+  const url=`${location.origin}${location.pathname}#seed=${seed}`;
+  if(navigator.clipboard) navigator.clipboard.writeText(url).then(()=>addMsg('Seed URL copied to clipboard!','sys'));
+  else { prompt('Copy this URL to share your dungeon:',url); }
+}
+
+function showOverlay() {
+  const el=document.getElementById('overlay');
+  const title=document.getElementById('ov-title');
+  const won=floor>5||(floor===5&&bossDefeated&&mode==='win');
+  title.textContent=won?'VICTORY!':'YOU DIED';
+  title.className=won?'win-t':'dead-t';
+  document.getElementById('ov-score').textContent=`Score: ${score}`;
+  document.getElementById('ov-class').textContent=`${player.name} · Floor ${floor} · Level ${player.level}`;
+  const best=Math.max(score,parseInt(localStorage.getItem('dd_best')||0));
+  localStorage.setItem('dd_best',best);
+  document.getElementById('ov-best').textContent=`Best Score: ${best}`;
+  el.classList.add('show');
+  sndDie();
+}
+
+function winGame() { mode='win'; showOverlay(); }
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
+const cvs=document.getElementById('cvs');
+const ctx=cvs.getContext('2d');
+let CELL=16, VW=40, VH=25;
+
+function resize() {
+  const wrap=document.getElementById('cvs-wrap');
+  const w=wrap.clientWidth, h=wrap.clientHeight;
+  cvs.width=w; cvs.height=h;
+  CELL=Math.max(10,Math.min(18,Math.floor(Math.min(w/38,h/24))));
+  VW=Math.ceil(w/CELL)+1; VH=Math.ceil(h/CELL)+1;
+  if(mode==='play') render();
+}
+
+function render() {
+  if(mode!=='play') return;
+  const w=cvs.width, h=cvs.height;
+  ctx.fillStyle='#030508'; ctx.fillRect(0,0,w,h);
+  // Camera
+  camX=Math.max(0,Math.min(MAP_W-VW, player.x-Math.floor(VW/2)));
+  camY=Math.max(0,Math.min(MAP_H-VH, player.y-Math.floor(VH/2)));
+
+  ctx.font=`${CELL}px "Courier New",monospace`;
+  ctx.textBaseline='top';
+
+  for(let row=0;row<VH;row++) for(let col=0;col<VW;col++) {
+    const mx=camX+col,my=camY+row;
+    if(mx<0||my<0||mx>=MAP_W||my>=MAP_H) continue;
+    const idx=my*MAP_W+mx;
+    const tile=map[idx], vis=visible[idx], exp=explored[idx];
+    if(!exp) continue;
+    const px=col*CELL,py=row*CELL;
+    if(tile===WALL) {
+      ctx.fillStyle=vis?'#162030':'#0a1320'; ctx.fillRect(px,py,CELL,CELL);
+      ctx.fillStyle=vis?'#2a4060':'#162030'; ctx.fillText('#',px,py);
+    } else if(tile===FLOOR) {
+      ctx.fillStyle=vis?'#0c1a28':'#060e18'; ctx.fillRect(px,py,CELL,CELL);
+      if(vis){ ctx.fillStyle='#1e3048'; ctx.fillText('·',px,py); }
+    } else if(tile===STAIRS) {
+      ctx.fillStyle=vis?'#0c1a28':'#060e18'; ctx.fillRect(px,py,CELL,CELL);
+      ctx.fillStyle=vis?'#00ffcc':'#006644'; ctx.fillText('>',px,py);
+    }
+  }
+  // Items
+  for(const it of items) {
+    if(!visible[it.y*MAP_W+it.x]) continue;
+    const col=it.x-camX,row=it.y-camY;
+    if(col<0||row<0||col>=VW||row>=VH) continue;
+    ctx.fillStyle=it.color; ctx.fillText(it.glyph,col*CELL,row*CELL);
+  }
+  // Monsters
+  for(const m of monsters) {
+    if(!visible[m.y*MAP_W+m.x]) continue;
+    const col=m.x-camX,row=m.y-camY;
+    if(col<0||row<0||col>=VW||row>=VH) continue;
+    // HP bar above
+    const px=col*CELL,py=row*CELL;
+    const barW=Math.round(CELL*(m.hp/m.def_maxHp||m.hp/m.hp));
+    if(m.boss){ctx.shadowBlur=8;ctx.shadowColor=m.color;}
+    ctx.fillStyle=m.color; ctx.fillText(m.glyph,px,py);
+    ctx.shadowBlur=0;
+    // HP bar
+    ctx.fillStyle='#300'; ctx.fillRect(px,py-3,CELL,2);
+    const maxHp=MONSTER_DEFS.find(d=>d.id===m.id)?.hp||m.hp;
+    ctx.fillStyle='#f44'; ctx.fillRect(px,py-3,Math.round(CELL*(m.hp/maxHp)),2);
+  }
+  // Player
+  const pcol=player.x-camX,prow=player.y-camY;
+  const ppx=pcol*CELL,ppy=prow*CELL;
+  ctx.shadowBlur=12; ctx.shadowColor=player.color;
+  ctx.fillStyle=player.color; ctx.fillText('@',ppx,ppy);
+  ctx.shadowBlur=0;
+}
+
+// ─── Stats UI ─────────────────────────────────────────────────────────────────
+function addMsg(text,type='') {
+  const el=document.getElementById('msgs');
+  const d=document.createElement('div');
+  d.textContent=text; d.className='msg-'+type;
+  el.appendChild(d);
+  while(el.children.length>4) el.removeChild(el.firstChild);
+  el.scrollTop=el.scrollHeight;
+  log=log||[]; log.push({text,type});
+}
+
+function updateStats() {
+  document.getElementById('s-hp').textContent=`${player.hp}/${player.maxHp}`;
+  document.getElementById('s-atk').textContent=player.atk;
+  document.getElementById('s-def').textContent=player.def;
+  document.getElementById('s-lvl').textContent=player.level;
+  document.getElementById('s-xp').textContent=`${player.xp}/${player.level*12}`;
+  document.getElementById('s-sc').textContent=score;
+  document.getElementById('s-fl').textContent=floor;
+  if(player.cls==='mage') document.getElementById('s-mp').textContent=`${Math.floor(player.mp)}/${player.maxMp}`;
+  document.getElementById('hp-bar').style.width=`${Math.round(100*player.hp/player.maxHp)}%`;
+  document.getElementById('hp-bar').style.background=player.hp/player.maxHp>.5?'var(--green)':player.hp/player.maxHp>.25?'#ff8844':'var(--red)';
+  document.getElementById('hdr-info').textContent=`Floor ${floor} · Seed ${seed} · Day 11`;
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+const KEY_MAP = {
+  ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],
+  w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],
+  k:[0,-1],j:[0,1],h:[-1,0],l:[1,0],
+  y:[-1,-1],u:[1,-1],b:[-1,1],n:[1,1],
+  q:[-1,-1],e:[1,-1],z:[-1,1],c:[1,1],
+  '7':[-1,-1],'8':[0,-1],'9':[1,-1],'4':[-1,0],'6':[1,0],'1':[-1,1],'2':[0,1],'3':[1,1]
+};
+document.addEventListener('keydown',ev=>{
+  if(mode==='dead'||mode==='win'){
+    if(ev.key==='r'||ev.key==='R') restart();
+    if(ev.key==='s'||ev.key==='S') share();
+    return;
+  }
+  if(mode!=='play') return;
+  if(ev.key==='f'||ev.key==='F'){ fireball(); return; }
+  if(ev.key==='>'||ev.key==='.') { if(ev.key==='>') descend(); else movePlayer(0,0); return; }
+  if(ev.key===' '){ ev.preventDefault(); movePlayer(0,0); return; }
+  const d=KEY_MAP[ev.key];
+  if(d){ ev.preventDefault(); movePlayer(d[0],d[1]); }
+});
+// D-pad touch
+document.querySelectorAll('.dp-btn').forEach(btn=>{
+  btn.addEventListener('pointerdown',ev=>{
+    ev.preventDefault();
+    const [dx,dy]=btn.dataset.d.split(',').map(Number);
+    btn.classList.add('pressed');
+    movePlayer(dx,dy);
+    setTimeout(()=>btn.classList.remove('pressed'),150);
+  });
+});
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+new ResizeObserver(resize).observe(document.getElementById('cvs-wrap'));
+resize();
+
+return { startGame, restart, share, fireball, descend };
+})();
+</script>
+</body>
+</html>
