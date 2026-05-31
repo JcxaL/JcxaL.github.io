@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>L-System Designer · Playground Day 1</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d0d0f;--surface:#131316;--panel:#0f0f12;
+  --border:#1e1e24;--border2:#2a2a32;
+  --text:#e8e8f0;--dim:#777;--dim2:#555;
+  --accent:#8b5cf6;--accent2:#6d28d9;
+  --r:8px;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,sans-serif}
+
+/* ── Layout ── */
+#app{display:flex;flex-direction:column;height:100%}
+#preset-bar{
+  flex-shrink:0;display:flex;gap:6px;padding:8px 12px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  overflow-x:auto;scrollbar-width:none;
+}
+#preset-bar::-webkit-scrollbar{display:none}
+.pb{
+  flex-shrink:0;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);
+  background:transparent;color:var(--dim);font-size:12px;font-weight:500;
+  cursor:pointer;font-family:inherit;transition:all .2s;white-space:nowrap;
+}
+.pb.active,.pb:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+#body{flex:1;display:flex;overflow:hidden}
+
+/* Canvas side */
+#canvas-wrap{
+  flex:1;position:relative;overflow:hidden;background:#000;
+  display:flex;align-items:center;justify-content:center;
+}
+canvas{display:block;cursor:crosshair}
+#canvas-info{
+  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+  font-size:10px;color:#444;pointer-events:none;white-space:nowrap;
+}
+
+/* Panel side */
+#panel{
+  width:220px;flex-shrink:0;background:var(--panel);
+  border-left:1px solid var(--border);display:flex;flex-direction:column;
+  overflow-y:auto;scrollbar-width:thin;scrollbar-color:#222 transparent;
+}
+.sect{padding:12px 14px;border-bottom:1px solid var(--border)}
+.sect label{font-size:10px;font-weight:600;letter-spacing:.08em;
+  color:var(--dim);text-transform:uppercase;display:block;margin-bottom:7px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.row span{font-size:12px;color:var(--text);min-width:32px;text-align:right}
+input[type=range]{
+  flex:1;-webkit-appearance:none;appearance:none;height:4px;
+  background:var(--border2);border-radius:2px;outline:none;cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--accent);cursor:pointer;
+}
+input[type=range]::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;background:var(--accent);
+  border:none;cursor:pointer;
+}
+
+/* Palettes */
+.pal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.pal-btn{
+  height:32px;border-radius:6px;border:2px solid transparent;
+  cursor:pointer;transition:all .2s;overflow:hidden;position:relative;
+}
+.pal-btn.active{border-color:#fff}
+.pal-btn:hover{transform:scale(1.06)}
+
+/* Rule editor */
+#axiom-wrap{margin-bottom:8px}
+#axiom-wrap label{font-size:10px;color:var(--dim);margin-bottom:3px;display:block}
+.rule-input{
+  width:100%;background:#0a0a0c;border:1px solid var(--border2);
+  border-radius:5px;color:var(--text);font-size:12px;font-family:monospace;
+  padding:5px 8px;outline:none;transition:border .2s;
+}
+.rule-input:focus{border-color:var(--accent)}
+.rule-row{display:flex;align-items:center;gap:5px;margin-bottom:5px}
+.rule-lhs{width:22px;font-size:12px;font-family:monospace;color:var(--accent);
+  text-align:center;flex-shrink:0}
+.rule-arrow{font-size:10px;color:var(--dim);flex-shrink:0}
+
+/* Action buttons */
+.btn{
+  width:100%;padding:8px;background:var(--border2);border:1px solid var(--border2);
+  border-radius:var(--r);color:var(--text);font-size:12px;font-weight:500;
+  cursor:pointer;font-family:inherit;transition:all .2s;margin-bottom:6px;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.btn:hover{background:var(--border);border-color:#333}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent2);border-color:var(--accent2)}
+.btn-success{background:#065f46;border-color:#059669}
+.btn-success:hover{background:#047857}
+
+/* Info row */
+#info-row{
+  padding:8px 14px;border-top:1px solid var(--border);
+  font-size:10px;color:var(--dim2);line-height:1.5;
+  flex-shrink:0;
+}
+
+/* Footer */
+#footer{
+  flex-shrink:0;padding:6px 12px;
+  background:var(--surface);border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:10px;color:var(--dim2);
+}
+.tag{
+  display:inline-flex;align-items:center;gap:4px;
+  background:#1a1a22;border:1px solid var(--border2);
+  border-radius:4px;padding:2px 7px;
+}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--surface);border:1px solid var(--border2);border-radius:8px;
+  padding:8px 16px;font-size:12px;color:var(--text);
+  opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;z-index:99;
+}
+#toast.show{opacity:1}
+
+/* Animate button */
+.btn-anim-active{background:#3b1d7a;border-color:#6d28d9}
+.btn-anim-active:hover{background:#4c1d95}
+
+/* Mobile layout */
+@media(max-width:620px){
+  #body{flex-direction:column}
+  #panel{width:100%;height:200px;border-left:none;border-top:1px solid var(--border)}
+  #panel .sect:not(.sect-pal,.sect-actions){display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Preset bar -->
+  <div id="preset-bar" role="tablist"></div>
+
+  <div id="body">
+    <!-- Canvas -->
+    <div id="canvas-wrap">
+      <canvas id="c"></canvas>
+      <div id="canvas-info">drag to pan · scroll/pinch to zoom</div>
+    </div>
+
+    <!-- Controls panel -->
+    <div id="panel">
+
+      <div class="sect">
+        <label>Iterations</label>
+        <div class="row">
+          <input type="range" id="sl-iter" min="1" max="8" value="4">
+          <span id="val-iter">4</span>
+        </div>
+        <label style="margin-top:8px">Angle</label>
+        <div class="row">
+          <input type="range" id="sl-angle" min="1" max="179" value="60">
+          <span id="val-angle">60°</span>
+        </div>
+        <label style="margin-top:8px">Stroke Width</label>
+        <div class="row">
+          <input type="range" id="sl-sw" min="1" max="40" step="1" value="8">
+          <span id="val-sw">0.8</span>
+        </div>
+      </div>
+
+      <div class="sect sect-pal">
+        <label>Palette</label>
+        <div class="pal-grid" id="pal-grid"></div>
+      </div>
+
+      <div class="sect">
+        <label>L-System Rules</label>
+        <div id="axiom-wrap">
+          <label>Axiom</label>
+          <input class="rule-input" id="axiom" type="text" spellcheck="false">
+        </div>
+        <div id="rules-list"></div>
+      </div>
+
+      <div id="info-row" id="info">
+        <span id="str-len">—</span> symbols · <span id="draw-ct">—</span> segments
+      </div>
+
+      <div class="sect sect-actions">
+        <button class="btn btn-primary" id="btn-anim" onclick="toggleAnim()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Auto-Animate
+        </button>
+        <button class="btn" onclick="exportPNG()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export PNG
+        </button>
+        <button class="btn" onclick="shareURL()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Copy Share Link
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer">
+    <span>L-System Designer · Day 1 · jccl.me</span>
+    <span class="tag">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Canvas
+    </span>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── Presets ──────────────────────────────────────────────────────────────────
+const PRESETS = [
+  { name:'Koch Snowflake',  axiom:'F--F--F',
+    rules:{F:'F+F--F+F'}, angle:60, sa:0, drawCh:'F', maxIter:6 },
+  { name:'Sierpinski',      axiom:'F-G-G',
+    rules:{F:'F-G+F+G-F',G:'GG'}, angle:120, sa:0, drawCh:'FG', maxIter:7 },
+  { name:'Dragon Curve',    axiom:'FX',
+    rules:{X:'X+YF+',Y:'-FX-Y'}, angle:90, sa:0, drawCh:'F', maxIter:12 },
+  { name:'Plant',           axiom:'X',
+    rules:{X:'F+[[X]-X]-F[-FX]+X',F:'FF'}, angle:25, sa:-90, drawCh:'F', maxIter:6 },
+  { name:'Hilbert Curve',   axiom:'A',
+    rules:{A:'+BF-AFA-FB+',B:'-AF+BFB+FA-'}, angle:90, sa:0, drawCh:'F', maxIter:7 },
+  { name:'Lévy C Curve',    axiom:'F',
+    rules:{F:'+F--F+'}, angle:45, sa:0, drawCh:'F', maxIter:14 },
+  { name:'Gosper Curve',    axiom:'A',
+    rules:{A:'A-B--B+A++AA+B-',B:'+A-BB--B-A++A+B'}, angle:60, sa:0, drawCh:'AB', maxIter:5 },
+  { name:'Box Fractal',     axiom:'F+F+F+F',
+    rules:{F:'FF+F-F+F+FF'}, angle:90, sa:0, drawCh:'F', maxIter:4 },
+];
+
+// ─── Palettes ─────────────────────────────────────────────────────────────────
+const PALETTES = [
+  { name:'Neon',    bg:'#0d0010', c:['#a855f7','#7c3aed','#ec4899','#38bdf8','#a855f7'] },
+  { name:'Forest',  bg:'#030a02', c:['#4ade80','#86efac','#16a34a','#a3e635','#4ade80'] },
+  { name:'Fire',    bg:'#0c0402', c:['#ef4444','#f97316','#fbbf24','#ef4444','#f97316'] },
+  { name:'Ocean',   bg:'#010812', c:['#38bdf8','#0ea5e9','#818cf8','#38bdf8','#06b6d4'] },
+  { name:'Bone',    bg:'#f5f4f0', c:['#1a1a1a','#3a3a3a','#5a5a5a','#7a7a7a','#1a1a1a'] },
+  { name:'Sunset',  bg:'#080210', c:['#f97316','#ec4899','#8b5cf6','#f43f5e','#f97316'] },
+];
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let presetIdx = 0, palIdx = 0;
+let axiom = PRESETS[0].axiom;
+let rules = {...PRESETS[0].rules};
+let iterVal = 4, angleVal = 60, swVal = 8, saVal = 0, drawCh = 'F';
+
+// View state
+let panX = 0, panY = 0, zoomScale = 1;
+let dragging = false, lastPX = 0, lastPY = 0;
+let pinchDist0 = 0, pinchZoom0 = 1;
+
+// Animation
+let animActive = false, animIter = 1, animDir = 1, animTimer = null;
+
+// Canvas
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// ─── L-system engine ─────────────────────────────────────────────────────────
+function expand(axiom, rules, n) {
+  const MAX = 300000;
+  let s = axiom;
+  for (let i = 0; i < n; i++) {
+    let t = '';
+    for (const ch of s) { t += rules[ch] !== undefined ? rules[ch] : ch; if (t.length >= MAX) break; }
+    s = t; if (s.length >= MAX) break;
+  }
+  return s;
+}
+
+function computeBounds(str, ang, len, sa, drawCh) {
+  const stack = [];
+  let x = 0, y = 0, a = sa;
+  let mnX = 0, mnY = 0, mxX = 0, mxY = 0;
+  const DEG = Math.PI / 180;
+  for (const ch of str) {
+    if (drawCh.includes(ch)) {
+      x += Math.cos(a * DEG) * len; y += Math.sin(a * DEG) * len;
+      if (x < mnX) mnX = x; if (x > mxX) mxX = x;
+      if (y < mnY) mnY = y; if (y > mxY) mxY = y;
+    } else if (ch === 'f') {
+      x += Math.cos(a * DEG) * len; y += Math.sin(a * DEG) * len;
+    } else if (ch === '+') { a += ang;
+    } else if (ch === '-') { a -= ang;
+    } else if (ch === '[') { stack.push({x, y, a});
+    } else if (ch === ']') { if (stack.length) { const s = stack.pop(); x = s.x; y = s.y; a = s.a; } }
+  }
+  return { mnX, mnY, w: mxX - mnX || 1, h: mxY - mnY || 1 };
+}
+
+function drawLSystem(str, ang, len, sa, drawCh, sx, sy, pal) {
+  const stack = [];
+  let x = sx, y = sy, a = sa;
+  const DEG = Math.PI / 180;
+  const c0 = pal.c[0], c1 = pal.c[2] || pal.c[1];
+
+  // Diagonal gradient across canvas
+  const grad = ctx.createLinearGradient(0, 0, canvas.width * 0.7, canvas.height);
+  grad.addColorStop(0, c0);
+  grad.addColorStop(0.5, c1);
+  grad.addColorStop(1, c0);
+
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  for (const ch of str) {
+    if (drawCh.includes(ch)) {
+      const nx = x + Math.cos(a * DEG) * len;
+      const ny = y + Math.sin(a * DEG) * len;
+      ctx.lineTo(nx, ny);
+      x = nx; y = ny;
+    } else if (ch === 'f') {
+      x += Math.cos(a * DEG) * len; y += Math.sin(a * DEG) * len;
+      ctx.moveTo(x, y);
+    } else if (ch === '+') { a += ang;
+    } else if (ch === '-') { a -= ang;
+    } else if (ch === '[') { stack.push({x, y, a}); ctx.moveTo(x, y);
+    } else if (ch === ']') {
+      if (stack.length) { const s = stack.pop(); x = s.x; y = s.y; a = s.a; ctx.moveTo(x, y); }
+    }
+  }
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = swVal / 10;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+let renderPending = false;
+function scheduleRender() {
+  if (!renderPending) { renderPending = true; requestAnimationFrame(doRender); }
+}
+
+function doRender() {
+  renderPending = false;
+  const W = canvas.width, H = canvas.height;
+  const pal = PALETTES[palIdx];
+
+  // Expand
+  const str = expand(axiom, rules, iterVal);
+  const drawCount = [...str].filter(ch => drawCh.includes(ch)).length;
+  document.getElementById('str-len').textContent = str.length.toLocaleString();
+  document.getElementById('draw-ct').textContent = drawCount.toLocaleString();
+
+  // Auto-fit bounds (ignore current pan/zoom — we refit on change)
+  const pad = 40;
+  const b = computeBounds(str, angleVal, 1, saVal, drawCh);
+  const scale = Math.min((W - pad * 2) / b.w, (H - pad * 2) / b.h);
+  const sx = (W - b.w * scale) / 2 - b.mnX * scale;
+  const sy = (H - b.h * scale) / 2 - b.mnY * scale;
+
+  // Clear & background
+  ctx.fillStyle = pal.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Apply pan/zoom transform
+  ctx.save();
+  ctx.translate(panX, panY);
+  ctx.scale(zoomScale, zoomScale);
+
+  drawLSystem(str, angleVal, 1 * scale, saVal, drawCh, sx, sy, pal);
+
+  ctx.restore();
+}
+
+// ─── Resize ──────────────────────────────────────────────────────────────────
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  scheduleRender();
+}
+
+// ─── Pan / Zoom ───────────────────────────────────────────────────────────────
+function resetView() { panX = 0; panY = 0; zoomScale = 1; scheduleRender(); }
+
+canvas.addEventListener('dblclick', resetView);
+
+canvas.addEventListener('mousedown', e => {
+  dragging = true; lastPX = e.clientX; lastPY = e.clientY;
+  canvas.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  panX += e.clientX - lastPX; panY += e.clientY - lastPY;
+  lastPX = e.clientX; lastPY = e.clientY;
+  scheduleRender();
+});
+window.addEventListener('mouseup', () => { dragging = false; canvas.style.cursor = 'crosshair'; });
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.91;
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left - canvas.width / 2;
+  const cy = e.clientY - rect.top - canvas.height / 2;
+  panX = cx + (panX - cx) * factor;
+  panY = cy + (panY - cy) * factor;
+  zoomScale *= factor;
+  scheduleRender();
+}, { passive: false });
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    dragging = true; lastPX = e.touches[0].clientX; lastPY = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    dragging = false;
+    pinchDist0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                            e.touches[0].clientY - e.touches[1].clientY);
+    pinchZoom0 = zoomScale;
+  }
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1 && dragging) {
+    panX += e.touches[0].clientX - lastPX;
+    panY += e.touches[0].clientY - lastPY;
+    lastPX = e.touches[0].clientX; lastPY = e.touches[0].clientY;
+    scheduleRender();
+  } else if (e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                         e.touches[0].clientY - e.touches[1].clientY);
+    zoomScale = pinchZoom0 * (d / pinchDist0);
+    scheduleRender();
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', () => { dragging = false; });
+
+// ─── UI wiring ────────────────────────────────────────────────────────────────
+function mkSlider(id, valId, suffix, onChange) {
+  const sl = document.getElementById(id);
+  const vl = document.getElementById(valId);
+  sl.addEventListener('input', () => { vl.textContent = sl.value + suffix; onChange(+sl.value); });
+}
+
+mkSlider('sl-iter',  'val-iter',  '',  v => { iterVal = v;  resetView(); });
+mkSlider('sl-angle', 'val-angle', '°', v => { angleVal = v; resetView(); });
+mkSlider('sl-sw',    'val-sw',    '',  v => { swVal = v; document.getElementById('val-sw').textContent = (v/10).toFixed(1); scheduleRender(); });
+
+// Palettes
+(function buildPalettes() {
+  const g = document.getElementById('pal-grid');
+  PALETTES.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.className = 'pal-btn' + (i === 0 ? ' active' : '');
+    b.title = p.name;
+    b.style.background = `linear-gradient(135deg,${p.c[0]},${p.c[2]||p.c[1]})`;
+    b.onclick = () => {
+      document.querySelectorAll('.pal-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      palIdx = i; scheduleRender(); saveState();
+    };
+    g.appendChild(b);
+  });
+})();
+
+// Preset bar
+(function buildPresets() {
+  const bar = document.getElementById('preset-bar');
+  PRESETS.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.className = 'pb' + (i === 0 ? ' active' : '');
+    b.textContent = p.name;
+    b.setAttribute('role', 'tab');
+    b.onclick = () => {
+      document.querySelectorAll('.pb').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      applyPreset(i);
+    };
+    bar.appendChild(b);
+  });
+})();
+
+function applyPreset(idx) {
+  presetIdx = idx;
+  const p = PRESETS[idx];
+  axiom = p.axiom; rules = {...p.rules};
+  angleVal = p.angle; saVal = p.sa; drawCh = p.drawCh;
+  const maxI = Math.min(p.maxIter, 8);
+  document.getElementById('sl-angle').value = angleVal;
+  document.getElementById('val-angle').textContent = angleVal + '°';
+  document.getElementById('sl-iter').max = maxI;
+  if (iterVal > maxI) { iterVal = Math.floor(maxI * 0.6) + 1; document.getElementById('sl-iter').value = iterVal; document.getElementById('val-iter').textContent = iterVal; }
+  renderRuleEditor();
+  resetView();
+  saveState();
+}
+
+// Rule editor
+function renderRuleEditor() {
+  document.getElementById('axiom').value = axiom;
+  const list = document.getElementById('rules-list');
+  list.innerHTML = '';
+  for (const [lhs, rhs] of Object.entries(rules)) {
+    const row = document.createElement('div');
+    row.className = 'rule-row';
+    row.innerHTML = `<span class="rule-lhs">${lhs}</span><span class="rule-arrow">→</span>`;
+    const inp = document.createElement('input');
+    inp.className = 'rule-input'; inp.type = 'text'; inp.value = rhs; inp.spellcheck = false;
+    inp.dataset.lhs = lhs;
+    inp.addEventListener('change', () => { rules[lhs] = inp.value.trim() || lhs; resetView(); saveState(); });
+    row.appendChild(inp); list.appendChild(row);
+  }
+}
+
+document.getElementById('axiom').addEventListener('change', e => {
+  axiom = e.target.value.trim() || 'F'; resetView(); saveState();
+});
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+function exportPNG() {
+  // Re-draw at 2× resolution
+  const W = canvas.width * 2, H = canvas.height * 2;
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const octx = off.getContext('2d');
+  const pal = PALETTES[palIdx];
+  const str = expand(axiom, rules, iterVal);
+  const pad = 80;
+  const b = computeBounds(str, angleVal, 1, saVal, drawCh);
+  const scale = Math.min((W - pad * 2) / b.w, (H - pad * 2) / b.h);
+  const sx = (W - b.w * scale) / 2 - b.mnX * scale;
+  const sy = (H - b.h * scale) / 2 - b.mnY * scale;
+
+  octx.fillStyle = pal.bg; octx.fillRect(0, 0, W, H);
+
+  // Draw to offscreen ctx
+  const grad = octx.createLinearGradient(0, 0, W * 0.7, H);
+  grad.addColorStop(0, pal.c[0]); grad.addColorStop(0.5, pal.c[2] || pal.c[1]); grad.addColorStop(1, pal.c[0]);
+  const DEG = Math.PI / 180;
+  const stack = []; let x = sx, y = sy, a = saVal;
+  octx.beginPath(); octx.moveTo(x, y);
+  for (const ch of str) {
+    if (drawCh.includes(ch)) {
+      const nx = x + Math.cos(a * DEG) * scale; const ny = y + Math.sin(a * DEG) * scale;
+      octx.lineTo(nx, ny); x = nx; y = ny;
+    } else if (ch === 'f') {
+      x += Math.cos(a * DEG) * scale; y += Math.sin(a * DEG) * scale; octx.moveTo(x, y);
+    } else if (ch === '+') { a += angleVal; } else if (ch === '-') { a -= angleVal;
+    } else if (ch === '[') { stack.push({x, y, a}); octx.moveTo(x, y);
+    } else if (ch === ']') { if (stack.length) { const s = stack.pop(); x = s.x; y = s.y; a = s.a; octx.moveTo(x, y); } }
+  }
+  octx.strokeStyle = grad; octx.lineWidth = (swVal / 10) * 2;
+  octx.lineCap = 'round'; octx.lineJoin = 'round'; octx.stroke();
+
+  // Watermark
+  octx.font = '18px system-ui'; octx.fillStyle = 'rgba(255,255,255,0.18)';
+  octx.textAlign = 'right'; octx.textBaseline = 'bottom';
+  octx.fillText(`L-System Designer · jccl.me · ${PRESETS[presetIdx].name}`, W - 20, H - 20);
+
+  const link = document.createElement('a');
+  link.download = `lsystem-${PRESETS[presetIdx].name.toLowerCase().replace(/\s+/g,'-')}-${Date.now()}.png`;
+  link.href = off.toDataURL('image/png');
+  link.click();
+  showToast('PNG exported!');
+}
+
+function shareURL() {
+  const state = { pi: presetIdx, pal: palIdx, iter: iterVal, angle: angleVal, sw: swVal, axiom, rules };
+  const hash = btoa(JSON.stringify(state));
+  const url = location.href.split('#')[0] + '#' + hash;
+  navigator.clipboard.writeText(url).then(() => showToast('Share link copied!')).catch(() => {
+    prompt('Copy this link:', url);
+  });
+}
+
+// ─── Auto-animate ──────────────────────────────────────────────────────────────
+function toggleAnim() {
+  animActive = !animActive;
+  const btn = document.getElementById('btn-anim');
+  if (animActive) {
+    btn.classList.add('btn-anim-active');
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause`;
+    animIter = iterVal; animDir = 1;
+    animStep();
+  } else {
+    btn.classList.remove('btn-anim-active');
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Auto-Animate`;
+    clearTimeout(animTimer);
+  }
+}
+
+function animStep() {
+  if (!animActive) return;
+  const maxI = +document.getElementById('sl-iter').max;
+  animIter += animDir;
+  if (animIter >= maxI) { animIter = maxI; animDir = -1; }
+  if (animIter <= 1)    { animIter = 1;    animDir = 1;  }
+  iterVal = animIter;
+  document.getElementById('sl-iter').value = animIter;
+  document.getElementById('val-iter').textContent = animIter;
+  resetView();
+  animTimer = setTimeout(animStep, 900);
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
+function saveState() {
+  try {
+    localStorage.setItem('lsystem_v1', JSON.stringify({pi:presetIdx, pal:palIdx, iter:iterVal, angle:angleVal, sw:swVal}));
+  } catch(e) {}
+}
+
+function loadState() {
+  // Check URL hash first
+  if (location.hash) {
+    try {
+      const s = JSON.parse(atob(location.hash.slice(1)));
+      if (s.axiom) axiom = s.axiom;
+      if (s.rules) rules = s.rules;
+      if (s.iter) iterVal = s.iter;
+      if (s.angle) angleVal = s.angle;
+      if (s.sw) swVal = s.sw;
+      if (typeof s.pi === 'number') { presetIdx = s.pi; }
+      if (typeof s.pal === 'number') { palIdx = s.pal; }
+      return;
+    } catch(e) {}
+  }
+  // Then localStorage
+  try {
+    const s = JSON.parse(localStorage.getItem('lsystem_v1') || '{}');
+    if (typeof s.pi === 'number') presetIdx = s.pi;
+    if (typeof s.pal === 'number') palIdx = s.pal;
+    if (s.iter) iterVal = s.iter;
+    if (s.angle) angleVal = s.angle;
+    if (s.sw) swVal = s.sw;
+  } catch(e) {}
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+loadState();
+
+// Apply loaded state to UI
+document.querySelectorAll('.pb')[presetIdx]?.classList.add('active');
+document.querySelectorAll('.pb')[0]?.classList[presetIdx === 0 ? 'add' : 'remove']('active');
+if (presetIdx !== 0) { document.querySelectorAll('.pb')[presetIdx]?.classList.add('active'); }
+document.querySelectorAll('.pal-btn').forEach((b,i) => b.classList.toggle('active', i === palIdx));
+
+// Load preset data
+const p = PRESETS[presetIdx];
+if (!location.hash) { axiom = p.axiom; rules = {...p.rules}; }
+saVal = p.sa; drawCh = p.drawCh;
+angleVal = PRESETS[presetIdx].angle;
+
+document.getElementById('sl-iter').max = Math.min(p.maxIter, 8);
+document.getElementById('sl-iter').value = iterVal;
+document.getElementById('val-iter').textContent = iterVal;
+document.getElementById('sl-angle').value = angleVal;
+document.getElementById('val-angle').textContent = angleVal + '°';
+document.getElementById('sl-sw').value = swVal;
+document.getElementById('val-sw').textContent = (swVal/10).toFixed(1);
+renderRuleEditor();
+
+const ro = new ResizeObserver(resize);
+ro.observe(document.getElementById('canvas-wrap'));
+resize();
+</script>
+</body>
+</html>

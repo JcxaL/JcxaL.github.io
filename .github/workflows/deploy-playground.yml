@@ -1,0 +1,103 @@
+name: Deploy Playground to Pages
+
+on:
+  push:
+    branches: ["daily-playground"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate manifests and structure
+        run: |
+          python3 << 'EOF'
+          import json, sys, os
+
+          # ── Playground manifest ──────────────────────────────────────────
+          with open('playground/days/manifest.json') as f:
+              manifest = json.load(f)
+          active = [d for d in manifest['days'] if d.get('status') == 'active']
+          if len(active) != 1:
+              print(f'ERROR: Expected 1 active playground day, found {len(active)}')
+              sys.exit(1)
+          folder = active[0]['folder']
+          html = f'playground/days/{folder}/index.html'
+          if not os.path.exists(html):
+              print(f'ERROR: Active day HTML missing: {html}')
+              sys.exit(1)
+          print(f'Playground OK: day {active[0].get("day_number")} → {folder}')
+
+          # ── Spotlight manifest ────────────────────────────────────────────
+          with open('playground/spotlight/manifest.json') as f:
+              smanifest = json.load(f)
+          sactive = [d for d in smanifest['days'] if d.get('status') == 'active']
+          if len(sactive) > 1:
+              print(f'ERROR: Expected at most 1 active spotlight, found {len(sactive)}')
+              sys.exit(1)
+          if len(sactive) == 1:
+              sfolder = sactive[0]['folder']
+              shtml = f'playground/spotlight/days/{sfolder}/index.html'
+              if not os.path.exists(shtml):
+                  print(f'ERROR: Active spotlight gallery missing: {shtml}')
+                  sys.exit(1)
+              for i in range(1, 6):
+                  drop_html = f'playground/spotlight/days/{sfolder}/{i}/index.html'
+                  if not os.path.exists(drop_html):
+                      print(f'ERROR: Spotlight drop {i} HTML missing: {drop_html}')
+                      sys.exit(1)
+              with open(f'playground/spotlight/days/{sfolder}/meta.json') as f:
+                  meta = json.load(f)
+              drops = meta.get('drops', [])
+              if len(drops) != 5:
+                  print(f'ERROR: spotlight meta.json must have exactly 5 drops, found {len(drops)}')
+                  sys.exit(1)
+              print(f'Spotlight OK: day {sactive[0].get("day_number")} → {sfolder}')
+          else:
+              print('Spotlight: no active day (OK for first deploy)')
+
+          print('All validation passed!')
+          EOF
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: validate
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Prepare playground for deployment
+        run: |
+          if [ -f CNAME ]; then
+            cp CNAME playground/CNAME
+          else
+            echo "jccl.me" > playground/CNAME
+          fi
+          touch playground/.nojekyll
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./playground
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
