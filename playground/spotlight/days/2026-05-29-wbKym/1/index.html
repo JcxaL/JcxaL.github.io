@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drop 1 — Gooey Blob Morphing</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;background:#06040e;display:flex;flex-direction:column;align-items:center;justify-content:center;font:14px system-ui;overflow:hidden}
+
+h1{color:#e2d9f8;font-size:clamp(1.4rem,4vw,2rem);font-weight:800;text-align:center;margin-bottom:6px;
+  background:linear-gradient(135deg,#c084fc,#818cf8,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+p{color:#8080b0;font-size:13px;text-align:center;margin-bottom:32px}
+
+.stage{position:relative;width:min(480px,90vw);height:min(480px,90vw)}
+svg{width:100%;height:100%;overflow:visible}
+
+.panel{
+  position:absolute;top:10px;right:10px;
+  background:rgba(6,4,14,.82);border:1px solid rgba(180,120,255,.18);
+  border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;
+  backdrop-filter:blur(8px);min-width:130px
+}
+.panel label{font-size:11px;color:#6868a8}
+.panel input{width:100%;accent-color:#c084fc;cursor:pointer}
+.panel .val{font-size:11px;color:#c084fc;font-weight:700}
+
+footer{position:fixed;bottom:10px;left:0;right:0;text-align:center;
+  font-size:11px;color:#5050a0}
+footer a{color:#7070b8;text-decoration:none}
+
+@media(max-width:480px){.panel{display:none}}
+</style>
+</head>
+<body>
+
+<h1>Gooey Blob Morphing</h1>
+<p>Noise-driven control points + Catmull-Rom spline + SVG goo filter</p>
+
+<div class="stage" id="stage">
+  <svg id="svg" viewBox="0 0 480 480">
+    <defs>
+      <filter id="goo">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur"/>
+        <feColorMatrix in="blur" mode="matrix"
+          values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"
+          result="contrast"/>
+        <feBlend in="SourceGraphic" in2="contrast"/>
+      </filter>
+      <radialGradient id="g1" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#c084fc"/>
+        <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.7"/>
+      </radialGradient>
+      <radialGradient id="g2" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#60a5fa"/>
+        <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0.7"/>
+      </radialGradient>
+      <radialGradient id="g3" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#f472b6"/>
+        <stop offset="100%" stop-color="#be185d" stop-opacity="0.7"/>
+      </radialGradient>
+    </defs>
+
+    <g filter="url(#goo)">
+      <path id="b1" fill="url(#g1)"/>
+      <path id="b2" fill="url(#g2)"/>
+      <path id="b3" fill="url(#g3)"/>
+    </g>
+  </svg>
+
+  <div class="panel">
+    <div>
+      <label>Noise speed <span class="val" id="vspeed">1.0</span></label>
+      <input type="range" id="rspeed" min="1" max="30" value="10">
+    </div>
+    <div>
+      <label>Blob size <span class="val" id="vsize">90</span>px</label>
+      <input type="range" id="rsize" min="40" max="140" value="90">
+    </div>
+    <div>
+      <label>Wobble <span class="val" id="vwobble">30</span>%</label>
+      <input type="range" id="rwobble" min="5" max="60" value="30">
+    </div>
+  </div>
+</div>
+
+<footer>
+  Inspired by <a href="https://dev.to/georgedoescode/tutorial-build-a-smooth-animated-blob-using-svg-js-3pne" target="_blank">George Doe — Build a Smooth Animated Blob</a>
+  &nbsp;·&nbsp; UI Spotlight Day 13 &nbsp;·&nbsp; Drop #1
+</footer>
+
+<script>
+'use strict';
+
+// ── smooth noise ──────────────────────────────────────────────────
+// Seeded value-noise: smooth cosine interpolation over a permutation table
+function makeNoise(seed) {
+  let s = seed | 0;
+  function rand() { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 4294967296; }
+  const T = Array.from({length:256}, () => rand() * 2 - 1);
+  return function(x) {
+    const xi = Math.floor(x), xf = x - xi;
+    const t  = xf * xf * (3 - 2 * xf); // smoothstep
+    const a  = T[xi     & 255];
+    const b  = T[(xi+1) & 255];
+    return a + t * (b - a);
+  };
+}
+
+// ── catmull-rom path ──────────────────────────────────────────────
+function catmullPath(pts) {
+  const n = pts.length;
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const p3 = pts[(i + 2) % n];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)},${cp2x.toFixed(2)} ${cp2y.toFixed(2)},${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d + ' Z';
+}
+
+// ── blob config ───────────────────────────────────────────────────
+const N_PTS = 8;
+const CX = 240, CY = 240; // SVG center
+
+const blobs = [
+  {
+    path: document.getElementById('b1'),
+    cx: 240, cy: 200,
+    noises: Array.from({length: N_PTS*2}, (_, i) => makeNoise(i * 31 + 7)),
+    offsets: Array.from({length: N_PTS*2}, (_, i) => i * 0.7 + 1.0),
+  },
+  {
+    path: document.getElementById('b2'),
+    cx: 180, cy: 300,
+    noises: Array.from({length: N_PTS*2}, (_, i) => makeNoise(i * 17 + 3)),
+    offsets: Array.from({length: N_PTS*2}, (_, i) => i * 0.5 + 0.3),
+  },
+  {
+    path: document.getElementById('b3'),
+    cx: 300, cy: 300,
+    noises: Array.from({length: N_PTS*2}, (_, i) => makeNoise(i * 23 + 13)),
+    offsets: Array.from({length: N_PTS*2}, (_, i) => i * 0.6 + 0.8),
+  },
+];
+
+// wander: blobs drift around center
+const wanderNoises = blobs.map((_, bi) => ({
+  x: makeNoise(bi * 99 + 1),
+  y: makeNoise(bi * 99 + 2),
+  ox: bi * 3.7,
+  oy: bi * 2.9,
+}));
+
+// ── params ────────────────────────────────────────────────────────
+let noiseSpeed = 1.0, blobSize = 90, wobble = 0.30;
+
+document.getElementById('rspeed').addEventListener('input', function() {
+  noiseSpeed = +this.value / 10;
+  document.getElementById('vspeed').textContent = noiseSpeed.toFixed(1);
+});
+document.getElementById('rsize').addEventListener('input', function() {
+  blobSize = +this.value;
+  document.getElementById('vsize').textContent = blobSize;
+});
+document.getElementById('rwobble').addEventListener('input', function() {
+  wobble = +this.value / 100;
+  document.getElementById('vwobble').textContent = +this.value;
+});
+
+// ── animation ─────────────────────────────────────────────────────
+let t = 0;
+
+function tick() {
+  requestAnimationFrame(tick);
+  t += noiseSpeed * 0.004;
+
+  blobs.forEach((blob, bi) => {
+    // wander
+    const w = wanderNoises[bi];
+    w.ox += noiseSpeed * 0.002;
+    w.oy += noiseSpeed * 0.0013;
+    const wanderR = 50;
+    const bx = blob.cx + w.x(w.ox) * wanderR;
+    const by = blob.cy + w.y(w.oy) * wanderR;
+
+    // control points
+    const pts = Array.from({length: N_PTS}, (_, i) => {
+      const theta = i * 2 * Math.PI / N_PTS;
+      const nx = blob.noises[i];
+      const ny = blob.noises[i + N_PTS];
+      const r  = blobSize * (1 + wobble * nx(blob.offsets[i] + t));
+      blob.offsets[i] += noiseSpeed * 0.004;
+      blob.offsets[i + N_PTS] += noiseSpeed * 0.003;
+      return {
+        x: bx + r * Math.cos(theta),
+        y: by + r * Math.sin(theta),
+      };
+    });
+
+    blob.path.setAttribute('d', catmullPath(pts));
+  });
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

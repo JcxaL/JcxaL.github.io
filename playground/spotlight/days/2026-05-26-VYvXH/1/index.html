@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scroll-Reveal Shader Gallery · Drop 1</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#06070d;--surface:#0d1120;--border:#1e2d44;--text:#9ab0cc;--accent:#00d4ff}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}
+
+header{padding:60px 40px 20px;max-width:800px;margin:0 auto}
+header h1{font-size:clamp(22px,4vw,36px);font-weight:700;color:#fff;letter-spacing:-0.5px;line-height:1.2}
+header p{margin-top:12px;font-size:15px;line-height:1.6;color:var(--text);max-width:540px}
+
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px;padding:40px;max-width:1200px;margin:0 auto}
+.card{position:relative;border-radius:12px;overflow:hidden;aspect-ratio:4/3;background:var(--surface);cursor:pointer}
+.card canvas{display:block;width:100%;height:100%;position:absolute;inset:0}
+.card .reveal-overlay{position:absolute;inset:0;pointer-events:none;z-index:2}
+.card .info{position:absolute;bottom:0;left:0;right:0;padding:16px;background:linear-gradient(transparent,rgba(0,0,0,.7));z-index:3;transform:translateY(100%);transition:transform .35s ease}
+.card:hover .info{transform:translateY(0)}
+.card .info h3{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px}
+.card .info p{font-size:11px;color:rgba(255,255,255,.6)}
+
+.reveal-controls{text-align:center;padding:20px 40px 10px;color:var(--text);font-size:13px;opacity:.6}
+
+.panel{text-align:center;padding:16px 40px;color:var(--text);font-size:12px}
+.panel code{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:11px;color:var(--accent);font-family:'Courier New',monospace}
+
+footer{text-align:center;padding:40px;font-size:11px;color:#3a4e64;border-top:1px solid var(--border);margin-top:60px}
+footer a{color:#3a4e64}
+
+/* SVG filter for distortion effect */
+#filters{position:absolute;width:0;height:0}
+</style>
+</head>
+<body>
+<svg id="filters">
+  <defs>
+    <filter id="distort" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="turbulence" baseFrequency="0.015" numOctaves="2" result="noise" seed="2"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+      <feComposite in="displaced" in2="SourceGraphic" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<header>
+  <h1>Scroll-Reveal Shader Gallery</h1>
+  <p>As each artwork enters the viewport, a <code>uProgress</code> value (0→1) drives a canvas-based wipe reveal with edge distortion — the GPU-render technique from Codrops, reimplemented in Canvas 2D. Scroll down to trigger reveals.</p>
+</header>
+
+<div class="reveal-controls">↓ Scroll to reveal artworks ↓</div>
+
+<div class="gallery" id="gallery"></div>
+
+<div class="panel">
+  Core pattern: <code>IntersectionObserver</code> sets progress → <code>ctx.clip()</code> + <code>feTurbulence displacement</code> mimics shader wipe
+</div>
+
+<div style="height:200px"></div>
+
+<footer>
+  Inspired by <a href="https://tympanus.net/codrops/2026/02/02/building-a-scroll-revealed-webgl-gallery-with-gsap-three-js-astro-and-barba-js/" target="_blank">Codrops — Scroll-Revealed WebGL Gallery (Feb 2026)</a>
+  &nbsp;·&nbsp; UI Spotlight Day 10 · Drop #1
+</footer>
+
+<script>
+// ─── Artwork generators ───────────────────────────────────────────────────────
+const artworks = [
+  { title:'Aurora Drift',  tech:'Canvas noise', gen:(ctx,w,h)=>genAurora(ctx,w,h) },
+  { title:'Grid Cascade',  tech:'Recursive splits', gen:(ctx,w,h)=>genGrid(ctx,w,h) },
+  { title:'Orbit Field',   tech:'Lissajous curves', gen:(ctx,w,h)=>genOrbits(ctx,w,h) },
+  { title:'Shard Array',   tech:'Voronoi cells', gen:(ctx,w,h)=>genShards(ctx,w,h) },
+  { title:'Depth Rings',   tech:'Concentric arcs', gen:(ctx,w,h)=>genRings(ctx,w,h) },
+  { title:'Hex Matrix',    tech:'Hexagonal grid', gen:(ctx,w,h)=>genHex(ctx,w,h) }
+];
+
+function rng(seed){ let s=seed^0xbabe; return()=>{ s^=s<<13;s^=s>>17;s^=s<<5;return(s>>>0)/4294967296; }; }
+
+function genAurora(ctx,w,h){ const r=rng(1); ctx.fillStyle='#030612';ctx.fillRect(0,0,w,h); for(let i=0;i<8;i++){ const gy=ctx.createLinearGradient(0,h*.3,0,h*.9); const hue=180+r()*120; gy.addColorStop(0,'transparent'); gy.addColorStop(.5,`hsla(${hue},100%,60%,.3)`); gy.addColorStop(1,'transparent'); ctx.fillStyle=gy; ctx.save();ctx.translate(0,r()*h*.4-h*.1); ctx.beginPath(); const pts=[0,h*.5+r()*h*.2-h*.1]; for(let x=0;x<=w;x+=20)pts.push(x,h*.5+Math.sin(x*.02+i)*60+r()*40); pts.push(w,h,0,h); ctx.moveTo(0,pts[1]); for(let k=2;k<pts.length-4;k+=2)ctx.lineTo(pts[k],pts[k+1]); ctx.closePath(); ctx.fill();ctx.restore(); } }
+
+function genGrid(ctx,w,h){ const r=rng(2); function split(x,y,W,H,d){ if(d<1||W<20||H<20){const hue=r()*360;ctx.fillStyle=`hsla(${hue},60%,${15+r()*30}%,1)`;ctx.fillRect(x+1,y+1,W-2,H-2);return;} if(W>H){const mid=W*(0.3+r()*0.4);split(x,y,mid,H,d-1);split(x+mid,y,W-mid,H,d-1);}else{const mid=H*(0.3+r()*0.4);split(x,y,W,mid,d-1);split(x,y+mid,W,H-mid,d-1);}} ctx.fillStyle='#0a0a18';ctx.fillRect(0,0,w,h);split(0,0,w,h,5); }
+
+function genOrbits(ctx,w,h){ const r=rng(3); ctx.fillStyle='#040810';ctx.fillRect(0,0,w,h); const cx=w/2,cy=h/2; for(let j=0;j<5;j++){ const a=r()*3+1,b=r()*4+1,d=r()*Math.PI*2,hue=j*70; ctx.strokeStyle=`hsla(${hue},80%,60%,.5)`;ctx.lineWidth=1; ctx.beginPath(); for(let t=0;t<Math.PI*2;t+=.02){const x=cx+Math.min(cx,cy)*.8*Math.cos(a*t+d);const y=cy+Math.min(cx,cy)*.8*Math.sin(b*t);t===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.stroke(); } }
+
+function genShards(ctx,w,h){ const r=rng(4); ctx.fillStyle='#0a0814';ctx.fillRect(0,0,w,h); const pts=Array.from({length:16},()=>[r()*w,r()*h]); pts.push([0,0],[w,0],[0,h],[w,h],[w/2,0],[w/2,h],[0,h/2],[w,h/2]); for(let i=0;i<30;i++){ const a=pts[Math.floor(r()*pts.length)],b=pts[Math.floor(r()*pts.length)],c=pts[Math.floor(r()*pts.length)]; const hue=200+r()*160; ctx.fillStyle=`hsla(${hue},60%,${20+r()*25}%,.8)`; ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.lineTo(c[0],c[1]);ctx.fill(); } }
+
+function genRings(ctx,w,h){ const r=rng(5); ctx.fillStyle='#040810';ctx.fillRect(0,0,w,h); const cx=w/2,cy=h/2,maxR=Math.min(w,h)*.6; for(let i=maxR;i>4;i-=6+r()*4){ const hue=200+i*1.5; ctx.strokeStyle=`hsla(${hue%360},70%,50%,${.1+r()*.3})`; ctx.lineWidth=2+r()*3; ctx.beginPath();ctx.arc(cx+r()*30-15,cy+r()*30-15,i,.3+r()*5,Math.PI*(1.5+r()));ctx.stroke(); } }
+
+function genHex(ctx,w,h){ const r=rng(6); ctx.fillStyle='#060a10';ctx.fillRect(0,0,w,h); const s=24,W=s*2,H=Math.sqrt(3)*s; for(let row=-1;row<h/H+1;row++) for(let col=-1;col<w/W+1;col++){ const cx=col*W*0.75+(row%2)*(W*0.375);const cy=row*H; const hue=180+r()*180,lit=10+r()*30; ctx.fillStyle=`hsla(${hue},50%,${lit}%,1)`; ctx.beginPath(); for(let k=0;k<6;k++){const a=k*Math.PI/3-Math.PI/6;ctx.lineTo(cx+s*Math.cos(a),cy+s*Math.sin(a));} ctx.closePath();ctx.fill(); } }
+
+// ─── Build gallery ────────────────────────────────────────────────────────────
+const gallery = document.getElementById('gallery');
+const cards = [];
+
+artworks.forEach((art, i) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.filter = 'url(#distort)';
+
+  const artCanvas = document.createElement('canvas');
+  const overlayCanvas = document.createElement('canvas');
+  overlayCanvas.className = 'reveal-overlay';
+
+  const info = document.createElement('div');
+  info.className = 'info';
+  info.innerHTML = `<h3>${art.title}</h3><p>${art.tech}</p>`;
+
+  card.append(artCanvas, overlayCanvas, info);
+  gallery.appendChild(card);
+
+  // Generate artwork
+  const aw = 560, ah = 420;
+  artCanvas.width = aw; artCanvas.height = ah;
+  overlayCanvas.width = aw; overlayCanvas.height = ah;
+  art.gen(artCanvas.getContext('2d'), aw, ah);
+
+  const octx = overlayCanvas.getContext('2d');
+  cards.push({ card, artCanvas, overlayCanvas, octx, progress: 0, target: 0, art, w: aw, h: ah });
+});
+
+// ─── Reveal animation ─────────────────────────────────────────────────────────
+function drawReveal(c) {
+  const { octx, w, h, progress } = c;
+  octx.clearRect(0, 0, w, h);
+  if (progress >= 1) return;
+
+  // Dark reveal overlay — wipes from bottom to top based on progress
+  const revealY = h * (1 - progress);
+
+  // Wavy edge for "shader distortion" feel
+  octx.fillStyle = '#06070d';
+  octx.beginPath();
+  octx.moveTo(0, revealY);
+  for (let x = 0; x <= w; x += 8) {
+    const wave = Math.sin(x * 0.03 + Date.now() * 0.002) * 12 * (1 - progress);
+    octx.lineTo(x, revealY + wave);
+  }
+  octx.lineTo(w, 0);
+  octx.lineTo(0, 0);
+  octx.closePath();
+  octx.fill();
+
+  // Glowing edge line
+  const grad = octx.createLinearGradient(0, revealY - 2, 0, revealY + 4);
+  grad.addColorStop(0, 'rgba(0,212,255,0)');
+  grad.addColorStop(0.5, 'rgba(0,212,255,0.6)');
+  grad.addColorStop(1, 'rgba(0,212,255,0)');
+  octx.fillStyle = grad;
+  for (let x = 0; x <= w; x += 8) {
+    const wave = Math.sin(x * 0.03 + Date.now() * 0.002) * 12 * (1 - progress);
+    octx.fillRect(x, revealY + wave - 2, 8, 6);
+  }
+
+  // Animate feTurbulence displacement based on progress
+  const scale = Math.max(0, (0.7 - progress) * 30);
+  const fe = document.querySelector('#filters feTurbulence');
+  if (fe) fe.setAttribute('seed', Math.floor(Date.now() / 100) % 100);
+  const disp = document.querySelector('#filters feDisplacementMap');
+  if (disp) disp.setAttribute('scale', scale);
+}
+
+// ─── IntersectionObserver ─────────────────────────────────────────────────────
+const io = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    const idx = parseInt(entry.target.dataset.idx);
+    cards[idx].target = entry.isIntersecting ? 1 : 0;
+  }
+}, { threshold: [0, 0.3, 0.6, 1] });
+
+cards.forEach((c, i) => { c.card.dataset.idx = i; io.observe(c.card); });
+
+// ─── Animation loop ───────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(t) {
+  const dt = Math.min((t - lastTime) / 1000, 0.05);
+  lastTime = t;
+  let needRender = false;
+  for (const c of cards) {
+    if (Math.abs(c.progress - c.target) > 0.001) {
+      c.progress += (c.target - c.progress) * Math.min(1, dt * 2.5);
+      needRender = true;
+    }
+    if (c.progress < 0.999) needRender = true;
+    drawReveal(c);
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Fourier Epicycle Machine</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:#07060f;color:#ddd8f8;font:14px/1.4 system-ui,sans-serif;display:flex;flex-direction:column}
+
+header{
+  padding:9px 14px;background:rgba(10,8,24,.96);
+  border-bottom:1px solid rgba(130,80,255,.22);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0;z-index:10
+}
+.logo{
+  font-weight:800;font-size:15px;letter-spacing:-.02em;white-space:nowrap;
+  background:linear-gradient(110deg,#c084fc,#60a5fa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent
+}
+.cg{display:flex;align-items:center;gap:5px}
+.cl{font-size:11px;color:#6868a8;white-space:nowrap}
+.cv{font-size:11px;color:#c084fc;font-weight:700;min-width:32px;text-align:right}
+
+input[type=range]{
+  -webkit-appearance:none;appearance:none;
+  width:88px;height:3px;background:rgba(130,80,255,.28);border-radius:2px;outline:none;cursor:pointer
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#c084fc;cursor:pointer
+}
+.btn{
+  padding:5px 11px;border-radius:7px;border:1px solid rgba(130,80,255,.3);
+  background:rgba(90,50,190,.18);color:#c084fc;cursor:pointer;font-size:12px;
+  font-family:inherit;transition:all .12s;white-space:nowrap;user-select:none
+}
+.btn:hover{background:rgba(90,50,190,.38)}
+.btn.on{background:rgba(90,50,190,.54);border-color:#c084fc;color:#fff}
+.btn.g{color:#50dd90;border-color:rgba(80,221,144,.32);background:rgba(28,155,85,.18)}
+.btn.g.on{background:rgba(28,155,85,.44);border-color:#50dd90}
+.btn.b{color:#60a5fa;border-color:rgba(96,165,250,.32);background:rgba(28,80,220,.18)}
+.btn.b.on{background:rgba(28,80,220,.44);border-color:#60a5fa}
+.btn.y{color:#fbbf24;border-color:rgba(251,191,36,.28);background:rgba(175,115,0,.15)}
+.btn.r{color:#f87171;border-color:rgba(248,113,113,.28);background:rgba(195,28,28,.13)}
+.sep{width:1px;height:20px;background:rgba(130,80,255,.18);flex-shrink:0}
+
+main{flex:1;position:relative;overflow:hidden}
+canvas#cv{display:block;touch-action:none;cursor:crosshair}
+
+#ov{
+  position:absolute;top:9px;left:50%;transform:translateX(-50%);
+  background:rgba(7,6,15,.84);border:1px solid rgba(130,80,255,.2);
+  border-radius:7px;padding:5px 14px;font-size:12px;color:#7878b0;
+  backdrop-filter:blur(6px);pointer-events:none;white-space:nowrap;transition:opacity .3s
+}
+
+#ps{
+  position:absolute;top:9px;right:9px;
+  background:rgba(7,6,15,.9);border:1px solid rgba(130,80,255,.16);
+  border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:5px;
+  backdrop-filter:blur(8px)
+}
+#ps .lbl{font-size:10px;color:#5050a0;text-transform:uppercase;letter-spacing:.1em;margin-bottom:2px}
+
+#tip{
+  position:absolute;bottom:56px;left:12px;
+  background:rgba(7,6,15,.76);border:1px solid rgba(130,80,255,.14);
+  border-radius:6px;padding:4px 10px;font-size:11px;color:#5858a0;
+  pointer-events:none;backdrop-filter:blur(4px)
+}
+
+@media(max-width:500px){
+  header{padding:7px 10px;gap:7px}
+  input[type=range]{width:64px}
+  #ps,#tip{display:none}
+  .sep,.cv{display:none}
+  .cl{font-size:10px}
+}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">⟳ Fourier Epicycles</span>
+
+  <button class="btn g on" id="bd" onclick="setMode('draw')">✏ Draw</button>
+  <button class="btn b"    id="ba" onclick="setMode('anim')">▶ Animate</button>
+  <div class="sep"></div>
+
+  <div class="cg">
+    <span class="cl">Terms</span>
+    <input type="range" id="st" min="1" max="256" value="64">
+    <span class="cv" id="lt">64</span>
+  </div>
+
+  <div class="cg">
+    <span class="cl">Speed</span>
+    <input type="range" id="ss" min="1" max="40" value="8">
+    <span class="cv" id="ls">1×</span>
+  </div>
+
+  <div class="sep"></div>
+  <button class="btn on" id="bc" onclick="toggleCircles()">⊚ Circles</button>
+  <button class="btn y"       onclick="doExport()">↓ PNG</button>
+  <button class="btn r"       onclick="doClear()">✕ Clear</button>
+</header>
+
+<main id="mn">
+  <canvas id="cv"></canvas>
+  <div id="ov">✏ Draw a shape, or pick a preset →</div>
+  <div id="ps">
+    <div class="lbl">Presets</div>
+    <button class="btn" onclick="loadPreset('heart')">♥ Heart</button>
+    <button class="btn" onclick="loadPreset('star')">★ Star</button>
+    <button class="btn" onclick="loadPreset('lemniscate')">∞ Lemniscate</button>
+    <button class="btn" onclick="loadPreset('rose')">✿ Rose</button>
+    <button class="btn" onclick="loadPreset('epicycloid')">◎ Epicycloid</button>
+  </div>
+  <div id="tip">Drag the Terms slider to add / remove epicycles</div>
+</main>
+
+<script>
+'use strict';
+
+const CV = document.getElementById('cv');
+const ctx = CV.getContext('2d');
+const mn  = document.getElementById('mn');
+
+let mode = 'draw', isDown = false;
+let rawPath = [];       // {x,y}[] — path drawn/loaded
+let fourier = null;     // DFT components sorted by amplitude
+let terms   = 64;
+let speed   = 1.0;
+let showCircles = true;
+let animT = 0, trace = [], raf = 0, lastTs = 0;
+
+// ─── resize ───────────────────────────────────────────────────────
+function resize() {
+  CV.width  = mn.clientWidth;
+  CV.height = mn.clientHeight;
+  if (mode === 'draw') renderDraw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── pointer input ────────────────────────────────────────────────
+function evPt(e) {
+  const r = CV.getBoundingClientRect();
+  const s = e.touches ? e.touches[0] : e;
+  return { x: s.clientX - r.left, y: s.clientY - r.top };
+}
+
+CV.addEventListener('pointerdown', e => {
+  if (mode !== 'draw') return;
+  isDown = true;
+  rawPath = [evPt(e)];
+  CV.setPointerCapture(e.pointerId);
+  ctx.clearRect(0, 0, CV.width, CV.height);
+  ctx.beginPath();
+  ctx.moveTo(rawPath[0].x, rawPath[0].y);
+});
+
+CV.addEventListener('pointermove', e => {
+  if (!isDown) return;
+  const p = evPt(e);
+  rawPath.push(p);
+  ctx.lineTo(p.x, p.y);
+  ctx.strokeStyle = '#50dd90';
+  ctx.lineWidth   = 2.5;
+  ctx.lineJoin    = 'round';
+  ctx.lineCap     = 'round';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y);
+});
+
+CV.addEventListener('pointerup', () => {
+  if (!isDown) return;
+  isDown = false;
+  if (rawPath.length < 8) return;
+  savePath();
+  setOv('Path ready · click ▶ <b>Animate</b> to watch epicycles reconstruct it');
+});
+
+// ─── DFT ──────────────────────────────────────────────────────────
+// Treat each 2-D path point as complex z = x + iy.
+// X[k] = (1/N) * Σ z[n] * e^{-2πi·kn/N}
+// → re[k] = (1/N) Σ (x[n]·cos φ + y[n]·sin φ)   φ = 2πkn/N
+//   im[k] = (1/N) Σ (y[n]·cos φ − x[n]·sin φ)
+// Reconstruction: x(t) = Σ amp[k]·cos(2π·freq[k]·t + phase[k])
+//                 y(t) = Σ amp[k]·sin(2π·freq[k]·t + phase[k])
+function computeDFT(path) {
+  const N   = Math.min(256, Math.max(32, path.length));
+  const pts = resample(path, N);
+
+  // mean-centre so the DC component is ~0
+  let mx = 0, my = 0;
+  for (const p of pts) { mx += p.x; my += p.y; }
+  mx /= N; my /= N;
+  const z = pts.map(p => ({ x: p.x - mx, y: p.y - my }));
+
+  const X = [];
+  for (let k = 0; k < N; k++) {
+    let re = 0, im = 0;
+    for (let n = 0; n < N; n++) {
+      const phi = 2 * Math.PI * k * n / N;
+      const c = Math.cos(phi), s = Math.sin(phi);
+      re += z[n].x * c + z[n].y * s;
+      im += z[n].y * c - z[n].x * s;
+    }
+    re /= N; im /= N;
+    X.push({ freq: k, re, im, amp: Math.hypot(re, im), phase: Math.atan2(im, re) });
+  }
+  return X.sort((a, b) => b.amp - a.amp); // biggest circle first
+}
+
+function resample(path, N) {
+  if (path.length <= 1) return Array(N).fill(path[0] || { x: 0, y: 0 });
+  // build cumulative arc-lengths
+  let total = 0;
+  const acc = [0];
+  for (let i = 1; i < path.length; i++) {
+    total += Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
+    acc.push(total);
+  }
+  if (total === 0) return Array.from({ length: N }, () => ({ ...path[0] }));
+
+  return Array.from({ length: N }, (_, i) => {
+    const d  = (i / N) * total;
+    let lo = 0, hi = acc.length - 1;
+    while (lo < hi - 1) { const m = (lo + hi) >> 1; acc[m] <= d ? lo = m : hi = m; }
+    const seg = acc[hi] - acc[lo];
+    const t   = seg > 0 ? (d - acc[lo]) / seg : 0;
+    return {
+      x: path[lo].x + t * (path[hi].x - path[lo].x),
+      y: path[lo].y + t * (path[hi].y - path[lo].y),
+    };
+  });
+}
+
+// ─── animation loop ────────────────────────────────────────────────
+function loop(ts) {
+  if (mode !== 'anim' || !fourier) return;
+  raf = requestAnimationFrame(loop);
+
+  const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.05) : 1/60;
+  lastTs = ts;
+
+  const W = CV.width, H = CV.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const used = fourier.slice(0, terms);
+  let x = W / 2, y = H / 2;
+
+  if (showCircles) {
+    for (let i = 0; i < used.length; i++) {
+      const f     = used[i];
+      const ox    = x, oy = y;
+      const angle = 2 * Math.PI * f.freq * animT + f.phase;
+      x += f.amp * Math.cos(angle);
+      y += f.amp * Math.sin(angle);
+
+      if (f.amp < 0.4) continue;
+
+      // spoke
+      const alpha = Math.max(0.08, 0.68 - i * 0.006);
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = `hsla(${263 + i * 1.6},72%,68%,${alpha})`;
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+
+      // orbit ring (only for visible-sized epicycles)
+      if (f.amp > 2) {
+        ctx.beginPath();
+        ctx.arc(ox, oy, f.amp, 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${263 + i * 1.6},55%,55%,${Math.max(0.04, 0.20 - i * 0.0025)})`;
+        ctx.lineWidth   = 0.7;
+        ctx.stroke();
+      }
+    }
+  } else {
+    // compute tip position without drawing
+    for (const f of used) {
+      const angle = 2 * Math.PI * f.freq * animT + f.phase;
+      x += f.amp * Math.cos(angle);
+      y += f.amp * Math.sin(angle);
+    }
+  }
+
+  // accumulate trace
+  trace.push({ x, y });
+  if (trace.length > 3000) trace.splice(0, trace.length - 3000); // safety cap
+
+  if (trace.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(trace[0].x, trace[0].y);
+    for (let i = 1; i < trace.length; i++) ctx.lineTo(trace[i].x, trace[i].y);
+    ctx.strokeStyle = '#c084fc';
+    ctx.lineWidth   = 2.2;
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+  }
+
+  // glowing tip dot
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#60a5fa';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(96,165,250,0.18)';
+  ctx.fill();
+
+  // advance time; one full period = 1/( speed · 0.25 ) seconds
+  animT += speed * dt * 0.25;
+  if (animT >= 1) {
+    animT -= 1;
+    trace = []; // clear on period wrap for clean loop
+  }
+
+  drawSpectrum(W, H);
+}
+
+function drawSpectrum(W, H) {
+  const sh = 44, n = Math.min(80, fourier.length);
+  const bw = W / n, ma = fourier[0].amp;
+  ctx.save();
+  ctx.fillStyle = 'rgba(7,6,15,0.60)';
+  ctx.fillRect(0, H - sh, W, sh);
+  for (let i = 0; i < n; i++) {
+    const h = (fourier[i].amp / ma) * (sh - 7);
+    ctx.fillStyle = i < terms
+      ? `hsl(${268 - i * 1.4},70%,${66 - i * 0.22}%)`
+      : 'rgba(65,45,105,0.5)';
+    ctx.fillRect(i * bw + 0.5, H - sh + (sh - 7 - h), bw - 1, h);
+  }
+  ctx.restore();
+}
+
+// ─── draw-mode idle render ─────────────────────────────────────────
+function renderDraw() {
+  ctx.clearRect(0, 0, CV.width, CV.height);
+  if (rawPath.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(rawPath[0].x, rawPath[0].y);
+    for (const p of rawPath) ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = '#50dd90';
+    ctx.lineWidth   = 2.5;
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+  } else {
+    ctx.font      = '15px system-ui';
+    ctx.fillStyle = 'rgba(140,100,255,0.16)';
+    ctx.textAlign = 'center';
+    ctx.fillText('Draw a shape here, or choose a preset on the right', CV.width / 2, CV.height / 2);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ─── mode switching ────────────────────────────────────────────────
+function setMode(m) {
+  if (m === 'anim' && rawPath.length < 8) {
+    setOv('Draw a shape first!');
+    return;
+  }
+  mode = m;
+  cancelAnimationFrame(raf);
+  lastTs = 0;
+
+  document.getElementById('bd').classList.toggle('on', m === 'draw');
+  document.getElementById('ba').classList.toggle('on', m === 'anim');
+
+  if (m === 'draw') {
+    trace = []; animT = 0;
+    renderDraw();
+    setOv('✏ Draw mode — click &amp; drag on the canvas');
+  } else {
+    fourier = computeDFT(rawPath);
+    const sl = document.getElementById('st');
+    sl.max   = fourier.length;
+    terms    = Math.min(terms, fourier.length);
+    sl.value = terms;
+    document.getElementById('lt').textContent = terms;
+    trace = []; animT = 0;
+    setOv(`Animating · <b>${terms}</b> of ${fourier.length} epicycles — path centered`);
+    raf = requestAnimationFrame(loop);
+  }
+}
+
+function setOv(html) { document.getElementById('ov').innerHTML = html; }
+
+// ─── slider handlers ───────────────────────────────────────────────
+document.getElementById('st').addEventListener('input', function () {
+  terms = +this.value;
+  document.getElementById('lt').textContent = terms;
+  if (mode === 'anim') { trace = []; animT = 0; }
+  if (fourier) setOv(`Animating · <b>${terms}</b> of ${fourier.length} epicycles`);
+});
+
+document.getElementById('ss').addEventListener('input', function () {
+  speed = +this.value / 8;
+  const lbl = speed < 1
+    ? speed.toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + '×'
+    : (speed % 1 ? speed.toFixed(1) : speed) + '×';
+  document.getElementById('ls').textContent = lbl;
+  if (mode === 'anim') { trace = []; animT = 0; }
+});
+
+function toggleCircles() {
+  showCircles = !showCircles;
+  document.getElementById('bc').classList.toggle('on', showCircles);
+}
+
+function doClear() {
+  cancelAnimationFrame(raf);
+  rawPath = []; fourier = null; trace = []; animT = 0; lastTs = 0; mode = 'draw';
+  document.getElementById('bd').classList.add('on');
+  document.getElementById('ba').classList.remove('on');
+  ctx.clearRect(0, 0, CV.width, CV.height);
+  renderDraw();
+  setOv('✏ Draw mode — click &amp; drag on the canvas');
+  try { localStorage.removeItem('fourier_v1'); } catch (e) {}
+}
+
+function doExport() {
+  const a = document.createElement('a');
+  a.download = 'fourier-epicycles.png';
+  a.href = CV.toDataURL();
+  a.click();
+}
+
+// ─── presets ────────────────────────────────────────────────────────
+const PRESETS = {
+  heart: t => ({
+    x:  16 * Math.pow(Math.sin(t), 3),
+    y: -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)),
+  }),
+  star: t => {
+    const r = 0.72 + 0.28 * Math.cos(5 * t);
+    return { x: r * Math.cos(t - Math.PI/2), y: r * Math.sin(t - Math.PI/2) };
+  },
+  lemniscate: t => {
+    const d = 1 + Math.sin(t) * Math.sin(t);
+    return { x: Math.cos(t) / d, y: Math.sin(t) * Math.cos(t) / d };
+  },
+  rose: t => {
+    const r = Math.cos(3 * t);
+    return { x: r * Math.cos(t), y: r * Math.sin(t) };
+  },
+  epicycloid: t => {
+    // 3-lobed epicycloid (R=0.6, r=0.2)
+    const R = 0.6, r = 0.2;
+    return {
+      x: (R + r) * Math.cos(t) - r * Math.cos((R + r) / r * t),
+      y: (R + r) * Math.sin(t) - r * Math.sin((R + r) / r * t),
+    };
+  },
+};
+
+function loadPreset(name) {
+  const fn = PRESETS[name];
+  if (!fn) return;
+  const N  = 400;
+  const sc = Math.min(CV.width, CV.height) * 0.33;
+  const cx = CV.width / 2, cy = CV.height / 2;
+  rawPath = Array.from({ length: N }, (_, i) => {
+    const p = fn(i * 2 * Math.PI / N);
+    return { x: cx + p.x * sc, y: cy + p.y * sc };
+  });
+  savePath();
+  setMode('anim');
+}
+
+// ─── persistence ────────────────────────────────────────────────────
+function savePath() {
+  try {
+    localStorage.setItem('fourier_v1',
+      JSON.stringify(rawPath.map(p => [+p.x.toFixed(1), +p.y.toFixed(1)])));
+  } catch (e) {}
+}
+
+// boot: restore saved path, else load heart preset
+try {
+  const saved = JSON.parse(localStorage.getItem('fourier_v1') || 'null');
+  if (!saved || saved.length < 8) throw new Error('none');
+  rawPath = saved.map(p => ({ x: p[0], y: p[1] }));
+  renderDraw();
+  setOv('Saved path loaded · click ▶ <b>Animate</b>');
+} catch (_) {
+  requestAnimationFrame(() => loadPreset('heart'));
+}
+</script>
+</body>
+</html>

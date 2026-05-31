@@ -1,4 +1,4 @@
-name: Deploy Playground to Pages
+name: Deploy Daily Playground
 
 on:
   push:
@@ -10,93 +10,129 @@ permissions:
   pages: write
   id-token: write
 
+# Separate concurrency group from the Next.js workflow so neither can
+# block or cancel the other when both branches are active.
 concurrency:
-  group: "pages"
+  group: "playground-pages"
   cancel-in-progress: false
 
 jobs:
+  # ── 1. Validate ────────────────────────────────────────────────────────────
+  # Catches broken manifests or missing day files before anything deploys.
   validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate manifests and structure
+      - name: Validate manifest and active day
         run: |
-          python3 << 'EOF'
+          python3 - <<'EOF'
           import json, sys, os
 
-          # ── Playground manifest ──────────────────────────────────────────
-          with open('playground/days/manifest.json') as f:
-              manifest = json.load(f)
-          active = [d for d in manifest['days'] if d.get('status') == 'active']
+          manifest_path = "playground/days/manifest.json"
+          if not os.path.exists(manifest_path):
+              print("ERROR: playground/days/manifest.json not found")
+              sys.exit(1)
+
+          with open(manifest_path) as f:
+              try:
+                  m = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"ERROR: manifest.json is not valid JSON — {e}")
+                  sys.exit(1)
+
+          days = m.get("days", [])
+          if not days:
+              print("ERROR: manifest.json has no days entries")
+              sys.exit(1)
+
+          active = [d for d in days if d.get("status") == "active"]
           if len(active) != 1:
-              print(f'ERROR: Expected 1 active playground day, found {len(active)}')
+              print(f"ERROR: Expected exactly 1 active day, found {len(active)}")
               sys.exit(1)
-          folder = active[0]['folder']
-          html = f'playground/days/{folder}/index.html'
+
+          day = active[0]
+          # 'folder' overrides 'date' for the directory name (supports YYYY-MM-DD-{id} naming)
+          folder = day.get("folder", day["date"])
+          html = f"playground/days/{folder}/index.html"
           if not os.path.exists(html):
-              print(f'ERROR: Active day HTML missing: {html}')
+              print(f"ERROR: Active day HTML missing — {html}")
               sys.exit(1)
-          print(f'Playground OK: day {active[0].get("day_number")} → {folder}')
 
-          # ── Spotlight manifest ────────────────────────────────────────────
-          with open('playground/spotlight/manifest.json') as f:
-              smanifest = json.load(f)
-          sactive = [d for d in smanifest['days'] if d.get('status') == 'active']
-          if len(sactive) > 1:
-              print(f'ERROR: Expected at most 1 active spotlight, found {len(sactive)}')
-              sys.exit(1)
-          if len(sactive) == 1:
-              sfolder = sactive[0]['folder']
-              shtml = f'playground/spotlight/days/{sfolder}/index.html'
-              if not os.path.exists(shtml):
-                  print(f'ERROR: Active spotlight gallery missing: {shtml}')
-                  sys.exit(1)
-              for i in range(1, 6):
-                  drop_html = f'playground/spotlight/days/{sfolder}/{i}/index.html'
-                  if not os.path.exists(drop_html):
-                      print(f'ERROR: Spotlight drop {i} HTML missing: {drop_html}')
+          # Also validate spotlight manifest if it exists
+          spot_path = "playground/spotlight/manifest.json"
+          if os.path.exists(spot_path):
+              with open(spot_path) as f:
+                  try:
+                      sm = json.load(f)
+                  except json.JSONDecodeError as e:
+                      print(f"ERROR: spotlight/manifest.json is not valid JSON — {e}")
                       sys.exit(1)
-              with open(f'playground/spotlight/days/{sfolder}/meta.json') as f:
-                  meta = json.load(f)
-              drops = meta.get('drops', [])
-              if len(drops) != 5:
-                  print(f'ERROR: spotlight meta.json must have exactly 5 drops, found {len(drops)}')
+              spot_active = [d for d in sm.get("days", []) if d.get("status") == "active"]
+              if len(spot_active) > 1:
+                  print(f"ERROR: spotlight manifest has {len(spot_active)} active entries (max 1)")
                   sys.exit(1)
-              print(f'Spotlight OK: day {sactive[0].get("day_number")} → {sfolder}')
-          else:
-              print('Spotlight: no active day (OK for first deploy)')
+              if spot_active:
+                  sd = spot_active[0]
+                  sf = sd.get("folder", sd["date"])
+                  shtml = f"playground/spotlight/days/{sf}/index.html"
+                  if not os.path.exists(shtml):
+                      print(f"ERROR: Active spotlight gallery HTML missing — {shtml}")
+                      sys.exit(1)
+                  # v2 spotlight format: drops_count >= 1 with N sub-folders 1..N/index.html
+                  drops_count = sd.get("drops_count", 1)
+                  if drops_count > 1:
+                      for i in range(1, drops_count + 1):
+                          drop_html = f"playground/spotlight/days/{sf}/{i}/index.html"
+                          if not os.path.exists(drop_html):
+                              print(f"ERROR: Spotlight drop missing — {drop_html}")
+                              sys.exit(1)
+                      # Also verify meta.json drops array matches
+                      meta_path = f"playground/spotlight/days/{sf}/meta.json"
+                      if os.path.exists(meta_path):
+                          with open(meta_path) as mf:
+                              meta = json.load(mf)
+                          actual_drops = len(meta.get("drops", []))
+                          if actual_drops != drops_count:
+                              print(f"ERROR: meta.json has {actual_drops} drops, manifest says {drops_count}")
+                              sys.exit(1)
+                  print(f"OK  spotlight: Day {sd['day_number']} — {sd['title']} ({drops_count} drop{'s' if drops_count != 1 else ''})")
 
-          print('All validation passed!')
+          archived = [d for d in days if d.get("status") == "archived"]
+          print(f"OK  active  : Day {day['day_number']} — {day['title']} ({day['date']}) [folder: {folder}]")
+          print(f"OK  archive : {len(archived)} past day(s) preserved")
+          print(f"OK  total   : {len(days)} day(s) in manifest")
           EOF
 
+  # ── 2. Deploy ──────────────────────────────────────────────────────────────
   deploy:
-    runs-on: ubuntu-latest
     needs: validate
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Assemble static bundle
+        run: |
+          rm -rf _bundle
+          mkdir _bundle
+          cp -r playground/. _bundle/
+          cp CNAME _bundle/CNAME
+          touch _bundle/.nojekyll
+          echo "Bundle contents:"
+          find _bundle -type f | sort
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
-
-      - name: Prepare playground for deployment
-        run: |
-          if [ -f CNAME ]; then
-            cp CNAME playground/CNAME
-          else
-            echo "jccl.me" > playground/CNAME
-          fi
-          touch playground/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./playground
+          path: './_bundle'
 
       - name: Deploy to GitHub Pages
         id: deployment
