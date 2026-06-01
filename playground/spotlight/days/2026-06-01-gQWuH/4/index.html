@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drop 4 — Elastic Trail Cursor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#07070f;overflow:hidden;height:100dvh;cursor:none;font-family:system-ui,sans-serif;color:#e0e0f0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+canvas{position:fixed;inset:0;pointer-events:none}
+.center-text{text-align:center;pointer-events:none;z-index:1;user-select:none}
+.center-text h1{font-size:clamp(24px,5vw,56px);font-weight:800;color:rgba(255,255,255,0.08);letter-spacing:0.02em}
+.center-text p{font-size:14px;color:rgba(255,255,255,0.15);margin-top:12px}
+#dot{
+  position:fixed;width:10px;height:10px;border-radius:50%;
+  background:#fff;pointer-events:none;z-index:100;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 12px rgba(255,255,255,0.8);
+  transition:transform 0.1s ease, width 0.1s, height 0.1s;
+}
+#ring{
+  position:fixed;width:40px;height:40px;border-radius:50%;
+  border:1.5px solid rgba(255,255,255,0.5);pointer-events:none;z-index:99;
+  transform:translate(-50%,-50%);
+  transition:width 0.15s, height 0.15s, border-color 0.15s;
+}
+.hot{display:inline-block;padding:16px 32px;border-radius:12px;font-size:18px;font-weight:700;
+  background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);
+  cursor:none;transition:background 0.2s;margin:8px}
+.hot:hover{background:rgba(124,58,237,0.2);border-color:rgba(167,139,250,0.4);}
+#panel{position:fixed;top:12px;right:12px;background:rgba(10,10,20,0.85);
+  backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);
+  border-radius:10px;padding:12px 14px;font-size:11px;color:#888;display:flex;flex-direction:column;gap:8px;min-width:150px;}
+#panel label{display:flex;justify-content:space-between;align-items:center;color:#bbb;font-size:10px;gap:8px}
+#panel input[type=range]{width:80px;accent-color:#7c3aed}
+footer{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);font-size:10px;color:#333;white-space:nowrap;z-index:10}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="dot"></div>
+<div id="ring"></div>
+<div class="center-text">
+  <h1>Move Your Cursor</h1>
+  <p>Elastic trail follows with spring physics</p>
+  <div style="margin-top:32px;display:flex;flex-wrap:wrap;justify-content:center">
+    <span class="hot">Hover Me</span>
+    <span class="hot">Touch Here</span>
+    <span class="hot">Try This</span>
+  </div>
+</div>
+<div id="panel">
+  <label>Trail count <input type="range" id="trailN" min="4" max="20" value="10"></label>
+  <label>Stiffness <input type="range" id="stiff" min="1" max="20" value="8"></label>
+  <label>Damping <input type="range" id="damp" min="1" max="30" value="14"></label>
+  <label>Size <input type="range" id="dotSize" min="4" max="24" value="10"></label>
+</div>
+<footer>Inspired by elastic cursor chain · UI Spotlight Day 16 · Drop #4</footer>
+<script>
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+const dot = document.getElementById('dot');
+const ring = document.getElementById('ring');
+let W, H;
+
+function resize(){W=cvs.width=window.innerWidth;H=cvs.height=window.innerHeight;}
+resize(); window.addEventListener('resize',resize);
+
+let mx=W/2, my=H/2;
+let trailN=10, stiffness=8, damping=14, dotSize=10;
+
+// Elastic chain of nodes
+class Node{constructor(x,y){this.x=x;this.y=y;this.vx=0;this.vy=0;}}
+let nodes=[];
+function buildNodes(){nodes=Array.from({length:trailN+1},()=>new Node(mx,my));}
+buildNodes();
+
+const COLORS=['#a78bfa','#818cf8','#60a5fa','#38bdf8','#34d399','#a3e635','#fbbf24','#f472b6'];
+let hue=0;
+
+let isClick=false;
+window.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+window.addEventListener('pointerdown',()=>isClick=true);
+window.addEventListener('pointerup',()=>isClick=false);
+window.addEventListener('touchmove',e=>{
+  mx=e.touches[0].clientX;my=e.touches[0].clientY;
+},{passive:true});
+
+let lastT=0;
+function animate(ts){
+  requestAnimationFrame(animate);
+  const dt=Math.min((ts-lastT)/1000,0.05); lastT=ts;
+  ctx.clearRect(0,0,W,H);
+
+  hue=(hue+0.5)%360;
+
+  // Update chain: node 0 chases mouse
+  const k = stiffness / 10;
+  const d = damping / 100;
+  nodes[0].vx += (mx - nodes[0].x) * k;
+  nodes[0].vy += (my - nodes[0].y) * k;
+  nodes[0].vx *= (1 - d);
+  nodes[0].vy *= (1 - d);
+  nodes[0].x += nodes[0].vx;
+  nodes[0].y += nodes[0].vy;
+
+  for(let i=1;i<nodes.length;i++){
+    const prev=nodes[i-1];
+    nodes[i].vx += (prev.x - nodes[i].x) * k * 0.85;
+    nodes[i].vy += (prev.y - nodes[i].y) * k * 0.85;
+    nodes[i].vx *= (1 - d);
+    nodes[i].vy *= (1 - d);
+    nodes[i].x += nodes[i].vx;
+    nodes[i].y += nodes[i].vy;
+  }
+
+  // Draw trail
+  for(let i=0;i<nodes.length-1;i++){
+    const t=1-(i/nodes.length);
+    const r=(dotSize/2)*t;
+    if(r<0.5) continue;
+    const colorIdx=Math.floor(i/nodes.length*COLORS.length);
+    const col=COLORS[colorIdx%COLORS.length];
+
+    ctx.beginPath();
+    ctx.arc(nodes[i].x,nodes[i].y,r,0,Math.PI*2);
+    ctx.fillStyle=col;
+    ctx.globalAlpha=t*0.85;
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Update DOM cursor
+  dot.style.left=mx+'px'; dot.style.top=my+'px';
+  ring.style.left=nodes[0].x+'px'; ring.style.top=nodes[0].y+'px';
+
+  const ringScale=isClick?0.5:1;
+  ring.style.transform=`translate(-50%,-50%) scale(${ringScale})`;
+
+  // Reactive hover
+  const el=document.elementFromPoint(mx,my);
+  const isHover=el&&el.classList.contains('hot');
+  ring.style.width=(isHover?60:40)+'px';
+  ring.style.height=(isHover?60:40)+'px';
+  ring.style.borderColor=isHover?'rgba(167,139,250,0.8)':'rgba(255,255,255,0.5)';
+}
+requestAnimationFrame(animate);
+
+document.getElementById('trailN').addEventListener('input',e=>{trailN=+e.target.value;buildNodes();});
+document.getElementById('stiff').addEventListener('input',e=>stiffness=+e.target.value);
+document.getElementById('damp').addEventListener('input',e=>damping=+e.target.value);
+document.getElementById('dotSize').addEventListener('input',e=>dotSize=+e.target.value);
+</script>
+</body>
+</html>
