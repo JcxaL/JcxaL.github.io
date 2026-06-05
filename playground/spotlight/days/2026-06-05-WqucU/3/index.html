@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Variable Font Proximity · Drop 3</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#06050c;font-family:system-ui,-apple-system,sans-serif;user-select:none;touch-action:none}
+
+.scene{
+  width:100%;height:100vh;height:100dvh;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:0;padding:20px;
+  position:relative;overflow:hidden;
+}
+
+/* Background grid hint */
+.scene::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(circle,rgba(100,80,200,.06) 1px,transparent 1px);
+  background-size:32px 32px;pointer-events:none;
+}
+
+/* Each word row */
+.word-row{
+  display:flex;justify-content:center;flex-wrap:nowrap;
+  gap:0;line-height:1;
+  overflow:visible;
+}
+
+/* Individual letters */
+.letter{
+  display:inline-block;
+  font-size:clamp(28px,8vw,88px);
+  font-weight:100;
+  color:#d0c8e8;
+  font-variation-settings:'wght' var(--w,100);
+  transition:font-variation-settings .08s ease-out, color .08s ease-out;
+  letter-spacing:-.01em;
+  cursor:default;
+  padding:0 .01em;
+}
+
+/* When letter is heavy */
+.letter[data-w="900"]{color:#c084fc}
+
+/* Instructions */
+.hint{
+  position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  font-size:11px;color:#4a3870;white-space:nowrap;letter-spacing:.05em;text-transform:uppercase;
+}
+.hint span{color:#7c6aa0}
+
+/* Debug panel */
+.debug{position:fixed;top:16px;right:16px;background:rgba(255,255,255,.05);
+  backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:10px;
+  padding:10px 14px;font-size:11px;color:rgba(255,255,255,.4);line-height:1.8}
+.debug strong{color:rgba(255,255,255,.7);display:block;margin-bottom:4px}
+
+footer{position:absolute;bottom:8px;right:12px;font-size:9px;color:#2a1a40;text-align:right}
+
+@media(max-width:480px){
+  .debug{display:none}
+  .hint{font-size:9px}
+}
+</style>
+</head>
+<body>
+<div class="scene" id="scene">
+
+  <div class="word-row" id="row0"></div>
+  <div class="word-row" id="row1"></div>
+  <div class="word-row" id="row2"></div>
+  <div class="word-row" id="row3"></div>
+  <div class="word-row" id="row4"></div>
+
+  <div class="hint">Move your cursor — proximity drives <span>font-weight</span></div>
+
+  <div class="debug">
+    <strong>Technique</strong>
+    font-variation-settings<br>
+    'wght' axis: 100 → 900<br>
+    per-letter spring decay<br>
+    proximity inverse-square
+  </div>
+
+  <footer>Inspired by variable-font proximity demos · UI Spotlight Day 20 · Drop #3</footer>
+</div>
+
+<script>
+const WORDS = ['VARIABLE', 'FONT', 'WEIGHT', 'BY', 'PROXIMITY'];
+
+let letters = [];
+let weights = [];
+let targetWeights = [];
+let mx = -1000, my = -1000;
+let raf;
+
+// Build letter spans
+WORDS.forEach((word, wi) => {
+  const row = document.getElementById(`row${wi}`);
+  [...word].forEach(char => {
+    const span = document.createElement('span');
+    span.className = 'letter';
+    span.textContent = char === ' ' ? ' ' : char;
+    row.appendChild(span);
+    letters.push(span);
+    weights.push(100);
+    targetWeights.push(100);
+  });
+  // Add thin space between words
+});
+
+const MAX_DIST = 180;
+const MIN_W = 100, MAX_W = 900;
+
+function updateTargets() {
+  letters.forEach((el, i) => {
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = mx - cx, dy = my - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const t = Math.max(0, 1 - dist / MAX_DIST);
+    // Ease the falloff more dramatically
+    const influence = Math.pow(t, 1.5);
+    targetWeights[i] = MIN_W + influence * (MAX_W - MIN_W);
+  });
+}
+
+function animate() {
+  raf = requestAnimationFrame(animate);
+  let dirty = false;
+  letters.forEach((el, i) => {
+    const diff = targetWeights[i] - weights[i];
+    if (Math.abs(diff) > 0.5) {
+      weights[i] += diff * 0.15;
+      dirty = true;
+    } else {
+      weights[i] = targetWeights[i];
+    }
+    const w = Math.round(weights[i]);
+    el.style.setProperty('--w', w);
+    // Color shift: dim purple at low weight → bright purple at heavy
+    const t = (w - 100) / 800;
+    const r = Math.round(100 + t * (192 - 100));
+    const g = Math.round(90 + t * (60 - 90));
+    const b = Math.round(160 + t * (252 - 160));
+    el.style.color = `rgb(${r},${g},${b})`;
+  });
+}
+
+// Track cursor
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  updateTargets();
+});
+
+// Touch support
+document.addEventListener('touchmove', e => {
+  e.preventDefault();
+  mx = e.touches[0].clientX; my = e.touches[0].clientY;
+  updateTargets();
+}, { passive: false });
+
+document.addEventListener('touchstart', e => {
+  mx = e.touches[0].clientX; my = e.touches[0].clientY;
+  updateTargets();
+});
+
+// Slow idle drift when no cursor
+let idleT = 0;
+function idleDrift() {
+  if (mx === -1000) {
+    idleT += 0.008;
+    mx = window.innerWidth * (0.5 + 0.3 * Math.sin(idleT));
+    my = window.innerHeight * (0.5 + 0.2 * Math.cos(idleT * 0.7));
+    updateTargets();
+  }
+  setTimeout(idleDrift, 30);
+}
+
+idleDrift();
+animate();
+</script>
+</body>
+</html>
