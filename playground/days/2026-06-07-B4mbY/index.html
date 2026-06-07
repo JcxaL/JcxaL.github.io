@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ASCII Forge</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050a04;--surface:#0a100a;--card:#111811;--border:#1a2a1a;
+  --green:#22c55e;--amber:#f59e0b;--cyan:#06b6d4;--purple:#a855f7;
+  --text:#d4f5c0;--muted:#4a6a3a;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:'Courier New',monospace;overflow:hidden;user-select:none}
+body{display:flex;flex-direction:column}
+
+/* Header */
+header{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);
+  padding:8px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.logo{font-size:16px;font-weight:900;color:var(--green);letter-spacing:.12em;
+  text-shadow:0 0 16px var(--green);flex-shrink:0}
+.logo span{color:var(--amber)}
+
+/* Mode buttons */
+.mode-group{display:flex;gap:4px;flex-wrap:wrap}
+.mode-btn{background:var(--card);border:1px solid var(--border);color:var(--muted);
+  padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;
+  font-family:inherit;letter-spacing:.06em;transition:all .15s}
+.mode-btn:hover{border-color:var(--green);color:var(--text)}
+.mode-btn.active{background:rgba(34,197,94,.15);border-color:var(--green);
+  color:var(--green);text-shadow:0 0 8px var(--green)}
+
+.sep{width:1px;height:24px;background:var(--border);flex-shrink:0}
+
+/* Char set selector */
+.chars-select{background:var(--card);border:1px solid var(--border);color:var(--text);
+  padding:5px 8px;border-radius:6px;font-size:11px;font-family:inherit;cursor:pointer}
+.chars-select:focus{outline:1px solid var(--green)}
+
+/* Color mode */
+.color-group{display:flex;gap:4px}
+.color-btn{width:22px;height:22px;border-radius:50%;border:2px solid transparent;
+  cursor:pointer;transition:border-color .15s;flex-shrink:0}
+.color-btn.active{border-color:white}
+
+/* Right controls */
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.icon-btn{background:var(--card);border:1px solid var(--border);color:var(--muted);
+  padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;
+  transition:all .15s}
+.icon-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.back-link{color:var(--muted);text-decoration:none;font-size:11px;
+  border:1px solid var(--border);padding:5px 10px;border-radius:6px;
+  transition:color .15s,border-color .15s}
+.back-link:hover{color:var(--text);border-color:var(--muted)}
+
+/* Main canvas */
+#canvas{flex:1;display:block;background:var(--bg);cursor:crosshair}
+
+/* Footer / settings bar */
+footer{flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);
+  padding:6px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.slider-wrap{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.slider-wrap input{accent-color:var(--green);cursor:pointer;width:80px}
+.slider-val{color:var(--green);min-width:24px;text-align:right;font-weight:700}
+.toggle-wrap{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.toggle-wrap input{accent-color:var(--green)}
+.fps-display{margin-left:auto;font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">ASCII <span>FORGE</span></div>
+
+  <div class="mode-group" id="mode-group">
+    <button class="mode-btn active" data-mode="donut">🍩 Donut</button>
+    <button class="mode-btn" data-mode="mandelbrot">∞ Mandelbrot</button>
+    <button class="mode-btn" data-mode="plasma">~ Plasma</button>
+    <button class="mode-btn" data-mode="fire">🔥 Fire</button>
+    <button class="mode-btn" data-mode="rain">⬇ Rain</button>
+    <button class="mode-btn" data-mode="sphere">● Sphere</button>
+  </div>
+
+  <div class="sep"></div>
+
+  <select class="chars-select" id="charset">
+    <option value="classic">Classic</option>
+    <option value="dense">Dense</option>
+    <option value="blocks">Blocks</option>
+    <option value="binary">Binary</option>
+    <option value="minimal">Minimal</option>
+  </select>
+
+  <div class="color-group" id="color-group">
+    <div class="color-btn active" data-color="green"  style="background:#22c55e" title="Green CRT"></div>
+    <div class="color-btn"       data-color="amber"   style="background:#f59e0b" title="Amber"></div>
+    <div class="color-btn"       data-color="cyan"    style="background:#06b6d4" title="Cyan"></div>
+    <div class="color-btn"       data-color="white"   style="background:#e2e8f0" title="White"></div>
+    <div class="color-btn"       data-color="rainbow" style="background:linear-gradient(90deg,red,orange,yellow,lime,cyan,blue,violet)" title="Rainbow"></div>
+  </div>
+
+  <div class="hdr-right">
+    <button class="icon-btn" id="btn-copy">📋 Copy</button>
+    <button class="icon-btn" id="btn-dl">⬇ HTML</button>
+    <a class="back-link" href="/">← Home</a>
+  </div>
+</header>
+
+<canvas id="canvas"></canvas>
+
+<footer>
+  <div class="slider-wrap">
+    <label>Cols</label>
+    <input type="range" id="cols-slider" min="40" max="160" value="80">
+    <span class="slider-val" id="cols-val">80</span>
+  </div>
+  <div class="slider-wrap">
+    <label>Speed</label>
+    <input type="range" id="speed-slider" min="1" max="10" value="5">
+    <span class="slider-val" id="speed-val">5</span>
+  </div>
+  <div class="toggle-wrap">
+    <input type="checkbox" id="crt-toggle" checked>
+    <label for="crt-toggle">CRT Scanlines</label>
+  </div>
+  <div class="toggle-wrap">
+    <input type="checkbox" id="glow-toggle" checked>
+    <label for="glow-toggle">Glow</label>
+  </div>
+  <div class="fps-display" id="fps-display">60fps</div>
+</footer>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+const state = {
+  mode: 'donut',
+  charset: 'classic',
+  color: 'green',
+  cols: 80,
+  speed: 5,
+  crt: true,
+  glow: true
+};
+
+const CHARSETS = {
+  classic: ' .,:;+*?%S#@',
+  dense: ' ."\'`^_-+~=i!l|(){}/\\1IJcv7Yrsox2aezLTnujftCXZkbhmqpwdAFPVU3456890BGDHNQR@#KWM$',
+  blocks: ' ░▒▓█',
+  binary: ' 01',
+  minimal: ' .:+'
+};
+
+const COLORS = {
+  green:  { fg: '#22c55e', bg: '#050a04' },
+  amber:  { fg: '#f59e0b', bg: '#0a0700' },
+  cyan:   { fg: '#67e8f9', bg: '#04090a' },
+  white:  { fg: '#e2e8f0', bg: '#06060c' },
+  rainbow: null // computed per char
+};
+
+// ── Canvas setup ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let cols = 80, rows = 36;
+let charW, charH;
+const DPR = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width  * DPR;
+  canvas.height = rect.height * DPR;
+  ctx.scale(DPR, DPR);
+  updateGrid();
+}
+
+function updateGrid() {
+  cols = state.cols;
+  const rect = canvas.getBoundingClientRect();
+  charW = rect.width / cols;
+  charH = charW * 2.1; // terminal aspect
+  rows = Math.max(4, Math.floor(rect.height / charH));
+}
+
+window.addEventListener('resize', () => { resizeCanvas(); modeInit[state.mode]?.(); });
+
+// ── Animation loop ────────────────────────────────────────────────────────
+let t = 0, lastTime = 0, fps = 60;
+let animId;
+
+function loop(now) {
+  animId = requestAnimationFrame(loop);
+  const dt = Math.min(now - lastTime, 100);
+  lastTime = now;
+  fps = fps * 0.95 + (1000/dt) * 0.05;
+  document.getElementById('fps-display').textContent = Math.round(fps) + 'fps';
+  const spd = state.speed / 5;
+  t += dt * 0.001 * spd;
+  render();
+}
+
+// ── Render dispatcher ─────────────────────────────────────────────────────
+function render() {
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  const palette = COLORS[state.color];
+  const bg = palette ? palette.bg : '#050a04';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const fontSize = Math.max(8, charH * 0.88);
+  ctx.font = `${fontSize}px 'Courier New', monospace`;
+  ctx.textBaseline = 'top';
+
+  const glow = state.glow;
+  if (glow && palette) {
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = palette.fg + '88';
+  } else {
+    ctx.shadowBlur = 0;
+  }
+
+  const grid = RENDERERS[state.mode]();
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const ch = grid[y]?.[x];
+      if (!ch || ch === ' ') continue;
+
+      if (state.color === 'rainbow') {
+        const hue = (x / cols * 300 + y / rows * 60 + t * 60) % 360;
+        ctx.fillStyle = `hsl(${hue},100%,65%)`;
+        if (glow) ctx.shadowColor = `hsl(${hue},100%,65%)88`;
+      } else {
+        ctx.fillStyle = palette.fg;
+      }
+      ctx.fillText(ch, x * charW, y * charH);
+    }
+  }
+
+  // CRT scanlines
+  if (state.crt) {
+    ctx.shadowBlur = 0;
+    for (let y = 0; y < H; y += 4) {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(0, y, W, 1);
+    }
+  }
+}
+
+// ── Mode renderers ────────────────────────────────────────────────────────
+let donutA = 1, donutB = 1;
+let fireGrid, rainDrops, rainGrid;
+
+const modeInit = {
+  fire() {
+    fireGrid = [];
+    for (let y = 0; y < rows; y++) {
+      fireGrid[y] = new Uint8Array(cols).fill(0);
+    }
+    // Bottom row is full heat
+    fireGrid[rows-1].fill(255);
+  },
+  rain() {
+    rainDrops = [];
+    rainGrid = [];
+    for (let y = 0; y < rows; y++) rainGrid[y] = new Array(cols).fill(0);
+    for (let x = 0; x < cols; x++) {
+      rainDrops.push({ x, y: Math.random() * rows, speed: 0.5 + Math.random() * 1.5, len: 3 + Math.floor(Math.random() * 8) });
+    }
+  }
+};
+
+const RENDERERS = {
+  donut() {
+    const spd = state.speed / 5;
+    donutA += 0.04 * spd; donutB += 0.015 * spd;
+    const chars = getChars();
+    const nChars = chars.length - 1;
+    const z = new Float32Array(cols * rows);
+    const grid = Array.from({length: rows}, () => new Array(cols).fill(' '));
+    const sinA = Math.sin(donutA), cosA = Math.cos(donutA);
+    const sinB = Math.sin(donutB), cosB = Math.cos(donutB);
+    const cx = cols / 2, cy = rows / 2;
+    const scaleX = cols * 0.18, scaleY = rows * 0.38;
+
+    for (let j = 0; j < Math.PI * 2; j += 0.06) {
+      const sinJ = Math.sin(j), cosJ = Math.cos(j);
+      for (let i = 0; i < Math.PI * 2; i += 0.02) {
+        const sinI = Math.sin(i), cosI = Math.cos(i);
+        const h = cosJ + 2;
+        const D = 1 / (sinI * h * sinA + sinJ * cosA + 5);
+        const tv = sinI * h * cosA - sinJ * sinA;
+        const px = Math.floor(cx + scaleX * D * (cosI * h * cosB - tv * sinB));
+        const py = Math.floor(cy + scaleY * D * (cosI * h * sinB + tv * cosB));
+        if (py >= 0 && py < rows && px >= 0 && px < cols) {
+          const o = px + cols * py;
+          if (D > z[o]) {
+            z[o] = D;
+            const N = Math.floor(8 * ((sinJ * sinA - sinI * cosJ * cosA) * cosB -
+              sinI * cosJ * sinA - sinJ * cosA - cosI * cosJ * sinB));
+            const ci = Math.max(0, Math.min(nChars, N));
+            grid[py][px] = chars[ci] || chars[0];
+          }
+        }
+      }
+    }
+    return grid;
+  },
+
+  mandelbrot() {
+    const chars = getChars();
+    const nChars = chars.length;
+    const zoom = 1.2 + 0.5 * Math.sin(t * 0.15);
+    const cx0 = -0.5 + 0.2 * Math.sin(t * 0.07);
+    const cy0 = 0.0 + 0.15 * Math.cos(t * 0.05);
+    const maxIter = 40;
+    const grid = Array.from({length: rows}, () => new Array(cols).fill(' '));
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const cr = cx0 + (x / cols - 0.5) * 3.2 / zoom;
+        const ci = cy0 + (y / rows - 0.5) * 2.0 / zoom;
+        let zr = 0, zi = 0, iter = 0;
+        while (zr*zr + zi*zi < 4 && iter < maxIter) {
+          const tmp = zr*zr - zi*zi + cr;
+          zi = 2*zr*zi + ci;
+          zr = tmp;
+          iter++;
+        }
+        if (iter < maxIter) {
+          const ci2 = Math.floor((iter / maxIter) * (nChars - 1));
+          grid[y][x] = chars[Math.max(0, ci2)] || ' ';
+        }
+      }
+    }
+    return grid;
+  },
+
+  plasma() {
+    const chars = getChars();
+    const nChars = chars.length;
+    const grid = Array.from({length: rows}, () => new Array(cols).fill(' '));
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const v1 = Math.sin(x * 0.15 + t * 2);
+        const v2 = Math.sin(y * 0.3 + t * 1.5);
+        const v3 = Math.sin((x * 0.1 + y * 0.2) + t);
+        const v4 = Math.sin(Math.sqrt((x-cols/2)**2 + (y-rows/2)**2) * 0.3 - t * 2.5);
+        const val = (v1 + v2 + v3 + v4 + 4) / 8;
+        const ci = Math.floor(val * (nChars - 1));
+        grid[y][x] = chars[Math.max(0, Math.min(nChars-1, ci))];
+      }
+    }
+    return grid;
+  },
+
+  fire() {
+    if (!fireGrid || fireGrid.length !== rows) modeInit.fire();
+    const spd = state.speed / 5;
+    const chars = ' .,:;+*#@';
+    const grid = Array.from({length: rows}, () => new Array(cols).fill(' '));
+
+    // Stoke bottom
+    for (let x = 0; x < cols; x++) {
+      fireGrid[rows-1][x] = Math.random() < 0.3 ? 100 + Math.floor(Math.random() * 155) : fireGrid[rows-1][x];
+    }
+
+    // Propagate upward
+    for (let step = 0; step < Math.ceil(spd * 2); step++) {
+      for (let y = 0; y < rows - 1; y++) {
+        for (let x = 0; x < cols; x++) {
+          const below = fireGrid[y+1]?.[x] ?? 0;
+          const decay = 3 + Math.floor(Math.random() * 4);
+          const spread = Math.floor(Math.random() * 3) - 1;
+          const tx = Math.max(0, Math.min(cols-1, x + spread));
+          fireGrid[y][tx] = Math.max(0, below - decay);
+        }
+      }
+    }
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const v = fireGrid[y][x];
+        if (v > 8) {
+          const ci = Math.min(chars.length-1, Math.floor(v / 255 * chars.length));
+          grid[y][x] = chars[ci];
+        }
+      }
+    }
+    return grid;
+  },
+
+  rain() {
+    if (!rainGrid || !rainDrops || rainDrops.length !== cols) modeInit.rain();
+    const spd = state.speed / 5;
+    const chars = getChars().replace(' ', '');
+    const grid = Array.from({length: rows}, () => new Array(cols).fill(' '));
+
+    // Fade old chars
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        rainGrid[y][x] = Math.max(0, (rainGrid[y][x] || 0) - spd * 0.03);
+      }
+    }
+
+    // Move drops
+    for (const drop of rainDrops) {
+      drop.y += drop.speed * spd * 0.5;
+      if (drop.y >= rows) {
+        drop.y = -drop.len;
+        drop.speed = 0.5 + Math.random() * 2.0;
+        drop.len = 3 + Math.floor(Math.random() * 10);
+      }
+      for (let i = 0; i < drop.len; i++) {
+        const dy = Math.floor(drop.y) - i;
+        if (dy >= 0 && dy < rows) {
+          const brightness = 1 - i / drop.len;
+          rainGrid[dy][drop.x] = brightness;
+          const ci = Math.floor(Math.random() * chars.length);
+          grid[dy][drop.x] = brightness > 0.1 ? chars[ci] : ' ';
+        }
+      }
+      // Head char
+      const hy = Math.floor(drop.y);
+      if (hy >= 0 && hy < rows) grid[hy][drop.x] = chars[chars.length - 1];
+    }
+    return grid;
+  },
+
+  sphere() {
+    const chars = getChars();
+    const nChars = chars.length;
+    const grid = Array.from({length: rows}, () => new Array(cols).fill(' '));
+    const r = Math.min(cols * 0.38, rows * 0.78);
+    const lcx = cols / 2, lcy = rows / 2;
+    const lightX = Math.cos(t * 0.7) * 0.6, lightY = Math.sin(t * 0.4) * 0.4, lightZ = 0.8;
+    const llen = Math.sqrt(lightX*lightX + lightY*lightY + lightZ*lightZ);
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const nx = (x - lcx) / (r * 0.5);
+        const ny = (y - lcy) / r;
+        const nz2 = 1 - nx*nx - ny*ny;
+        if (nz2 < 0) continue;
+        const nz = Math.sqrt(nz2);
+        const dot = (nx * lightX + ny * lightY + nz * lightZ) / llen;
+        const lit = Math.max(0, dot);
+        const ci = Math.floor(lit * (nChars - 1));
+        grid[y][x] = chars[Math.max(0, ci)];
+      }
+    }
+    return grid;
+  }
+};
+
+function getChars() {
+  return CHARSETS[state.charset] || CHARSETS.classic;
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────
+document.getElementById('mode-group').addEventListener('click', e => {
+  const btn = e.target.closest('.mode-btn');
+  if (!btn) return;
+  state.mode = btn.dataset.mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === state.mode));
+  modeInit[state.mode]?.();
+  saveState();
+});
+
+document.getElementById('color-group').addEventListener('click', e => {
+  const btn = e.target.closest('.color-btn');
+  if (!btn) return;
+  state.color = btn.dataset.color;
+  document.querySelectorAll('.color-btn').forEach(b => b.classList.toggle('active', b.dataset.color === state.color));
+  updateBg();
+  saveState();
+});
+
+document.getElementById('charset').addEventListener('change', e => {
+  state.charset = e.target.value;
+  saveState();
+});
+
+document.getElementById('cols-slider').addEventListener('input', e => {
+  state.cols = parseInt(e.target.value);
+  document.getElementById('cols-val').textContent = state.cols;
+  updateGrid();
+  modeInit[state.mode]?.();
+  saveState();
+});
+
+document.getElementById('speed-slider').addEventListener('input', e => {
+  state.speed = parseInt(e.target.value);
+  document.getElementById('speed-val').textContent = state.speed;
+  saveState();
+});
+
+document.getElementById('crt-toggle').addEventListener('change', e => {
+  state.crt = e.target.checked;
+  saveState();
+});
+
+document.getElementById('glow-toggle').addEventListener('change', e => {
+  state.glow = e.target.checked;
+  saveState();
+});
+
+// Canvas click → mode interaction
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  if (state.mode === 'mandelbrot') {
+    // Reset zoom
+    t = 0;
+  } else if (state.mode === 'fire') {
+    // Explosion
+    const mx = Math.floor((e.clientX - rect.left) / charW);
+    const my = Math.floor((e.clientY - rect.top) / charH);
+    if (fireGrid) {
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -6; dx <= 6; dx++) {
+          const fy = Math.min(rows-1, Math.max(0, my + dy));
+          const fx = Math.min(cols-1, Math.max(0, mx + dx));
+          fireGrid[fy][fx] = 200 + Math.floor(Math.random() * 55);
+        }
+      }
+    }
+  } else if (state.mode === 'rain') {
+    // Pulse
+    const mx = Math.floor((e.clientX - rect.left) / charW);
+    if (rainDrops) {
+      for (const d of rainDrops) {
+        if (Math.abs(d.x - mx) < 5) { d.y = 0; d.speed = 2 + Math.random() * 2; }
+      }
+    }
+  }
+});
+
+// ── Export ────────────────────────────────────────────────────────────────
+function currentTextFrame() {
+  const grid = RENDERERS[state.mode]();
+  return grid.map(row => row.join('')).join('\n');
+}
+
+document.getElementById('btn-copy').addEventListener('click', () => {
+  const txt = currentTextFrame();
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  });
+});
+
+document.getElementById('btn-dl').addEventListener('click', () => {
+  const txt = currentTextFrame();
+  const palette = COLORS[state.color] || COLORS.green;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body{background:${palette.bg};color:${palette.fg};font-family:'Courier New',monospace;
+     font-size:13px;line-height:1.2;padding:20px;white-space:pre;
+     ${state.glow ? 'text-shadow:0 0 6px currentColor;' : ''}}
+</style></head><body>${txt.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ascii-forge-' + state.mode + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+// ── Persistence ───────────────────────────────────────────────────────────
+function saveState() {
+  try { localStorage.setItem('ascii_forge', JSON.stringify(state)); } catch(e){}
+}
+
+function loadState() {
+  try {
+    const s = localStorage.getItem('ascii_forge');
+    if (s) Object.assign(state, JSON.parse(s));
+  } catch(e){}
+}
+
+function applyStateToUI() {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === state.mode));
+  document.querySelectorAll('.color-btn').forEach(b => b.classList.toggle('active', b.dataset.color === state.color));
+  document.getElementById('charset').value = state.charset;
+  document.getElementById('cols-slider').value = state.cols;
+  document.getElementById('cols-val').textContent = state.cols;
+  document.getElementById('speed-slider').value = state.speed;
+  document.getElementById('speed-val').textContent = state.speed;
+  document.getElementById('crt-toggle').checked = state.crt;
+  document.getElementById('glow-toggle').checked = state.glow;
+  updateBg();
+}
+
+function updateBg() {
+  const palette = COLORS[state.color] || COLORS.green;
+  if (palette) {
+    document.body.style.background = palette.bg;
+    canvas.style.background = palette.bg;
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadState();
+applyStateToUI();
+resizeCanvas();
+modeInit[state.mode]?.();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
