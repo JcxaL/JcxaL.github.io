@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Ripple Interference Lab</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03080d;--panel:#081420;--border:#0f2a47;
+  --text:#7ab8d4;--accent:#00d4ff;--font:system-ui,-apple-system,sans-serif
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+body{display:flex;flex-direction:column}
+#hdr{display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+#hdr h1{font-size:12px;font-weight:700;color:#e0f4ff;letter-spacing:.5px;margin-right:4px;white-space:nowrap}
+.btn{background:rgba(0,212,255,.12);border:1px solid var(--border);color:var(--accent);border-radius:5px;padding:3px 9px;font-size:11px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:rgba(0,212,255,.25)}
+.btn.active{background:var(--accent);color:#000;font-weight:700}
+select{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px}
+#cw{flex:1;position:relative;min-height:0;overflow:hidden}
+canvas#gl{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+canvas#ov{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#hint{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(122,184,212,.4);white-space:nowrap;pointer-events:none}
+#ctl{background:var(--panel);border-top:1px solid var(--border);flex-shrink:0;max-height:38vh;overflow-y:auto;padding:6px 10px}
+.row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:2px 0}
+.lbl{font-size:10px;min-width:52px;color:var(--text)}
+input[type=range]{flex:1;min-width:50px;accent-color:var(--accent)}
+.srow{display:grid;grid-template-columns:44px 1fr 1fr 1fr 22px;gap:3px;align-items:center;padding:3px 0;border-top:1px solid #081e36}
+.snum{font-size:11px;font-weight:700}
+.sc{display:flex;flex-direction:column;gap:1px}
+.sc span{font-size:9px}
+.sc input{width:100%}
+.xb{background:rgba(255,60,60,.15);border:1px solid #f44;color:#f66;border-radius:3px;width:22px;height:22px;cursor:pointer;font-size:12px}
+.xb:hover{background:rgba(255,60,60,.35)}
+.swatches{display:flex;gap:3px;flex-wrap:wrap}
+.sw{width:26px;height:16px;border-radius:3px;cursor:pointer;border:2px solid transparent}
+.sw.on{border-color:#fff}
+</style>
+</head>
+<body>
+<div id="hdr">
+  <h1>⟡ Ripple Interference Lab</h1>
+  <select id="preset">
+    <option value="">— Preset —</option>
+    <option value="single">Single</option>
+    <option value="double">Double Slit</option>
+    <option value="tri">Triangle</option>
+    <option value="hex">Hexagon</option>
+    <option value="chaos">Chaos ×6</option>
+  </select>
+  <button class="btn" id="bplay">⏸ Pause</button>
+  <button class="btn" id="bexp">⬇ PNG</button>
+  <button class="btn" id="bsave">💾 Save</button>
+  <button class="btn" id="bload">↑ Load</button>
+  <span id="scount" style="font-size:10px;color:var(--text)"></span>
+</div>
+<div id="cw">
+  <canvas id="gl"></canvas>
+  <canvas id="ov"></canvas>
+  <div id="hint">Click to add · Drag to move · Right-click / long-press to remove</div>
+</div>
+<div id="ctl">
+  <div class="row">
+    <span class="lbl">Mode</span>
+    <div style="display:flex;gap:4px;flex-wrap:wrap" id="mbts">
+      <button class="btn active" data-m="0">Wave</button>
+      <button class="btn" data-m="1">Intensity</button>
+      <button class="btn" data-m="2">Contours</button>
+      <button class="btn" data-m="3">Phase</button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="lbl">Palette</span>
+    <div class="swatches" id="swts"></div>
+  </div>
+  <div class="row">
+    <span class="lbl">Speed</span>
+    <input type="range" id="rspeed" min="0" max="3" step="0.05" value="1">
+    <span id="vspeed" style="font-size:10px;min-width:26px">1.00</span>
+  </div>
+  <div id="sctl"></div>
+</div>
+
+<script>
+// ── WebGL ──────────────────────────────────────────────────────────────────
+const gc = document.getElementById('gl');
+const gl = gc.getContext('webgl',{antialias:false,preserveDrawingBuffer:true});
+
+const VS=`attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+const FS=`
+precision highp float;
+uniform vec2 R;uniform float T;uniform int N;
+uniform vec2 S[8];uniform float F[8],A[8],PH[8];
+uniform float SPD;uniform int MODE,PAL;
+vec3 pal(float t){
+  t=clamp(t,0.,1.);
+  if(PAL==0){return vec3(abs(sin(t*3.14159)),abs(sin(t*3.14159+2.094)),abs(sin(t*3.14159+4.188)));}
+  if(PAL==1){float r=min(1.,t*2.);float g=max(0.,t*1.8-.6);float b=1.-min(1.,t*2.5);return vec3(r*.95+.05,g*.7,b*.8);}
+  if(PAL==2){return vec3(0.,t*.8,min(1.,t*1.6));}
+  if(PAL==3){return vec3(t*.4,min(1.,t*1.3),t*.3);}
+  if(PAL==4){return vec3(t*.6,0.,t);}
+  float r=min(1.,t*2.);float g=max(0.,t*2.-1.);return vec3(r,g*.8,0.);
+}
+void main(){
+  vec2 uv=gl_FragCoord.xy/R;
+  vec2 pos=(uv*2.-1.)*vec2(R.x/R.y,1.);
+  float w=0.,ta=0.;
+  for(int i=0;i<8;i++){
+    if(i>=N)break;
+    float r=length(pos-S[i]);
+    w+=A[i]*sin(F[i]*(r*6.2832-SPD*T)+PH[i]);
+    ta+=A[i];
+  }
+  float nrm=ta>.001?w/ta:0.;
+  float t;
+  if(MODE==0){t=nrm*.5+.5;}
+  else if(MODE==1){t=nrm*nrm;}
+  else if(MODE==2){t=fract(w*1.5+.5);}
+  else{t=abs(nrm);}
+  gl_FragColor=vec4(pal(t),1.);
+}`;
+
+function mkShader(type,src){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog=gl.createProgram();
+gl.attachShader(prog,mkShader(gl.VERTEX_SHADER,VS));
+gl.attachShader(prog,mkShader(gl.FRAGMENT_SHADER,FS));
+gl.linkProgram(prog);gl.useProgram(prog);
+const vb=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const ap=gl.getAttribLocation(prog,'p');
+gl.enableVertexAttribArray(ap);gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
+const U={};
+['R','T','N','S','F','A','PH','SPD','MODE','PAL'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+// ── State ──────────────────────────────────────────────────────────────────
+const MAX=8;
+let srcs=[];let mode=0;let pal=0;let spd=1;let playing=true;
+let elapsed=0;let last=performance.now();let drag=-1;let ptDown=null;let longT=null;
+
+const PALS=[
+  {name:'Plasma',g:'#9930ff,#ff5500,#0088ff'},
+  {name:'Inferno',g:'#1a0030,#ff4400,#ffe060'},
+  {name:'Ocean',g:'#000830,#0066aa,#00e5ff'},
+  {name:'Forest',g:'#001000,#228822,#60ff30'},
+  {name:'Void',g:'#0a0020,#4400aa,#cc88ff'},
+  {name:'Lava',g:'#0d0000,#cc2200,#ffdd00'},
+];
+
+function addSrc(x,y,freq=2.5,amp=1,ph=0){
+  if(srcs.length>=MAX)return;
+  srcs.push({x,y,freq,amp,ph});
+  updateUI();
+}
+function delSrc(i){srcs.splice(i,1);updateUI();}
+
+// ── Presets ────────────────────────────────────────────────────────────────
+function preset(n){
+  srcs=[];
+  const r=0.65;
+  if(n==='single'){addSrc(0,0,2,1,0);}
+  else if(n==='double'){addSrc(-.32,0,3.5,1,0);addSrc(.32,0,3.5,1,0);}
+  else if(n==='tri'){for(let i=0;i<3;i++){const a=i/3*Math.PI*2-Math.PI/2;addSrc(r*Math.cos(a),r*Math.sin(a),2.5,1,0);}}
+  else if(n==='hex'){for(let i=0;i<6;i++){const a=i/6*Math.PI*2;addSrc(.72*Math.cos(a),.72*Math.sin(a),2,1,i*Math.PI/3);}}
+  else{for(let i=0;i<6;i++)addSrc((Math.random()-.5)*1.4,(Math.random()-.5)*1.4,1+Math.random()*5,.5+Math.random()*.7,Math.random()*6.28);}
+}
+
+// ── Coord transform ────────────────────────────────────────────────────────
+function toNDC(cx,cy){
+  const r=gc.getBoundingClientRect();
+  const px=(cx-r.left)/r.width,py=(cy-r.top)/r.height;
+  return{x:(px*2-1)*(r.width/r.height),y:-(py*2-1)};
+}
+function toScreen(nx,ny){
+  const r=gc.getBoundingClientRect();
+  const asp=r.width/r.height;
+  return{x:(nx/asp+1)/2*r.width,y:(1-ny)/2*r.height};
+}
+function hitSrc(ndcX,ndcY){
+  const r=gc.getBoundingClientRect();const asp=r.width/r.height;const hr=.09*asp;
+  for(let i=srcs.length-1;i>=0;i--){const d=srcs[i];const dx=d.x-ndcX,dy=d.y-ndcY;if(Math.sqrt(dx*dx+dy*dy)<hr)return i;}
+  return -1;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+const ov=document.getElementById('ov');
+const ctx2=ov.getContext('2d');
+
+function resizeGL(){
+  const w=document.getElementById('cw');
+  gc.width=w.clientWidth*devicePixelRatio|0;
+  gc.height=w.clientHeight*devicePixelRatio|0;
+  gl.viewport(0,0,gc.width,gc.height);
+}
+
+function drawOv(){
+  const r=gc.getBoundingClientRect();
+  ov.width=r.width;ov.height=r.height;
+  ctx2.clearRect(0,0,r.width,r.height);
+  srcs.forEach((s,i)=>{
+    const {x,y}=toScreen(s.x,s.y);
+    const hue=i*50+170;
+    ctx2.beginPath();ctx2.arc(x,y,11,0,Math.PI*2);
+    ctx2.strokeStyle=`hsla(${hue},100%,70%,.9)`;ctx2.lineWidth=2;ctx2.stroke();
+    ctx2.fillStyle=`hsla(${hue},100%,70%,.25)`;ctx2.fill();
+    ctx2.fillStyle='#fff';ctx2.font='bold 10px system-ui';
+    ctx2.textAlign='center';ctx2.textBaseline='middle';ctx2.fillText(i+1,x,y);
+  });
+}
+
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=(now-last)/1000;last=now;
+  if(playing)elapsed+=dt;
+  resizeGL();
+  gl.uniform2f(U.R,gc.width,gc.height);
+  gl.uniform1f(U.T,elapsed);
+  gl.uniform1i(U.N,srcs.length);
+  gl.uniform1f(U.SPD,spd);
+  gl.uniform1i(U.MODE,mode);
+  gl.uniform1i(U.PAL,pal);
+  const sf=new Float32Array(16),ff=new Float32Array(8),af=new Float32Array(8),pf=new Float32Array(8);
+  srcs.forEach((s,i)=>{sf[i*2]=s.x;sf[i*2+1]=s.y;ff[i]=s.freq;af[i]=s.amp;pf[i]=s.ph;});
+  gl.uniform2fv(U.S,sf);gl.uniform1fv(U.F,ff);gl.uniform1fv(U.A,af);gl.uniform1fv(U.PH,pf);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  drawOv();
+}
+
+// ── Pointer events ─────────────────────────────────────────────────────────
+gc.addEventListener('contextmenu',e=>e.preventDefault());
+gc.addEventListener('mousedown',e=>{
+  e.preventDefault();
+  const{x,y}=toNDC(e.clientX,e.clientY);
+  if(e.button===2){const i=hitSrc(x,y);if(i>=0)delSrc(i);return;}
+  const i=hitSrc(x,y);
+  if(i>=0){drag=i;}else{ptDown={cx:e.clientX,cy:e.clientY,x,y};}
+});
+gc.addEventListener('mousemove',e=>{
+  if(drag>=0){const{x,y}=toNDC(e.clientX,e.clientY);srcs[drag].x=x;srcs[drag].y=y;}
+});
+gc.addEventListener('mouseup',e=>{
+  if(drag>=0){drag=-1;return;}
+  if(ptDown){
+    const dx=Math.abs(e.clientX-ptDown.cx),dy=Math.abs(e.clientY-ptDown.cy);
+    if(dx<5&&dy<5)addSrc(ptDown.x,ptDown.y);
+    ptDown=null;
+  }
+});
+
+gc.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const t=e.touches[0];
+  const{x,y}=toNDC(t.clientX,t.clientY);
+  const i=hitSrc(x,y);
+  if(i>=0){
+    drag=i;
+    longT=setTimeout(()=>{delSrc(i);drag=-1;},600);
+  }else{
+    ptDown={cx:t.clientX,cy:t.clientY,x,y};
+  }
+},{passive:false});
+
+gc.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  clearTimeout(longT);
+  if(drag>=0){const t=e.touches[0];const{x,y}=toNDC(t.clientX,t.clientY);srcs[drag].x=x;srcs[drag].y=y;}
+},{passive:false});
+
+gc.addEventListener('touchend',e=>{
+  e.preventDefault();
+  clearTimeout(longT);
+  if(drag>=0){drag=-1;return;}
+  if(ptDown){
+    const t=e.changedTouches[0];
+    const dx=Math.abs(t.clientX-ptDown.cx),dy=Math.abs(t.clientY-ptDown.cy);
+    if(dx<8&&dy<8)addSrc(ptDown.x,ptDown.y);
+    ptDown=null;
+  }
+},{passive:false});
+
+// ── Source controls UI ─────────────────────────────────────────────────────
+function updateUI(){
+  document.getElementById('scount').textContent=`${srcs.length}/${MAX} sources`;
+  const c=document.getElementById('sctl');c.innerHTML='';
+  srcs.forEach((s,i)=>{
+    const hue=i*50+170;
+    const d=document.createElement('div');d.className='srow';
+    d.innerHTML=`<span class="snum" style="color:hsl(${hue},100%,65%)">S${i+1}</span>
+    <div class="sc"><span>Freq ${s.freq.toFixed(1)}</span><input type="range" min="0.5" max="8" step="0.1" value="${s.freq}" data-i="${i}" data-p="freq"></div>
+    <div class="sc"><span>Amp ${s.amp.toFixed(2)}</span><input type="range" min="0.1" max="2" step="0.05" value="${s.amp}" data-i="${i}" data-p="amp"></div>
+    <div class="sc"><span>Phase ${(s.ph/Math.PI).toFixed(1)}π</span><input type="range" min="0" max="6.28" step="0.1" value="${s.ph}" data-i="${i}" data-p="ph"></div>
+    <button class="xb" data-d="${i}">✕</button>`;
+    c.appendChild(d);
+  });
+  c.querySelectorAll('input').forEach(r=>{
+    r.addEventListener('input',e=>{
+      const i=+e.target.dataset.i,p=e.target.dataset.p,v=+e.target.value;
+      srcs[i][p]=v;
+      const sp=e.target.previousElementSibling;
+      if(p==='freq')sp.textContent=`Freq ${v.toFixed(1)}`;
+      else if(p==='amp')sp.textContent=`Amp ${v.toFixed(2)}`;
+      else sp.textContent=`Phase ${(v/Math.PI).toFixed(1)}π`;
+    });
+  });
+  c.querySelectorAll('[data-d]').forEach(b=>b.addEventListener('click',()=>delSrc(+b.dataset.d)));
+}
+
+// ── Mode buttons ────────────────────────────────────────────────────────────
+document.getElementById('mbts').querySelectorAll('.btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    mode=+b.dataset.m;
+    document.querySelectorAll('#mbts .btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+  });
+});
+
+// ── Palette ─────────────────────────────────────────────────────────────────
+const sw=document.getElementById('swts');
+PALS.forEach((p,i)=>{
+  const d=document.createElement('div');
+  d.className='sw'+(i===0?' on':'');
+  d.style.background=`linear-gradient(90deg,${p.g})`;
+  d.title=p.name;
+  d.addEventListener('click',()=>{pal=i;sw.querySelectorAll('.sw').forEach((x,j)=>x.classList.toggle('on',j===i));});
+  sw.appendChild(d);
+});
+
+// ── Speed ────────────────────────────────────────────────────────────────────
+const rs=document.getElementById('rspeed'),vs=document.getElementById('vspeed');
+rs.addEventListener('input',()=>{spd=+rs.value;vs.textContent=spd.toFixed(2);});
+
+// ── Play / Export / Save / Load ──────────────────────────────────────────────
+document.getElementById('bplay').addEventListener('click',function(){
+  playing=!playing;this.textContent=playing?'⏸ Pause':'▶ Play';
+});
+document.getElementById('bexp').addEventListener('click',()=>{
+  const a=document.createElement('a');
+  a.download='ripple-'+Date.now()+'.png';
+  a.href=gc.toDataURL('image/png');a.click();
+});
+document.getElementById('bsave').addEventListener('click',function(){
+  try{
+    localStorage.setItem('rip_s',JSON.stringify(srcs));
+    localStorage.setItem('rip_m',mode);
+    localStorage.setItem('rip_p',pal);
+    localStorage.setItem('rip_spd',spd);
+    this.textContent='✓ Saved';setTimeout(()=>this.textContent='💾 Save',1500);
+  }catch(e){}
+});
+document.getElementById('bload').addEventListener('click',()=>{
+  try{
+    const s=localStorage.getItem('rip_s');if(!s)return;
+    srcs=JSON.parse(s);
+    mode=+(localStorage.getItem('rip_m')||0);
+    pal=+(localStorage.getItem('rip_p')||0);
+    spd=+(localStorage.getItem('rip_spd')||1);
+    rs.value=spd;vs.textContent=spd.toFixed(2);
+    document.querySelectorAll('#mbts .btn').forEach(b=>b.classList.toggle('active',+b.dataset.m===mode));
+    sw.querySelectorAll('.sw').forEach((x,i)=>x.classList.toggle('on',i===pal));
+    updateUI();
+  }catch(e){}
+});
+document.getElementById('preset').addEventListener('change',function(){
+  if(this.value){preset(this.value);this.value='';}
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+resizeGL();
+preset('double');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

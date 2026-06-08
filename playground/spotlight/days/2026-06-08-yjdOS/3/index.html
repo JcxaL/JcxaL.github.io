@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Text Scramble Decoder</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#04060a;color:#e8f0ff;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;min-height:100vh;align-items:center;justify-content:flex-start;padding:2rem 1rem}
+h1{font-size:clamp(1.3rem,4vw,2rem);font-weight:900;text-align:center;margin-bottom:.3rem}
+h1 span{background:linear-gradient(135deg,#ff6bff,#6b88ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.sub{color:#333d5a;font-size:.85rem;text-align:center;margin-bottom:1.5rem}
+
+.controls{display:flex;gap:.6rem;flex-wrap:wrap;justify-content:center;margin-bottom:2rem;align-items:center}
+.ctl-chip{background:#0a0d16;border:1px solid #1a2040;color:#6b88ff;border-radius:6px;padding:.35rem .8rem;font-size:.78rem;cursor:pointer;transition:.15s}
+.ctl-chip:hover,.ctl-chip.active{background:#6b88ff;color:#fff}
+.speed-wrap{display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:#333d5a}
+input[type=range]{accent-color:#6b88ff;width:80px}
+
+/* ── Main scramble display ──────────────────────── */
+.stage{width:100%;max-width:700px;min-height:120px;display:flex;align-items:center;justify-content:center;margin:0 auto 2rem;cursor:pointer;position:relative}
+.stage-text{
+  font-size:clamp(2rem,5vw,3.5rem);font-weight:900;
+  text-align:center;line-height:1.2;
+  font-family:monospace;
+  letter-spacing:.02em;
+  color:#e8f0ff;
+  user-select:none;
+}
+.stage-text .dud{color:#3d4a70;animation:flicker .1s infinite}
+@keyframes flicker{0%,100%{opacity:1}50%{opacity:.6}}
+.stage-hint{position:absolute;bottom:-1.4rem;left:50%;transform:translateX(-50%);font-size:.72rem;color:#333d5a;white-space:nowrap}
+
+/* ── Grid of scramble examples ──────────────────── */
+.examples-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;width:100%;max-width:900px;margin-bottom:2rem}
+.ex-card{background:#0a0d16;border:1px solid #1a2040;border-radius:12px;padding:1.2rem;cursor:pointer;transition:.15s}
+.ex-card:hover{border-color:#6b88ff;background:#0d1020}
+.ex-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#333d5a;margin-bottom:.5rem}
+.ex-text{font-family:monospace;font-size:1.1rem;font-weight:700;color:#c0ccff;line-height:1.4;min-height:3.5rem;display:flex;align-items:center}
+.ex-text .dud{color:#2a3555;animation:flicker .1s infinite}
+.ex-mode{font-size:.7rem;color:#2a3555;margin-top:.4rem}
+
+/* ── Char set selector ──────────────────────────── */
+.charset-pills{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;margin-bottom:1.5rem}
+.cs-pill{background:#0a0d16;border:1px solid #1a2040;color:#333d5a;border-radius:20px;padding:.25rem .8rem;font-size:.75rem;cursor:pointer;font-family:monospace}
+.cs-pill.active{background:#1a2040;color:#6b88ff;border-color:#6b88ff}
+
+.divider{color:#1a2040;font-size:.75rem;letter-spacing:2px;margin:1rem 0;text-transform:uppercase}
+
+footer{margin-top:2rem;text-align:center;color:#1a2040;font-size:.72rem;border-top:1px solid #0a0d16;width:100%;max-width:900px;padding-top:1rem}
+</style>
+</head>
+<body>
+
+<h1>Text <span>Scramble</span> Decoder</h1>
+<p class="sub">Characters cycle through noise before resolving — click any text to trigger</p>
+
+<div class="controls">
+  <button class="ctl-chip active" id="btn-auto">Auto Cycle</button>
+  <button class="ctl-chip" id="btn-pause">Pause</button>
+  <div class="speed-wrap">
+    Speed <input type="range" id="rspeed" min="0.3" max="3" step="0.1" value="1">
+    <span id="vspeed">1.0×</span>
+  </div>
+</div>
+
+<div class="stage" id="stage" title="Click to re-decode">
+  <div class="stage-text" id="main-text"></div>
+  <div class="stage-hint">Click to re-decode</div>
+</div>
+
+<div class="charset-pills">
+  <button class="cs-pill active" data-cs="hacker">Hacker &#9608;</button>
+  <button class="cs-pill" data-cs="symbols">Symbols ✦✧</button>
+  <button class="cs-pill" data-cs="numbers">Numbers 0–9</button>
+  <button class="cs-pill" data-cs="braille">Braille ⠿</button>
+  <button class="cs-pill" data-cs="mixed">Mixed ∞</button>
+</div>
+
+<div class="divider">── hover or click each to scramble ──</div>
+
+<div class="examples-grid" id="examples"></div>
+
+<footer>Inspired by CodePen community · css-tricks.com text-scramble · Classic hacker-terminal UI effect · UI Spotlight Day 23 · Drop #3</footer>
+
+<script>
+const CHARSETS = {
+  hacker: '!<>-_\\/[]{}—=+*^?#│░▒▓█▄▀■',
+  symbols: '✦✧✸✹✺✻✼✽✾✿❀❁❂❃❄❅❆❇◆◇◈◉◊○●',
+  numbers: '0123456789₀₁₂₃₄₅₆₇₈₉⓪①②③④⑤⑥⑦⑧⑨',
+  braille: '⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠿',
+  mixed: '!<>-_#?@0-9▒░✦◈⠿✸₀①',
+};
+let currentCharset = CHARSETS.hacker;
+let globalSpeed = 1;
+
+class Scramble {
+  constructor(el) {
+    this.el = el;
+    this.frame = 0;
+    this.req = null;
+    this.resolve = null;
+    this.queue = [];
+    this.update = this.update.bind(this);
+  }
+
+  setText(text, speed = 1) {
+    const old = this.el.innerText || '';
+    const len = Math.max(old.length, text.length);
+    clearAnimationFrame(this.req);
+    this.queue = [];
+    for (let i = 0; i < len; i++) {
+      const from = old[i] || '';
+      const to = text[i] || '';
+      const start = Math.floor(Math.random() * 30 / speed);
+      const end = start + Math.floor(Math.random() * 30 / speed) + 5;
+      this.queue.push({ from, to, start, end, char: '' });
+    }
+    this.frame = 0;
+    return new Promise(r => {
+      this.resolve = r;
+      this.req = requestAnimationFrame(this.update);
+    });
+  }
+
+  update() {
+    let out = '';
+    let done = 0;
+    for (const item of this.queue) {
+      if (this.frame >= item.end) {
+        done++;
+        out += item.to;
+      } else if (this.frame >= item.start) {
+        if (!item.char || Math.random() < 0.28) {
+          item.char = randomChar();
+        }
+        out += `<span class="dud">${item.char}</span>`;
+      } else {
+        out += item.from;
+      }
+    }
+    this.el.innerHTML = out;
+    if (done === this.queue.length) {
+      if (this.resolve) this.resolve();
+    } else {
+      this.req = requestAnimationFrame(this.update);
+    }
+    this.frame++;
+  }
+}
+
+function clearAnimationFrame(id) { if (id) cancelAnimationFrame(id); }
+function randomChar() {
+  return currentCharset[Math.floor(Math.random() * currentCharset.length)];
+}
+
+// ── Main stage ───────────────────────────────────
+const phrases = [
+  'INITIALIZING…',
+  'ACCESS GRANTED',
+  'DECRYPTING DATA',
+  'SIGNAL ACQUIRED',
+  'SYSTEM ONLINE',
+  'LOADING MODULE',
+  'AUTHENTICATION OK',
+  'STREAM CONNECTED',
+];
+let phraseIdx = 0;
+let autoCycleOn = true;
+let cycleTimeout = null;
+
+const mainEl = document.getElementById('main-text');
+const mainScramble = new Scramble(mainEl);
+
+async function showPhrase(idx) {
+  await mainScramble.setText(phrases[idx], globalSpeed);
+  if (autoCycleOn) {
+    cycleTimeout = setTimeout(() => {
+      phraseIdx = (phraseIdx + 1) % phrases.length;
+      showPhrase(phraseIdx);
+    }, 2500);
+  }
+}
+showPhrase(0);
+
+document.getElementById('stage').addEventListener('click', () => {
+  clearTimeout(cycleTimeout);
+  phraseIdx = (phraseIdx + 1) % phrases.length;
+  showPhrase(phraseIdx);
+});
+
+document.getElementById('btn-auto').addEventListener('click', function() {
+  autoCycleOn = true;
+  this.classList.add('active');
+  document.getElementById('btn-pause').classList.remove('active');
+  phraseIdx = (phraseIdx + 1) % phrases.length;
+  showPhrase(phraseIdx);
+});
+document.getElementById('btn-pause').addEventListener('click', function() {
+  autoCycleOn = false;
+  clearTimeout(cycleTimeout);
+  this.classList.add('active');
+  document.getElementById('btn-auto').classList.remove('active');
+});
+
+const rspeed = document.getElementById('rspeed');
+rspeed.addEventListener('input', () => {
+  globalSpeed = +rspeed.value;
+  document.getElementById('vspeed').textContent = globalSpeed.toFixed(1) + '×';
+});
+
+// ── Charset pills ────────────────────────────────
+document.querySelectorAll('.cs-pill').forEach(p => {
+  p.addEventListener('click', () => {
+    document.querySelectorAll('.cs-pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    currentCharset = CHARSETS[p.dataset.cs] || CHARSETS.hacker;
+    rebuildExamples();
+  });
+});
+
+// ── Example cards ────────────────────────────────
+const EXAMPLES = [
+  { label: 'Dev Portfolio', text: ['HELLO,\nWORLD.', 'I BUILD\nTHINGS.', 'LET\'S\nCOLLABORATE.'] },
+  { label: 'System Status', text: ['SCANNING…', 'THREAT\nDETECTED', 'NEUTRALIZED'] },
+  { label: 'Loading State', text: ['LOADING…', 'PLEASE\nWAIT', 'READY ✓'] },
+  { label: 'Error Message', text: ['ERROR\n0x00FF', 'RETRY?', 'CONNECTION\nFAILED'] },
+  { label: 'Game HUD', text: ['PLAYER 1\nREADY', 'LEVEL UP!', 'HIGH SCORE\n0089520'] },
+  { label: 'Glitch Art', text: ['RE:ALITY', 'D̵A̵T̵A̵', 'SIM̸ULA̷TED'] },
+];
+
+const exGrid = document.getElementById('examples');
+const exScrambles = [];
+
+function rebuildExamples() {
+  exGrid.innerHTML = '';
+  exScrambles.length = 0;
+  EXAMPLES.forEach((ex, i) => {
+    const card = document.createElement('div');
+    card.className = 'ex-card';
+    card.innerHTML = `<div class="ex-label">${ex.label}</div><div class="ex-text"></div><div class="ex-mode">${ex.text.length} phrase${ex.text.length>1?'s':''} cycling</div>`;
+    exGrid.appendChild(card);
+
+    const textEl = card.querySelector('.ex-text');
+    const sc = new Scramble(textEl);
+    let idx = 0;
+    exScrambles.push(sc);
+
+    let timer = null;
+    async function cycle() {
+      await sc.setText(ex.text[idx], globalSpeed);
+      timer = setTimeout(() => {
+        idx = (idx + 1) % ex.text.length;
+        cycle();
+      }, 2200 + Math.random() * 1000);
+    }
+
+    // stagger start
+    setTimeout(() => cycle(), i * 400);
+
+    card.addEventListener('click', () => {
+      clearTimeout(timer);
+      idx = (idx + 1) % ex.text.length;
+      cycle();
+    });
+    card.addEventListener('mouseenter', () => {
+      clearTimeout(timer);
+      sc.setText(ex.text[idx], globalSpeed * 2);
+    });
+    card.addEventListener('mouseleave', () => {
+      timer = setTimeout(() => { idx = (idx+1)%ex.text.length; cycle(); }, 800);
+    });
+  });
+}
+
+rebuildExamples();
+</script>
+</body>
+</html>
