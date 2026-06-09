@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cursor Gravity Typography · UI Spotlight</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:#060610;min-height:100dvh;overflow:hidden;
+  display:grid;place-items:center;
+  font-family:system-ui,-apple-system,sans-serif;
+  cursor:none;
+}
+
+/* Custom cursor */
+#csr{
+  position:fixed;width:16px;height:16px;border-radius:50%;
+  background:#fff;pointer-events:none;z-index:100;
+  transform:translate(-50%,-50%);mix-blend-mode:difference;
+  transition:width .2s,height .2s;
+}
+#csr-ring{
+  position:fixed;width:44px;height:44px;border-radius:50%;
+  border:1.5px solid rgba(255,255,255,.35);pointer-events:none;z-index:99;
+  transform:translate(-50%,-50%);
+  transition:width .3s,height .3s,opacity .3s;
+}
+
+.stage{
+  position:relative;width:min(90vw,900px);text-align:center;
+  user-select:none;
+}
+
+/* Each word row */
+.row{
+  display:flex;justify-content:center;flex-wrap:wrap;gap:.05em;
+  line-height:1;margin:.06em 0;
+}
+
+.letter{
+  display:inline-block;
+  font-size:clamp(52px,8vw,110px);
+  font-weight:700;color:#fff;
+  transition:color .4s ease;
+  will-change:transform;
+  /* transform applied via JS */
+}
+
+/* Gradient palette cycling for letters */
+.letter.active{color:var(--lc,#7ca0ff)}
+
+/* Hint text */
+.hint{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  font-size:11px;color:rgba(255,255,255,.25);letter-spacing:.1em;
+  pointer-events:none;
+}
+
+/* Mode picker */
+#modes{
+  position:fixed;top:16px;right:16px;z-index:10;
+  display:flex;gap:6px;
+}
+.mbtn{
+  padding:5px 11px;border-radius:6px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);
+  font-size:11px;cursor:pointer;transition:all .15s;
+}
+.mbtn.on{background:rgba(124,160,255,.22);border-color:#7ca0ff;color:#7ca0ff}
+
+#topline{
+  position:fixed;top:16px;left:16px;font-size:11px;color:rgba(255,255,255,.25);letter-spacing:.07em;
+}
+.footer{
+  position:fixed;bottom:10px;left:50%;transform:translateX(-50%);
+  font-size:9px;color:rgba(255,255,255,.12);white-space:nowrap;
+}
+</style>
+</head>
+<body>
+
+<div id="csr"></div>
+<div id="csr-ring"></div>
+
+<div id="topline">CURSOR GRAVITY TYPOGRAPHY · MOVE CURSOR NEAR LETTERS</div>
+
+<div id="modes">
+  <button class="mbtn on" onclick="setMode('attract')">Attract</button>
+  <button class="mbtn" onclick="setMode('repel')">Repel</button>
+  <button class="mbtn" onclick="setMode('wave')">Wave</button>
+</div>
+
+<div class="stage" id="stage">
+  <!-- built by JS -->
+</div>
+
+<div class="hint">MOVE · ATTRACT · REPEL · WAVE</div>
+<div class="footer">Inspired by kinetic typography trends 2026 · UI Spotlight Day 24 · Drop #3</div>
+
+<script>
+const WORDS = ['KINETIC', 'TYPE'];
+const COLORS = ['#7ca0ff','#5de0aa','#ff7eb0','#ffb84d','#b87cff','#f0f0ff'];
+
+const stage = document.getElementById('stage');
+const csr = document.getElementById('csr');
+const cring = document.getElementById('csr-ring');
+
+// Build letter spans
+const letters = [];
+let colorIdx = 0;
+WORDS.forEach(word => {
+  const row = document.createElement('div');
+  row.className = 'row';
+  [...word].forEach(ch => {
+    const sp = document.createElement('span');
+    sp.className = 'letter';
+    sp.textContent = ch;
+    sp.style.setProperty('--lc', COLORS[colorIdx++ % COLORS.length]);
+    row.appendChild(sp);
+    letters.push({
+      el: sp,
+      ox: 0, oy: 0,     // origin (set after layout)
+      cx: 0, cy: 0,     // current position
+      vx: 0, vy: 0,     // velocity
+    });
+  });
+  stage.appendChild(row);
+});
+
+// Update origins after layout
+function updateOrigins(){
+  const sr = stage.getBoundingClientRect();
+  letters.forEach(l => {
+    const r = l.el.getBoundingClientRect();
+    l.ox = r.left + r.width/2 - sr.left;
+    l.oy = r.top + r.height/2 - sr.top;
+    if (!l.initDone) { l.cx = l.ox; l.cy = l.oy; l.initDone = true; }
+  });
+}
+setTimeout(updateOrigins, 100);
+window.addEventListener('resize', updateOrigins);
+
+let mx = -1000, my = -1000;
+let ringX = -1000, ringY = -1000;
+let mode = 'attract';
+
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+
+function setMode(m){
+  mode = m;
+  document.querySelectorAll('.mbtn').forEach(b => b.classList.remove('on'));
+  event.currentTarget.classList.add('on');
+}
+
+// Spring physics
+const RADIUS = 180;
+const SPRING_K = 0.06;
+const DAMP = 0.78;
+const ATTRACT_FORCE = 2.8;
+const REPEL_FORCE = 3.2;
+
+let waveT = 0;
+
+function tick(){
+  // Smooth cursor ring
+  ringX += (mx - ringX) * 0.12;
+  ringY += (my - ringY) * 0.12;
+  csr.style.left = mx + 'px'; csr.style.top = my + 'px';
+  cring.style.left = ringX + 'px'; cring.style.top = ringY + 'px';
+
+  const sr = stage.getBoundingClientRect();
+  waveT += 0.04;
+
+  letters.forEach((l, i) => {
+    // Target is origin by default
+    let tx = l.ox, ty = l.oy;
+
+    if (mode === 'wave') {
+      // Sine wave ripple from left to right
+      const phase = i * 0.5 - waveT * 2;
+      ty = l.oy + Math.sin(phase) * 50;
+      tx = l.ox + Math.cos(phase * 0.5) * 20;
+    } else {
+      // Convert cursor to stage-relative
+      const cx = mx - sr.left, cy = my - sr.top;
+      const dx = cx - l.ox, dy = cy - l.oy;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      if (dist < RADIUS && dist > 0.1) {
+        const norm = 1 / dist;
+        if (mode === 'attract') {
+          const f = (1 - dist/RADIUS) * ATTRACT_FORCE;
+          tx = l.ox + dx * f * .6;
+          ty = l.oy + dy * f * .6;
+        } else { // repel
+          const f = (1 - dist/RADIUS) * REPEL_FORCE;
+          tx = l.ox - dx * norm * f * 60;
+          ty = l.oy - dy * norm * f * 60;
+        }
+        // Colorize active letters
+        l.el.classList.add('active');
+      } else {
+        l.el.classList.remove('active');
+      }
+    }
+
+    // Spring toward target
+    l.vx += (tx - l.cx) * SPRING_K;
+    l.vy += (ty - l.cy) * SPRING_K;
+    l.vx *= DAMP; l.vy *= DAMP;
+    l.cx += l.vx; l.cy += l.vy;
+
+    l.el.style.transform = `translate(${(l.cx-l.ox).toFixed(1)}px, ${(l.cy-l.oy).toFixed(1)}px)`;
+  });
+
+  requestAnimationFrame(tick);
+}
+tick();
+
+// Touch support
+document.addEventListener('touchmove', e => {
+  mx = e.touches[0].clientX; my = e.touches[0].clientY;
+}, { passive: true });
+document.addEventListener('touchstart', e => {
+  mx = e.touches[0].clientX; my = e.touches[0].clientY;
+}, { passive: true });
+</script>
+</body>
+</html>
