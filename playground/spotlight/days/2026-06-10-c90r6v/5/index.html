@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Split-Flap Display · Drop 5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0b0a06;color:#fff;font-family:system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+
+.board{
+  background:#111008;border:3px solid #2a2510;border-radius:12px;
+  padding:20px 24px;box-shadow:0 20px 80px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.04);
+  max-width:96vw;
+}
+.board-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #1a1810;
+}
+.board-title{font-size:.65rem;letter-spacing:.18em;color:#5a5030;text-transform:uppercase}
+.board-dot{width:8px;height:8px;border-radius:50%;background:#ff4422;box-shadow:0 0 6px #ff4422;animation:blink 1.2s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.board-time{font-size:.65rem;color:#4a4028;letter-spacing:.06em;font-variant-numeric:tabular-nums}
+
+.rows{display:flex;flex-direction:column;gap:6px}
+.row{display:flex;align-items:center;gap:6px}
+.row-label{font-size:.6rem;color:#3a3020;min-width:28px;text-align:right;text-transform:uppercase;letter-spacing:.08em}
+
+.tiles{display:flex;gap:3px;flex-wrap:nowrap}
+
+/* Individual tile */
+.tile{
+  position:relative;width:clamp(20px,4.5vw,38px);height:clamp(28px,6vw,52px);
+  perspective:200px;
+}
+.tile-inner{
+  width:100%;height:100%;position:relative;
+  transform-style:preserve-3d;
+}
+/* Static display */
+.tile-face{
+  background:linear-gradient(180deg,#1a1810 0%,#141208 50%,#1a1810 100%);
+  border:1px solid #2a2518;border-radius:4px;
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(12px,3vw,28px);font-weight:800;
+  color:#f5c842;
+  letter-spacing:0;
+  text-shadow:0 0 8px rgba(245,200,66,.5);
+  position:absolute;
+  overflow:hidden;
+  font-family:monospace;
+}
+.tile-face::after{
+  content:'';position:absolute;left:0;right:0;top:50%;height:1px;
+  background:rgba(0,0,0,.6);
+}
+/* Flip animation */
+.tile.flipping .tile-face{
+  animation:flip-anim var(--fd,.22s) linear;
+}
+@keyframes flip-anim{
+  0%{transform:rotateX(0deg)}
+  49%{transform:rotateX(-90deg);opacity:.3}
+  50%{transform:rotateX(90deg);opacity:.3}
+  100%{transform:rotateX(0deg)}
+}
+
+/* Row status color */
+.row.status-dep .tile-face{color:#f5c842;text-shadow:0 0 8px rgba(245,200,66,.5)}
+.row.status-brd .tile-face{color:#22c55e;text-shadow:0 0 8px rgba(34,197,94,.5)}
+.row.status-del .tile-face{color:#ef4444;text-shadow:0 0 8px rgba(239,68,68,.5)}
+.row.status-arr .tile-face{color:#60a5fa;text-shadow:0 0 8px rgba(96,165,250,.5)}
+
+.status-badge{
+  font-size:.58rem;padding:2px 7px;border-radius:4px;letter-spacing:.05em;font-weight:600;white-space:nowrap;flex-shrink:0;
+}
+.status-dep .status-badge{background:#2a2200;color:#f5c842;border:1px solid #4a3c00}
+.status-brd .status-badge{background:#0a2200;color:#22c55e;border:1px solid #144400}
+.status-del .status-badge{background:#2a0000;color:#ef4444;border:1px solid #440000}
+.status-arr .status-badge{background:#001233;color:#60a5fa;border:1px solid #002255}
+
+.hint{font-size:.65rem;color:#2a2510;margin-top:16px;text-align:center}
+
+/* Controls */
+#ctrl{margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#ctrl button{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#aaa;padding:5px 14px;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit}
+#ctrl button:hover{background:rgba(255,255,255,.12);color:#fff}
+
+footer{margin-top:24px;font-size:.65rem;color:#2a2510}
+</style>
+</head>
+<body>
+
+<div class="board" id="board">
+  <div class="board-header">
+    <span class="board-title">Departures</span>
+    <span class="board-dot"></span>
+    <span class="board-time" id="clock">00:00:00</span>
+  </div>
+  <div class="rows" id="rows"></div>
+  <div class="hint">hover any row to re-scramble · auto-updates every 8s</div>
+</div>
+
+<div id="ctrl">
+  <button id="btn-all">Scramble All</button>
+  <button id="btn-gate">New Gate</button>
+  <button id="btn-theme" data-t="dep">Status: DEP</button>
+</div>
+
+<footer>Inspired by Solari split-flap mechanical displays · UI Spotlight Day 25 · Drop #5</footer>
+
+<script>
+const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ·-';
+const STATUSES = [
+  {key:'dep',label:'DEPARTING',cls:'status-dep'},
+  {key:'brd',label:'BOARDING',cls:'status-brd'},
+  {key:'del',label:'DELAYED',cls:'status-del'},
+  {key:'arr',label:'ARRIVED',cls:'status-arr'},
+];
+
+const FLIGHTS = [
+  {dest:'SAN FRANCISCO', code:'UA 847', gate:'B12', time:'08:45'},
+  {dest:'NEW YORK JFK', code:'AA 312', gate:'A3', time:'09:20'},
+  {dest:'LONDON HEATHROW', code:'BA 178', gate:'C7', time:'09:55'},
+  {dest:'TOKYO NARITA', code:'JL 004', gate:'D14', time:'10:30'},
+  {dest:'PARIS CDG', code:'AF 065', gate:'B5', time:'11:15'},
+  {dest:'SYDNEY', code:'QF 011', gate:'E2', time:'12:00'},
+];
+
+const rowsEl = document.getElementById('rows');
+let rows = [];
+
+function makeTiles(str, maxLen){
+  const padded = str.padEnd(maxLen,' ').slice(0,maxLen);
+  return padded.split('').map(ch=>{
+    const tile = document.createElement('div');
+    tile.className='tile';
+    const face = document.createElement('div');
+    face.className='tile-face';
+    face.textContent=ch;
+    tile.appendChild(face);
+    return {tile,face,current:ch};
+  });
+}
+
+function buildRow(flight, statusIdx){
+  const rowEl = document.createElement('div');
+  const st = STATUSES[statusIdx];
+  rowEl.className = 'row ' + st.cls;
+
+  const badge = document.createElement('span');
+  badge.className='status-badge';
+  badge.textContent=st.label;
+
+  // TIME tiles (5 chars)
+  const timeTiles = makeTiles(flight.time, 5);
+  // CODE tiles (7 chars)
+  const codeTiles = makeTiles(flight.code, 7);
+  // DEST tiles (16 chars)
+  const destTiles = makeTiles(flight.dest, 16);
+  // GATE tiles (3 chars)
+  const gateTiles = makeTiles(flight.gate, 3);
+
+  const timeDiv = document.createElement('div'); timeDiv.className='tiles';
+  const codeDiv = document.createElement('div'); codeDiv.className='tiles';
+  const destDiv = document.createElement('div'); destDiv.className='tiles';
+  const gateDiv = document.createElement('div'); gateDiv.className='tiles';
+
+  timeTiles.forEach(t=>timeDiv.appendChild(t.tile));
+  codeTiles.forEach(t=>codeDiv.appendChild(t.tile));
+  destTiles.forEach(t=>destDiv.appendChild(t.tile));
+  gateTiles.forEach(t=>gateDiv.appendChild(t.tile));
+
+  rowEl.appendChild(timeDiv);
+  rowEl.appendChild(codeDiv);
+  rowEl.appendChild(destDiv);
+  rowEl.appendChild(gateDiv);
+  rowEl.appendChild(badge);
+
+  rowsEl.appendChild(rowEl);
+
+  const allTiles = [...timeTiles,...codeTiles,...destTiles,...gateTiles];
+  const row = {el:rowEl, tiles:allTiles, flight, statusIdx, badge, st};
+  rows.push(row);
+
+  rowEl.addEventListener('mouseenter',()=>scrambleRow(row));
+  return row;
+}
+
+FLIGHTS.forEach((f,i)=>buildRow(f, i%STATUSES.length));
+
+function flipTile(tileObj, newChar, delay=0){
+  return new Promise(res=>{
+    setTimeout(()=>{
+      tileObj.tile.classList.add('flipping');
+      // At 50% of animation, swap the character
+      setTimeout(()=>{
+        tileObj.face.textContent = newChar;
+        tileObj.current = newChar;
+      }, 110);
+      tileObj.tile.addEventListener('animationend', function h(){
+        tileObj.tile.removeEventListener('animationend',h);
+        tileObj.tile.classList.remove('flipping');
+        res();
+      });
+    }, delay);
+  });
+}
+
+function scrambleToText(tiles, target, baseDelay=0){
+  const promises = [];
+  const padded = target.padEnd(tiles.length,' ').slice(0,tiles.length);
+
+  tiles.forEach((t,i)=>{
+    if(t.current === padded[i]) return;
+
+    // do 2-4 intermediate random chars before landing on target
+    const steps = 2 + Math.floor(Math.random()*3);
+    let delay = baseDelay + i*25;
+
+    const chain = async ()=>{
+      for(let s=0;s<steps-1;s++){
+        await flipTile(t, CHARS[Math.floor(Math.random()*CHARS.length)], 0);
+        await new Promise(r=>setTimeout(r,30+Math.random()*40));
+      }
+      await flipTile(t, padded[i], 0);
+    };
+    promises.push(new Promise(res=>setTimeout(()=>chain().then(res), delay)));
+  });
+  return Promise.all(promises);
+}
+
+function scrambleRow(row){
+  // pick random new destination from pool
+  const alt = FLIGHTS[Math.floor(Math.random()*FLIGHTS.length)];
+  const newSt = STATUSES[Math.floor(Math.random()*STATUSES.length)];
+
+  row.el.className = 'row ' + newSt.cls;
+  row.badge.textContent = newSt.label;
+
+  const allText = [
+    alt.time.padEnd(5,' '),
+    alt.code.padEnd(7,' '),
+    alt.dest.padEnd(16,' '),
+    alt.gate.padEnd(3,' ')
+  ].join('');
+
+  scrambleToText(row.tiles, allText);
+  row.flight = alt;
+}
+
+document.getElementById('btn-all').onclick = ()=>{
+  rows.forEach((r,i)=>setTimeout(()=>scrambleRow(r), i*120));
+};
+document.getElementById('btn-gate').onclick = ()=>{
+  rows.forEach(r=>{
+    const gates=['A1','A2','B5','B12','C3','D7','E1','F14'];
+    const g=gates[Math.floor(Math.random()*gates.length)];
+    // Update just gate tiles (last 3)
+    const gateTiles = r.tiles.slice(-3);
+    scrambleToText(gateTiles, g.padEnd(3,' '));
+  });
+};
+
+// Clock
+function tickClock(){
+  const now=new Date();
+  document.getElementById('clock').textContent=
+    now.getHours().toString().padStart(2,'0')+':'+
+    now.getMinutes().toString().padStart(2,'0')+':'+
+    now.getSeconds().toString().padStart(2,'0');
+}
+tickClock();
+setInterval(tickClock,1000);
+
+// Auto-scramble one row every 8 seconds
+let autoIdx=0;
+setInterval(()=>{
+  scrambleRow(rows[autoIdx%rows.length]);
+  autoIdx++;
+},8000);
+</script>
+</body>
+</html>
