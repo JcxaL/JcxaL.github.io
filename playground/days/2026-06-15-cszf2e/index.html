@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Logic Circuit Sandbox</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#07090f;color:#b0c4ee;font-family:system-ui,sans-serif;height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+#toolbar{display:flex;align-items:center;gap:6px;padding:7px 10px;background:#0d1020;border-bottom:1px solid #1a2040;flex-wrap:wrap;min-height:46px}
+.sep{width:1px;height:26px;background:#1a2040;margin:0 3px;flex-shrink:0}
+.lbl{font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
+.gb{padding:3px 9px;border:1px solid #1a2040;border-radius:5px;background:#101422;color:#6888cc;font-size:11px;cursor:pointer;transition:all .12s;white-space:nowrap;outline:none}
+.gb:hover{background:#182040;border-color:#3a60dd;color:#88aaee}
+.gb.active{background:#1a2d5a;border-color:#4a7dff;color:#90c0ff}
+.ab{padding:3px 9px;border:1px solid #1a2040;border-radius:5px;background:#101422;color:#708090;font-size:11px;cursor:pointer;transition:all .12s;outline:none}
+.ab:hover{background:#182040;color:#9db0cc}
+.ab.red:hover{border-color:#aa2240;color:#ee4466}
+#status{font-size:10px;color:#2a3860;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cw{flex:1;position:relative;overflow:hidden}
+#canvas{display:block;cursor:crosshair;touch-action:none}
+#pp{position:absolute;left:10px;top:10px;background:rgba(8,10,20,.92);border:1px solid #1a2040;border-radius:8px;padding:9px;width:150px;backdrop-filter:blur(8px)}
+#pp h3{font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px}
+.pb{display:block;width:100%;text-align:left;padding:4px 8px;margin-bottom:3px;border:1px solid #1a2040;border-radius:4px;background:#101422;color:#6888cc;font-size:11px;cursor:pointer;transition:all .12s;outline:none}
+.pb:hover{background:#182040;border-color:#3a60dd}
+#help{position:absolute;right:10px;bottom:10px;background:rgba(8,10,20,.88);border:1px solid #1a2040;border-radius:8px;padding:9px 12px;font-size:10px;color:#2e3d60;line-height:1.6;backdrop-filter:blur(8px)}
+#help b{color:#4a6aaa;font-size:11px}
+#help kbd{color:#5a7acc}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <span class="lbl">Gates</span>
+  <button class="gb" data-gate="INPUT">INPUT</button>
+  <button class="gb" data-gate="CLOCK">CLOCK</button>
+  <button class="gb" data-gate="AND">AND</button>
+  <button class="gb" data-gate="OR">OR</button>
+  <button class="gb" data-gate="NOT">NOT</button>
+  <button class="gb" data-gate="NAND">NAND</button>
+  <button class="gb" data-gate="NOR">NOR</button>
+  <button class="gb" data-gate="XOR">XOR</button>
+  <button class="gb" data-gate="XNOR">XNOR</button>
+  <button class="gb" data-gate="OUTPUT">OUTPUT</button>
+  <div class="sep"></div>
+  <button class="ab" id="bSave">💾 Save</button>
+  <button class="ab" id="bLoad">📂 Load</button>
+  <button class="ab" id="bExport">⬇ PNG</button>
+  <button class="ab red" id="bClear">🗑 Clear</button>
+  <span id="status">Select a gate above → click canvas to place</span>
+</div>
+<div id="cw">
+  <canvas id="canvas"></canvas>
+  <div id="pp">
+    <h3>Presets</h3>
+    <button class="pb" data-preset="halfAdder">Half Adder</button>
+    <button class="pb" data-preset="fullAdder">Full Adder</button>
+    <button class="pb" data-preset="srLatch">SR Latch</button>
+    <button class="pb" data-preset="mux">2-to-1 MUX</button>
+    <button class="pb" data-preset="majority">Majority Vote</button>
+  </div>
+  <div id="help">
+    <b>Logic Circuit Sandbox</b><br>
+    <kbd>Gate btn</kbd> → click canvas to place<br>
+    <kbd>Output port</kbd> → <kbd>Input port</kbd> = wire<br>
+    <kbd>Click INPUT</kbd> → toggle 0 / 1<br>
+    <kbd>Drag gate</kbd> → move it<br>
+    <kbd>Del / Bksp</kbd> → remove selected<br>
+    <kbd>Esc</kbd> → cancel · <kbd>Scroll</kbd> → zoom<br>
+    <kbd>Middle-drag</kbd> → pan
+  </div>
+</div>
+<script>
+// ── Gate definitions ──────────────────────────────────────
+const DEFS = {
+  INPUT:  {ni:0,no:1,lbl:'IN',  w:68, h:44, fn:(ins,s)=>[s.v??0]},
+  CLOCK:  {ni:0,no:1,lbl:'CLK',w:68, h:44, fn:(ins,s)=>[s.t??0]},
+  OUTPUT: {ni:1,no:0,lbl:'OUT',w:68, h:44, fn:()=>[]},
+  AND:    {ni:2,no:1,lbl:'AND',w:78, h:52, fn:ins=>[ins[0]&ins[1]]},
+  OR:     {ni:2,no:1,lbl:'OR', w:78, h:52, fn:ins=>[ins[0]|ins[1]]},
+  NOT:    {ni:1,no:1,lbl:'NOT',w:68, h:44, fn:ins=>[ins[0]^1]},
+  NAND:   {ni:2,no:1,lbl:'NAND',w:80,h:52, fn:ins=>[(ins[0]&ins[1])^1]},
+  NOR:    {ni:2,no:1,lbl:'NOR',w:78, h:52, fn:ins=>[(ins[0]|ins[1])^1]},
+  XOR:    {ni:2,no:1,lbl:'XOR',w:78, h:52, fn:ins=>[ins[0]^ins[1]]},
+  XNOR:   {ni:2,no:1,lbl:'XNOR',w:80,h:52, fn:ins=>[(ins[0]^ins[1])^1]},
+};
+const INVERT=['NOT','NAND','NOR','XNOR'];
+
+// ── State ─────────────────────────────────────────────────
+let gates=[],wires=[],nid=1;
+let selId=null,dragG=null,dragOff={x:0,y:0};
+let placing=null,wireFrom=null,mousW={x:0,y:0};
+let vx=0,vy=0,vs=1,panning=false,panSt={x:0,y:0};
+let clockTick=0,clockIv=null;
+const SNAP=10,PR=5;
+
+// ── Canvas setup ──────────────────────────────────────────
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+function resize(){
+  const w=document.getElementById('cw');
+  canvas.width=w.clientWidth; canvas.height=w.clientHeight; render();
+}
+window.addEventListener('resize',resize);
+resize();
+
+// ── Transforms ───────────────────────────────────────────
+const toW=(sx,sy)=>({x:(sx-vx)/vs,y:(sy-vy)/vs});
+const toS=(wx,wy)=>({x:wx*vs+vx,y:wy*vs+vy});
+
+// ── Gate port positions ───────────────────────────────────
+function inPorts(g){
+  const d=DEFS[g.type],pts=[];
+  for(let i=0;i<d.ni;i++) pts.push({x:g.x,y:g.y+d.h*(i+1)/(d.ni+1)});
+  return pts;
+}
+function outPorts(g){
+  const d=DEFS[g.type],pts=[];
+  for(let i=0;i<d.no;i++) pts.push({x:g.x+d.w,y:g.y+d.h*(i+1)/(d.no+1)});
+  return pts;
+}
+function hitG(g,x,y){const d=DEFS[g.type];return x>=g.x&&x<=g.x+d.w&&y>=g.y&&y<=g.y+d.h}
+function hitP(p,x,y){const dx=x-p.x,dy=y-p.y;return dx*dx+dy*dy<=(PR+5)*(PR+5)}
+
+// ── Simulation ────────────────────────────────────────────
+function sim(){
+  for(let iter=0;iter<30;iter++){
+    let changed=false;
+    const snap={};
+    gates.forEach(g=>{snap[g.id]=[...(g.outs??[0])]});
+    for(const g of gates){
+      const d=DEFS[g.type];
+      const ins=Array(d.ni).fill(0);
+      wires.forEach(w=>{if(w.tg===g.id) ins[w.tp]=(snap[w.fg]??[0])[w.fp]??0});
+      const no=d.fn(ins,g.s);
+      const diff=no.some((v,i)=>v!==(snap[g.id][i]??0));
+      if(diff) changed=true;
+      g.outs=no;
+    }
+    if(!changed) break;
+  }
+  wires.forEach(w=>{
+    const fg=gates.find(g=>g.id===w.fg);
+    w.sig=fg?((fg.outs??[])[w.fp]??0):0;
+  });
+}
+
+// ── Rendering ────────────────────────────────────────────
+function render(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#07090f';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(vx,vy);
+  ctx.scale(vs,vs);
+  drawGrid();
+  wires.forEach(w=>drawWire(w));
+  if(wireFrom) drawTempWire();
+  gates.forEach(g=>drawGate(g));
+  ctx.restore();
+}
+
+function drawGrid(){
+  const gs=20,x0=Math.floor(-vx/vs/gs)*gs,y0=Math.floor(-vy/vs/gs)*gs;
+  const x1=x0+canvas.width/vs+gs,y1=y0+canvas.height/vs+gs;
+  ctx.strokeStyle='#0c0e1c';ctx.lineWidth=.5;
+  for(let x=x0;x<x1;x+=gs){ctx.beginPath();ctx.moveTo(x,y0);ctx.lineTo(x,y1);ctx.stroke()}
+  for(let y=y0;y<y1;y+=gs){ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x1,y);ctx.stroke()}
+}
+
+function bezW(c,x1,y1,x2,y2){
+  const dx=Math.max(Math.abs(x2-x1)*0.45,30);
+  c.beginPath();c.moveTo(x1,y1);c.bezierCurveTo(x1+dx,y1,x2-dx,y2,x2,y2);
+}
+
+function drawWire(w){
+  const fg=gates.find(g=>g.id===w.fg),tg=gates.find(g=>g.id===w.tg);
+  if(!fg||!tg) return;
+  const fp=outPorts(fg)[w.fp],tp=inPorts(tg)[w.tp];
+  if(!fp||!tp) return;
+  ctx.strokeStyle=w.sig?'#22ee77':'#1e2d50';
+  ctx.lineWidth=w.sig?2.5:1.5;
+  bezW(ctx,fp.x,fp.y,tp.x,tp.y);ctx.stroke();
+  if(w.sig){ctx.beginPath();ctx.arc(fp.x,fp.y,3,0,Math.PI*2);ctx.fillStyle='#22ee77';ctx.fill()}
+}
+
+function drawTempWire(){
+  const g=gates.find(g=>g.id===wireFrom.gid);
+  if(!g) return;
+  const p=wireFrom.ptype==='out'?outPorts(g)[wireFrom.pi]:inPorts(g)[wireFrom.pi];
+  if(!p) return;
+  ctx.strokeStyle='#3a6aff';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+  bezW(ctx,p.x,p.y,mousW.x,mousW.y);ctx.stroke();ctx.setLineDash([]);
+}
+
+function rrect(c,x,y,w,h,r){
+  c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);
+  c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);
+  c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();
+}
+
+function drawGate(g){
+  const d=DEFS[g.type],w=d.w,h=d.h,isSel=g.id===selId;
+  if(isSel){ctx.shadowColor='#3060dd';ctx.shadowBlur=14}
+  // Body
+  const bcs={INPUT:'#182848',CLOCK:'#101a38',OUTPUT:'#122018'};
+  ctx.fillStyle=bcs[g.type]??'#101830';
+  ctx.strokeStyle=isSel?'#4a7fff':'#1e2a50';
+  ctx.lineWidth=isSel?2:1;
+  rrect(ctx,g.x,g.y,w,h,5);ctx.fill();ctx.stroke();
+  ctx.shadowBlur=0;
+
+  // Gate symbol label
+  ctx.fillStyle='#7090cc';ctx.font=`bold ${Math.min(12,h*.26)}px system-ui`;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(d.lbl,g.x+w/2,g.y+h*(g.type==='INPUT'||g.type==='CLOCK'||g.type==='OUTPUT'?.38:.5));
+
+  // Value indicator for special types
+  if(g.type==='INPUT'){
+    const v=g.s.v??0;
+    ctx.fillStyle=v?'#22ee77':'#2a3560';
+    ctx.font=`bold 15px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(v?'1':'0',g.x+w/2,g.y+h*.7);
+  }
+  if(g.type==='CLOCK'){
+    const v=g.s.t??0;
+    ctx.fillStyle=v?'#22aaff':'#2a3560';
+    ctx.font=`bold 15px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(v?'1':'0',g.x+w/2,g.y+h*.7);
+  }
+  if(g.type==='OUTPUT'){
+    const inW=wires.find(ww=>ww.tg===g.id);
+    const v=inW?inW.sig:0;
+    ctx.beginPath();ctx.arc(g.x+w/2,g.y+h*.72,7,0,Math.PI*2);
+    ctx.fillStyle=v?'#22ee77':'#1e2a40';ctx.fill();
+    ctx.strokeStyle='#2e4070';ctx.lineWidth=1;ctx.stroke();
+  }
+
+  // NOT bubble
+  if(INVERT.includes(g.type)){
+    const op=outPorts(g)[0];
+    if(op){ctx.beginPath();ctx.arc(op.x-PR-3,op.y,3.5,0,Math.PI*2);ctx.strokeStyle='#8899cc';ctx.lineWidth=1;ctx.stroke()}
+  }
+
+  // In ports
+  inPorts(g).forEach((p,i)=>{
+    const iw=wires.find(ww=>ww.tg===g.id&&ww.tp===i);
+    const v=iw?iw.sig:0;
+    ctx.beginPath();ctx.arc(p.x,p.y,PR,0,Math.PI*2);
+    ctx.fillStyle=v?'#1a8040':'#0e1830';ctx.fill();
+    ctx.strokeStyle='#2e4070';ctx.lineWidth=1;ctx.stroke();
+  });
+  // Out ports
+  outPorts(g).forEach((p,i)=>{
+    const v=(g.outs??[])[i]??0;
+    ctx.beginPath();ctx.arc(p.x,p.y,PR,0,Math.PI*2);
+    ctx.fillStyle=v?'#22ee77':'#0e1830';ctx.fill();
+    ctx.strokeStyle='#2e4070';ctx.lineWidth=1;ctx.stroke();
+  });
+}
+
+// ── Pointer events ─────────────────────────────────────────
+canvas.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  const sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const wp=toW(sx,sy);
+
+  if(e.button===1){panning=true;panSt={x:e.clientX-vx,y:e.clientY-vy};canvas.setPointerCapture(e.pointerId);return}
+  if(e.button!==0) return;
+
+  // Check ports
+  for(const g of [...gates].reverse()){
+    const ops=outPorts(g);
+    for(let i=0;i<ops.length;i++){
+      if(!hitP(ops[i],wp.x,wp.y)) continue;
+      if(wireFrom){wireFrom=null}
+      else{wireFrom={gid:g.id,ptype:'out',pi:i};canvas.setPointerCapture(e.pointerId);render()}
+      return;
+    }
+    const ips=inPorts(g);
+    for(let i=0;i<ips.length;i++){
+      if(!hitP(ips[i],wp.x,wp.y)) continue;
+      if(wireFrom&&wireFrom.ptype==='out'){
+        // remove existing wire to this port
+        wires=wires.filter(w=>!(w.tg===g.id&&w.tp===i));
+        // block self-loop
+        if(wireFrom.gid!==g.id){
+          wires.push({id:nid++,fg:wireFrom.gid,fp:wireFrom.pi,tg:g.id,tp:i,sig:0});
+        }
+        wireFrom=null;sim();render();
+      } else if(!wireFrom){
+        // pick up existing wire
+        const ew=wires.find(w=>w.tg===g.id&&w.tp===i);
+        if(ew){wireFrom={gid:ew.fg,ptype:'out',pi:ew.fp};wires=wires.filter(w=>w!==ew);sim();render()}
+      }
+      canvas.setPointerCapture(e.pointerId);return;
+    }
+  }
+
+  // Check gate bodies
+  for(let i=gates.length-1;i>=0;i--){
+    const g=gates[i];
+    if(!hitG(g,wp.x,wp.y)) continue;
+    if(placing){break}
+    if(wireFrom){wireFrom=null;render();return}
+    selId=g.id;dragG=g;dragOff={x:wp.x-g.x,y:wp.y-g.y};
+    canvas.setPointerCapture(e.pointerId);
+    if(g.type==='INPUT'){g.s.v=(g.s.v??0)^1;sim()}
+    render();return;
+  }
+
+  // Place gate
+  if(placing){
+    const d=DEFS[placing];
+    gates.push({id:nid++,type:placing,x:Math.round((wp.x-d.w/2)/SNAP)*SNAP,y:Math.round((wp.y-d.h/2)/SNAP)*SNAP,s:{},outs:[]});
+    sim();render();return;
+  }
+
+  // Pan
+  selId=null;wireFrom=null;
+  panning=true;panSt={x:e.clientX-vx,y:e.clientY-vy};
+  canvas.setPointerCapture(e.pointerId);render();
+});
+
+canvas.addEventListener('pointermove',e=>{
+  const r=canvas.getBoundingClientRect();
+  mousW=toW(e.clientX-r.left,e.clientY-r.top);
+  if(panning){vx=e.clientX-panSt.x;vy=e.clientY-panSt.y;render();return}
+  if(dragG){
+    dragG.x=Math.round((mousW.x-dragOff.x)/SNAP)*SNAP;
+    dragG.y=Math.round((mousW.y-dragOff.y)/SNAP)*SNAP;
+    sim();render();return;
+  }
+  if(wireFrom) render();
+});
+
+canvas.addEventListener('pointerup',e=>{panning=false;dragG=null;canvas.releasePointerCapture(e.pointerId)});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  const sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const f=e.deltaY>0?.88:1.14,ns=Math.max(.15,Math.min(5,vs*f));
+  vx=sx-(sx-vx)*ns/vs;vy=sy-(sy-vy)*ns/vs;vs=ns;render();
+},{passive:false});
+
+document.addEventListener('keydown',e=>{
+  if((e.key==='Delete'||e.key==='Backspace')&&selId!==null){
+    gates=gates.filter(g=>g.id!==selId);
+    wires=wires.filter(w=>w.fg!==selId&&w.tg!==selId);
+    selId=null;sim();render();
+  }
+  if(e.key==='Escape'){placing=null;wireFrom=null;document.querySelectorAll('.gb').forEach(b=>b.classList.remove('active'));render()}
+});
+
+// ── Toolbar ───────────────────────────────────────────────
+document.querySelectorAll('.gb').forEach(btn=>btn.addEventListener('click',()=>{
+  const t=btn.dataset.gate;
+  if(placing===t){placing=null;btn.classList.remove('active')}
+  else{placing=t;wireFrom=null;document.querySelectorAll('.gb').forEach(b=>b.classList.remove('active'));btn.classList.add('active')}
+  setStatus(placing?`Click canvas to place ${placing} — Esc to cancel`:'Select a gate above → click canvas to place');
+}));
+
+function setStatus(msg){document.getElementById('status').textContent=msg;clearTimeout(setStatus._t)}
+function flashStatus(msg){setStatus(msg);setStatus._t=setTimeout(()=>setStatus('Select a gate above → click canvas to place'),2200)}
+
+document.getElementById('bSave').addEventListener('click',()=>{
+  localStorage.setItem('lcs_save',JSON.stringify({gates,wires,nid,vx,vy,vs}));flashStatus('Saved ✓');
+});
+document.getElementById('bLoad').addEventListener('click',()=>{
+  const d=localStorage.getItem('lcs_save');
+  if(!d){flashStatus('No saved circuit');return}
+  const p=JSON.parse(d);gates=p.gates;wires=p.wires;nid=p.nid;vx=p.vx;vy=p.vy;vs=p.vs;
+  sim();render();flashStatus('Loaded ✓');
+});
+document.getElementById('bExport').addEventListener('click',()=>{
+  const oldSel=selId;selId=null;render();
+  const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download='circuit.png';a.click();
+  selId=oldSel;render();flashStatus('PNG saved');
+});
+document.getElementById('bClear').addEventListener('click',()=>{
+  if(!confirm('Clear the circuit?')) return;
+  gates=[];wires=[];selId=null;wireFrom=null;placing=null;
+  document.querySelectorAll('.gb').forEach(b=>b.classList.remove('active'));
+  sim();render();
+});
+
+// ── Presets ───────────────────────────────────────────────
+const PRESETS={
+  halfAdder:{
+    gates:[
+      {id:1,type:'INPUT', x:60, y:110,s:{v:0},outs:[0]},
+      {id:2,type:'INPUT', x:60, y:200,s:{v:0},outs:[0]},
+      {id:3,type:'XOR',   x:230,y:125,s:{},outs:[0]},
+      {id:4,type:'AND',   x:230,y:215,s:{},outs:[0]},
+      {id:5,type:'OUTPUT',x:400,y:137,s:{},outs:[]},
+      {id:6,type:'OUTPUT',x:400,y:227,s:{},outs:[]},
+    ],
+    wires:[
+      {id:7, fg:1,fp:0,tg:3,tp:0,sig:0},{id:8, fg:2,fp:0,tg:3,tp:1,sig:0},
+      {id:9, fg:1,fp:0,tg:4,tp:0,sig:0},{id:10,fg:2,fp:0,tg:4,tp:1,sig:0},
+      {id:11,fg:3,fp:0,tg:5,tp:0,sig:0},{id:12,fg:4,fp:0,tg:6,tp:0,sig:0},
+    ],nid:13,vx:60,vy:50,vs:1.1
+  },
+  fullAdder:{
+    gates:[
+      {id:1,type:'INPUT', x:30, y:80, s:{v:0},outs:[0]},
+      {id:2,type:'INPUT', x:30, y:165,s:{v:0},outs:[0]},
+      {id:3,type:'INPUT', x:30, y:260,s:{v:0},outs:[0]},
+      {id:4,type:'XOR',   x:170,y:100,s:{},outs:[0]},
+      {id:5,type:'AND',   x:170,y:190,s:{},outs:[0]},
+      {id:6,type:'XOR',   x:300,y:120,s:{},outs:[0]},
+      {id:7,type:'AND',   x:300,y:230,s:{},outs:[0]},
+      {id:8,type:'OR',    x:430,y:185,s:{},outs:[0]},
+      {id:9,type:'OUTPUT',x:560,y:132,s:{},outs:[]},
+      {id:10,type:'OUTPUT',x:560,y:197,s:{},outs:[]},
+    ],
+    wires:[
+      {id:11,fg:1,fp:0,tg:4,tp:0,sig:0},{id:12,fg:2,fp:0,tg:4,tp:1,sig:0},
+      {id:13,fg:1,fp:0,tg:5,tp:0,sig:0},{id:14,fg:2,fp:0,tg:5,tp:1,sig:0},
+      {id:15,fg:4,fp:0,tg:6,tp:0,sig:0},{id:16,fg:3,fp:0,tg:6,tp:1,sig:0},
+      {id:17,fg:4,fp:0,tg:7,tp:0,sig:0},{id:18,fg:3,fp:0,tg:7,tp:1,sig:0},
+      {id:19,fg:5,fp:0,tg:8,tp:0,sig:0},{id:20,fg:7,fp:0,tg:8,tp:1,sig:0},
+      {id:21,fg:6,fp:0,tg:9,tp:0,sig:0},{id:22,fg:8,fp:0,tg:10,tp:0,sig:0},
+    ],nid:23,vx:40,vy:50,vs:.95
+  },
+  srLatch:{
+    gates:[
+      {id:1,type:'INPUT',x:60, y:110,s:{v:0},outs:[0]},
+      {id:2,type:'INPUT',x:60, y:240,s:{v:0},outs:[0]},
+      {id:3,type:'NOR',  x:230,y:120,s:{},outs:[1]},
+      {id:4,type:'NOR',  x:230,y:220,s:{},outs:[0]},
+      {id:5,type:'OUTPUT',x:400,y:132,s:{},outs:[]},
+      {id:6,type:'OUTPUT',x:400,y:232,s:{},outs:[]},
+    ],
+    wires:[
+      {id:7, fg:1,fp:0,tg:3,tp:0,sig:0},{id:8, fg:3,fp:0,tg:4,tp:0,sig:1},
+      {id:9, fg:2,fp:0,tg:4,tp:1,sig:0},{id:10,fg:4,fp:0,tg:3,tp:1,sig:0},
+      {id:11,fg:3,fp:0,tg:5,tp:0,sig:1},{id:12,fg:4,fp:0,tg:6,tp:0,sig:0},
+    ],nid:13,vx:60,vy:50,vs:1.1
+  },
+  mux:{
+    gates:[
+      {id:1,type:'INPUT',x:50, y:70, s:{v:0},outs:[0]},
+      {id:2,type:'INPUT',x:50, y:160,s:{v:1},outs:[1]},
+      {id:3,type:'INPUT',x:50, y:270,s:{v:0},outs:[0]},
+      {id:4,type:'NOT',  x:180,y:252,s:{},outs:[1]},
+      {id:5,type:'AND',  x:300,y:90, s:{},outs:[0]},
+      {id:6,type:'AND',  x:300,y:185,s:{},outs:[0]},
+      {id:7,type:'OR',   x:430,y:145,s:{},outs:[0]},
+      {id:8,type:'OUTPUT',x:560,y:157,s:{},outs:[]},
+    ],
+    wires:[
+      {id:9, fg:1,fp:0,tg:5,tp:0,sig:0},{id:10,fg:3,fp:0,tg:4,tp:0,sig:0},
+      {id:11,fg:4,fp:0,tg:5,tp:1,sig:1},{id:12,fg:2,fp:0,tg:6,tp:0,sig:1},
+      {id:13,fg:3,fp:0,tg:6,tp:1,sig:0},{id:14,fg:5,fp:0,tg:7,tp:0,sig:0},
+      {id:15,fg:6,fp:0,tg:7,tp:1,sig:0},{id:16,fg:7,fp:0,tg:8,tp:0,sig:0},
+    ],nid:17,vx:50,vy:50,vs:.95
+  },
+  majority:{
+    gates:[
+      {id:1,type:'INPUT',x:40, y:80, s:{v:1},outs:[1]},
+      {id:2,type:'INPUT',x:40, y:180,s:{v:1},outs:[1]},
+      {id:3,type:'INPUT',x:40, y:280,s:{v:0},outs:[0]},
+      {id:4,type:'AND',  x:190,y:100,s:{},outs:[1]},
+      {id:5,type:'AND',  x:190,y:200,s:{},outs:[0]},
+      {id:6,type:'AND',  x:190,y:280,s:{},outs:[0]},
+      {id:7,type:'OR',   x:340,y:140,s:{},outs:[1]},
+      {id:8,type:'OR',   x:480,y:185,s:{},outs:[1]},
+      {id:9,type:'OUTPUT',x:620,y:197,s:{},outs:[]},
+    ],
+    wires:[
+      {id:10,fg:1,fp:0,tg:4,tp:0,sig:1},{id:11,fg:2,fp:0,tg:4,tp:1,sig:1},
+      {id:12,fg:2,fp:0,tg:5,tp:0,sig:1},{id:13,fg:3,fp:0,tg:5,tp:1,sig:0},
+      {id:14,fg:1,fp:0,tg:6,tp:0,sig:1},{id:15,fg:3,fp:0,tg:6,tp:1,sig:0},
+      {id:16,fg:4,fp:0,tg:7,tp:0,sig:1},{id:17,fg:5,fp:0,tg:7,tp:1,sig:0},
+      {id:18,fg:7,fp:0,tg:8,tp:0,sig:1},{id:19,fg:6,fp:0,tg:8,tp:1,sig:0},
+      {id:20,fg:8,fp:0,tg:9,tp:0,sig:1},
+    ],nid:21,vx:30,vy:40,vs:.9
+  },
+};
+
+document.querySelectorAll('.pb').forEach(btn=>btn.addEventListener('click',()=>{
+  const p=PRESETS[btn.dataset.preset];if(!p) return;
+  gates=JSON.parse(JSON.stringify(p.gates));
+  wires=JSON.parse(JSON.stringify(p.wires));
+  nid=p.nid;vx=p.vx;vy=p.vy;vs=p.vs;
+  selId=null;wireFrom=null;placing=null;
+  document.querySelectorAll('.gb').forEach(b=>b.classList.remove('active'));
+  sim();render();flashStatus(`Loaded: ${btn.textContent}`);
+}));
+
+// ── Clock ──────────────────────────────────────────────────
+function startClock(){
+  if(clockIv) return;
+  clockIv=setInterval(()=>{
+    clockTick^=1;
+    gates.forEach(g=>{if(g.type==='CLOCK') g.s.t=clockTick});
+    sim();render();
+  },500);
+}
+startClock();
+
+// ── Initial state ──────────────────────────────────────────
+try{
+  const d=localStorage.getItem('lcs_save');
+  if(d){const p=JSON.parse(d);gates=p.gates;wires=p.wires;nid=p.nid;vx=p.vx??0;vy=p.vy??0;vs=p.vs??1;sim()}
+  else throw 0;
+}catch{
+  const p=PRESETS.halfAdder;
+  gates=JSON.parse(JSON.stringify(p.gates));wires=JSON.parse(JSON.stringify(p.wires));
+  nid=p.nid;vx=p.vx;vy=p.vy;vs=p.vs;sim();
+}
+render();
+</script>
+</body>
+</html>
