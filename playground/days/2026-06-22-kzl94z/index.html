@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tessellation Studio</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#06040f;--panel:#0e0a1e;--border:#2a1f50;--accent:#c084fc;--text:#e2d9f3;--dim:#7c6a9e}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+#toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap;flex-shrink:0;z-index:10}
+.logo{font-weight:700;font-size:15px;color:var(--accent);letter-spacing:-.3px;margin-right:4px}
+.sep{width:1px;height:24px;background:var(--border);margin:0 4px;flex-shrink:0}
+label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+select,input[type=range]{background:#1a1230;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;outline:none}
+select:focus,input[type=range]:focus{border-color:var(--accent)}
+input[type=range]{-webkit-appearance:none;width:80px;height:28px;padding:0 4px}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent) var(--pct,50%),var(--border) var(--pct,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);margin-top:-5px;cursor:grab}
+.btn{border:1px solid var(--border);background:#1a1230;color:var(--text);border-radius:6px;padding:5px 11px;font-size:12px;cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap}
+.btn:hover{background:#2d1f4e;border-color:var(--accent)}
+.btn.active{background:var(--accent);border-color:var(--accent);color:#06040f;font-weight:600}
+#canvas-wrap{flex:1;position:relative;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#panel{position:absolute;right:12px;top:12px;background:rgba(14,10,30,.88);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:12px;padding:14px;width:200px;display:flex;flex-direction:column;gap:10px;z-index:5}
+#panel h3{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.row label{font-size:12px;color:var(--text);text-transform:none;letter-spacing:0}
+.swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.swatch{width:100%;aspect-ratio:1;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:transform .1s,border-color .1s}
+.swatch:hover{transform:scale(1.15)}
+.swatch.active{border-color:#fff}
+#pal-section select{width:100%}
+#anim-btn{width:100%}
+#info{position:absolute;left:12px;bottom:12px;font-size:11px;color:var(--dim);pointer-events:none}
+@media(max-width:600px){
+  #panel{width:calc(100% - 24px);top:auto;bottom:12px;right:12px;left:12px;flex-direction:row;flex-wrap:wrap}
+  #panel h3{display:none}
+}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <span class="logo">✦ Tessellation Studio</span>
+  <div class="sep"></div>
+  <label>Pattern</label>
+  <select id="pat-sel">
+    <option value="truchet">Truchet Tiles</option>
+    <option value="hex">Hex Weave</option>
+    <option value="penrose">Quasi-Penrose</option>
+    <option value="islamic">Islamic Star</option>
+    <option value="celtic">Celtic Knot Grid</option>
+  </select>
+  <div class="sep"></div>
+  <label>Scale</label>
+  <input type="range" id="scale-sl" min="20" max="120" value="48">
+  <div class="sep"></div>
+  <label>Anim</label>
+  <button class="btn" id="anim-btn">▶ Play</button>
+  <div class="sep"></div>
+  <button class="btn" id="export-png">↓ PNG</button>
+  <button class="btn" id="export-svg">↓ SVG</button>
+  <button class="btn" id="share-btn">⇗ Share</button>
+</div>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="panel">
+    <h3>Colors</h3>
+    <div id="pal-section">
+      <select id="harmony-sel">
+        <option value="custom">Custom</option>
+        <option value="mono">Monochrome</option>
+        <option value="comp">Complementary</option>
+        <option value="analog">Analogous</option>
+        <option value="triadic">Triadic</option>
+        <option value="neon">Neon Night</option>
+        <option value="earth">Earthen</option>
+        <option value="ice">Ice Crystal</option>
+      </select>
+    </div>
+    <div class="swatches" id="swatches"></div>
+    <div class="row">
+      <label>Stroke</label>
+      <input type="range" id="stroke-sl" min="0" max="6" step=".5" value="1.5" style="width:80px">
+    </div>
+    <div class="row">
+      <label>Phase</label>
+      <input type="range" id="phase-sl" min="0" max="628" value="0" style="width:80px">
+    </div>
+    <div class="row">
+      <label>Speed</label>
+      <input type="range" id="speed-sl" min="1" max="50" value="12" style="width:80px">
+    </div>
+  </div>
+  <div id="info">Drag to pan · Scroll to zoom</div>
+</div>
+
+<input type="color" id="color-picker" style="position:absolute;opacity:0;pointer-events:none">
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const PALETTES = {
+  neon:  ['#c084fc','#38bdf8','#f472b6','#34d399','#fbbf24'],
+  earth: ['#8b5e3c','#c9a876','#5c7a3e','#a05c2e','#7a6a55'],
+  ice:   ['#a8d8f0','#cce6f7','#5aa8d0','#2d7da8','#e2f4ff'],
+  mono:  null, comp: null, analog: null, triadic: null, custom: null
+};
+
+let state = {
+  pattern: 'truchet',
+  scale: 48,
+  colors: ['#c084fc','#38bdf8','#f472b6','#34d399','#fbbf24'],
+  stroke: 1.5,
+  phase: 0,
+  speed: 12,
+  harmony: 'neon',
+  animating: false,
+  pan: {x:0,y:0},
+  zoom: 1,
+  editSwatch: 0
+};
+
+function loadState(){
+  try{
+    const s = JSON.parse(localStorage.getItem('tess_v1')||'{}');
+    Object.assign(state, s);
+    state.animating = false;
+  } catch(e){}
+}
+function saveState(){
+  localStorage.setItem('tess_v1', JSON.stringify({
+    pattern:state.pattern,scale:state.scale,colors:state.colors,
+    stroke:state.stroke,phase:state.phase,speed:state.speed,harmony:state.harmony
+  }));
+}
+
+loadState();
+
+// URL hash restore
+function encodeHash(){
+  const d = {p:state.pattern,s:state.scale,c:state.colors.map(c=>c.slice(1)).join(','),ph:Math.round(state.phase),sp:state.speed,st:state.stroke};
+  location.hash = btoa(JSON.stringify(d));
+}
+function decodeHash(){
+  try{
+    if(!location.hash.slice(1)) return;
+    const d = JSON.parse(atob(location.hash.slice(1)));
+    if(d.p) state.pattern=d.p;
+    if(d.s) state.scale=+d.s;
+    if(d.c) state.colors=d.c.split(',').map(x=>'#'+x);
+    if(d.ph!=null) state.phase=+d.ph;
+    if(d.sp) state.speed=+d.sp;
+    if(d.st) state.stroke=+d.st;
+    state.harmony='custom';
+  } catch(e){}
+}
+decodeHash();
+
+// UI binding
+function syncUI(){
+  document.getElementById('pat-sel').value = state.pattern;
+  document.getElementById('scale-sl').value = state.scale;
+  updateSliderGrad('scale-sl');
+  document.getElementById('stroke-sl').value = state.stroke;
+  updateSliderGrad('stroke-sl');
+  document.getElementById('phase-sl').value = state.phase;
+  updateSliderGrad('phase-sl');
+  document.getElementById('speed-sl').value = state.speed;
+  updateSliderGrad('speed-sl');
+  document.getElementById('harmony-sel').value = state.harmony;
+  renderSwatches();
+}
+
+function updateSliderGrad(id){
+  const sl = document.getElementById(id);
+  const pct = ((sl.value-sl.min)/(sl.max-sl.min)*100).toFixed(1)+'%';
+  sl.style.setProperty('--pct',pct);
+}
+
+function renderSwatches(){
+  const cont = document.getElementById('swatches');
+  cont.innerHTML='';
+  state.colors.forEach((c,i)=>{
+    const div = document.createElement('div');
+    div.className='swatch'+(i===state.editSwatch?' active':'');
+    div.style.background=c;
+    div.onclick=()=>{ state.editSwatch=i; renderSwatches(); const pk=document.getElementById('color-picker'); pk.value=c; pk.click(); };
+    cont.appendChild(div);
+  });
+}
+
+document.getElementById('color-picker').addEventListener('input',e=>{
+  state.colors[state.editSwatch]=e.target.value;
+  state.harmony='custom';
+  document.getElementById('harmony-sel').value='custom';
+  renderSwatches(); draw(); saveState();
+});
+
+document.getElementById('pat-sel').addEventListener('change',e=>{state.pattern=e.target.value; state.pan={x:0,y:0}; draw(); saveState();});
+document.getElementById('scale-sl').addEventListener('input',e=>{state.scale=+e.target.value; updateSliderGrad('scale-sl'); draw(); saveState();});
+document.getElementById('stroke-sl').addEventListener('input',e=>{state.stroke=+e.target.value; updateSliderGrad('stroke-sl'); draw(); saveState();});
+document.getElementById('phase-sl').addEventListener('input',e=>{state.phase=+e.target.value; updateSliderGrad('phase-sl'); draw(); saveState();});
+document.getElementById('speed-sl').addEventListener('input',e=>{state.speed=+e.target.value; updateSliderGrad('speed-sl'); saveState();});
+
+document.getElementById('harmony-sel').addEventListener('change',e=>{
+  state.harmony=e.target.value;
+  applyHarmony(state.harmony);
+  renderSwatches(); draw(); saveState();
+});
+
+function hslToHex(h,s,l){
+  s/=100; l/=100;
+  const a=s*Math.min(l,1-l);
+  const f=n=>{const k=(n+h/30)%12; const col=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*col).toString(16).padStart(2,'0');};
+  return '#'+f(0)+f(8)+f(4);
+}
+function applyHarmony(h){
+  const base = 270; // purple base
+  if(h==='neon') state.colors=['#c084fc','#38bdf8','#f472b6','#34d399','#fbbf24'];
+  else if(h==='earth') state.colors=['#8b5e3c','#c9a876','#5c7a3e','#a05c2e','#7a6a55'];
+  else if(h==='ice') state.colors=['#a8d8f0','#cce6f7','#5aa8d0','#2d7da8','#e2f4ff'];
+  else if(h==='mono'){const hue=state.colors[0]; state.colors=[hslToHex(base,60,20),hslToHex(base,60,35),hslToHex(base,60,50),hslToHex(base,60,65),hslToHex(base,60,80)];}
+  else if(h==='comp') state.colors=[hslToHex(base,70,45),hslToHex(base,70,65),hslToHex(base+180,70,45),hslToHex(base+180,70,65),hslToHex(base,20,80)];
+  else if(h==='analog') state.colors=[hslToHex(base-30,70,55),hslToHex(base-15,70,50),hslToHex(base,70,50),hslToHex(base+15,70,50),hslToHex(base+30,70,55)];
+  else if(h==='triadic') state.colors=[hslToHex(base,70,50),hslToHex(base+120,70,50),hslToHex(base+240,70,50),hslToHex(base,40,70),hslToHex(base+120,40,70)];
+}
+
+// Animation loop
+let raf=null;
+function startAnim(){
+  if(raf) return;
+  state.animating=true;
+  document.getElementById('anim-btn').textContent='⏸ Pause';
+  document.getElementById('anim-btn').classList.add('active');
+  function loop(){
+    state.phase = (state.phase + state.speed*0.01) % (Math.PI*2*10);
+    document.getElementById('phase-sl').value = (state.phase%(Math.PI*2))*100;
+    updateSliderGrad('phase-sl');
+    draw();
+    raf=requestAnimationFrame(loop);
+  }
+  raf=requestAnimationFrame(loop);
+}
+function stopAnim(){
+  if(raf){cancelAnimationFrame(raf);raf=null;}
+  state.animating=false;
+  document.getElementById('anim-btn').textContent='▶ Play';
+  document.getElementById('anim-btn').classList.remove('active');
+}
+document.getElementById('anim-btn').onclick=()=>{ if(state.animating)stopAnim(); else startAnim(); };
+
+// Canvas resize
+const ro = new ResizeObserver(()=>{ canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; draw(); });
+ro.observe(canvas);
+
+// Pan / zoom
+let drag=null;
+canvas.addEventListener('pointerdown',e=>{ drag={x:e.clientX-state.pan.x,y:e.clientY-state.pan.y}; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove',e=>{ if(!drag)return; state.pan.x=e.clientX-drag.x; state.pan.y=e.clientY-drag.y; draw(); });
+canvas.addEventListener('pointerup',()=>drag=null);
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const delta=e.deltaY<0?1.1:0.91;
+  const cx=e.offsetX, cy=e.offsetY;
+  state.pan.x = cx + (state.pan.x-cx)*delta;
+  state.pan.y = cy + (state.pan.y-cy)*delta;
+  state.zoom*=delta; state.zoom=Math.max(0.2,Math.min(8,state.zoom));
+  draw();
+},{passive:false});
+
+// --- Drawing engine ---
+function getColor(i){ return state.colors[((i%state.colors.length)+state.colors.length)%state.colors.length]; }
+
+function draw(){
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#06040f';
+  ctx.fillRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(W/2+state.pan.x, H/2+state.pan.y);
+  ctx.scale(state.zoom,state.zoom);
+  const T = state.phase;
+  const sz = state.scale;
+  switch(state.pattern){
+    case 'truchet': drawTruchet(W,H,sz,T); break;
+    case 'hex':     drawHex(W,H,sz,T); break;
+    case 'penrose': drawPenrose(W,H,sz,T); break;
+    case 'islamic': drawIslamic(W,H,sz,T); break;
+    case 'celtic':  drawCeltic(W,H,sz,T); break;
+  }
+  ctx.restore();
+}
+
+/* ── TRUCHET ── */
+function drawTruchet(W,H,sz,T){
+  const pw = W/state.zoom, ph = H/state.zoom;
+  const cols = Math.ceil(pw/sz)+2, rows = Math.ceil(ph/sz)+2;
+  const ox = (-state.pan.x/state.zoom), oy = (-state.pan.y/state.zoom);
+  const startC = Math.floor((ox-pw/2)/sz)-1, startR = Math.floor((oy-ph/2)/sz)-1;
+  ctx.lineWidth = state.stroke || 1.5;
+  ctx.lineCap='round';
+  for(let r=startR; r<=startR+rows; r++){
+    for(let c=startC; c<=startC+cols; c++){
+      const x = c*sz, y = r*sz;
+      // deterministic tile type from hash
+      const h = Math.abs(Math.sin(c*127.1+r*311.7+Math.floor(T*0.5))*43758.5453)|0;
+      const type = h%4;
+      const colorIdx = (h>>2)%5;
+      ctx.strokeStyle = getColor(colorIdx);
+      ctx.beginPath();
+      const curve = Math.sin(T*0.3+c*0.7+r*0.5)*0.15; // subtle phase animation
+      if(type===0||type===2){
+        // arc from top-left corner
+        ctx.arc(x,y, sz*(0.5+curve), 0, Math.PI/2);
+        ctx.arc(x+sz,y+sz, sz*(0.5-curve), Math.PI, Math.PI*1.5);
+      } else {
+        ctx.arc(x+sz,y, sz*(0.5+curve), Math.PI/2, Math.PI);
+        ctx.arc(x,y+sz, sz*(0.5-curve), Math.PI*1.5, Math.PI*2);
+      }
+      ctx.stroke();
+    }
+  }
+}
+
+/* ── HEX WEAVE ── */
+function drawHex(W,H,sz,T){
+  const r = sz, h = r*Math.sqrt(3)/2;
+  const pw = W/state.zoom+sz*4, ph = H/state.zoom+sz*4;
+  const ox = -state.pan.x/state.zoom - pw/2, oy = -state.pan.y/state.zoom - ph/2;
+  const cols = Math.ceil(pw/(r*1.5))+2, rows = Math.ceil(ph/(h*2))+2;
+  const sc = Math.floor(ox/(r*1.5))-1, sr = Math.floor(oy/(h*2))-1;
+  ctx.lineWidth = state.stroke||1.5; ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let row=sr; row<=sr+rows; row++){
+    for(let col=sc; col<=sc+cols; col++){
+      const cx = col*r*1.5 + (row%2===0?0:r*0.75);
+      const cy = row*h;
+      const phase = T + col*0.4 + row*0.6;
+      const expand = 0.92 + 0.08*Math.sin(phase);
+      const colIdx = (Math.abs(col*3+row*2))%5;
+      ctx.strokeStyle = getColor(colIdx);
+      ctx.beginPath();
+      for(let i=0;i<6;i++){
+        const a = (i*Math.PI/3)+T*0.05;
+        const px = cx+r*expand*Math.cos(a), py = cy+r*expand*Math.sin(a);
+        i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+      }
+      ctx.closePath(); ctx.stroke();
+      // inner star lines
+      ctx.strokeStyle = getColor((colIdx+2)%5);
+      ctx.globalAlpha=0.35;
+      ctx.beginPath();
+      for(let i=0;i<6;i++){
+        const a = (i*Math.PI/3)+T*0.05, b = a+Math.PI/3;
+        const ax=cx+r*expand*Math.cos(a), ay=cy+r*expand*Math.sin(a);
+        const bx=cx+r*expand*Math.cos(b), by=cy+r*expand*Math.sin(b);
+        ctx.moveTo(ax,ay); ctx.lineTo(cx+(bx-cx)*0.45, cy+(by-cy)*0.45);
+      }
+      ctx.stroke(); ctx.globalAlpha=1;
+    }
+  }
+}
+
+/* ── QUASI-PENROSE (dart-kite via substitution approx) ── */
+function drawPenrose(W,H,sz,T){
+  // Approximate with 5-fold pinwheel tiling
+  const pw = W/state.zoom+sz*6, ph = H/state.zoom+sz*6;
+  const ox = -state.pan.x/state.zoom - pw/2, oy = -state.pan.y/state.zoom - ph/2;
+  const cols = Math.ceil(pw/sz)+2, rows = Math.ceil(ph/sz)+2;
+  const sc = Math.floor(ox/sz)-1, sr = Math.floor(oy/sz)-1;
+  const PHI = 1.6180339887;
+  ctx.lineWidth = state.stroke||1.5; ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let r=sr; r<=sr+rows; r++){
+    for(let c=sc; c<=sc+cols; c++){
+      const cx=c*sz, cy=r*sz;
+      const seed = (c*73856093)^(r*19349663);
+      const s1 = Math.abs(Math.sin(seed))*5|0;
+      const s2 = Math.abs(Math.sin(seed*1.3+7))*5|0;
+      // draw a 5-fold rhomb
+      const angle = (s1*Math.PI*2/5) + T*0.05;
+      const inner = sz*(1/PHI)*0.9;
+      ctx.fillStyle=getColor(s1);
+      ctx.strokeStyle=getColor((s2+2)%5);
+      ctx.beginPath();
+      const pts=[];
+      for(let i=0;i<4;i++){
+        const a = angle + (i<2?0:Math.PI*2/5) + (i%2===0?0:Math.PI*2/5*(s2%3+1));
+        const dist = i%2===0?inner:sz*0.6;
+        pts.push([cx+dist*Math.cos(a), cy+dist*Math.sin(a)]);
+      }
+      ctx.moveTo(pts[0][0],pts[0][1]);
+      for(let i=1;i<4;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+      ctx.closePath();
+      ctx.globalAlpha=0.18; ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
+    }
+  }
+}
+
+/* ── ISLAMIC STAR ── */
+function drawIslamic(W,H,sz,T){
+  const pw = W/state.zoom+sz*4, ph = H/state.zoom+sz*4;
+  const ox = -state.pan.x/state.zoom-pw/2, oy=-state.pan.y/state.zoom-ph/2;
+  const cols=Math.ceil(pw/sz)+2, rows=Math.ceil(ph/sz)+2;
+  const sc=Math.floor(ox/sz)-1, sr=Math.floor(oy/sz)-1;
+  const N=8; // 8-pointed star
+  ctx.lineWidth=state.stroke||1.5; ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let r=sr;r<=sr+rows;r++){
+    for(let c=sc;c<=sc+cols;c++){
+      const cx=c*sz, cy=r*sz;
+      const rot = T*0.04 + (c+r)*0.1;
+      // outer star
+      const outerR = sz*0.48, innerR = sz*0.2;
+      ctx.strokeStyle=getColor((c+r)%5);
+      ctx.fillStyle=getColor(((c+r)*2+1)%5);
+      ctx.beginPath();
+      for(let i=0;i<N*2;i++){
+        const a=rot+i*Math.PI/N;
+        const rr=i%2===0?outerR:innerR;
+        i===0?ctx.moveTo(cx+rr*Math.cos(a),cy+rr*Math.sin(a)):ctx.lineTo(cx+rr*Math.cos(a),cy+rr*Math.sin(a));
+      }
+      ctx.closePath();
+      ctx.globalAlpha=0.22; ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
+      // square connector
+      ctx.strokeStyle=getColor((c+r+2)%5);
+      ctx.beginPath();
+      const sqR=sz*0.34;
+      for(let i=0;i<4;i++){
+        const a=rot+Math.PI/4+i*Math.PI/2;
+        i===0?ctx.moveTo(cx+sqR*Math.cos(a),cy+sqR*Math.sin(a)):ctx.lineTo(cx+sqR*Math.cos(a),cy+sqR*Math.sin(a));
+      }
+      ctx.closePath(); ctx.stroke();
+    }
+  }
+}
+
+/* ── CELTIC KNOT GRID ── */
+function drawCeltic(W,H,sz,T){
+  const pw=W/state.zoom+sz*4, ph=H/state.zoom+sz*4;
+  const ox=-state.pan.x/state.zoom-pw/2, oy=-state.pan.y/state.zoom-ph/2;
+  const cols=Math.ceil(pw/sz)+2, rows=Math.ceil(ph/sz)+2;
+  const sc=Math.floor(ox/sz)-1, sr=Math.floor(oy/sz)-1;
+  const lw = Math.max(2, sz*0.12);
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let r=sr;r<=sr+rows;r++){
+    for(let c=sc;c<=sc+cols;c++){
+      const x=c*sz, y=r*sz, h=sz/2;
+      const phase=T*0.08+(c-r)*0.3;
+      const s = Math.sin(phase)*0.1;
+      // draw interlaced arc pairs (horizontal + vertical)
+      for(let pass=0;pass<2;pass++){
+        ctx.lineWidth=lw*(pass===0?1:0.55);
+        ctx.strokeStyle=getColor(((c+r)*2+pass)%5);
+        // horizontal arc
+        ctx.beginPath();
+        ctx.arc(x+h, y, h*(0.9+s), Math.PI*0.1, Math.PI*0.9); ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x+h, y+sz, h*(0.9-s), Math.PI*1.1, Math.PI*1.9); ctx.stroke();
+        // vertical arc
+        ctx.beginPath();
+        ctx.arc(x, y+h, h*(0.9+s), Math.PI*1.6, Math.PI*2.4); ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x+sz, y+h, h*(0.9-s), Math.PI*0.6, Math.PI*1.4); ctx.stroke();
+      }
+    }
+  }
+}
+
+// Export PNG
+document.getElementById('export-png').onclick=()=>{
+  stopAnim();
+  const link=document.createElement('a');
+  link.download='tessellation.png';
+  link.href=canvas.toDataURL('image/png');
+  link.click();
+};
+
+// Export SVG
+document.getElementById('export-svg').onclick=()=>{
+  // Re-draw to offscreen canvas then embed
+  const W=canvas.width, H=canvas.height;
+  const dataURL=canvas.toDataURL('image/png');
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><image href="${dataURL}" width="${W}" height="${H}"/></svg>`;
+  const blob=new Blob([svg],{type:'image/svg+xml'});
+  const link=document.createElement('a');
+  link.download='tessellation.svg';
+  link.href=URL.createObjectURL(blob);
+  link.click();
+};
+
+// Share
+document.getElementById('share-btn').onclick=()=>{
+  encodeHash();
+  navigator.clipboard.writeText(location.href).then(()=>{
+    const btn=document.getElementById('share-btn');
+    const orig=btn.textContent;
+    btn.textContent='✓ Copied!'; btn.classList.add('active');
+    setTimeout(()=>{btn.textContent=orig;btn.classList.remove('active');},2000);
+  });
+};
+
+syncUI();
+draw();
+</script>
+</body>
+</html>

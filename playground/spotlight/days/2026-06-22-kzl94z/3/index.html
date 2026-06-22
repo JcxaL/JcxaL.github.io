@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proximity Variable Font</title>
+<style>
+@import url('data:text/css,');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#08060f;font-family:system-ui,sans-serif;color:#e2d9f3;
+  min-height:100dvh;display:flex;flex-direction:column;cursor:none;overflow-x:hidden}
+
+.hdr{padding:14px 20px;display:flex;align-items:center;justify-content:space-between;
+  background:rgba(8,6,15,.85);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(255,255,255,.06);z-index:10}
+.hdr h1{font-size:16px;font-weight:700;color:#34d399}
+.pill{font-size:11px;background:rgba(52,211,153,.1);color:#34d399;
+  border:1px solid rgba(52,211,153,.3);border-radius:999px;padding:3px 10px}
+
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:48px;padding:40px 24px}
+
+/* custom cursor */
+#cursor{position:fixed;pointer-events:none;z-index:100;mix-blend-mode:screen}
+#cursor::before{
+  content:'';display:block;width:40px;height:40px;
+  border-radius:50%;background:rgba(52,211,153,.15);
+  border:1.5px solid rgba(52,211,153,.5);
+  transform:translate(-50%,-50%);
+  transition:width .1s,height .1s;
+}
+#cursor.tight::before{width:20px;height:20px;}
+
+/* The text line */
+.line{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:0;
+  font-size:clamp(32px,6vw,72px);
+  font-weight:400;
+  letter-spacing:-1px;
+  line-height:1.1;
+  /* system-ui is our variable font stand-in — real VF would use font-variation-settings */
+}
+.line span{
+  display:inline-block;
+  font-weight:var(--fw,300);
+  color:var(--col,#e2d9f3);
+  transform:scale(var(--sc,1));
+  transform-origin:bottom center;
+  transition:font-weight .08s ease,color .08s ease,transform .08s ease;
+  user-select:none;
+  white-space:pre;
+}
+
+/* rings of color */
+/* closest: thick + green, mid: purple, far: thin + dim */
+.ring-7{--fw:900;--col:#34d399;--sc:1.08}
+.ring-6{--fw:800;--col:#38bdf8;--sc:1.05}
+.ring-5{--fw:700;--col:#c084fc;--sc:1.03}
+.ring-4{--fw:600;--col:#a78bfa;--sc:1.01}
+.ring-3{--fw:500;--col:#e2d9f3;--sc:1}
+.ring-2{--fw:400;--col:#a09ab8;--sc:0.98}
+.ring-1{--fw:300;--col:#5c5575;--sc:0.96}
+.ring-0{--fw:200;--col:#312e43;--sc:0.94}
+
+/* legend */
+.legend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.leg-item{display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(226,217,243,.5)}
+.leg-swatch{width:10px;height:10px;border-radius:50%}
+
+/* word switcher */
+.words-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:-20px}
+.wbtn{padding:6px 14px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);
+  color:#34d399;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s}
+.wbtn:hover,.wbtn.active{background:rgba(52,211,153,.18);border-color:#34d399}
+
+.hint{font-size:12px;color:rgba(226,217,243,.3);letter-spacing:.4px}
+.radius-wrap{display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(226,217,243,.5)}
+.radius-wrap input{accent-color:#34d399}
+
+footer{padding:10px 20px;text-align:right;font-size:10px;color:rgba(226,217,243,.25)}
+</style>
+</head>
+<body>
+<div id="cursor"></div>
+<div class="hdr">
+  <h1>Proximity Variable Font</h1>
+  <span class="pill">mousemove</span>
+</div>
+
+<main>
+  <div class="line" id="line"></div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="radius-wrap">
+    <label>Influence radius</label>
+    <input type="range" id="radius-sl" min="40" max="250" value="120">
+    <span id="radius-val">120px</span>
+  </div>
+
+  <div class="words-row" id="word-btns"></div>
+  <div class="hint">Move cursor over the text</div>
+</main>
+
+<footer>Inspired by Exat Microsite / Codrops · UI Spotlight Day 37 · Drop #3</footer>
+
+<script>
+const WORDS = ['PROXIMITY','VARIABLE','TYPEFACE','MAGNETIC','CONTRAST','DESIGNER'];
+const RINGS = [
+  {cls:'ring-7',color:'#34d399',label:'< 0.1× (900wt)',dist:0.1},
+  {cls:'ring-6',color:'#38bdf8',label:'< 0.25×',dist:0.25},
+  {cls:'ring-5',color:'#c084fc',label:'< 0.4×',dist:0.4},
+  {cls:'ring-4',color:'#a78bfa',label:'< 0.55×',dist:0.55},
+  {cls:'ring-3',color:'#e2d9f3',label:'< 0.7×',dist:0.7},
+  {cls:'ring-2',color:'#a09ab8',label:'< 0.85×',dist:0.85},
+  {cls:'ring-1',color:'#5c5575',label:'< 1× (300wt)',dist:1},
+  {cls:'ring-0',color:'#312e43',label:'beyond',dist:Infinity},
+];
+
+let currentWord = 'PROXIMITY';
+let influenceRadius = 120;
+let mouseX = -999, mouseY = -999;
+let spans = [];
+
+function buildLine(word){
+  const line = document.getElementById('line');
+  line.innerHTML = '';
+  spans = [];
+  [...word].forEach(ch => {
+    const sp = document.createElement('span');
+    sp.textContent = ch === ' ' ? ' ' : ch;
+    line.appendChild(sp);
+    spans.push(sp);
+  });
+}
+
+function buildLegend(){
+  const leg = document.getElementById('legend');
+  leg.innerHTML='';
+  RINGS.forEach(r=>{
+    const div=document.createElement('div'); div.className='leg-item';
+    div.innerHTML=`<div class="leg-swatch" style="background:${r.color}"></div>${r.label}`;
+    leg.appendChild(div);
+  });
+}
+
+function buildWordBtns(){
+  const cont=document.getElementById('word-btns');
+  cont.innerHTML='';
+  WORDS.forEach(w=>{
+    const b=document.createElement('button'); b.className='wbtn'+(w===currentWord?' active':'');
+    b.textContent=w;
+    b.onclick=()=>{currentWord=w;buildLine(w);buildWordBtns();};
+    cont.appendChild(b);
+  });
+}
+
+const cursor=document.getElementById('cursor');
+document.addEventListener('mousemove',e=>{
+  mouseX=e.clientX; mouseY=e.clientY;
+  cursor.style.left=mouseX+'px'; cursor.style.top=mouseY+'px';
+  updateLetters();
+});
+
+function updateLetters(){
+  const R = influenceRadius;
+  spans.forEach(sp=>{
+    const rect=sp.getBoundingClientRect();
+    const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+    const dist=Math.sqrt((mouseX-cx)**2+(mouseY-cy)**2);
+    const ratio=dist/R;
+    sp.className='';
+    const ring=RINGS.find(r=>ratio<r.dist) || RINGS[RINGS.length-1];
+    sp.classList.add(ring.cls);
+    cursor.classList.toggle('tight',ratio<0.2);
+  });
+}
+
+const sl=document.getElementById('radius-sl');
+const rv=document.getElementById('radius-val');
+sl.addEventListener('input',()=>{
+  influenceRadius=+sl.value;
+  rv.textContent=influenceRadius+'px';
+  updateLetters();
+});
+
+buildLine(currentWord);
+buildLegend();
+buildWordBtns();
+</script>
+</body>
+</html>
