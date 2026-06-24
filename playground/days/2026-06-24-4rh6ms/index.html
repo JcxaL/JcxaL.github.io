@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chord Diagram Studio · Day 40</title>
+<style>
+:root {
+  --bg: #06040e;
+  --panel: rgba(255,255,255,.05);
+  --border: rgba(255,255,255,.1);
+  --text: #e0d8f8;
+  --accent: #7c3aed;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui,-apple-system,sans-serif;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+header {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 50px;
+}
+h1 {
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: #c084fc;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1;
+}
+select, button {
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: .78rem;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  font-family: inherit;
+}
+select:hover, button:hover {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.25);
+}
+.btn-export {
+  background: rgba(124,58,237,.2);
+  border-color: rgba(124,58,237,.4);
+  color: #c084fc;
+}
+.btn-export:hover { background: rgba(124,58,237,.35); }
+.themes { display: flex; gap: 5px; align-items: center; }
+.theme-dot {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color .2s, transform .15s;
+  flex-shrink: 0;
+}
+.theme-dot.active { border-color: #fff; transform: scale(1.2); }
+#canvas-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+svg#chart {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+svg#chart:active { cursor: grabbing; }
+#info-panel {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 16px;
+  font-size: .78rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .2s;
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#info-panel.visible { opacity: 1; }
+#legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 7px 16px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .73rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background .15s;
+}
+.legend-item:hover { background: rgba(255,255,255,.07); }
+.legend-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+#hint {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: .7rem;
+  color: rgba(255,255,255,.35);
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>◈ Chord Diagram Studio</h1>
+  <div class="controls">
+    <select id="dataset-select">
+      <option value="0">Language DNA</option>
+      <option value="1">Music Genome</option>
+      <option value="2">Food Affinities</option>
+      <option value="3">Tech Stack</option>
+      <option value="4">Sci-Fi Kinship</option>
+    </select>
+    <div class="themes" id="themes">
+      <div class="theme-dot active" data-theme="0" style="background:conic-gradient(#7c3aed,#06b6d4,#7c3aed)" title="Nebula"></div>
+      <div class="theme-dot" data-theme="1" style="background:conic-gradient(#f59e0b,#ef4444,#f59e0b)" title="Ember"></div>
+      <div class="theme-dot" data-theme="2" style="background:conic-gradient(#10b981,#06b6d4,#10b981)" title="Ocean"></div>
+      <div class="theme-dot" data-theme="3" style="background:conic-gradient(#ec4899,#f59e0b,#ec4899)" title="Sunset"></div>
+    </div>
+    <button onclick="resetRotation()">↺ Reset</button>
+    <button class="btn-export" onclick="exportSVG()">↓ SVG</button>
+    <button class="btn-export" onclick="exportPNG()">↓ PNG</button>
+  </div>
+</header>
+
+<div id="canvas-wrap">
+  <svg id="chart" viewBox="-420 -420 840 840" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <radialGradient id="bg-g" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="rgba(124,58,237,.12)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </radialGradient>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <circle r="400" fill="url(#bg-g)"/>
+    <g id="root" style="transition:opacity .35s ease"></g>
+  </svg>
+  <div id="info-panel"></div>
+  <div id="hint">Drag to rotate · Hover to explore</div>
+</div>
+
+<div id="legend"></div>
+
+<script>
+// ─── Datasets ─────────────────────────────────────────────────────────────────
+const DATASETS = [
+  {
+    name: "Language DNA",
+    desc: "Mutual influence strength between programming languages",
+    groups: ["JavaScript","Python","C","Java","Ruby","Haskell","Go","Rust"],
+    matrix: [
+      [0,28,10,35,18,8,15,12],
+      [0, 0,20,15,25,30,18,20],
+      [0, 0, 0,40,10, 5,30,35],
+      [0, 0, 0, 0,12, 8,20,15],
+      [0, 0, 0, 0, 0,20, 5, 8],
+      [0, 0, 0, 0, 0, 0,10,25],
+      [0, 0, 0, 0, 0, 0, 0,30],
+      [0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  },
+  {
+    name: "Music Genome",
+    desc: "Cross-pollination strength between music genres",
+    groups: ["Jazz","Blues","Classical","Folk","Electronic","Hip-Hop","Latin","Soul"],
+    matrix: [
+      [0,35,20,10,25,30,22,28],
+      [0, 0,15,20,10,25,18,35],
+      [0, 0, 0,22,30,10,15, 8],
+      [0, 0, 0, 0,12,18,25,15],
+      [0, 0, 0, 0, 0,40,20,12],
+      [0, 0, 0, 0, 0, 0,30,35],
+      [0, 0, 0, 0, 0, 0, 0,20],
+      [0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  },
+  {
+    name: "Food Affinities",
+    desc: "Culinary pairing strength between ingredients",
+    groups: ["Tomato","Cheese","Basil","Garlic","Onion","Olive Oil","Wine","Lemon"],
+    matrix: [
+      [0,40,35,28,30,25,20,15],
+      [0, 0,30,20,15,22,35,10],
+      [0, 0, 0,25,18,30,12,20],
+      [0, 0, 0, 0,40,35,15,18],
+      [0, 0, 0, 0, 0,28,25,12],
+      [0, 0, 0, 0, 0, 0,30,25],
+      [0, 0, 0, 0, 0, 0, 0,20],
+      [0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  },
+  {
+    name: "Tech Stack",
+    desc: "Technologies frequently used together",
+    groups: ["React","TypeScript","Node.js","GraphQL","Python","Docker","PostgreSQL","Redis"],
+    matrix: [
+      [0,45,30,35,15,20,18,12],
+      [0, 0,28,22,20,15,12,10],
+      [0, 0, 0,25,22,35,30,28],
+      [0, 0, 0, 0,18,15,25,12],
+      [0, 0, 0, 0, 0,28,22,15],
+      [0, 0, 0, 0, 0, 0,35,30],
+      [0, 0, 0, 0, 0, 0, 0,38],
+      [0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  },
+  {
+    name: "Sci-Fi Kinship",
+    desc: "Shared thematic DNA between science fiction universes",
+    groups: ["Star Wars","Star Trek","Dune","Foundation","Matrix","Blade Runner","Arrival","Annihilation"],
+    matrix: [
+      [0,25,30,20,15,12,10, 8],
+      [0, 0,22,35,28,20,25,15],
+      [0, 0, 0,40,18,15,20,25],
+      [0, 0, 0, 0,20,12,25,18],
+      [0, 0, 0, 0, 0,38,22,20],
+      [0, 0, 0, 0, 0, 0,28,35],
+      [0, 0, 0, 0, 0, 0, 0,42],
+      [0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  }
+];
+
+// Symmetrize matrices
+DATASETS.forEach(d => {
+  const n = d.groups.length;
+  for (let i = 0; i < n; i++)
+    for (let j = i+1; j < n; j++)
+      d.matrix[j][i] = d.matrix[i][j];
+});
+
+// ─── Themes ───────────────────────────────────────────────────────────────────
+const THEMES = [
+  ["#7c3aed","#06b6d4","#ec4899","#10b981","#f59e0b","#3b82f6","#ef4444","#8b5cf6"],
+  ["#f59e0b","#ef4444","#fb923c","#fcd34d","#e11d48","#b45309","#dc2626","#d97706"],
+  ["#10b981","#06b6d4","#3b82f6","#34d399","#0ea5e9","#059669","#0284c7","#6ee7b7"],
+  ["#ec4899","#f59e0b","#a855f7","#fb7185","#fbbf24","#c026d3","#f97316","#e879f9"]
+];
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let ds = 0, th = 0, rot = 0;
+let isDragging = false, dragStart = {x:0, y:0, rot:0};
+let chordEls = [], arcEls = [];
+const svg = document.getElementById('chart');
+const root = document.getElementById('root');
+const info = document.getElementById('info-panel');
+const TAU = Math.PI * 2;
+const RO = 300, RI = 268, RL = 322, GAP = 0.018;
+
+try {
+  const s = JSON.parse(localStorage.getItem('chord_s')||'{}');
+  if (s.ds != null) ds = s.ds;
+  if (s.th != null) th = s.th;
+  if (s.rot != null) rot = s.rot;
+} catch(_) {}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const svgEl = (tag, attrs) => {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+};
+const px = (v) => v.toFixed(3);
+const pol = (r, a) => ({x: r*Math.cos(a), y: r*Math.sin(a)});
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
+function layout(dataset) {
+  const {groups, matrix} = dataset;
+  const n = groups.length;
+  const colors = THEMES[th];
+  const totals = Array.from({length:n}, (_,i) => matrix[i].reduce((a,b)=>a+b,0));
+  const grand = totals.reduce((a,b)=>a+b,0);
+  const avail = TAU - n*GAP;
+  const garc = [];
+  let cur = -Math.PI/2;
+  for (let i=0; i<n; i++) {
+    const span = (totals[i]/grand)*avail;
+    garc.push({start:cur, end:cur+span, mid:cur+span/2, span});
+    cur += span + GAP;
+  }
+  const sub = Array.from({length:n}, ()=>[]);
+  for (let i=0; i<n; i++) {
+    let sc = garc[i].start;
+    for (let j=0; j<n; j++) {
+      if (!matrix[i][j]) { sub[i].push(null); continue; }
+      const s = (matrix[i][j]/totals[i])*garc[i].span;
+      sub[i].push({start:sc, end:sc+s});
+      sc += s;
+    }
+  }
+  return {groups, matrix, n, colors, garc, sub, totals};
+}
+
+// ─── Chord path ───────────────────────────────────────────────────────────────
+function chordPath(s1,e1,s2,e2) {
+  const p = (r,a) => `${px(r*Math.cos(a))} ${px(r*Math.sin(a))}`;
+  const la = (a,b) => (b-a)>Math.PI?1:0;
+  return [
+    `M ${p(RI,s1)}`,
+    `A ${RI} ${RI} 0 ${la(s1,e1)} 1 ${p(RI,e1)}`,
+    `C 0 0 0 0 ${p(RI,s2)}`,
+    `A ${RI} ${RI} 0 ${la(s2,e2)} 1 ${p(RI,e2)}`,
+    `C 0 0 0 0 ${p(RI,s1)}`,
+    'Z'
+  ].join(' ');
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  const d = DATASETS[ds];
+  const {groups, matrix, n, colors, garc, sub, totals} = layout(d);
+  root.innerHTML = '';
+  chordEls = []; arcEls = [];
+  root.setAttribute('transform', `rotate(${rot*180/Math.PI})`);
+
+  // Chords
+  const cg = svgEl('g', {});
+  for (let i=0; i<n; i++) {
+    for (let j=i+1; j<n; j++) {
+      if (!matrix[i][j] || !sub[i][j] || !sub[j][i]) continue;
+      const path = svgEl('path', {
+        d: chordPath(sub[i][j].start, sub[i][j].end, sub[j][i].start, sub[j][i].end),
+        fill: colors[i]+'52',
+        stroke: colors[i]+'aa',
+        'stroke-width': '0.5',
+        'data-i': i, 'data-j': j,
+        style: 'transition:opacity .25s'
+      });
+      cg.appendChild(path);
+      chordEls.push({el:path, i, j});
+    }
+  }
+  root.appendChild(cg);
+
+  // Group arcs + labels
+  const ag = svgEl('g', {});
+  for (let i=0; i<n; i++) {
+    const {start, end, mid, span} = garc[i];
+    const s_o = pol(RO, start), e_o = pol(RO, end);
+    const s_i = pol(RI, start), e_i = pol(RI, end);
+    const la = span > Math.PI ? 1 : 0;
+
+    const arcD = [
+      `M ${px(s_i.x)} ${px(s_i.y)}`,
+      `A ${RI} ${RI} 0 ${la} 1 ${px(e_i.x)} ${px(e_i.y)}`,
+      `L ${px(e_o.x)} ${px(e_o.y)}`,
+      `A ${RO} ${RO} 0 ${la} 0 ${px(s_o.x)} ${px(s_o.y)}`,
+      'Z'
+    ].join(' ');
+
+    const arc = svgEl('path', {
+      d: arcD,
+      fill: colors[i],
+      stroke: 'rgba(0,0,0,.25)',
+      'stroke-width': '0.5',
+      'data-group': i,
+      filter: 'url(#glow)',
+      style: 'cursor:pointer; transition:opacity .2s'
+    });
+    arc.addEventListener('mouseenter', () => hoverGroup(i, d, colors, groups, matrix));
+    arc.addEventListener('mouseleave', unhover);
+    arcEls.push(arc);
+    ag.appendChild(arc);
+
+    // Tick marks at sub-arc boundaries
+    for (let j=0; j<n; j++) {
+      if (!sub[i][j]) continue;
+      [sub[i][j].start, sub[i][j].end].forEach(a => {
+        const pi = pol(RI, a), po = pol(RI+2, a);
+        const tick = svgEl('line', {
+          x1: px(pi.x), y1: px(pi.y),
+          x2: px(po.x), y2: px(po.y),
+          stroke: 'rgba(0,0,0,.4)', 'stroke-width': '0.8'
+        });
+        ag.appendChild(tick);
+      });
+    }
+
+    // Label
+    const lp = pol(RL, mid);
+    const isLeft = Math.cos(mid) < 0;
+    const txt = svgEl('text', {
+      x: px(lp.x), y: px(lp.y),
+      'text-anchor': isLeft ? 'end' : 'start',
+      'dominant-baseline': 'middle',
+      fill: colors[i],
+      'font-size': '11.5',
+      'font-family': 'system-ui,sans-serif',
+      'font-weight': '650',
+      'pointer-events': 'none',
+      'letter-spacing': '0.3'
+    });
+    txt.textContent = groups[i];
+    ag.appendChild(txt);
+
+    // Small value badge
+    const vp = pol(RI-12, mid);
+    const badge = svgEl('text', {
+      x: px(vp.x), y: px(vp.y),
+      'text-anchor': 'middle',
+      'dominant-baseline': 'middle',
+      fill: 'rgba(255,255,255,.55)',
+      'font-size': '7.5',
+      'pointer-events': 'none'
+    });
+    badge.textContent = totals[i];
+    ag.appendChild(badge);
+  }
+  root.appendChild(ag);
+
+  // Legend
+  const leg = document.getElementById('legend');
+  leg.innerHTML = '';
+  groups.forEach((g, i) => {
+    const it = document.createElement('div');
+    it.className = 'legend-item';
+    it.innerHTML = `<div class="legend-dot" style="background:${colors[i]}"></div>${g}`;
+    it.addEventListener('mouseenter', () => hoverGroup(i, d, colors, groups, matrix));
+    it.addEventListener('mouseleave', unhover);
+    leg.appendChild(it);
+  });
+}
+
+function hoverGroup(i, d, colors, groups, matrix) {
+  const connected = new Set([i]);
+  chordEls.forEach(({el, i:ci, j:cj}) => {
+    const hit = ci===i||cj===i;
+    el.style.opacity = hit ? '1' : '0.04';
+    if (hit) connected.add(ci===i?cj:ci);
+  });
+  arcEls.forEach((el,idx) => {
+    el.style.opacity = connected.has(idx) ? '1' : '0.18';
+  });
+  const conns = groups
+    .map((g,j) => j!==i && matrix[i][j]>0 ? `${g} · ${matrix[i][j]}` : null)
+    .filter(Boolean).join('  ');
+  info.textContent = `${groups[i]} → ${conns}`;
+  info.classList.add('visible');
+}
+
+function unhover() {
+  chordEls.forEach(({el}) => el.style.opacity='1');
+  arcEls.forEach(el => el.style.opacity='1');
+  info.classList.remove('visible');
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+document.getElementById('dataset-select').addEventListener('change', e => {
+  ds = +e.target.value; fadeRender();
+});
+document.getElementById('themes').addEventListener('click', e => {
+  const dot = e.target.closest('[data-theme]');
+  if (!dot) return;
+  th = +dot.dataset.theme;
+  document.querySelectorAll('.theme-dot').forEach(d => d.classList.remove('active'));
+  dot.classList.add('active');
+  render(); save();
+});
+
+function resetRotation() { rot = 0; render(); save(); }
+
+function fadeRender() {
+  root.style.opacity = '0';
+  setTimeout(() => { render(); root.style.opacity = '1'; save(); }, 200);
+}
+
+// ─── Drag to rotate ───────────────────────────────────────────────────────────
+function svgPt(e) {
+  const r = svg.getBoundingClientRect();
+  const cx = (e.touches?e.touches[0].clientX:e.clientX);
+  const cy = (e.touches?e.touches[0].clientY:e.clientY);
+  return { x:(cx-r.left)/r.width*840-420, y:(cy-r.top)/r.height*840-420 };
+}
+
+svg.addEventListener('mousedown', e => {
+  if (e.target.closest('[data-group]')) return;
+  isDragging = true;
+  const p = svgPt(e);
+  dragStart = {x:p.x, y:p.y, rot};
+});
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const p = svgPt(e);
+  const a0 = Math.atan2(dragStart.y, dragStart.x);
+  const a1 = Math.atan2(p.y, p.x);
+  rot = dragStart.rot + (a1-a0);
+  root.setAttribute('transform', `rotate(${rot*180/Math.PI})`);
+});
+window.addEventListener('mouseup', () => { if (isDragging) { isDragging=false; save(); } });
+
+svg.addEventListener('touchstart', e => {
+  if (e.target.closest('[data-group]')) return;
+  const p = svgPt(e);
+  isDragging = true;
+  dragStart = {x:p.x, y:p.y, rot};
+}, {passive:true});
+svg.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  const p = svgPt(e);
+  rot = dragStart.rot + (Math.atan2(p.y,p.x) - Math.atan2(dragStart.y,dragStart.x));
+  root.setAttribute('transform', `rotate(${rot*180/Math.PI})`);
+}, {passive:true});
+svg.addEventListener('touchend', () => { isDragging=false; save(); });
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+function exportSVG() {
+  const data = new XMLSerializer().serializeToString(svg);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], {type:'image/svg+xml'}));
+  a.download = `chord-${DATASETS[ds].name.replace(/ /g,'-').toLowerCase()}.svg`;
+  a.click();
+}
+
+function exportPNG() {
+  const data = new XMLSerializer().serializeToString(svg);
+  const canvas = Object.assign(document.createElement('canvas'), {width:1600,height:1600});
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#06040e';
+  ctx.fillRect(0,0,1600,1600);
+  const img = new Image();
+  const url = URL.createObjectURL(new Blob([data], {type:'image/svg+xml'}));
+  img.onload = () => {
+    ctx.drawImage(img,0,0,1600,1600);
+    URL.revokeObjectURL(url);
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = `chord-${DATASETS[ds].name.replace(/ /g,'-').toLowerCase()}.png`;
+    a.click();
+  };
+  img.src = url;
+}
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
+function save() {
+  localStorage.setItem('chord_s', JSON.stringify({ds, th, rot}));
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+document.getElementById('dataset-select').value = ds;
+document.querySelectorAll('.theme-dot').forEach(d =>
+  d.classList.toggle('active', +d.dataset.theme===th));
+render();
+</script>
+</body>
+</html>
