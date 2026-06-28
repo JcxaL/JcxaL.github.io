@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Harmonograph Studio</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060412;--panel:#0c0820;--panel2:#110d26;
+  --accent:#c084fc;--accent2:#38bdf8;--accent3:#f472b6;
+  --text:#e0d8ff;--muted:#7060a8;--border:#1e1640;
+  --track:#1a1535;--thumb:#c084fc;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px}
+#app{display:flex;height:100vh;overflow:hidden}
+
+/* === CANVAS AREA === */
+#canvas-wrap{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+canvas{display:block;width:100%;height:100%}
+#overlay-btns{position:absolute;top:12px;left:12px;display:flex;gap:8px;z-index:10}
+.icon-btn{background:rgba(12,8,32,.75);border:1px solid var(--border);color:var(--text);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:background .15s,border-color .15s;backdrop-filter:blur(6px)}
+.icon-btn:hover{background:rgba(192,132,252,.15);border-color:var(--accent)}
+.icon-btn.active{background:rgba(192,132,252,.25);border-color:var(--accent)}
+#drawing-info{position:absolute;bottom:12px;left:12px;font-size:11px;color:var(--muted);letter-spacing:.3px;pointer-events:none}
+
+/* === PANEL === */
+#panel{width:260px;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;overflow-x:hidden;flex-shrink:0;display:flex;flex-direction:column;gap:0}
+#panel::-webkit-scrollbar{width:4px}
+#panel::-webkit-scrollbar-track{background:transparent}
+#panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.section{border-bottom:1px solid var(--border);padding:12px}
+.section-title{font-size:10px;font-weight:600;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px}
+
+/* Presets */
+.preset-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.preset-btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:5px 2px;border-radius:6px;cursor:pointer;font-size:10px;text-align:center;line-height:1.3;transition:all .15s}
+.preset-btn:hover{border-color:var(--accent);color:var(--accent)}
+.preset-btn.active{background:rgba(192,132,252,.18);border-color:var(--accent);color:var(--accent)}
+
+/* Speed / line */
+.row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.row:last-child{margin-bottom:0}
+.row label{flex:0 0 70px;font-size:11px;color:var(--muted)}
+.row input[type=range]{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--track);border-radius:2px;outline:none;cursor:pointer}
+.row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--thumb);cursor:pointer;border:2px solid var(--bg)}
+.row .val{width:32px;text-align:right;font-size:11px;color:var(--accent);font-variant-numeric:tabular-nums}
+
+/* Color mode */
+.color-modes{display:flex;gap:5px;flex-wrap:wrap}
+.cm-btn{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--muted);padding:5px 4px;border-radius:6px;cursor:pointer;font-size:10px;text-align:center;transition:all .15s;white-space:nowrap}
+.cm-btn:hover{border-color:var(--accent);color:var(--text)}
+.cm-btn.active{background:rgba(192,132,252,.18);border-color:var(--accent);color:var(--accent)}
+.color-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.color-row label{font-size:11px;color:var(--muted)}
+input[type=color]{width:36px;height:28px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;padding:2px}
+
+/* Action buttons */
+.actions{display:flex;gap:6px}
+.action-btn{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:8px;cursor:pointer;font-size:11px;text-align:center;transition:all .15s}
+.action-btn:hover{background:rgba(192,132,252,.15);border-color:var(--accent)}
+.action-btn.primary{background:rgba(192,132,252,.2);border-color:var(--accent);color:var(--accent)}
+.action-btn.primary:hover{background:rgba(192,132,252,.3)}
+.action-btn.danger{color:#ff6b6b}
+.action-btn.danger:hover{background:rgba(255,107,107,.1);border-color:#ff6b6b}
+
+/* Pendulum controls */
+.pendulum-block{margin-bottom:12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px}
+.pendulum-block:last-child{margin-bottom:0}
+.pend-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.pend-label{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase}
+.pend-label.x{color:var(--accent2)}
+.pend-label.y{color:var(--accent3)}
+.pend-mini-sliders .row{margin-bottom:5px}
+.pend-mini-sliders .row label{flex:0 0 55px;font-size:10px}
+
+/* Toggle panel on mobile */
+#toggle-panel{display:none;position:absolute;right:12px;top:12px;z-index:20}
+@media(max-width:640px){
+  #toggle-panel{display:flex}
+  #panel{position:absolute;right:0;top:0;bottom:0;transform:translateX(100%);transition:transform .25s;z-index:15}
+  #panel.open{transform:translateX(0)}
+  #app{position:relative}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvas-wrap">
+    <canvas id="cv"></canvas>
+    <div id="overlay-btns">
+      <button class="icon-btn" id="btn-play" title="Play/Pause">▶</button>
+      <button class="icon-btn" id="btn-clear" title="Clear">✕</button>
+      <button class="icon-btn" id="btn-export" title="Export PNG">⬇</button>
+      <button class="icon-btn" id="btn-share" title="Share URL">⊞</button>
+    </div>
+    <button class="icon-btn" id="toggle-panel" title="Settings">⚙</button>
+    <div id="drawing-info">t=0 · 0 pts</div>
+  </div>
+
+  <div id="panel">
+    <!-- Presets -->
+    <div class="section">
+      <div class="section-title">Presets</div>
+      <div class="preset-grid" id="presets"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="section">
+      <div class="section-title">Settings</div>
+      <div class="row"><label>Speed</label><input type="range" id="sl-speed" min="1" max="100" value="40"><span class="val" id="v-speed">40</span></div>
+      <div class="row"><label>Line width</label><input type="range" id="sl-lw" min="1" max="12" value="2" step="0.5"><span class="val" id="v-lw">2</span></div>
+      <div class="row"><label>Trail opacity</label><input type="range" id="sl-alpha" min="10" max="100" value="80"><span class="val" id="v-alpha">80</span></div>
+      <div class="row"><label>Max time</label><input type="range" id="sl-tmax" min="50" max="2000" value="600"><span class="val" id="v-tmax">600</span></div>
+    </div>
+
+    <!-- Color -->
+    <div class="section">
+      <div class="section-title">Color Mode</div>
+      <div class="color-modes">
+        <button class="cm-btn active" data-cm="rainbow">Rainbow</button>
+        <button class="cm-btn" data-cm="velocity">Velocity</button>
+        <button class="cm-btn" data-cm="solid">Solid</button>
+        <button class="cm-btn" data-cm="fade">Age Fade</button>
+      </div>
+      <div class="color-row" id="solid-row" style="display:none">
+        <label>Color</label>
+        <input type="color" id="solid-color" value="#c084fc">
+        <input type="color" id="solid-color2" value="#38bdf8">
+      </div>
+    </div>
+
+    <!-- Pendulums -->
+    <div class="section">
+      <div class="section-title">Pendulums — X Axis</div>
+      <div id="pend-x1" class="pendulum-block">
+        <div class="pend-header"><span class="pend-label x">X₁</span></div>
+        <div class="pend-mini-sliders">
+          <div class="row"><label>Frequency</label><input type="range" class="pf" data-p="0" data-k="freq" min="0.5" max="8" step="0.05" value="2"><span class="val pv">2</span></div>
+          <div class="row"><label>Phase</label><input type="range" class="pf" data-p="0" data-k="phase" min="0" max="6.28" step="0.01" value="0"><span class="val pv">0</span></div>
+          <div class="row"><label>Damping</label><input type="range" class="pf" data-p="0" data-k="damp" min="0" max="0.005" step="0.00005" value="0.001"><span class="val pv">.001</span></div>
+          <div class="row"><label>Amplitude</label><input type="range" class="pf" data-p="0" data-k="amp" min="0.1" max="1" step="0.05" value="1"><span class="val pv">1</span></div>
+        </div>
+      </div>
+      <div id="pend-x2" class="pendulum-block">
+        <div class="pend-header"><span class="pend-label x">X₂</span></div>
+        <div class="pend-mini-sliders">
+          <div class="row"><label>Frequency</label><input type="range" class="pf" data-p="1" data-k="freq" min="0.5" max="8" step="0.05" value="3"><span class="val pv">3</span></div>
+          <div class="row"><label>Phase</label><input type="range" class="pf" data-p="1" data-k="phase" min="0" max="6.28" step="0.01" value="1.57"><span class="val pv">1.57</span></div>
+          <div class="row"><label>Damping</label><input type="range" class="pf" data-p="1" data-k="damp" min="0" max="0.005" step="0.00005" value="0.0008"><span class="val pv">.0008</span></div>
+          <div class="row"><label>Amplitude</label><input type="range" class="pf" data-p="1" data-k="amp" min="0.1" max="1" step="0.05" value="0.5"><span class="val pv">0.5</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">Pendulums — Y Axis</div>
+      <div id="pend-y1" class="pendulum-block">
+        <div class="pend-header"><span class="pend-label y">Y₁</span></div>
+        <div class="pend-mini-sliders">
+          <div class="row"><label>Frequency</label><input type="range" class="pf" data-p="2" data-k="freq" min="0.5" max="8" step="0.05" value="3"><span class="val pv">3</span></div>
+          <div class="row"><label>Phase</label><input type="range" class="pf" data-p="2" data-k="phase" min="0" max="6.28" step="0.01" value="0"><span class="val pv">0</span></div>
+          <div class="row"><label>Damping</label><input type="range" class="pf" data-p="2" data-k="damp" min="0" max="0.005" step="0.00005" value="0.001"><span class="val pv">.001</span></div>
+          <div class="row"><label>Amplitude</label><input type="range" class="pf" data-p="2" data-k="amp" min="0.1" max="1" step="0.05" value="1"><span class="val pv">1</span></div>
+        </div>
+      </div>
+      <div id="pend-y2" class="pendulum-block">
+        <div class="pend-header"><span class="pend-label y">Y₂</span></div>
+        <div class="pend-mini-sliders">
+          <div class="row"><label>Frequency</label><input type="range" class="pf" data-p="3" data-k="freq" min="0.5" max="8" step="0.05" value="2"><span class="val pv">2</span></div>
+          <div class="row"><label>Phase</label><input type="range" class="pf" data-p="3" data-k="phase" min="0" max="6.28" step="0.01" value="0.78"><span class="val pv">0.78</span></div>
+          <div class="row"><label>Damping</label><input type="range" class="pf" data-p="3" data-k="damp" min="0" max="0.005" step="0.00005" value="0.0006"><span class="val pv">.0006</span></div>
+          <div class="row"><label>Amplitude</label><input type="range" class="pf" data-p="3" data-k="amp" min="0.1" max="1" step="0.05" value="0.6"><span class="val pv">0.6</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- Actions -->
+    <div class="section">
+      <div class="actions">
+        <button class="action-btn primary" id="btn-save">Save</button>
+        <button class="action-btn" id="btn-load">Load</button>
+        <button class="action-btn danger" id="btn-reset">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ─────────────────────────────────────────────────────────────────
+const S = {
+  p: [
+    {freq:2,   phase:0,    damp:0.001,  amp:1  }, // X1
+    {freq:3,   phase:1.57, damp:0.0008, amp:0.5}, // X2
+    {freq:3,   phase:0,    damp:0.001,  amp:1  }, // Y1
+    {freq:2,   phase:0.78, damp:0.0006, amp:0.6}, // Y2
+  ],
+  speed:40, lw:2, alpha:80, tmax:600,
+  colorMode:'rainbow', solidColor:'#c084fc', solidColor2:'#38bdf8',
+  running:true, t:0, pts:0, afId:null,
+  lastX:null, lastY:null
+};
+
+const PRESETS = [
+  {name:'Butterfly', p:[{freq:2,phase:0,damp:0.001,amp:1},{freq:3,phase:1.57,damp:0.0008,amp:0.5},{freq:3,phase:0,damp:0.001,amp:1},{freq:2,phase:0.78,damp:0.0006,amp:0.6}]},
+  {name:'Rosette',   p:[{freq:5,phase:0,damp:0.0005,amp:1},{freq:1,phase:0,damp:0,amp:0},{freq:4,phase:1.57,damp:0.0005,amp:1},{freq:1,phase:0,damp:0,amp:0}]},
+  {name:'Helix',     p:[{freq:2,phase:0,damp:0.0004,amp:1},{freq:1,phase:0,damp:0,amp:0},{freq:2.01,phase:1.57,damp:0.0004,amp:1},{freq:1,phase:0,damp:0,amp:0}]},
+  {name:'Star',      p:[{freq:5,phase:0,damp:0.0006,amp:1},{freq:3,phase:0.5,damp:0.0004,amp:0.4},{freq:4,phase:1.57,damp:0.0006,amp:1},{freq:2,phase:0.3,damp:0.0004,amp:0.4}]},
+  {name:'Spiral',    p:[{freq:3,phase:0,damp:0.003,amp:1},{freq:4,phase:1.2,damp:0.002,amp:0.5},{freq:2,phase:0,damp:0.003,amp:1},{freq:5,phase:0.8,damp:0.002,amp:0.5}]},
+  {name:'Web',       p:[{freq:7,phase:0,damp:0.0003,amp:1},{freq:5,phase:0.4,damp:0.0002,amp:0.6},{freq:6,phase:1.57,damp:0.0003,amp:1},{freq:4,phase:0.9,damp:0.0002,amp:0.6}]},
+  {name:'Figure 8',  p:[{freq:2,phase:1.57,damp:0.001,amp:1},{freq:1,phase:0,damp:0,amp:0},{freq:1,phase:0,damp:0.001,amp:1},{freq:1,phase:0,damp:0,amp:0}]},
+  {name:'Galaxy',    p:[{freq:4,phase:0,damp:0.0015,amp:1},{freq:3,phase:0.3,damp:0.001,amp:0.7},{freq:5,phase:1.57,damp:0.0015,amp:1},{freq:2,phase:1.2,damp:0.001,amp:0.7}]},
+];
+
+// ─── CANVAS ────────────────────────────────────────────────────────────────
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W, H, CX, CY, R;
+
+function resize() {
+  const wrap = cv.parentElement;
+  W = cv.width = wrap.clientWidth * devicePixelRatio;
+  H = cv.height = wrap.clientHeight * devicePixelRatio;
+  cv.style.width  = wrap.clientWidth+'px';
+  cv.style.height = wrap.clientHeight+'px';
+  CX = W/2; CY = H/2;
+  R  = Math.min(W, H) * 0.44;
+  clearCanvas();
+  resetDraw();
+}
+new ResizeObserver(resize).observe(cv.parentElement);
+
+function clearCanvas() {
+  ctx.fillStyle = '#060412';
+  ctx.fillRect(0, 0, W, H);
+  // faint center cross
+  ctx.strokeStyle = 'rgba(192,132,252,0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(CX,CY-R*0.3); ctx.lineTo(CX,CY+R*0.3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(CX-R*0.3,CY); ctx.lineTo(CX+R*0.3,CY); ctx.stroke();
+}
+
+// ─── MATH ──────────────────────────────────────────────────────────────────
+function evalX(t) {
+  const p = S.p;
+  return p[0].amp*Math.sin(p[0].freq*t+p[0].phase)*Math.exp(-p[0].damp*t)
+        +p[1].amp*Math.sin(p[1].freq*t+p[1].phase)*Math.exp(-p[1].damp*t);
+}
+function evalY(t) {
+  const p = S.p;
+  return p[2].amp*Math.sin(p[2].freq*t+p[2].phase)*Math.exp(-p[2].damp*t)
+        +p[3].amp*Math.sin(p[3].freq*t+p[3].phase)*Math.exp(-p[3].damp*t);
+}
+
+// ─── COLOR ─────────────────────────────────────────────────────────────────
+function hexToRgb(hex){
+  const n=parseInt(hex.slice(1),16);
+  return [(n>>16)&255,(n>>8)&255,n&255];
+}
+function lerpColor(a,b,t){
+  return [a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1]),a[2]+t*(b[2]-a[2])];
+}
+function getColor(t, vx, vy, alpha) {
+  const a = alpha/100;
+  if(S.colorMode==='rainbow'){
+    const h = (t*0.4)%360;
+    return `hsla(${h},90%,70%,${a})`;
+  }
+  if(S.colorMode==='velocity'){
+    const spd = Math.sqrt(vx*vx+vy*vy);
+    const norm = Math.min(spd/0.3, 1);
+    const h = norm*270+180;
+    return `hsla(${h},100%,${55+norm*25}%,${a})`;
+  }
+  if(S.colorMode==='fade'){
+    const norm = t/S.tmax;
+    const brightness = 90-norm*50;
+    return `hsla(270,80%,${brightness}%,${(1-norm)*a})`;
+  }
+  // solid — gradient between two colors
+  const c1=hexToRgb(S.solidColor), c2=hexToRgb(S.solidColor2);
+  const norm2 = (Math.sin(t*0.05)+1)*0.5;
+  const [r,g,b] = lerpColor(c1,c2,norm2);
+  return `rgba(${r|0},${g|0},${b|0},${a})`;
+}
+
+// ─── DRAW LOOP ─────────────────────────────────────────────────────────────
+const STEPS_PER_FRAME = 4; // sub-steps for smooth curves
+let activePreset = 0;
+
+function resetDraw() {
+  S.t = 0; S.pts = 0; S.lastX = null; S.lastY = null;
+  document.getElementById('drawing-info').textContent = 't=0 · 0 pts';
+}
+
+function drawStep() {
+  if(!S.running) return;
+
+  const dt = S.speed / 800;
+  for(let s=0; s<STEPS_PER_FRAME; s++){
+    if(S.t >= S.tmax){ S.running=false; updatePlayBtn(); break; }
+
+    const nx = evalX(S.t), ny = evalY(S.t);
+    const px = CX + nx*R*0.47, py = CY + ny*R*0.47;
+
+    if(S.lastX !== null){
+      const dx = nx - (evalX(S.t-dt)||nx);
+      const dy = ny - (evalY(S.t-dt)||ny);
+      ctx.strokeStyle = getColor(S.t, Math.abs(dx/dt), Math.abs(dy/dt), S.alpha);
+      ctx.lineWidth = S.lw * devicePixelRatio * 0.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(S.lastX, S.lastY);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+    }
+
+    S.lastX = px; S.lastY = py;
+    S.t += dt; S.pts++;
+  }
+
+  if(S.pts%200===0){
+    document.getElementById('drawing-info').textContent = `t=${S.t.toFixed(1)} · ${S.pts.toLocaleString()} pts`;
+  }
+  S.afId = requestAnimationFrame(drawStep);
+}
+
+function startDraw(){
+  cancelAnimationFrame(S.afId);
+  clearCanvas();
+  resetDraw();
+  S.running = true;
+  updatePlayBtn();
+  drawStep();
+}
+
+function updatePlayBtn(){
+  document.getElementById('btn-play').textContent = S.running ? '⏸' : '▶';
+}
+
+// ─── PRESETS UI ────────────────────────────────────────────────────────────
+function buildPresets(){
+  const grid = document.getElementById('presets');
+  PRESETS.forEach((pr, i)=>{
+    const btn = document.createElement('button');
+    btn.className='preset-btn'+(i===0?' active':'');
+    btn.textContent = pr.name;
+    btn.addEventListener('click',()=>{
+      activePreset = i;
+      applyPreset(i);
+      grid.querySelectorAll('.preset-btn').forEach((b,j)=>b.classList.toggle('active',j===i));
+    });
+    grid.appendChild(btn);
+  });
+}
+
+function applyPreset(i){
+  const pr = PRESETS[i];
+  // deep copy
+  S.p = pr.p.map(q=>({...q}));
+  syncSlidersFromState();
+  startDraw();
+}
+
+// ─── SLIDERS ───────────────────────────────────────────────────────────────
+function syncSlidersFromState(){
+  document.querySelectorAll('.pf').forEach(sl=>{
+    const pi = +sl.dataset.p, key = sl.dataset.k;
+    sl.value = S.p[pi][key];
+    sl.nextElementSibling.textContent = formatVal(key, S.p[pi][key]);
+  });
+  document.getElementById('sl-speed').value = S.speed;
+  document.getElementById('v-speed').textContent = S.speed;
+  document.getElementById('sl-lw').value = S.lw;
+  document.getElementById('v-lw').textContent = S.lw;
+  document.getElementById('sl-alpha').value = S.alpha;
+  document.getElementById('v-alpha').textContent = S.alpha;
+  document.getElementById('sl-tmax').value = S.tmax;
+  document.getElementById('v-tmax').textContent = S.tmax;
+}
+
+function formatVal(key, v){
+  if(key==='damp') return v===0?'0':v.toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+  if(key==='phase') return v.toFixed(2);
+  if(key==='freq')  return v.toFixed(2);
+  return +v % 1===0 ? v : v.toFixed(2);
+}
+
+document.querySelectorAll('.pf').forEach(sl=>{
+  sl.addEventListener('input',()=>{
+    const pi=+sl.dataset.p, key=sl.dataset.k;
+    S.p[pi][key] = +sl.value;
+    sl.nextElementSibling.textContent = formatVal(key, +sl.value);
+    activePreset = -1;
+    document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  });
+  sl.addEventListener('change', startDraw);
+});
+
+[['sl-speed','speed','v-speed'],['sl-lw','lw','v-lw'],['sl-alpha','alpha','v-alpha'],['sl-tmax','tmax','v-tmax']].forEach(([id,key,vid])=>{
+  const el = document.getElementById(id);
+  el.addEventListener('input',()=>{
+    S[key]=+el.value;
+    document.getElementById(vid).textContent=el.value;
+  });
+  el.addEventListener('change',()=>{ if(key==='tmax') startDraw(); });
+});
+
+// ─── COLOR MODE ────────────────────────────────────────────────────────────
+document.querySelectorAll('.cm-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    S.colorMode = btn.dataset.cm;
+    document.querySelectorAll('.cm-btn').forEach(b=>b.classList.toggle('active',b===btn));
+    document.getElementById('solid-row').style.display = S.colorMode==='solid'?'flex':'none';
+    startDraw();
+  });
+});
+document.getElementById('solid-color').addEventListener('input', e=>{S.solidColor=e.target.value; startDraw();});
+document.getElementById('solid-color2').addEventListener('input', e=>{S.solidColor2=e.target.value; startDraw();});
+
+// ─── CONTROLS ──────────────────────────────────────────────────────────────
+document.getElementById('btn-play').addEventListener('click',()=>{
+  if(S.t>=S.tmax){ startDraw(); return; }
+  S.running = !S.running;
+  updatePlayBtn();
+  if(S.running) drawStep();
+});
+
+document.getElementById('btn-clear').addEventListener('click',()=>{
+  cancelAnimationFrame(S.afId);
+  clearCanvas(); resetDraw();
+  S.running=false; updatePlayBtn();
+});
+
+document.getElementById('btn-export').addEventListener('click',()=>{
+  const a = document.createElement('a');
+  a.download = `harmonograph-${Date.now()}.png`;
+  a.href = cv.toDataURL('image/png');
+  a.click();
+});
+
+document.getElementById('btn-share').addEventListener('click',()=>{
+  const data = {p:S.p,speed:S.speed,lw:S.lw,alpha:S.alpha,tmax:S.tmax,colorMode:S.colorMode,solidColor:S.solidColor,solidColor2:S.solidColor2};
+  const hash = btoa(JSON.stringify(data));
+  history.replaceState(null,'','#'+hash);
+  const btn = document.getElementById('btn-share');
+  btn.textContent='✓'; setTimeout(()=>btn.textContent='⊞', 1500);
+});
+
+// ─── SAVE / LOAD / RESET ────────────────────────────────────────────────────
+document.getElementById('btn-save').addEventListener('click',()=>{
+  const data = {p:S.p,speed:S.speed,lw:S.lw,alpha:S.alpha,tmax:S.tmax,colorMode:S.colorMode,solidColor:S.solidColor,solidColor2:S.solidColor2};
+  localStorage.setItem('harmonograph_save', JSON.stringify(data));
+  const btn=document.getElementById('btn-save');
+  btn.textContent='Saved ✓'; setTimeout(()=>btn.textContent='Save',1500);
+});
+
+document.getElementById('btn-load').addEventListener('click',()=>{
+  const raw = localStorage.getItem('harmonograph_save');
+  if(!raw){ alert('No saved state found.'); return; }
+  const data = JSON.parse(raw);
+  Object.assign(S, data);
+  syncSlidersFromState();
+  startDraw();
+});
+
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  localStorage.removeItem('harmonograph_save');
+  applyPreset(0);
+  document.querySelectorAll('.preset-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+});
+
+// ─── MOBILE PANEL TOGGLE ────────────────────────────────────────────────────
+document.getElementById('toggle-panel').addEventListener('click',()=>{
+  document.getElementById('panel').classList.toggle('open');
+});
+
+// ─── URL HASH ──────────────────────────────────────────────────────────────
+function loadHash(){
+  const h = location.hash.slice(1);
+  if(!h) return false;
+  try{
+    const data=JSON.parse(atob(h));
+    Object.assign(S,data);
+    syncSlidersFromState();
+    // sync color mode buttons
+    document.querySelectorAll('.cm-btn').forEach(b=>b.classList.toggle('active',b.dataset.cm===S.colorMode));
+    document.getElementById('solid-row').style.display = S.colorMode==='solid'?'flex':'none';
+    return true;
+  }catch(e){ return false; }
+}
+
+// ─── INIT ──────────────────────────────────────────────────────────────────
+buildPresets();
+resize();
+if(!loadHash()) applyPreset(0);
+else startDraw();
+</script>
+</body>
+</html>
