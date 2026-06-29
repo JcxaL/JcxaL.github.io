@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Voronoi Tapestry</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;color:#e2e8f0;font-family:system-ui,sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+#canvas-wrap{flex:1;position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:crosshair}
+canvas.drag{cursor:grabbing}
+#toolbar{background:#0d0d1a;border-top:1px solid #1e1e3a;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:56px;z-index:10}
+.btn{background:#1a1a2e;border:1px solid #2a2a4a;color:#a0a8c0;padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:system-ui,sans-serif}
+.btn:hover{background:#22224a;color:#e2e8f0;border-color:#4a4a7a}
+.btn.active{background:#4f46e5;border-color:#6366f1;color:#fff}
+.sep{width:1px;height:28px;background:#1e1e3a;flex-shrink:0}
+#info{position:absolute;top:10px;left:10px;background:rgba(10,10,20,.8);border:1px solid #1e1e3a;border-radius:8px;padding:8px 12px;font-size:11px;color:#6870a0;pointer-events:none;backdrop-filter:blur(4px)}
+#toast{position:absolute;bottom:70px;left:50%;transform:translateX(-50%) translateY(20px);background:#4f46e5;color:#fff;padding:6px 16px;border-radius:20px;font-size:12px;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.group-label{font-size:10px;color:#404060;letter-spacing:.05em;text-transform:uppercase;margin-right:2px}
+#lloyd-btn.running{background:#059669;border-color:#10b981;color:#fff}
+</style>
+</head>
+<body>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="info"></div>
+  <div id="toast"></div>
+</div>
+<div id="toolbar">
+  <span class="group-label">View</span>
+  <button class="btn active" id="btn-voronoi" onclick="setMode('voronoi')">Voronoi</button>
+  <button class="btn" id="btn-delaunay" onclick="setMode('delaunay')">Delaunay</button>
+  <button class="btn" id="btn-both" onclick="setMode('both')">Both</button>
+  <div class="sep"></div>
+  <span class="group-label">Color</span>
+  <button class="btn active" id="pal-cosmic" onclick="setPal('cosmic')">Cosmic</button>
+  <button class="btn" id="pal-biome" onclick="setPal('biome')">Biome</button>
+  <button class="btn" id="pal-ocean" onclick="setPal('ocean')">Ocean</button>
+  <button class="btn" id="pal-fire" onclick="setPal('fire')">Fire</button>
+  <button class="btn" id="pal-mono" onclick="setPal('mono')">Mono</button>
+  <div class="sep"></div>
+  <button class="btn" onclick="randomize()">⚡ Random</button>
+  <button class="btn" id="lloyd-btn" onclick="toggleLloyd()">⬡ Relax</button>
+  <button class="btn" onclick="clearSites()">✕ Clear</button>
+  <button class="btn" onclick="exportPNG()">↓ PNG</button>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const info = document.getElementById('info');
+const toastEl = document.getElementById('toast');
+
+let W = 0, H = 0;
+let sites = [];
+let mode = 'voronoi';
+let pal = 'cosmic';
+let lloydRunning = false;
+let lloydRAF = null;
+let dragIdx = -1;
+let dragOffX = 0, dragOffY = 0;
+let dirty = true;
+let renderRAF = null;
+
+// ── Palettes ──────────────────────────────────────────────────────────────
+const PALETTES = {
+  cosmic: ['#7c3aed','#4f46e5','#0ea5e9','#06b6d4','#8b5cf6','#c084fc','#3b82f6','#a78bfa','#38bdf8','#6366f1','#818cf8','#e879f9'],
+  biome:  ['#166534','#15803d','#16a34a','#4ade80','#86efac','#713f12','#92400e','#b45309','#d97706','#fbbf24','#1d4ed8','#2563eb'],
+  ocean:  ['#0c4a6e','#0369a1','#0284c7','#0ea5e9','#38bdf8','#7dd3fc','#164e63','#155e75','#0e7490','#06b6d4','#22d3ee','#67e8f9'],
+  fire:   ['#7f1d1d','#991b1b','#b91c1c','#dc2626','#ef4444','#f97316','#fb923c','#fbbf24','#fde68a','#fca5a5','#c2410c','#9a3412'],
+  mono:   ['#1e1e2e','#2d2d44','#3d3d5c','#4a4a70','#5a5a82','#6868a0','#7878b8','#9090c8','#a8a8d8','#c0c0e8','#d8d8f0','#e8e8f8']
+};
+
+function palColor(i) {
+  const p = PALETTES[pal];
+  return p[i % p.length];
+}
+
+function hexToRGB(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n>>16)&255, (n>>8)&255, n&255];
+}
+
+// ── Site management ───────────────────────────────────────────────────────
+function addSite(x, y) {
+  if (sites.length >= 60) { toast('Max 60 cells'); return; }
+  sites.push({ x, y, r: palColor(sites.length) });
+  dirty = true;
+  save();
+}
+
+function nearestSite(x, y, radius) {
+  let best = -1, bestD = radius * radius;
+  for (let i = 0; i < sites.length; i++) {
+    const dx = sites[i].x - x, dy = sites[i].y - y;
+    const d = dx*dx + dy*dy;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+function clearSites() {
+  sites = [];
+  dirty = true;
+  save();
+}
+
+function randomize() {
+  const n = 20 + Math.floor(Math.random() * 15);
+  sites = [];
+  const margin = 40;
+  for (let i = 0; i < n; i++) {
+    sites.push({
+      x: margin + Math.random() * (W - margin*2),
+      y: margin + Math.random() * (H - margin*2),
+      r: palColor(i)
+    });
+  }
+  dirty = true;
+  save();
+}
+
+// ── Voronoi pixel render ──────────────────────────────────────────────────
+function renderVoronoi() {
+  if (sites.length === 0) {
+    ctx.fillStyle = '#0a0a12';
+    ctx.fillRect(0, 0, W, H);
+    return;
+  }
+
+  // Render at half resolution for performance, then scale
+  const SCALE = window.devicePixelRatio > 1.5 ? 3 : 2;
+  const rW = Math.ceil(W / SCALE), rH = Math.ceil(H / SCALE);
+  const img = ctx.createImageData(rW, rH);
+  const data = img.data;
+
+  // Pre-compute RGB for each site
+  const sRGB = sites.map(s => hexToRGB(s.r));
+  const sn = sites.length;
+
+  for (let py = 0; py < rH; py++) {
+    for (let px = 0; px < rW; px++) {
+      const x = px * SCALE, y = py * SCALE;
+      let minD = 1e18, secD = 1e18, nearIdx = 0;
+      for (let i = 0; i < sn; i++) {
+        const dx = x - sites[i].x, dy = y - sites[i].y;
+        const d = dx*dx + dy*dy;
+        if (d < minD) { secD = minD; minD = d; nearIdx = i; }
+        else if (d < secD) { secD = d; }
+      }
+      const idx = (py * rW + px) * 4;
+      // Edge: small gap between nearest and second nearest
+      const edge = (Math.sqrt(secD) - Math.sqrt(minD)) < (SCALE * 1.2);
+      if (edge && sn > 1) {
+        data[idx]=15; data[idx+1]=15; data[idx+2]=25;
+      } else {
+        const c = sRGB[nearIdx];
+        data[idx]=c[0]; data[idx+1]=c[1]; data[idx+2]=c[2];
+      }
+      data[idx+3] = 255;
+    }
+  }
+
+  // Draw to offscreen then scale to canvas
+  const off = new OffscreenCanvas(rW, rH);
+  const offCtx = off.getContext('2d');
+  offCtx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, W, H);
+}
+
+// ── Delaunay (Bowyer-Watson) ───────────────────────────────────────────────
+function bowyer(pts) {
+  const n = pts.length;
+  if (n < 3) return [];
+
+  // Super triangle
+  const M = 3000;
+  const st = [{x:-M,y:M},{x:0,y:-M},{x:M,y:M}];
+  const all = [...pts, ...st];
+  const sn = all.length;
+
+  let tris = [[n, n+1, n+2]]; // indices into `all`
+
+  for (let pi = 0; pi < n; pi++) {
+    const p = all[pi];
+    let bad = [];
+
+    // Find triangles whose circumcircle contains p
+    for (const t of tris) {
+      const [a,b,c] = t.map(i => all[i]);
+      const ax=a.x-c.x, ay=a.y-c.y, bx=b.x-c.x, by=b.y-c.y;
+      const D = 2*(ax*(by-(b.y-a.y)-(a.y-c.y)) - ay*(bx-(b.x-a.x)-(a.x-c.x)));
+      // Simpler circumcircle test
+      const ax2=a.x,ay2=a.y,bx2=b.x,by2=b.y,cx2=c.x,cy2=c.y;
+      const D2=2*(ax2*(by2-cy2)+bx2*(cy2-ay2)+cx2*(ay2-by2));
+      if(Math.abs(D2)<1e-10){bad.push(t);continue;}
+      const ux=((ax2*ax2+ay2*ay2)*(by2-cy2)+(bx2*bx2+by2*by2)*(cy2-ay2)+(cx2*cx2+cy2*cy2)*(ay2-by2))/D2;
+      const uy=((ax2*ax2+ay2*ay2)*(cx2-bx2)+(bx2*bx2+by2*by2)*(ax2-cx2)+(cx2*cx2+cy2*cy2)*(bx2-ax2))/D2;
+      const r2=(ax2-ux)*(ax2-ux)+(ay2-uy)*(ay2-uy);
+      const d2=(p.x-ux)*(p.x-ux)+(p.y-uy)*(p.y-uy);
+      if(d2<r2+0.01) bad.push(t);
+    }
+
+    // Find boundary polygon
+    const poly = [];
+    for (const t of bad) {
+      const edges=[[t[0],t[1]],[t[1],t[2]],[t[2],t[0]]];
+      for (const e of edges) {
+        let shared=false;
+        for (const t2 of bad) {
+          if(t2===t)continue;
+          if((t2[0]===e[0]||t2[1]===e[0]||t2[2]===e[0])&&
+             (t2[0]===e[1]||t2[1]===e[1]||t2[2]===e[1])){shared=true;break;}
+        }
+        if(!shared) poly.push(e);
+      }
+    }
+
+    tris = tris.filter(t => !bad.includes(t));
+    for (const e of poly) {
+      tris.push([e[0], e[1], pi]);
+    }
+  }
+
+  // Remove triangles touching super-triangle vertices
+  return tris.filter(t => t[0]<n && t[1]<n && t[2]<n).map(t => t.map(i=>all[i]));
+}
+
+// ── Lloyd relaxation ──────────────────────────────────────────────────────
+function lloydStep() {
+  if (sites.length < 2) return;
+  const SCALE = 3;
+  const rW = Math.ceil(W / SCALE), rH = Math.ceil(H / SCALE);
+  const sn = sites.length;
+
+  // Accumulate centroids
+  const sumX = new Float64Array(sn);
+  const sumY = new Float64Array(sn);
+  const cnt = new Int32Array(sn);
+
+  for (let py = 0; py < rH; py++) {
+    for (let px = 0; px < rW; px++) {
+      const x = px * SCALE, y = py * SCALE;
+      let minD = 1e18, nearIdx = 0;
+      for (let i = 0; i < sn; i++) {
+        const dx = x - sites[i].x, dy = y - sites[i].y;
+        const d = dx*dx + dy*dy;
+        if (d < minD) { minD = d; nearIdx = i; }
+      }
+      sumX[nearIdx] += x;
+      sumY[nearIdx] += y;
+      cnt[nearIdx]++;
+    }
+  }
+
+  for (let i = 0; i < sn; i++) {
+    if (cnt[i] > 0) {
+      sites[i].x += (sumX[i]/cnt[i] - sites[i].x) * 0.3;
+      sites[i].y += (sumY[i]/cnt[i] - sites[i].y) * 0.3;
+    }
+  }
+  dirty = true;
+}
+
+function toggleLloyd() {
+  lloydRunning = !lloydRunning;
+  const btn = document.getElementById('lloyd-btn');
+  if (lloydRunning) {
+    btn.classList.add('running');
+    btn.textContent = '⬡ Stop';
+    runLloyd();
+  } else {
+    btn.classList.remove('running');
+    btn.textContent = '⬡ Relax';
+    if (lloydRAF) cancelAnimationFrame(lloydRAF);
+  }
+}
+
+let lloydCount = 0;
+function runLloyd() {
+  lloydStep();
+  lloydCount++;
+  if (lloydCount % 1 === 0) render();
+  if (lloydRunning) lloydRAF = requestAnimationFrame(runLloyd);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render() {
+  if (!dirty && mode === 'voronoi') return;
+  dirty = false;
+
+  if (sites.length === 0) {
+    ctx.fillStyle = '#08080f';
+    ctx.fillRect(0, 0, W, H);
+    drawEmptyHint();
+    return;
+  }
+
+  if (mode === 'voronoi' || mode === 'both') {
+    renderVoronoi();
+  } else {
+    ctx.fillStyle = '#08080f';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  if (mode === 'delaunay' || mode === 'both') {
+    const tris = bowyer(sites);
+    ctx.lineWidth = mode === 'both' ? 0.8 : 1.2;
+    for (const [a,b,c] of tris) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.closePath();
+      if (mode === 'delaunay') {
+        // Fill with subtle color based on centroid site
+        const cx = (a.x+b.x+c.x)/3, cy = (a.y+b.y+c.y)/3;
+        let minD=1e18, ni=0;
+        for(let i=0;i<sites.length;i++){const dx=cx-sites[i].x,dy=cy-sites[i].y;const d=dx*dx+dy*dy;if(d<minD){minD=d;ni=i;}}
+        const [r,g,b_] = hexToRGB(sites[ni].r);
+        ctx.fillStyle = `rgba(${r},${g},${b_},0.25)`;
+        ctx.fill();
+      }
+      ctx.strokeStyle = mode === 'both' ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.5)';
+      ctx.stroke();
+    }
+  }
+
+  // Draw sites
+  for (let i = 0; i < sites.length; i++) {
+    const s = sites[i];
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = s.r;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  updateInfo();
+}
+
+function drawEmptyHint() {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#2a2a4a';
+  ctx.font = '18px system-ui';
+  ctx.fillText('Click to place Voronoi cells', W/2, H/2 - 20);
+  ctx.font = '13px system-ui';
+  ctx.fillStyle = '#1a1a3a';
+  ctx.fillText('Drag to move · Right-click to delete · ⚡ Random to start', W/2, H/2 + 12);
+}
+
+function updateInfo() {
+  info.textContent = `${sites.length} cells · ${mode} · ${pal} palette`;
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+function canvasXY(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width, scaleY = H / rect.height;
+  const src = e.touches ? e.touches[0] : e;
+  return [(src.clientX - rect.left) * scaleX, (src.clientY - rect.top) * scaleY];
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 2) return;
+  const [x, y] = canvasXY(e);
+  const hit = nearestSite(x, y, 16);
+  if (hit >= 0) {
+    dragIdx = hit;
+    dragOffX = sites[hit].x - x;
+    dragOffY = sites[hit].y - y;
+    canvas.classList.add('drag');
+  } else {
+    addSite(x, y);
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (dragIdx < 0) return;
+  const [x, y] = canvasXY(e);
+  sites[dragIdx].x = Math.max(0, Math.min(W, x + dragOffX));
+  sites[dragIdx].y = Math.max(0, Math.min(H, y + dragOffY));
+  dirty = true;
+  render();
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (dragIdx >= 0) { dragIdx = -1; canvas.classList.remove('drag'); save(); }
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const [x, y] = canvasXY(e);
+  const hit = nearestSite(x, y, 20);
+  if (hit >= 0) { sites.splice(hit, 1); dirty = true; render(); save(); }
+});
+
+// Touch
+let touchDragIdx = -1;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const [x, y] = canvasXY(e);
+  const hit = nearestSite(x, y, 24);
+  if (hit >= 0) {
+    touchDragIdx = hit;
+  } else {
+    addSite(x, y);
+  }
+}, {passive:false});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (touchDragIdx < 0) return;
+  const [x, y] = canvasXY(e);
+  sites[touchDragIdx].x = Math.max(0, Math.min(W, x));
+  sites[touchDragIdx].y = Math.max(0, Math.min(H, y));
+  dirty = true;
+  render();
+}, {passive:false});
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (touchDragIdx >= 0) { touchDragIdx = -1; save(); }
+}, {passive:false});
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'r' || e.key === 'R') randomize();
+  if (e.key === 'c' || e.key === 'C') clearSites();
+  if (e.key === 'l' || e.key === 'L') toggleLloyd();
+  if (e.key === 'e' || e.key === 'E') exportPNG();
+  if (e.key === '1') setMode('voronoi');
+  if (e.key === '2') setMode('delaunay');
+  if (e.key === '3') setMode('both');
+});
+
+// ── Mode / palette ────────────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('[id^="btn-"]').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-'+m).classList.add('active');
+  dirty = true;
+  render();
+}
+
+function setPal(p) {
+  pal = p;
+  document.querySelectorAll('[id^="pal-"]').forEach(b => b.classList.remove('active'));
+  document.getElementById('pal-'+p).classList.add('active');
+  // Reassign colors
+  sites.forEach((s,i) => s.r = palColor(i));
+  dirty = true;
+  render();
+  save();
+}
+
+// ── Export ────────────────────────────────────────────────────────────────
+function exportPNG() {
+  // Render without site dots for export
+  const oldMode = mode;
+  dirty = true;
+  render();
+  // Temporarily remove dots for clean export
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = W; tmpCanvas.height = H;
+  const tmpCtx = tmpCanvas.getContext('2d');
+  tmpCtx.drawImage(canvas, 0, 0);
+  const a = document.createElement('a');
+  a.download = `voronoi-tapestry-${Date.now()}.png`;
+  a.href = tmpCanvas.toDataURL('image/png');
+  a.click();
+  toast('PNG exported!');
+}
+
+// ── Persistence ───────────────────────────────────────────────────────────
+function save() {
+  try {
+    localStorage.setItem('voronoi_tapestry_v1', JSON.stringify({ sites, pal }));
+  } catch(e) {}
+}
+
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem('voronoi_tapestry_v1') || 'null');
+    if (d && d.sites && d.sites.length) {
+      sites = d.sites;
+      if (d.pal) setPal(d.pal);
+    } else {
+      randomize();
+    }
+  } catch(e) {
+    randomize();
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
+}
+
+// ── Resize / Init ─────────────────────────────────────────────────────────
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  W = canvas.width = wrap.clientWidth;
+  H = canvas.height = wrap.clientHeight;
+  dirty = true;
+  render();
+}
+
+window.addEventListener('resize', resize);
+
+// Init
+resize();
+load();
+dirty = true;
+render();
+</script>
+</body>
+</html>
