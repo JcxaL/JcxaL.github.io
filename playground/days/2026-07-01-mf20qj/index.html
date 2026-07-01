@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Hierarchy Studio &mdash; Sunburst / Icicle / Treemap Builder</title>
+<style>
+  :root{
+    --bg:#08080f;
+    --panel:#111120e6;
+    --panel-border:#ffffff17;
+    --text:#eef0fb;
+    --sub:#9aa0c0;
+    --accent:#8b5cf6;
+    --accent2:#06b6d4;
+    --danger:#ef4444;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(circle at 30% 0%, #1a1230 0%, #08080f 55%);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; touch-action:none;
+  }
+  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
+
+  header{
+    position:relative; z-index:20;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:10px 12px; background:var(--panel); backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--panel-border);
+  }
+  header h1{font-size:14px; margin:0; font-weight:700; letter-spacing:.2px; white-space:nowrap;}
+  header h1 span{color:var(--accent2); font-weight:400;}
+  .pillrow{display:flex; gap:4px; background:#00000055; border:1px solid var(--panel-border); border-radius:999px; padding:3px;}
+  .pill{
+    border:none; background:transparent; color:var(--sub); font-size:12px; padding:6px 11px;
+    border-radius:999px; cursor:pointer; font-weight:600; white-space:nowrap;
+  }
+  .pill.active{background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff;}
+  .spacer{flex:1;}
+  .iconbtn{
+    width:34px; height:34px; border-radius:10px; border:1px solid var(--panel-border);
+    background:#ffffff0a; color:var(--text); font-size:15px; cursor:pointer; display:flex;
+    align-items:center; justify-content:center;
+  }
+  .iconbtn:active{background:#ffffff1c;}
+
+  main{position:relative; flex:1; min-height:0; display:flex;}
+  #canvasWrap{position:relative; flex:1; min-width:0;}
+  canvas{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:pointer;}
+
+  #breadcrumb{
+    position:absolute; top:10px; left:10px; z-index:5; display:flex; align-items:center;
+    gap:4px; flex-wrap:wrap; max-width:calc(100% - 20px);
+  }
+  #breadcrumb button{
+    background:var(--panel); border:1px solid var(--panel-border); color:var(--sub);
+    font-size:11.5px; padding:5px 9px; border-radius:8px; cursor:pointer; backdrop-filter:blur(10px);
+  }
+  #breadcrumb button.current{color:#fff; border-color:#ffffff33;}
+  #breadcrumb .sep{color:#555; font-size:11px;}
+
+  #zoomOutBtn{
+    position:absolute; bottom:14px; left:10px; z-index:5;
+    background:var(--panel); border:1px solid var(--panel-border); color:var(--text);
+    font-size:12px; padding:8px 13px; border-radius:10px; cursor:pointer; backdrop-filter:blur(10px);
+    display:none; align-items:center; gap:6px;
+  }
+  #zoomOutBtn.show{display:flex;}
+
+  #tooltip{
+    position:absolute; z-index:8; pointer-events:none; background:#000000d8; border:1px solid #ffffff22;
+    padding:7px 10px; border-radius:9px; font-size:12px; display:none; max-width:220px; line-height:1.4;
+  }
+  #tooltip b{color:#fff;}
+  #tooltip .pct{color:var(--accent2);}
+
+  #toast{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:#000000e0; border:1px solid #ffffff22; padding:9px 16px; border-radius:10px;
+    font-size:12.5px; opacity:0; transition:opacity .25s, transform .25s; z-index:30; pointer-events:none;
+    white-space:nowrap;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  /* Drawer / side panel */
+  #drawer{
+    width:300px; flex-shrink:0; background:var(--panel); backdrop-filter:blur(14px);
+    border-left:1px solid var(--panel-border); overflow-y:auto; padding:12px;
+  }
+  .section{margin-bottom:16px;}
+  .section h2{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--sub);
+    margin:0 0 8px;
+  }
+  .themerow{display:flex; gap:6px; flex-wrap:wrap;}
+  .swatch{
+    width:26px; height:26px; border-radius:8px; cursor:pointer; border:2px solid transparent;
+    position:relative;
+  }
+  .swatch.active{border-color:#fff;}
+  .btnrow{display:flex; gap:6px; flex-wrap:wrap;}
+  .btn{
+    background:#ffffff0f; border:1px solid var(--panel-border); color:var(--text);
+    font-size:12px; padding:7px 10px; border-radius:9px; cursor:pointer; flex:1; min-width:auto;
+    white-space:nowrap;
+  }
+  .btn:active{background:#ffffff22;}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2)); border:none; font-weight:600;}
+  .btn.full{width:100%;}
+  select{
+    width:100%; background:#ffffff0f; border:1px solid var(--panel-border); color:var(--text);
+    font-size:12.5px; padding:8px; border-radius:9px;
+  }
+
+  #treeList{display:flex; flex-direction:column; gap:2px; max-height:38vh; overflow-y:auto; padding-right:2px;}
+  .trow{display:flex; align-items:center; gap:4px; padding:3px 0;}
+  .trow input.tname{
+    flex:1; min-width:0; background:transparent; border:1px solid transparent; color:var(--text);
+    font-size:12px; padding:4px 5px; border-radius:6px;
+  }
+  .trow input.tname:focus{border-color:var(--accent); background:#ffffff0a; outline:none;}
+  .trow input.tval{
+    width:46px; background:#ffffff0f; border:1px solid var(--panel-border); color:var(--sub);
+    font-size:11px; padding:4px; border-radius:6px;
+  }
+  .trow .tmini{
+    width:20px; height:20px; border-radius:5px; border:none; background:#ffffff10; color:var(--sub);
+    font-size:11px; cursor:pointer; flex-shrink:0; line-height:1;
+  }
+  .trow .tmini:active{background:#ffffff28;}
+  .trow .tmini.del{color:var(--danger);}
+  .trow .dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
+
+  #dataFile{display:none;}
+
+  .drawerHeaderRow{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .drawerHeaderRow h2{margin:0;}
+
+  @media (max-width:760px){
+    header h1{font-size:12.5px;}
+    #drawer{
+      position:fixed; top:0; right:0; bottom:0; width:84vw; max-width:340px; z-index:40;
+      transform:translateX(100%); transition:transform .28s ease; box-shadow:-10px 0 30px #00000080;
+    }
+    #drawer.open{transform:translateX(0);}
+    #scrim{
+      position:fixed; inset:0; background:#00000066; z-index:35; opacity:0; pointer-events:none; transition:opacity .28s;
+    }
+    #scrim.show{opacity:1; pointer-events:auto;}
+  }
+  @media (min-width:761px){
+    #drawerCloseBtn, #scrim{display:none;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Hierarchy <span>Studio</span></h1>
+    <div class="pillrow" id="modeRow">
+      <button class="pill" data-mode="sunburst">Sunburst</button>
+      <button class="pill" data-mode="icicle">Icicle</button>
+      <button class="pill" data-mode="treemap">Treemap</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="openDrawerBtn" title="Data & tools">&#9776;</button>
+  </header>
+
+  <main>
+    <div id="canvasWrap">
+      <canvas id="cv"></canvas>
+      <div id="breadcrumb"></div>
+      <button id="zoomOutBtn">&#8598; Zoom out</button>
+      <div id="tooltip"></div>
+      <div id="toast"></div>
+    </div>
+
+    <div id="scrim"></div>
+    <div id="drawer">
+      <div class="drawerHeaderRow">
+        <h2 style="margin:0;">Data &amp; Tools</h2>
+        <button class="iconbtn" id="drawerCloseBtn" style="width:28px;height:28px;">&times;</button>
+      </div>
+
+      <div class="section">
+        <h2>Dataset</h2>
+        <select id="datasetSelect">
+          <option value="traffic">Website Traffic</option>
+          <option value="budget">Annual Budget</option>
+          <option value="org">Org Chart</option>
+          <option value="random">Randomize</option>
+        </select>
+      </div>
+
+      <div class="section">
+        <h2>Color theme</h2>
+        <div class="themerow" id="themeRow"></div>
+      </div>
+
+      <div class="section">
+        <div class="drawerHeaderRow" style="margin-bottom:6px;">
+          <h2 style="margin:0;">Nodes</h2>
+          <button class="btn" id="addRootChildBtn" style="flex:none; padding:5px 9px;">+ Add node</button>
+        </div>
+        <div id="treeList"></div>
+      </div>
+
+      <div class="section">
+        <h2>Presets</h2>
+        <select id="presetSelect"><option value="">&mdash; saved presets &mdash;</option></select>
+        <div class="btnrow" style="margin-top:6px;">
+          <button class="btn" id="savePresetBtn">Save as&hellip;</button>
+          <button class="btn" id="deletePresetBtn">Delete</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Export &amp; share</h2>
+        <div class="btnrow">
+          <button class="btn primary full" id="exportPngBtn">&#8681; Export PNG</button>
+        </div>
+        <div class="btnrow" style="margin-top:6px;">
+          <button class="btn" id="exportJsonBtn">Export JSON</button>
+          <button class="btn" id="importJsonBtn">Import JSON</button>
+        </div>
+        <div class="btnrow" style="margin-top:6px;">
+          <button class="btn full" id="shareBtn">&#128279; Copy share link</button>
+        </div>
+        <input type="file" id="dataFile" accept="application/json">
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- state ---------- */
+  var idCounter = 1;
+  function genId(){ return 'n' + (idCounter++) + Math.random().toString(36).slice(2,6); }
+
+  var state = {
+    data: null,
+    mode: 'sunburst',
+    theme: 'Aurora',
+    focusId: null
+  };
+
+  var THEME_NAMES = ['Aurora','Sunset','Ocean','Forest','Mono'];
+  var THEME_HUES = {
+    Aurora:[262,190,330,150,40,210,20],
+    Sunset:[25,350,45,5,335,15,55],
+    Ocean:[195,185,205,175,165,215,225],
+    Forest:[140,90,155,75,165,110,60],
+    Mono:[258]
+  };
+
+  /* ---------- sample datasets ---------- */
+  function sampleTraffic(){
+    return {name:'Traffic Sources', children:[
+      {name:'Organic Search', children:[
+        {name:'Google', value:38},{name:'Bing', value:7},{name:'DuckDuckGo', value:3}
+      ]},
+      {name:'Direct', value:24},
+      {name:'Social', children:[
+        {name:'Twitter / X', value:9},{name:'Instagram', value:8},{name:'TikTok', value:6},{name:'Reddit', value:4}
+      ]},
+      {name:'Referral', children:[
+        {name:'Partner Sites', value:9},{name:'Blogs', value:6}
+      ]},
+      {name:'Email', value:12},
+      {name:'Paid Ads', children:[
+        {name:'Google Ads', value:14},{name:'Meta Ads', value:10}
+      ]}
+    ]};
+  }
+  function sampleBudget(){
+    return {name:'Annual Budget', children:[
+      {name:'Engineering', children:[{name:'Salaries', value:420},{name:'Cloud Infra', value:95},{name:'Tools', value:22}]},
+      {name:'Marketing', children:[{name:'Ads', value:80},{name:'Content', value:35},{name:'Events', value:28}]},
+      {name:'Sales', children:[{name:'Salaries', value:210},{name:'Travel', value:18}]},
+      {name:'Operations', children:[{name:'Office', value:40},{name:'Legal', value:26},{name:'Admin', value:15}]},
+      {name:'R&D', value:60}
+    ]};
+  }
+  function sampleOrg(){
+    return {name:'CEO', children:[
+      {name:'CTO', children:[
+        {name:'Platform Team', children:[{name:'Alex',value:1},{name:'Sam',value:1},{name:'Priya',value:1}]},
+        {name:'Product Team', children:[{name:'Jordan',value:1},{name:'Kai',value:1}]}
+      ]},
+      {name:'CFO', children:[{name:'Finance', children:[{name:'Morgan',value:1},{name:'Ravi',value:1}]}]},
+      {name:'CMO', children:[{name:'Growth', children:[{name:'Devon',value:1},{name:'Lee',value:1},{name:'Nina',value:1}]}]}
+    ]};
+  }
+  var RAND_WORDS = ['Nova','Quartz','Ember','Delta','Lumen','Orbit','Pixel','Cobalt','Vertex','Nimbus','Aster','Flux','Halo','Zephyr','Onyx','Prism'];
+  function randomName(depth){
+    var w = RAND_WORDS[Math.floor(Math.random()*RAND_WORDS.length)];
+    return depth>0 ? (w+'-'+Math.floor(Math.random()*90+10)) : w;
+  }
+  function randomTree(){
+    function branch(depth){
+      var n = {name: randomName(depth)};
+      if(depth<3 && Math.random()<0.72){
+        var count = 2+Math.floor(Math.random()*4);
+        n.children=[];
+        for(var i=0;i<count;i++) n.children.push(branch(depth+1));
+      } else {
+        n.value = 3+Math.floor(Math.random()*40);
+      }
+      return n;
+    }
+    var root = {name:'Random Dataset', children:[branch(1),branch(1),branch(1),branch(1)]};
+    return root;
+  }
+
+  /* ---------- tree utilities ---------- */
+  function ensureIds(node){
+    if(!node.id) node.id = genId();
+    if(node.children) node.children.forEach(ensureIds);
+  }
+  function assignTopIndex(node, idx){
+    node._topIndex = idx;
+    if(node.children) node.children.forEach(function(c){ assignTopIndex(c, idx); });
+  }
+  function normalize(root){
+    ensureIds(root);
+    root._topIndex = -1;
+    if(root.children) root.children.forEach(function(c, i){ assignTopIndex(c, i); });
+  }
+  function findNode(id, node){
+    node = node || state.data;
+    if(node.id === id) return node;
+    if(node.children){
+      for(var i=0;i<node.children.length;i++){
+        var f = findNode(id, node.children[i]);
+        if(f) return f;
+      }
+    }
+    return null;
+  }
+  function findParent(id, node, parent){
+    node = node || state.data; parent = parent || null;
+    if(node.id === id) return parent;
+    if(node.children){
+      for(var i=0;i<node.children.length;i++){
+        var f = findParent(id, node.children[i], node);
+        if(f !== undefined && f !== null) return f;
+      }
+    }
+    return null;
+  }
+  function buildValueMap(node, map){
+    map = map || new Map();
+    var v;
+    if(node.children && node.children.length){
+      v = 0;
+      for(var i=0;i<node.children.length;i++) v += buildValueMap(node.children[i], map);
+      if(v<=0) v = 0.0001;
+    } else {
+      v = Math.max(parseFloat(node.value)||1, 0.0001);
+    }
+    map.set(node, v);
+    return v;
+  }
+  function pathToRoot(id){
+    var node = findNode(id);
+    var path = [];
+    var cur = node;
+    while(cur){
+      path.unshift(cur);
+      cur = findParent(cur.id);
+    }
+    return path;
+  }
+
+  /* ---------- color ---------- */
+  function getColor(node, depth){
+    var hues = THEME_HUES[state.theme];
+    var idx = node._topIndex >= 0 ? node._topIndex : 0;
+    var hue = state.theme==='Mono' ? (258 + idx*5) : hues[idx % hues.length];
+    var light = Math.max(24, Math.min(76, 36 + depth*9));
+    var sat = state.theme==='Mono' ? 12 : 62;
+    return 'hsl(' + hue + ' ' + sat + '% ' + light + '%)';
+  }
+  function textColorFor(light){ return light > 55 ? '#12121a' : '#f4f4fb'; }
+
+  /* ---------- canvas setup ---------- */
+  var canvas = document.getElementById('cv');
+  var ctx = canvas.getContext('2d');
+  var wrap = document.getElementById('canvasWrap');
+  var DPR = Math.max(1, window.devicePixelRatio || 1);
+  var W=0, H=0;
+
+  function resize(){
+    var r = wrap.getBoundingClientRect();
+    W = Math.max(1, r.width); H = Math.max(1, r.height);
+    canvas.width = Math.round(W*DPR); canvas.height = Math.round(H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    draw();
+  }
+  if(window.ResizeObserver){
+    new ResizeObserver(resize).observe(wrap);
+  } else {
+    window.addEventListener('resize', resize);
+  }
+
+  /* ---------- layout + draw ---------- */
+  var segments = [];   // sunburst: {node,a0,a1,depth,r0,r1}
+  var rects = [];      // icicle/treemap: {node,x,y,w,h,depth}
+  var valueMap = null;
+
+  function layoutSunburst(focus){
+    segments = [];
+    function assign(node, a0, a1, depth){
+      segments.push({node:node, a0:a0, a1:a1, depth:depth});
+      if(node.children && node.children.length && (a1-a0) > 0.00001){
+        var total = valueMap.get(node);
+        var a = a0;
+        for(var i=0;i<node.children.length;i++){
+          var c = node.children[i];
+          var v = valueMap.get(c);
+          var frac = total>0 ? v/total : 1/node.children.length;
+          var a2 = a + frac*(a1-a0);
+          assign(c, a, a2, depth+1);
+          a = a2;
+        }
+      }
+    }
+    assign(focus, 0, Math.PI*2, 0);
+  }
+
+  function layoutIcicle(focus){
+    rects = [];
+    var rowH = 46;
+    function assign(node, x0, x1, depth){
+      rects.push({node:node, x0:x0, x1:x1, depth:depth});
+      if(node.children && node.children.length && (x1-x0) > 0.00001){
+        var total = valueMap.get(node);
+        var x = x0;
+        for(var i=0;i<node.children.length;i++){
+          var c = node.children[i];
+          var v = valueMap.get(c);
+          var frac = total>0 ? v/total : 1/node.children.length;
+          var x2 = x + frac*(x1-x0);
+          assign(c, x, x2, depth+1);
+          x = x2;
+        }
+      }
+    }
+    assign(focus, 0, 1, 0);
+  }
+
+  function layoutTreemap(focus){
+    rects = [];
+    function place(node, x, y, w, h, depth){
+      rects.push({node:node, x:x, y:y, w:w, h:h, depth:depth});
+      if(node.children && node.children.length && w>3 && h>3){
+        var header = depth===0 ? 0 : 13;
+        var inset = depth===0 ? 0 : 2;
+        var ix = x+inset, iy = y+inset+header, iw = w-inset*2, ih = h-inset*2-header;
+        if(iw>2 && ih>2){
+          var vertical = depth % 2 === 0;
+          var total = valueMap.get(node);
+          var kids = node.children.slice().sort(function(a,b){ return valueMap.get(b)-valueMap.get(a); });
+          var pos = vertical ? ix : iy;
+          for(var i=0;i<kids.length;i++){
+            var c = kids[i];
+            var v = valueMap.get(c);
+            var frac = total>0 ? v/total : 1/kids.length;
+            if(vertical){
+              var cw = frac*iw;
+              place(c, pos, iy, cw, ih, depth+1);
+              pos += cw;
+            } else {
+              var ch = frac*ih;
+              place(c, ix, pos, iw, ch, depth+1);
+              pos += ch;
+            }
+          }
+        }
+      }
+    }
+    place(focus, 0, 0, W, H, 0);
+  }
+
+  function drawArcLabel(cx, cy, r0, r1, a0, a1, text, light){
+    var mid = (a0+a1)/2;
+    var arcLenMid = ((r0+r1)/2) * (a1-a0);
+    if(arcLenMid < 14 || (r1-r0) < 16) return;
+    ctx.save();
+    ctx.translate(cx, cy);
+    var rot = mid, flip = false;
+    if(mid > Math.PI/2 && mid < Math.PI*1.5){ rot = mid + Math.PI; flip = true; }
+    ctx.rotate(rot);
+    ctx.fillStyle = textColorFor(light);
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    var avail = (r1-r0) - 10;
+    var label = text;
+    if(flip){
+      ctx.textAlign = 'right';
+      while(ctx.measureText(label).width > avail && label.length > 1){ label = label.slice(0,-2)+'…'; }
+      ctx.fillText(label, -(r0+5), 0);
+    } else {
+      ctx.textAlign = 'left';
+      while(ctx.measureText(label).width > avail && label.length > 1){ label = label.slice(0,-2)+'…'; }
+      ctx.fillText(label, r0+5, 0);
+    }
+    ctx.restore();
+  }
+
+  function drawSunburst(focus){
+    layoutSunburst(focus);
+    var cx = W/2, cy = H/2;
+    var maxR = Math.min(W,H)/2 - 8;
+    var R0 = Math.min(46, maxR*0.22);
+    var maxDepth = 0;
+    segments.forEach(function(s){ if(s.depth>maxDepth) maxDepth = s.depth; });
+    var ringW = maxDepth>0 ? Math.min(50, (maxR-R0)/maxDepth) : 50;
+
+    ctx.clearRect(0,0,W,H);
+
+    segments.forEach(function(s){
+      if(s.depth===0) return;
+      var r0 = R0 + (s.depth-1)*ringW;
+      var r1 = r0 + ringW - 1.5;
+      if(s.a1-s.a0 < 0.0009) return;
+      var light = Math.max(24, Math.min(76, 36 + s.depth*9));
+      var col = getColor(s.node, s.depth);
+      s.r0=r0; s.r1=r1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r1, s.a0, s.a1, false);
+      ctx.arc(cx, cy, r0, s.a1, s.a0, true);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(8,8,15,0.65)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      drawArcLabel(cx, cy, r0, r1, s.a0, s.a1, s.node.name, light);
+    });
+
+    // center circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, R0-2, 0, Math.PI*2);
+    ctx.fillStyle = '#171724';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff22';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#e8e8f5';
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var cname = focus.name.length>12 ? focus.name.slice(0,11)+'…' : focus.name;
+    ctx.fillText(cname, cx, cy - (state.focusId!==state.data.id ? 6 : 0));
+    if(state.focusId !== state.data.id){
+      ctx.fillStyle = '#7b7fa0';
+      ctx.font = '9.5px system-ui, sans-serif';
+      ctx.fillText('tap to zoom out', cx, cy+8);
+    }
+  }
+
+  function drawIcicle(focus){
+    layoutIcicle(focus);
+    var rowH = 46;
+    ctx.clearRect(0,0,W,H);
+    rects.forEach(function(s){
+      var x = s.x0*W, w = (s.x1-s.x0)*W;
+      var y = s.depth*rowH, h = rowH-2;
+      if(y > H) return;
+      if(s.depth===0){
+        ctx.fillStyle = '#171724';
+        ctx.fillRect(x,y,w,h);
+        ctx.strokeStyle = '#ffffff22'; ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
+        ctx.fillStyle = '#e8e8f5';
+        ctx.font = '600 12px system-ui, sans-serif';
+        ctx.textAlign = 'left'; ctx.textBaseline='middle';
+        ctx.fillText(focus.name + (state.focusId!==state.data.id ? '  (tap ← to zoom out)' : ''), x+10, y+h/2);
+        return;
+      }
+      if(w<0.6) return;
+      var light = Math.max(24, Math.min(76, 36 + s.depth*9));
+      ctx.fillStyle = getColor(s.node, s.depth);
+      ctx.fillRect(x,y,Math.max(0,w-1.4),h);
+      ctx.strokeStyle = 'rgba(8,8,15,0.6)';
+      ctx.strokeRect(x+0.5,y+0.5, Math.max(0,w-2.4), h-1);
+      if(w>28){
+        ctx.save();
+        ctx.beginPath(); ctx.rect(x+4,y,w-8,h); ctx.clip();
+        ctx.fillStyle = textColorFor(light);
+        ctx.font='11px system-ui, sans-serif';
+        ctx.textAlign='left'; ctx.textBaseline='middle';
+        ctx.fillText(s.node.name, x+6, y+h/2);
+        ctx.restore();
+      }
+    });
+  }
+
+  function drawTreemap(focus){
+    layoutTreemap(focus);
+    ctx.clearRect(0,0,W,H);
+    rects.forEach(function(s){
+      var light = Math.max(24, Math.min(76, 36 + s.depth*9));
+      var hasKids = s.node.children && s.node.children.length;
+      if(s.depth===0){
+        ctx.fillStyle = '#0d0d16';
+        ctx.fillRect(s.x,s.y,s.w,s.h);
+        return;
+      }
+      ctx.fillStyle = getColor(s.node, s.depth);
+      ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeStyle = 'rgba(8,8,15,0.7)';
+      ctx.lineWidth = hasKids ? 2 : 1;
+      ctx.strokeRect(s.x+0.5, s.y+0.5, Math.max(0,s.w-1), Math.max(0,s.h-1));
+      if(s.w>30 && s.h>14){
+        ctx.save();
+        ctx.beginPath(); ctx.rect(s.x+3,s.y,s.w-6,Math.min(s.h,14)); ctx.clip();
+        ctx.fillStyle = textColorFor(hasKids? 20 : light);
+        ctx.font = hasKids ? '600 10.5px system-ui, sans-serif' : '11px system-ui, sans-serif';
+        ctx.textAlign='left'; ctx.textBaseline='top';
+        ctx.fillText(s.node.name, s.x+4, s.y + (hasKids?2:3));
+        ctx.restore();
+      }
+    });
+  }
+
+  function draw(){
+    if(!state.data) return;
+    var focus = findNode(state.focusId) || state.data;
+    valueMap = new Map();
+    buildValueMap(state.data, valueMap);
+    if(state.mode==='sunburst') drawSunburst(focus);
+    else if(state.mode==='icicle') drawIcicle(focus);
+    else drawTreemap(focus);
+    renderBreadcrumb(focus);
+    document.getElementById('zoomOutBtn').classList.toggle('show', focus.id !== state.data.id);
+  }
+
+  /* ---------- hit testing ---------- */
+  function hitSunburst(px, py){
+    var cx=W/2, cy=H/2;
+    var dx = px-cx, dy = py-cy;
+    var r = Math.sqrt(dx*dx+dy*dy);
+    var a = Math.atan2(dy,dx); if(a<0) a += Math.PI*2;
+    for(var i=0;i<segments.length;i++){
+      var s = segments[i];
+      if(s.depth===0) continue;
+      if(s.r0===undefined) continue;
+      if(r>=s.r0 && r<=s.r1 && a>=s.a0 && a<=s.a1) return s.node;
+    }
+    var R0 = segments.length ? (segments[0]) : null;
+    if(r < 60) return 'CENTER';
+    return null;
+  }
+  function hitRect(px, py){
+    var match = null;
+    for(var i=0;i<rects.length;i++){
+      var s = rects[i];
+      var x,y,w,h;
+      if(state.mode==='icicle'){ x=s.x0*W; w=(s.x1-s.x0)*W; y=s.depth*46; h=44; }
+      else { x=s.x; y=s.y; w=s.w; h=s.h; }
+      if(px>=x && px<=x+w && py>=y && py<=y+h){
+        if(s.depth===0) match = 'CENTER'; else match = s.node;
+      }
+    }
+    return match;
+  }
+
+  /* ---------- interaction ---------- */
+  function getPos(evt){
+    var r = canvas.getBoundingClientRect();
+    var cx = (evt.touches ? evt.touches[0].clientX : evt.clientX) - r.left;
+    var cy = (evt.touches ? evt.touches[0].clientY : evt.clientY) - r.top;
+    return {x:cx,y:cy};
+  }
+
+  function zoomOut(){
+    var focus = findNode(state.focusId) || state.data;
+    var parent = findParent(focus.id);
+    if(parent){ state.focusId = parent.id; draw(); saveAutosave(); }
+  }
+  function zoomTo(node){
+    state.focusId = node.id;
+    draw();
+    saveAutosave();
+  }
+
+  canvas.addEventListener('click', function(e){
+    var p = getPos(e);
+    var hit = state.mode==='sunburst' ? hitSunburst(p.x,p.y) : hitRect(p.x,p.y);
+    if(hit==='CENTER'){ zoomOut(); return; }
+    if(hit) zoomTo(hit);
+  });
+
+  var tooltip = document.getElementById('tooltip');
+  canvas.addEventListener('mousemove', function(e){
+    var p = getPos(e);
+    var hit = state.mode==='sunburst' ? hitSunburst(p.x,p.y) : hitRect(p.x,p.y);
+    if(!hit || hit==='CENTER'){ tooltip.style.display='none'; return; }
+    var focus = findNode(state.focusId) || state.data;
+    var v = valueMap.get(hit);
+    var total = valueMap.get(focus);
+    var pct = total>0 ? (v/total*100).toFixed(1) : '0.0';
+    tooltip.innerHTML = '<b>'+escapeHtml(hit.name)+'</b><br>value '+ (Math.round(v*100)/100) +' &middot; <span class="pct">'+pct+'%</span>';
+    tooltip.style.display='block';
+    var wrapRect = wrap.getBoundingClientRect();
+    var lx = e.clientX - wrapRect.left + 14;
+    var ly = e.clientY - wrapRect.top + 14;
+    if(lx + 220 > W) lx = e.clientX - wrapRect.left - 220;
+    tooltip.style.left = lx+'px';
+    tooltip.style.top = ly+'px';
+  });
+  canvas.addEventListener('mouseleave', function(){ tooltip.style.display='none'; });
+  canvas.addEventListener('touchstart', function(){ tooltip.style.display='none'; }, {passive:true});
+
+  document.getElementById('zoomOutBtn').addEventListener('click', zoomOut);
+
+  function renderBreadcrumb(focus){
+    var el = document.getElementById('breadcrumb');
+    var path = pathToRoot(focus.id);
+    el.innerHTML='';
+    path.forEach(function(node, i){
+      if(i>0){
+        var sep = document.createElement('span');
+        sep.className='sep'; sep.textContent='›';
+        el.appendChild(sep);
+      }
+      var b = document.createElement('button');
+      b.textContent = node.name.length>16 ? node.name.slice(0,15)+'…' : node.name;
+      if(i===path.length-1) b.className='current';
+      b.addEventListener('click', function(){ zoomTo(node); });
+      el.appendChild(b);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  /* ---------- mode / theme controls ---------- */
+  document.getElementById('modeRow').addEventListener('click', function(e){
+    var btn = e.target.closest('[data-mode]');
+    if(!btn) return;
+    state.mode = btn.getAttribute('data-mode');
+    document.querySelectorAll('#modeRow .pill').forEach(function(p){ p.classList.toggle('active', p===btn); });
+    draw();
+    saveAutosave();
+  });
+
+  var themeRow = document.getElementById('themeRow');
+  THEME_NAMES.forEach(function(name){
+    var sw = document.createElement('div');
+    sw.className='swatch';
+    sw.title = name;
+    sw.dataset.theme = name;
+    var hue = THEME_HUES[name][0];
+    var sat = name==='Mono' ? 12 : 62;
+    sw.style.background = 'hsl('+hue+' '+sat+'% 50%)';
+    sw.addEventListener('click', function(){
+      state.theme = name;
+      document.querySelectorAll('.swatch').forEach(function(s){ s.classList.toggle('active', s.dataset.theme===name); });
+      draw();
+      saveAutosave();
+    });
+    themeRow.appendChild(sw);
+  });
+
+  /* ---------- tree editor ---------- */
+  var treeList = document.getElementById('treeList');
+
+  function renderTreeList(){
+    var html = '';
+    function row(node, depth){
+      var hasKids = node.children && node.children.length;
+      var isRoot = node===state.data;
+      var col = getColor(node, node._topIndex>=0 ? 1 : 0);
+      html += '<div class="trow" style="padding-left:'+(depth*12)+'px" data-id="'+node.id+'">';
+      html += '<span class="dot" style="background:'+col+'"></span>';
+      html += '<input class="tname" data-act="rename" value="'+escapeHtml(node.name)+'">';
+      if(!hasKids){
+        html += '<input type="number" class="tval" data-act="value" value="'+(node.value!==undefined?node.value:1)+'" min="0" step="1">';
+      }
+      html += '<button class="tmini" data-act="addchild" title="Add child">+</button>';
+      if(!isRoot) html += '<button class="tmini" data-act="addsib" title="Add sibling">&#8645;</button>';
+      if(!isRoot) html += '<button class="tmini del" data-act="del" title="Delete">&times;</button>';
+      html += '</div>';
+      if(hasKids){ node.children.forEach(function(c){ row(c, depth+1); }); }
+    }
+    row(state.data, 0);
+    treeList.innerHTML = html || '<div style="color:var(--sub); font-size:12px;">Empty. Add a node to begin.</div>';
+  }
+
+  treeList.addEventListener('input', function(e){
+    var row = e.target.closest('.trow');
+    if(!row) return;
+    var node = findNode(row.dataset.id);
+    if(!node) return;
+    var act = e.target.dataset.act;
+    if(act==='rename'){ node.name = e.target.value || 'Untitled'; draw(); }
+    else if(act==='value'){ node.value = Math.max(0, parseFloat(e.target.value)||0); draw(); }
+    saveAutosave();
+  });
+
+  treeList.addEventListener('click', function(e){
+    var btn = e.target.closest('.tmini');
+    if(!btn) return;
+    var row = e.target.closest('.trow');
+    var node = findNode(row.dataset.id);
+    if(!node) return;
+    var act = btn.dataset.act;
+    if(act==='addchild'){
+      if(!node.children) node.children = [];
+      delete node.value;
+      node.children.push({id:genId(), name:'New', value:5});
+      normalize(state.data);
+      rebuildAndDraw();
+    } else if(act==='addsib'){
+      var parent = findParent(node.id) || state.data;
+      if(!parent.children) parent.children=[];
+      var idx = parent.children.indexOf(node);
+      parent.children.splice(idx+1, 0, {id:genId(), name:'New', value:5});
+      normalize(state.data);
+      rebuildAndDraw();
+    } else if(act==='del'){
+      var p = findParent(node.id);
+      if(p && p.children){
+        p.children = p.children.filter(function(c){ return c!==node; });
+        if(state.focusId===node.id) state.focusId = state.data.id;
+        normalize(state.data);
+        rebuildAndDraw();
+      }
+    }
+  });
+
+  document.getElementById('addRootChildBtn').addEventListener('click', function(){
+    if(!state.data.children) state.data.children = [];
+    delete state.data.value;
+    state.data.children.push({id:genId(), name:'New Branch', value:10});
+    normalize(state.data);
+    rebuildAndDraw();
+  });
+
+  function rebuildAndDraw(){
+    renderTreeList();
+    draw();
+    saveAutosave();
+  }
+
+  /* ---------- dataset / persistence ---------- */
+  var AUTOSAVE_KEY = 'hierarchy-studio-autosave-v1';
+  var PRESET_KEY = 'hierarchy-studio-presets-v1';
+
+  function loadDataset(name){
+    var d;
+    if(name==='traffic') d = sampleTraffic();
+    else if(name==='budget') d = sampleBudget();
+    else if(name==='org') d = sampleOrg();
+    else d = randomTree();
+    setData(d);
+  }
+  function setData(d){
+    normalize(d);
+    state.data = d;
+    state.focusId = d.id;
+    renderTreeList();
+    draw();
+    saveAutosave();
+  }
+
+  document.getElementById('datasetSelect').addEventListener('change', function(e){
+    loadDataset(e.target.value);
+    toast('Loaded ' + e.target.options[e.target.selectedIndex].text);
+  });
+
+  function saveAutosave(){
+    try{
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({data:state.data, mode:state.mode, theme:state.theme, focusId:state.focusId}));
+    }catch(err){}
+  }
+  function loadAutosave(){
+    try{
+      var raw = localStorage.getItem(AUTOSAVE_KEY);
+      if(!raw) return false;
+      var s = JSON.parse(raw);
+      if(!s || !s.data) return false;
+      normalize(s.data);
+      state.data = s.data;
+      state.mode = s.mode || 'sunburst';
+      state.theme = s.theme || 'Aurora';
+      state.focusId = (s.focusId && findNode(s.focusId, s.data)) ? s.focusId : s.data.id;
+      return true;
+    }catch(err){ return false; }
+  }
+
+  function getPresets(){
+    try{ return JSON.parse(localStorage.getItem(PRESET_KEY) || '{}'); }catch(err){ return {}; }
+  }
+  function setPresets(p){
+    try{ localStorage.setItem(PRESET_KEY, JSON.stringify(p)); }catch(err){}
+  }
+  function refreshPresetSelect(){
+    var sel = document.getElementById('presetSelect');
+    var presets = getPresets();
+    sel.innerHTML = '<option value="">&mdash; saved presets &mdash;</option>';
+    Object.keys(presets).forEach(function(name){
+      var o = document.createElement('option');
+      o.value = name; o.textContent = name;
+      sel.appendChild(o);
+    });
+  }
+  document.getElementById('savePresetBtn').addEventListener('click', function(){
+    var name = prompt('Save current tree as:');
+    if(!name) return;
+    var presets = getPresets();
+    presets[name] = state.data;
+    setPresets(presets);
+    refreshPresetSelect();
+    document.getElementById('presetSelect').value = name;
+    toast('Saved "'+name+'"');
+  });
+  document.getElementById('deletePresetBtn').addEventListener('click', function(){
+    var sel = document.getElementById('presetSelect');
+    if(!sel.value) return;
+    var presets = getPresets();
+    delete presets[sel.value];
+    setPresets(presets);
+    refreshPresetSelect();
+    toast('Preset deleted');
+  });
+  document.getElementById('presetSelect').addEventListener('change', function(e){
+    if(!e.target.value) return;
+    var presets = getPresets();
+    var d = presets[e.target.value];
+    if(d) { setData(JSON.parse(JSON.stringify(d))); toast('Loaded preset "'+e.target.value+'"'); }
+  });
+
+  /* ---------- export / import / share ---------- */
+  document.getElementById('exportPngBtn').addEventListener('click', function(){
+    canvas.toBlob(function(blob){
+      if(!blob){ toast('Export failed'); return; }
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'hierarchy-'+state.mode+'-'+Date.now()+'.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+      toast('PNG exported');
+    }, 'image/png');
+  });
+
+  document.getElementById('exportJsonBtn').addEventListener('click', function(){
+    var blob = new Blob([JSON.stringify(state.data, null, 2)], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'hierarchy-data-'+Date.now()+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+    toast('JSON exported');
+  });
+
+  document.getElementById('importJsonBtn').addEventListener('click', function(){
+    document.getElementById('dataFile').click();
+  });
+  document.getElementById('dataFile').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var d = JSON.parse(reader.result);
+        if(!d || typeof d.name !== 'string'){ throw new Error('bad shape'); }
+        idCounter = 1;
+        stripIds(d);
+        setData(d);
+        toast('Imported '+file.name);
+      }catch(err){ toast('Import failed: invalid JSON'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+  function stripIds(node){
+    delete node.id;
+    if(node.children) node.children.forEach(stripIds);
+  }
+
+  document.getElementById('shareBtn').addEventListener('click', function(){
+    try{
+      var payload = {d: state.data, m: state.mode, t: state.theme};
+      var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      var url = location.origin + location.pathname + '#s=' + encoded;
+      history.replaceState(null,'', '#s='+encoded);
+      copyToClipboard(url);
+      toast('Share link copied!');
+    }catch(err){ toast('Could not build share link'); }
+  });
+  function copyToClipboard(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).catch(function(){ fallbackCopy(text); });
+    } else { fallbackCopy(text); }
+  }
+  function fallbackCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); }catch(err){}
+    document.body.removeChild(ta);
+  }
+
+  var toastTimer = null;
+  function toast(msg){
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2200);
+  }
+
+  /* ---------- drawer (mobile) ---------- */
+  var drawer = document.getElementById('drawer');
+  var scrim = document.getElementById('scrim');
+  function openDrawer(){ drawer.classList.add('open'); scrim.classList.add('show'); }
+  function closeDrawer(){ drawer.classList.remove('open'); scrim.classList.remove('show'); }
+  document.getElementById('openDrawerBtn').addEventListener('click', function(){
+    if(drawer.classList.contains('open')) closeDrawer(); else openDrawer();
+  });
+  document.getElementById('drawerCloseBtn').addEventListener('click', closeDrawer);
+  scrim.addEventListener('click', closeDrawer);
+
+  /* ---------- init ---------- */
+  function initFromHash(){
+    var h = location.hash;
+    if(h.indexOf('#s=') === 0){
+      try{
+        var payload = JSON.parse(decodeURIComponent(escape(atob(h.slice(3)))));
+        if(payload && payload.d && typeof payload.d.name==='string'){
+          idCounter = 1;
+          stripIds(payload.d);
+          normalize(payload.d);
+          state.data = payload.d;
+          state.mode = payload.m || 'sunburst';
+          state.theme = payload.t || 'Aurora';
+          state.focusId = payload.d.id;
+          return true;
+        }
+      }catch(err){}
+    }
+    return false;
+  }
+
+  function init(){
+    var loaded = initFromHash();
+    if(!loaded) loaded = loadAutosave();
+    if(!loaded){
+      state.data = sampleTraffic();
+      normalize(state.data);
+      state.focusId = state.data.id;
+    }
+
+    document.querySelectorAll('#modeRow .pill').forEach(function(p){
+      p.classList.toggle('active', p.dataset.mode===state.mode);
+    });
+    document.querySelectorAll('.swatch').forEach(function(s){
+      s.classList.toggle('active', s.dataset.theme===state.theme);
+    });
+    refreshPresetSelect();
+    renderTreeList();
+    resize();
+    saveAutosave();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
