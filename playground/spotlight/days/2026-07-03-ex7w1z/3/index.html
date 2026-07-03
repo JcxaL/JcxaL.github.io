@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Highlight API Text Painting — UI Spotlight</title>
+<style>
+  :root{
+    --bg:#07060d; --panel-bg:rgba(14,12,24,.72);
+    --pink:#f72585; --blue:#4cc9f0; --gold:#ffd60a; --violet:#7209b7; --mint:#06ffa5;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:#f4f2fb;
+    font-family:system-ui,-apple-system,sans-serif;}
+  body{display:flex;flex-direction:column;align-items:center;padding:26px 18px 60px;gap:22px;}
+  h1{font-size:15px;font-weight:600;color:#cfc9e8;margin:0;}
+  p.sub{margin:0;font-size:11.5px;color:#7a7398;max-width:520px;text-align:center;}
+
+  .card{
+    width:min(560px,100%);background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.09);
+    border-radius:16px;padding:18px 20px;position:relative;
+  }
+  .card h2{font-size:12px;margin:0 0 10px;color:#a79fd6;letter-spacing:.03em;}
+  .card .text{font-size:14px;line-height:1.7;color:#d8d4ee;}
+
+  input[type=text]{
+    width:100%;padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.15);
+    background:#12101f;color:#f0edfa;font-size:13px;margin-bottom:12px;font-family:inherit;
+  }
+
+  ::highlight(search-hit){ background:var(--gold); color:#1a1204; border-radius:2px; }
+  ::highlight(sent-pos){ background:rgba(6,255,165,.32); color:#eafff5; }
+  ::highlight(sent-neg){ background:rgba(247,37,133,.32); color:#ffe9f2; }
+  ::highlight(read-cursor){ background:var(--blue); color:#04202b; }
+  ::highlight(read-done){ background:rgba(76,201,240,.18); color:#cfeaf7; }
+
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:10.5px;color:#8b84ac;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .swatch{width:9px;height:9px;border-radius:3px;display:inline-block;}
+
+  .scrub{width:100%;accent-color:var(--blue);margin-top:10px;}
+  .row{display:flex;gap:8px;align-items:center;}
+  .btn{
+    padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.06);color:#f0edfa;font-size:11px;cursor:pointer;font-family:inherit;
+  }
+  .btn:hover{background:var(--violet);border-color:var(--violet);}
+
+  .fallback-note{font-size:10px;color:#6c6590;margin-top:8px;display:none;}
+  .fallback-note.show{display:block;}
+
+  .panel{
+    position:fixed;top:14px;right:14px;background:var(--panel-bg);
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;
+    gap:8px;font-size:11px;min-width:150px;z-index:9;
+  }
+  .panel-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .panel h4{margin:0 0 2px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#9a92bd;}
+  .panel-row input[type=range]{width:78px;accent-color:var(--mint);}
+
+  @media (max-width:640px){.panel{display:none;}}
+  footer{font-size:11px;color:#5a5473;text-align:center;}
+</style>
+</head>
+<body>
+<h1>Highlight API Text Painting</h1>
+<p class="sub">Text gets colored ranges without touching the DOM — <code>Range</code> objects registered through <code>CSS.highlights</code> and styled with <code>::highlight()</code>, the browser's native "type to highlight" mechanism.</p>
+
+<div class="card">
+  <h2>1 · Type to highlight</h2>
+  <input type="text" id="searchInput" placeholder="Type a word, e.g. “native”…">
+  <p class="text" id="searchText">Every year the web platform ships a few features that quietly replace a native JavaScript library. The Custom Highlight API is one of them: it paints matches directly onto existing text nodes, so a live search box can highlight every native occurrence of a query without wrapping a single character in a span.</p>
+</div>
+
+<div class="card">
+  <h2>2 · Sentiment heatmap</h2>
+  <p class="text" id="sentText">The onboarding flow felt smooth and delightful, genuinely a joy to use. Unfortunately the checkout step was confusing and slow, which frustrated most testers. Overall the redesign is a solid, promising step forward.</p>
+  <div class="legend">
+    <span><span class="swatch" style="background:var(--mint)"></span>positive</span>
+    <span><span class="swatch" style="background:var(--pink)"></span>negative</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3 · Reading-progress highlight</h2>
+  <p class="text" id="readText">One shared cursor sweeps across a paragraph the way a read-along book highlights the current phrase — everything already read stays lightly tinted, and the live word glows, all driven by two Range objects instead of a rebuilt DOM.</p>
+  <input type="range" id="readScrub" class="scrub" min="0" max="1000" value="0">
+  <div class="row">
+    <button class="btn" id="readPlay">Play</button>
+  </div>
+  <div class="fallback-note" id="fallbackNote">Native <code>::highlight()</code> unsupported here — showing a &lt;mark&gt;-based fallback.</div>
+</div>
+
+<div class="panel">
+  <h4>Sentiment Tuning</h4>
+  <div class="panel-row"><span>Sensitivity</span><input type="range" id="sensitivity" min="1" max="5" value="2"></div>
+</div>
+
+<footer>Inspired by Kyoko Kitagawa · ICS MEDIA "CSS Custom Highlight API" · UI Spotlight Day 48 · Drop #3</footer>
+
+<script>
+(function(){
+  var supported = !!(window.CSS && CSS.highlights);
+  if(!supported) document.getElementById('fallbackNote').classList.add('show');
+
+  function textNodesOf(el){
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    var n;
+    while((n = walker.nextNode())) nodes.push(n);
+    return nodes;
+  }
+
+  function rangesForMatches(el, query){
+    var ranges = [];
+    if(!query) return ranges;
+    var q = query.toLowerCase();
+    textNodesOf(el).forEach(function(node){
+      var text = node.textContent.toLowerCase();
+      var idx = 0;
+      while(true){
+        var found = text.indexOf(q, idx);
+        if(found === -1) break;
+        var r = new Range();
+        r.setStart(node, found);
+        r.setEnd(node, found + q.length);
+        ranges.push(r);
+        idx = found + q.length;
+      }
+    });
+    return ranges;
+  }
+
+  // ---- 1. search highlight ----
+  var searchInput = document.getElementById('searchInput');
+  var searchText = document.getElementById('searchText');
+  function runSearch(){
+    var q = searchInput.value.trim();
+    if(supported){
+      var ranges = rangesForMatches(searchText, q);
+      var hl = new Highlight();
+      ranges.forEach(function(r){ hl.add(r); });
+      CSS.highlights.set('search-hit', hl);
+    } else {
+      // fallback: rebuild with <mark>
+      var base = searchText.getAttribute('data-base') || searchText.textContent;
+      searchText.setAttribute('data-base', base);
+      if(!q){ searchText.textContent = base; return; }
+      var esc = q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      var re = new RegExp('(' + esc + ')', 'ig');
+      searchText.innerHTML = base.replace(re, '<mark style="background:var(--gold);color:#1a1204;border-radius:2px;">$1</mark>');
+    }
+  }
+  searchInput.addEventListener('input', runSearch);
+
+  // ---- 2. sentiment heatmap ----
+  var POS = ['smooth','delightful','joy','solid','promising','great','love'];
+  var NEG = ['confusing','slow','frustrated','bad','broken','annoying'];
+  var sentText = document.getElementById('sentText');
+  function runSentiment(){
+    if(!supported) return; // fallback keeps plain text, still readable
+    var posHl = new Highlight(); var negHl = new Highlight();
+    var words = POS.concat(NEG);
+    textNodesOf(sentText).forEach(function(node){
+      var text = node.textContent;
+      var re = /[a-zA-Z]+/g; var m;
+      while((m = re.exec(text))){
+        var w = m[0].toLowerCase();
+        if(POS.indexOf(w) !== -1){
+          var r = new Range(); r.setStart(node, m.index); r.setEnd(node, m.index + w.length);
+          posHl.add(r);
+        } else if(NEG.indexOf(w) !== -1){
+          var r2 = new Range(); r2.setStart(node, m.index); r2.setEnd(node, m.index + w.length);
+          negHl.add(r2);
+        }
+      }
+    });
+    CSS.highlights.set('sent-pos', posHl);
+    CSS.highlights.set('sent-neg', negHl);
+  }
+  runSentiment();
+
+  // ---- 3. reading progress ----
+  var readText = document.getElementById('readText');
+  var readScrub = document.getElementById('readScrub');
+  var readPlay = document.getElementById('readPlay');
+  var fullLen = readText.textContent.length;
+  var playing = false, raf = null, start = 0;
+
+  function applyRead(t){
+    var pos = Math.round(t * fullLen);
+    if(!supported){
+      var base = readText.getAttribute('data-base') || readText.textContent;
+      readText.setAttribute('data-base', base);
+      var done = base.slice(0, pos);
+      var cursor = base.slice(pos, pos + 6);
+      var rest = base.slice(pos + 6);
+      readText.innerHTML = '<span style="background:rgba(76,201,240,.18)">' + done + '</span>' +
+        '<span style="background:var(--blue);color:#04202b">' + cursor + '</span>' + rest;
+      return;
+    }
+    var node = readText.firstChild;
+    if(!node) return;
+    var doneHl = new Highlight(); var curHl = new Highlight();
+    var end = Math.min(pos, fullLen);
+    if(end > 0){
+      var r = new Range(); r.setStart(node, 0); r.setEnd(node, end);
+      doneHl.add(r);
+    }
+    var curEnd = Math.min(end + 6, fullLen);
+    if(curEnd > end){
+      var r2 = new Range(); r2.setStart(node, end); r2.setEnd(node, curEnd);
+      curHl.add(r2);
+    }
+    CSS.highlights.set('read-done', doneHl);
+    CSS.highlights.set('read-cursor', curHl);
+  }
+
+  readScrub.addEventListener('input', function(){
+    playing = false; readPlay.textContent = 'Play';
+    applyRead(readScrub.value / 1000);
+  });
+
+  function loop(now){
+    if(!playing) return;
+    var t = ((now - start) % 6000) / 6000;
+    readScrub.value = Math.round(t * 1000);
+    applyRead(t);
+    raf = requestAnimationFrame(loop);
+  }
+  readPlay.addEventListener('click', function(){
+    playing = !playing;
+    readPlay.textContent = playing ? 'Pause' : 'Play';
+    if(playing){ start = performance.now() - (readScrub.value/1000)*6000; raf = requestAnimationFrame(loop); }
+  });
+
+  applyRead(0);
+
+  document.getElementById('sensitivity').addEventListener('input', runSentiment);
+})();
+</script>
+</body>
+</html>
