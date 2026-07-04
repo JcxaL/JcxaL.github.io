@@ -8,7 +8,7 @@ import { usePathname } from 'next/navigation';
 const FuturisticNavigation = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const navRef = useRef<HTMLNavElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
@@ -137,7 +137,7 @@ const FuturisticNavigation = () => {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="space-y-4">
-            {navItems.map((item, index) => (
+            {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}

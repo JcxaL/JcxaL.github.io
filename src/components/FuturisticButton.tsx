@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, ReactNode } from 'react';
+import { useEffect, useRef, ReactNode, RefObject } from 'react';
 import { gsap } from 'gsap';
 
 interface FuturisticButtonProps {
@@ -31,7 +31,8 @@ const FuturisticButton = ({
     const button = buttonRef.current;
     const glow = glowRef.current;
     const scanline = scanlineRef.current;
-    
+    const particles = particlesRef.current;
+
     if (!button || !glow || !scanline) return;
 
     // Create particles for click effect
@@ -166,7 +167,7 @@ const FuturisticButton = ({
       button.removeEventListener('mouseleave', handleMouseLeave);
       button.removeEventListener('click', handleClick);
       
-      particlesRef.current.forEach(particle => {
+      particles.forEach(particle => {
         if (button.contains(particle)) {
           button.removeChild(particle);
         }
@@ -283,14 +284,24 @@ const FuturisticButton = ({
 
   if (href && !disabled) {
     return (
-      <a {...(buttonProps as any)} href={href}>
+      <a
+        ref={buttonRef as RefObject<HTMLAnchorElement | null>}
+        className={buttonProps.className}
+        style={buttonProps.style}
+        href={href}
+      >
         <ButtonContent />
       </a>
     );
   }
 
   return (
-    <button {...(buttonProps as any)}>
+    <button
+      ref={buttonRef as RefObject<HTMLButtonElement | null>}
+      className={buttonProps.className}
+      disabled={disabled}
+      style={buttonProps.style}
+    >
       <ButtonContent />
     </button>
   );

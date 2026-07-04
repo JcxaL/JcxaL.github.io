@@ -155,7 +155,6 @@ export default function Home() {
                   style={{
                     boxShadow: "0 6px 24px rgba(0, 0, 0, 0.35)",
                   }}
-                  role="presentation"
                   aria-disabled="true"
                 >
                   <div className="absolute top-4 right-4 text-[10px] uppercase tracking-[0.4em] text-gray-500">

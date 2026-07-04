@@ -13,12 +13,13 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  // Default to "dark" so the server/build render matches the first client
+  // render (globals.css also defaults to dark). The real preference is applied
+  // in the effect below, after hydration, avoiding a mismatch.
   const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    // Check local storage or system preference
+    // Resolve the actual preference once mounted on the client.
     const savedTheme = localStorage.getItem("theme") as Theme | null;
     const systemPreference = window.matchMedia("(prefers-color-scheme: dark)")
       .matches
@@ -26,8 +27,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       : "light";
     const initialTheme = savedTheme || systemPreference;
     setThemeState(initialTheme);
-    document.documentElement.classList.toggle("dark", initialTheme === "dark");
-    document.documentElement.classList.toggle("light", initialTheme === "light");
+    document.documentElement.classList.remove("dark", "light");
+    document.documentElement.classList.add(initialTheme);
   }, []);
 
   const setTheme = (newTheme: Theme) => {
@@ -41,11 +42,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme(theme === "dark" ? "light" : "dark");
   };
 
-  // Avoid hydration mismatch by not rendering until mounted
-  if (!mounted) {
-    return <>{children}</>;
-  }
-
+  // Always render the provider so children calling useTheme() work during
+  // SSR/prerender and the initial client render.
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
       {children}

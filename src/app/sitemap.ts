@@ -1,5 +1,8 @@
 import { MetadataRoute } from 'next';
 
+// Required for `output: 'export'` — prerender the sitemap at build time.
+export const dynamic = "force-static";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = 'https://jcxal.github.io';
   
