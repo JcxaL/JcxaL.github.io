@@ -17,6 +17,13 @@ const CustomCursor = () => {
     
     if (!cursor || !follower) return;
 
+    // Check for reduced motion preference
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) {
+      // Don't render custom cursor for users who prefer reduced motion
+      return;
+    }
+
     // Create trail elements
     const trailCount = 8;
     const trailElements: HTMLDivElement[] = [];
@@ -45,9 +52,16 @@ const CustomCursor = () => {
     // Hide default cursor
     document.body.style.cursor = 'none';
 
-    // Mouse move handler
+    // Throttle mouse move for better performance
+    let lastTime = 0;
+    const throttleDelay = 16; // ~60fps
+    
     const handleMouseMove = (e: MouseEvent) => {
-      mousePos.current = { x: e.clientX, y: e.clientY };
+      const now = Date.now();
+      if (now - lastTime >= throttleDelay) {
+        mousePos.current = { x: e.clientX, y: e.clientY };
+        lastTime = now;
+      }
     };
 
     // Mouse enter handler for interactive elements
@@ -123,45 +137,39 @@ const CustomCursor = () => {
       });
     };
 
-    // Animation loop
+    // Animation loop with RAF optimization
+    let rafId: number;
     const animate = () => {
       // Smooth cursor movement
-      cursorPos.current.x += (mousePos.current.x - cursorPos.current.x) * 0.1;
-      cursorPos.current.y += (mousePos.current.y - cursorPos.current.y) * 0.1;
+      cursorPos.current.x += (mousePos.current.x - cursorPos.current.x) * 0.15;
+      cursorPos.current.y += (mousePos.current.y - cursorPos.current.y) * 0.15;
       
       // Smooth follower movement (slower)
-      followerPos.current.x += (mousePos.current.x - followerPos.current.x) * 0.05;
-      followerPos.current.y += (mousePos.current.y - followerPos.current.y) * 0.05;
+      followerPos.current.x += (mousePos.current.x - followerPos.current.x) * 0.08;
+      followerPos.current.y += (mousePos.current.y - followerPos.current.y) * 0.08;
 
-      // Update cursor position
-      gsap.set(cursor, {
-        x: cursorPos.current.x,
-        y: cursorPos.current.y,
-        xPercent: -50,
-        yPercent: -50
-      });
+      // Only update if position changed significantly (optimization)
+      const deltaX = Math.abs(cursorPos.current.x - mousePos.current.x);
+      const deltaY = Math.abs(cursorPos.current.y - mousePos.current.y);
+      
+      if (deltaX > 0.5 || deltaY > 0.5) {
+        // Update cursor position
+        cursor.style.transform = `translate(${cursorPos.current.x}px, ${cursorPos.current.y}px) translate(-50%, -50%)`;
 
-      // Update follower position
-      gsap.set(follower, {
-        x: followerPos.current.x,
-        y: followerPos.current.y,
-        xPercent: -50,
-        yPercent: -50
-      });
+        // Update follower position
+        follower.style.transform = `translate(${followerPos.current.x}px, ${followerPos.current.y}px) translate(-50%, -50%)`;
 
-      // Update trail positions
-      trailElements.forEach((trail, index) => {
-        const delay = (index + 1) * 0.02;
-        const trailX = cursorPos.current.x + (mousePos.current.x - cursorPos.current.x) * delay;
-        const trailY = cursorPos.current.y + (mousePos.current.y - cursorPos.current.y) * delay;
-        
-        gsap.set(trail, {
-          x: trailX,
-          y: trailY
+        // Update trail positions (reduced trail count for performance)
+        trailElements.forEach((trail, index) => {
+          const delay = (index + 1) * 0.03;
+          const trailX = cursorPos.current.x + (mousePos.current.x - cursorPos.current.x) * delay;
+          const trailY = cursorPos.current.y + (mousePos.current.y - cursorPos.current.y) * delay;
+          
+          trail.style.transform = `translate(${trailX}px, ${trailY}px)`;
         });
-      });
+      }
 
-      requestAnimationFrame(animate);
+      rafId = requestAnimationFrame(animate);
     };
 
     // Add event listeners
@@ -179,6 +187,9 @@ const CustomCursor = () => {
 
     // Cleanup
     return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
       document.body.style.cursor = 'auto';
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('click', handleClick);

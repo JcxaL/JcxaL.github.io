@@ -39,6 +39,8 @@ export default function LiquidMenu() {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className="relative"
         onHoverEnd={() => setHoveredIndex(null)}
+        aria-label="Main navigation"
+        role="navigation"
       >
         {/* Futuristic glass background */}
         <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-gray-900/40 to-black/40 backdrop-blur-md rounded-full border border-cyan-400/30 shadow-lg" 
@@ -99,7 +101,7 @@ export default function LiquidMenu() {
         </AnimatePresence>
 
         {/* Menu items */}
-        <ul className="relative flex items-center px-6 py-3 space-x-1">
+        <ul className="relative flex items-center px-6 py-3 space-x-1" role="menubar">
           {menuItems.map((item, index) => (
             <li
               key={item.name}
@@ -107,8 +109,13 @@ export default function LiquidMenu() {
                 itemRefs.current[index] = el
               }}
               onMouseEnter={() => setHoveredIndex(index)}
+              role="none"
             >
-              <Link href={item.href}>
+              <Link 
+                href={item.href}
+                aria-label={`Navigate to ${item.name}`}
+                role="menuitem"
+              >
                 <motion.div
                   className={`relative px-6 py-3 rounded-full transition-all duration-300 ${
                     item.isLogo 
