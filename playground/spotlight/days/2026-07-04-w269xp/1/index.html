@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>FLIP-Animated Filter Grid — UI Spotlight Day 49 · Drop 1</title>
+<style>
+  :root{ --bg:#0c0d13; --panel:#15161f; --line:#282a38; --accent:#f2c14e; --text:#eae7f5; --muted:#8b8fa8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;min-height:100vh;}
+  header{padding:22px 20px 6px;}
+  h1{font-size:19px;margin:0 0 4px;}
+  p.sub{margin:0;color:var(--muted);font-size:12.5px;}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;padding:14px 20px;}
+  .chip{padding:8px 16px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer;}
+  .chip.active{background:var(--accent);color:#141414;border-color:var(--accent);}
+  .actions{display:flex;gap:8px;padding:0 20px 14px;}
+  .btn{padding:8px 14px;border-radius:8px;background:var(--panel);border:1px solid var(--line);color:var(--text);font-size:12px;cursor:pointer;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;padding:0 20px 30px;max-width:760px;}
+  .card{
+    aspect-ratio:1;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    font-size:28px;border:1px solid var(--line); will-change:transform,opacity;
+  }
+  .card span.lbl{font-size:10.5px;color:rgba(255,255,255,.75);font-weight:600;}
+  .card.hidden-item{display:none;}
+  .debug{
+    position:fixed;top:16px;right:16px;background:rgba(21,22,31,.9);border:1px solid var(--line);border-radius:12px;
+    padding:10px 12px;font-size:11px;color:var(--muted);backdrop-filter:blur(8px);width:150px;
+  }
+  .debug label{display:block;margin-top:8px;}
+  .debug input[type=range]{width:100%;}
+  @media (max-width:640px){ .debug{ display:none; } }
+  footer{padding:10px 20px 26px;color:var(--muted);font-size:10.5px;}
+  footer a{color:var(--muted);}
+</style>
+</head>
+<body>
+<header>
+  <h1>FLIP-Animated Filter Grid</h1>
+  <p class="sub">Filter or shuffle — every card reflows using First-Last-Invert-Play, not a fade-and-jump.</p>
+</header>
+<div class="filters" id="filters"></div>
+<div class="actions">
+  <button class="btn" id="shuffleBtn">🔀 Shuffle order</button>
+  <button class="btn" id="resetBtn">↺ Reset</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<div class="debug">
+  <div>FLIP tuning</div>
+  <label>Duration <span id="durVal">450</span>ms
+    <input type="range" id="durSlider" min="150" max="900" value="450">
+  </label>
+  <label>Stagger <span id="stagVal">30</span>ms
+    <input type="range" id="stagSlider" min="0" max="80" value="30">
+  </label>
+</div>
+
+<footer>Inspired by Paul Lewis' FLIP technique (aerotwist.com) · UI Spotlight Day 49 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+const CATS = ['nature','tech','art','food'];
+const ICONS = {nature:['🌲','🌵','🍄','🌊','🪴','🦋'], tech:['💾','🔌','🛰️','⚙️','🤖','📡'], art:['🎨','🖌️','🗿','🎭','📐','🧵'], food:['🍜','🍇','🥐','🍯','🌶️','🧀']};
+const COLORS = {nature:'#2f6b4f', tech:'#3b4a7c', art:'#7c3f5c', food:'#8a5a2c'};
+
+let items = [];
+CATS.forEach(cat=>{
+  ICONS[cat].forEach((icon,i)=>{
+    items.push({id:cat+i, cat, icon, label: cat.charAt(0).toUpperCase()+cat.slice(1)+' '+(i+1)});
+  });
+});
+const originalOrder = items.slice();
+
+let activeFilter = 'all';
+let DURATION = 450, STAGGER = 30;
+
+const grid = document.getElementById('grid');
+const filtersEl = document.getElementById('filters');
+
+function renderFilters(){
+  filtersEl.innerHTML = '';
+  ['all', ...CATS].forEach(cat=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (activeFilter===cat ? ' active' : '');
+    chip.textContent = cat==='all' ? 'All' : cat.charAt(0).toUpperCase()+cat.slice(1);
+    chip.onclick = ()=> applyFilter(cat);
+    filtersEl.appendChild(chip);
+  });
+}
+
+function cardEl(item){
+  const d = document.createElement('div');
+  d.className = 'card';
+  d.dataset.id = item.id;
+  d.style.background = COLORS[item.cat];
+  d.innerHTML = '<div>'+item.icon+'</div><span class="lbl">'+item.label+'</span>';
+  return d;
+}
+
+function renderInitial(){
+  grid.innerHTML = '';
+  items.forEach(item => grid.appendChild(cardEl(item)));
+}
+
+function currentRects(){
+  const map = {};
+  grid.querySelectorAll('.card').forEach(el=>{
+    if (el.classList.contains('hidden-item')) return;
+    map[el.dataset.id] = el.getBoundingClientRect();
+  });
+  return map;
+}
+
+function flip(mutate){
+  const first = currentRects();
+  mutate();
+  const last = currentRects();
+  let i = 0;
+  grid.querySelectorAll('.card').forEach(el=>{
+    const id = el.dataset.id;
+    const wasVisible = !!first[id];
+    const nowVisible = !!last[id];
+    if (!wasVisible && nowVisible){
+      // entering
+      el.style.transition = 'none';
+      el.style.opacity = '0';
+      el.style.transform = 'scale(.4)';
+      requestAnimationFrame(()=>{
+        el.style.transition = `transform ${DURATION}ms cubic-bezier(.2,.8,.2,1) ${i*STAGGER}ms, opacity ${DURATION}ms ease ${i*STAGGER}ms`;
+        el.style.transform = '';
+        el.style.opacity = '1';
+      });
+      i++;
+      return;
+    }
+    if (wasVisible && !nowVisible){
+      el.style.transition = `transform ${DURATION}ms ease, opacity ${DURATION}ms ease`;
+      el.style.transform = 'scale(.4)';
+      el.style.opacity = '0';
+      return;
+    }
+    if (wasVisible && nowVisible){
+      const dx = first[id].left - last[id].left;
+      const dy = first[id].top - last[id].top;
+      if (dx || dy){
+        el.style.transition = 'none';
+        el.style.transform = `translate(${dx}px, ${dy}px)`;
+        requestAnimationFrame(()=>{
+          el.style.transition = `transform ${DURATION}ms cubic-bezier(.2,.8,.2,1) ${i*STAGGER}ms`;
+          el.style.transform = '';
+        });
+        i++;
+      }
+    }
+  });
+}
+
+function applyFilter(cat){
+  activeFilter = cat;
+  renderFilters();
+  flip(()=>{
+    grid.querySelectorAll('.card').forEach(el=>{
+      const item = items.find(x=>x.id===el.dataset.id);
+      const show = cat==='all' || item.cat===cat;
+      el.classList.toggle('hidden-item', !show);
+    });
+  });
+}
+
+document.getElementById('shuffleBtn').onclick = ()=>{
+  flip(()=>{
+    const cards = Array.from(grid.children);
+    for (let i=cards.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      grid.insertBefore(cards[j], cards[i].nextSibling);
+      [cards[i],cards[j]]=[cards[j],cards[i]];
+    }
+  });
+};
+
+document.getElementById('resetBtn').onclick = ()=>{
+  activeFilter = 'all';
+  renderFilters();
+  flip(()=>{
+    grid.innerHTML='';
+    originalOrder.forEach(item => grid.appendChild(cardEl(item)));
+  });
+};
+
+document.getElementById('durSlider').oninput = e=>{ DURATION = +e.target.value; document.getElementById('durVal').textContent = DURATION; };
+document.getElementById('stagSlider').oninput = e=>{ STAGGER = +e.target.value; document.getElementById('stagVal').textContent = STAGGER; };
+
+renderFilters();
+renderInitial();
+})();
+</script>
+</body>
+</html>

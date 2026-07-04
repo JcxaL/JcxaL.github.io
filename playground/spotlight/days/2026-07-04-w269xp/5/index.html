@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Native Custom Element Tab Bar — UI Spotlight Day 49 · Drop 5</title>
+<style>
+  :root{ --bg:#0c0d13; --panel:#181a24; --line:#282a38; --accent:#a78bfa; --text:#eae7f5; --muted:#8b8fa8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  header{padding:26px 20px 10px;}
+  h1{font-size:19px;margin:0 0 4px;}
+  p.sub{margin:0;color:var(--muted);font-size:12.5px;}
+  main{padding:10px 20px 40px; max-width:640px; margin:0 auto; display:flex; flex-direction:column; gap:36px;}
+  .label{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+
+  spot-tabs{ position:relative; display:block; }
+  spot-tabs .tabrow{ position:relative; display:flex; gap:4px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:5px; }
+  spot-tabs[data-orientation="vertical"] .tabrow{ flex-direction:column; width:160px; }
+  spot-tabs button.tab{
+    position:relative; z-index:2; flex:1; border:none; background:transparent; color:var(--muted); font-size:13px; font-weight:600;
+    padding:10px 14px; border-radius:9px; cursor:pointer; text-align:center; font-family:inherit;
+  }
+  spot-tabs[data-orientation="vertical"] button.tab{ text-align:left; }
+  spot-tabs button.tab[aria-selected="true"]{ color:#141414; }
+  .spot-indicator{ position:absolute; z-index:1; background:var(--accent); border-radius:9px; transition:transform .32s cubic-bezier(.2,.8,.2,1), width .32s, height .32s; top:5px; left:5px; }
+  .panel{ padding:16px 4px 4px; color:var(--text); font-size:13.5px; line-height:1.5; }
+  .panel[hidden]{ display:none; }
+  .icontabs button.tab{ font-size:19px; padding:9px; }
+
+  .debug{
+    position:fixed; top:16px; right:16px; background:rgba(21,22,31,.9); border:1px solid var(--line); border-radius:12px;
+    padding:10px 12px; font-size:11px; color:var(--muted); backdrop-filter:blur(8px); width:150px;
+  }
+  .debug label{ display:block; margin-top:8px; }
+  .debug input[type=range]{ width:100%; }
+  @media (max-width:640px){ .debug{ display:none; } }
+  footer{ padding:6px 20px 26px; color:var(--muted); font-size:10.5px; max-width:640px; margin:0 auto; }
+  footer a{ color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Native Custom Element Tab Bar</h1>
+  <p class="sub">A real <code>&lt;spot-tabs&gt;</code> Custom Element — no framework, no shadow DOM, full keyboard support.</p>
+</header>
+<main>
+  <div>
+    <div class="label">01 · Basic horizontal</div>
+    <spot-tabs>
+      <div class="tabrow">
+        <button class="tab" data-tab>Overview</button>
+        <button class="tab" data-tab>Specs</button>
+        <button class="tab" data-tab>Reviews</button>
+      </div>
+      <div class="panel" data-panel>A clean, accessible tab bar backed entirely by the Custom Elements API — <code>customElements.define()</code>, no build step.</div>
+      <div class="panel" data-panel>The sliding indicator is one absolutely-positioned div, moved with <code>getBoundingClientRect()</code> math and a CSS transition.</div>
+      <div class="panel" data-panel>Arrow keys, Home/End, and click all work — <code>role="tablist"</code>/<code>role="tab"</code> wired up in <code>connectedCallback()</code>.</div>
+      </spot-tabs>
+  </div>
+
+  <div>
+    <div class="label">02 · Vertical orientation</div>
+    <spot-tabs data-orientation="vertical">
+      <div class="tabrow">
+        <button class="tab" data-tab>General</button>
+        <button class="tab" data-tab>Notifications</button>
+        <button class="tab" data-tab>Privacy</button>
+      </div>
+      <div class="panel" data-panel>Same component, same JS — orientation is just a data attribute the element reads on connect.</div>
+      <div class="panel" data-panel>The indicator swaps from animating <code>translateX</code>+width to <code>translateY</code>+height automatically.</div>
+      <div class="panel" data-panel>Resize the window — the indicator re-measures and snaps to the active tab instantly.</div>
+    </spot-tabs>
+  </div>
+
+  <div>
+    <div class="label">03 · Icon tabs</div>
+    <spot-tabs class="icontabs">
+      <div class="tabrow">
+        <button class="tab" data-tab aria-label="Home">🏠</button>
+        <button class="tab" data-tab aria-label="Search">🔍</button>
+        <button class="tab" data-tab aria-label="Favorites">❤️</button>
+        <button class="tab" data-tab aria-label="Settings">⚙️</button>
+      </div>
+      <div class="panel" data-panel>Home panel content.</div>
+      <div class="panel" data-panel>Search panel content.</div>
+      <div class="panel" data-panel>Favorites panel content.</div>
+      <div class="panel" data-panel>Settings panel content.</div>
+    </spot-tabs>
+  </div>
+</main>
+
+<div class="debug">
+  <div>Indicator tuning</div>
+  <label>Speed <span id="spdVal">320</span>ms
+    <input type="range" id="spdSlider" min="120" max="700" value="320">
+  </label>
+</div>
+
+<footer>Inspired by ndesmic's Web Components tab-control tutorial (dev.to) · UI Spotlight Day 49 · Drop #5</footer>
+
+<script>
+(function(){
+"use strict";
+
+class SpotTabs extends HTMLElement {
+  connectedCallback(){
+    this.tabrow = this.querySelector('.tabrow');
+    this.tabrow.setAttribute('role','tablist');
+    this.orientation = this.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
+    if (this.orientation === 'vertical') this.tabrow.setAttribute('aria-orientation','vertical');
+
+    this.tabs = Array.from(this.querySelectorAll('[data-tab]'));
+    this.panels = Array.from(this.querySelectorAll('[data-panel]'));
+
+    this.indicator = document.createElement('div');
+    this.indicator.className = 'spot-indicator';
+    this.tabrow.appendChild(this.indicator);
+
+    this.tabs.forEach((tab,i)=>{
+      tab.setAttribute('role','tab');
+      tab.id = tab.id || ('tab-'+Math.random().toString(36).slice(2,8));
+      tab.tabIndex = i===0 ? 0 : -1;
+      tab.addEventListener('click', ()=> this.select(i));
+      tab.addEventListener('keydown', e=> this.onKey(e, i));
+    });
+    this.panels.forEach((p,i)=>{ p.setAttribute('role','tabpanel'); p.hidden = i!==0; });
+
+    this.activeIndex = 0;
+    requestAnimationFrame(()=> this.select(0, true));
+    window.addEventListener('resize', ()=> this.moveIndicator(this.activeIndex, true));
+  }
+
+  select(i, instant){
+    this.activeIndex = i;
+    this.tabs.forEach((t,idx)=>{
+      const on = idx===i;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+    });
+    this.panels.forEach((p,idx)=> p.hidden = idx!==i);
+    this.moveIndicator(i, instant);
+  }
+
+  moveIndicator(i, instant){
+    const tab = this.tabs[i];
+    if (!tab) return;
+    const prevTransition = this.indicator.style.transition;
+    if (instant) this.indicator.style.transition = 'none';
+    if (this.orientation === 'vertical'){
+      this.indicator.style.width = tab.offsetWidth + 'px';
+      this.indicator.style.height = tab.offsetHeight + 'px';
+      this.indicator.style.transform = `translateY(${tab.offsetTop - 5}px)`;
+    } else {
+      this.indicator.style.width = tab.offsetWidth + 'px';
+      this.indicator.style.height = tab.offsetHeight + 'px';
+      this.indicator.style.transform = `translateX(${tab.offsetLeft - 5}px)`;
+    }
+    if (instant){ void this.indicator.offsetWidth; this.indicator.style.transition = prevTransition; }
+  }
+
+  onKey(e, i){
+    const n = this.tabs.length;
+    const nextKey = this.orientation==='vertical' ? 'ArrowDown' : 'ArrowRight';
+    const prevKey = this.orientation==='vertical' ? 'ArrowUp' : 'ArrowLeft';
+    let target = null;
+    if (e.key === nextKey) target = (i+1)%n;
+    else if (e.key === prevKey) target = (i-1+n)%n;
+    else if (e.key === 'Home') target = 0;
+    else if (e.key === 'End') target = n-1;
+    if (target!=null){
+      e.preventDefault();
+      this.select(target);
+      this.tabs[target].focus();
+    }
+  }
+}
+customElements.define('spot-tabs', SpotTabs);
+
+document.getElementById('spdSlider').oninput = e=>{
+  const v = e.target.value;
+  document.getElementById('spdVal').textContent = v;
+  document.querySelectorAll('.spot-indicator').forEach(el=>{
+    el.style.transition = `transform ${v}ms cubic-bezier(.2,.8,.2,1), width ${v}ms, height ${v}ms`;
+  });
+};
+})();
+</script>
+</body>
+</html>
