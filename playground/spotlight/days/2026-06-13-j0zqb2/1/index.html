@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Curved-Path Thumbnail Flow</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  min-height:100vh;background:#06040e;
+  font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  overflow:hidden;user-select:none;
+}
+
+h2{
+  font-size:clamp(1.2rem,3vw,2rem);font-weight:900;letter-spacing:-.04em;
+  background:linear-gradient(135deg,#a855f7,#3b82f6);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  margin-bottom:8px;text-align:center;
+}
+p.sub{font-size:13px;color:#475569;margin-bottom:48px;text-align:center;max-width:400px;}
+
+/* Stage */
+#stage{
+  position:relative;
+  width:min(90vw,520px);
+  height:280px;
+}
+
+/* Cards */
+.card{
+  position:absolute;
+  width:120px;height:160px;
+  border-radius:16px;
+  overflow:hidden;
+  cursor:pointer;
+  will-change:transform;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  border:1px solid rgba(255,255,255,0.08);
+  transition:box-shadow .3s;
+}
+.card:hover{box-shadow:0 12px 48px rgba(0,0,0,0.7);}
+
+.card-inner{
+  width:100%;height:100%;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:8px;
+  transition:opacity .3s;
+}
+.card-num{
+  font-size:36px;font-weight:900;letter-spacing:-.04em;
+  opacity:0.9;
+}
+.card-label{font-size:11px;font-weight:600;letter-spacing:.08em;opacity:0.6;text-transform:uppercase;}
+
+/* Control button */
+#trigger{
+  margin-top:40px;
+  padding:10px 28px;border-radius:24px;
+  background:rgba(168,85,247,0.15);
+  border:1px solid rgba(168,85,247,0.35);
+  color:#a855f7;font-size:13px;font-weight:700;
+  cursor:pointer;transition:background .2s,transform .1s;
+  letter-spacing:.04em;
+}
+#trigger:hover{background:rgba(168,85,247,0.25);transform:scale(1.03);}
+
+/* Modes */
+#modes{display:flex;gap:8px;margin-top:16px;}
+.mode{
+  padding:4px 14px;border-radius:10px;border:1px solid #1e1e3a;
+  background:#0d0d20;color:#6060a0;font-size:11px;cursor:pointer;
+  transition:background .15s,color .15s;
+}
+.mode.on{background:#1e0e4a;border-color:#4a1fb0;color:#c4a8ff;}
+
+footer{
+  position:fixed;bottom:12px;left:0;right:0;text-align:center;
+  font-size:10px;color:#2a2a45;
+}
+
+/* Progress arc SVG */
+#arc-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0;transition:opacity .4s;}
+#arc-svg.show{opacity:0.2;}
+</style>
+</head>
+<body>
+
+<h2>Curved-Path Thumbnail Flow</h2>
+<p class="sub">Cards unfold along a Bézier arc — inspired by GSAP MotionPath. Pure JS spring interpolation.</p>
+
+<div id="stage">
+  <svg id="arc-svg" viewBox="0 0 520 280" preserveAspectRatio="none">
+    <path id="arc-path" d="" fill="none" stroke="rgba(168,85,247,0.6)" stroke-width="1.5" stroke-dasharray="4 6"/>
+  </svg>
+</div>
+
+<button id="trigger">Expand</button>
+
+<div id="modes">
+  <div class="mode on" onclick="setMode('arc',this)">Arc</div>
+  <div class="mode" onclick="setMode('fan',this)">Fan</div>
+  <div class="mode" onclick="setMode('wave',this)">Wave</div>
+  <div class="mode" onclick="setMode('spiral',this)">Spiral</div>
+</div>
+
+<footer>Inspired by Codrops "Creating a Thumbnail Flow Animation with GSAP MotionPath" (Jun 2026) · UI Spotlight Day 28 · Drop #1</footer>
+
+<script>
+const CARDS=[
+  {bg:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#e0d8ff',emoji:'◆',label:'Design'},
+  {bg:'linear-gradient(135deg,#0ea5e9,#2563eb)',color:'#d0e8ff',emoji:'●',label:'Code'},
+  {bg:'linear-gradient(135deg,#ec4899,#f43f5e)',color:'#ffd8e8',emoji:'▲',label:'Motion'},
+  {bg:'linear-gradient(135deg,#f59e0b,#ef4444)',color:'#ffe8c0',emoji:'★',label:'Brand'},
+  {bg:'linear-gradient(135deg,#10b981,#059669)',color:'#c0ffe8',emoji:'■',label:'Build'},
+  {bg:'linear-gradient(135deg,#8b5cf6,#ec4899)',color:'#f0d8ff',emoji:'◉',label:'Art'},
+];
+
+let expanded=false;
+let mode='arc';
+let cards=[];
+let targets=[];
+let currPos=[];
+let currRot=[];
+let animFrame;
+
+const W=520, H=280;
+const cx=W/2, cy=H/2;
+
+// ── Bezier helpers ──
+function bezier3(t,p0,p1,p2,p3){
+  const u=1-t;
+  return{
+    x:u*u*u*p0.x+3*u*u*t*p1.x+3*u*t*t*p2.x+t*t*t*p3.x,
+    y:u*u*u*p0.y+3*u*u*t*p1.y+3*u*t*t*p2.y+t*t*t*p3.y,
+  };
+}
+
+function getTargets(){
+  const n=CARDS.length;
+  const ts=[];
+  for(let k=0;k<n;k++){
+    const t=k/(n-1);
+    let pos,rot=0;
+    if(mode==='arc'){
+      // Arc bézier: left-low to right-low with peak in center-top
+      const p0={x:30,y:220},p1={x:cx-60,y:20},p2={x:cx+60,y:20},p3={x:W-30,y:220};
+      pos=bezier3(t,p0,p1,p2,p3);
+      rot=(t-0.5)*18;
+    } else if(mode==='fan'){
+      const angle=-70+k*(140/(n-1));
+      const r=200;
+      pos={x:cx+r*Math.sin(angle*Math.PI/180),y:H-10-r*Math.cos(angle*Math.PI/180)};
+      rot=angle;
+    } else if(mode==='wave'){
+      const x=30+k*(W-60)/(n-1);
+      const y=cy-50*Math.sin(k*(Math.PI/(n-1))*2);
+      pos={x,y};
+      rot=Math.cos(k*Math.PI/(n-1))*12;
+    } else { // spiral
+      const a=k*(55*(Math.PI/180));
+      const r=30+k*28;
+      pos={x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};
+      rot=k*22;
+    }
+    ts.push({x:pos.x-60,y:pos.y-80,r:rot});
+  }
+  return ts;
+}
+
+function getStacked(){
+  return CARDS.map((_,k)=>({
+    x:cx-60+k*1.5-CARDS.length*0.75,
+    y:cy-80+k*2,
+    r:(k-CARDS.length/2)*3
+  }));
+}
+
+function lerp(a,b,t){return a+(b-a)*t;}
+
+function animateToTargets(newTargets){
+  targets=newTargets;
+  const spring=0.12, damp=0.72;
+  let vx=cards.map(()=>0), vy=cards.map(()=>0), vr=cards.map(()=>0);
+
+  cancelAnimationFrame(animFrame);
+  function step(){
+    let done=true;
+    for(let i=0;i<cards.length;i++){
+      const dx=targets[i].x-currPos[i].x;
+      const dy=targets[i].y-currPos[i].y;
+      const dr=targets[i].r-currRot[i];
+      vx[i]=vx[i]*damp+dx*spring;
+      vy[i]=vy[i]*damp+dy*spring;
+      vr[i]=vr[i]*damp+dr*spring;
+      currPos[i].x+=vx[i];
+      currPos[i].y+=vy[i];
+      currRot[i]+=vr[i];
+      if(Math.abs(dx)+Math.abs(dy)+Math.abs(dr)>0.5) done=false;
+      cards[i].style.transform=`translate(${currPos[i].x}px,${currPos[i].y}px) rotate(${currRot[i]}deg)`;
+    }
+    if(!done) animFrame=requestAnimationFrame(step);
+  }
+  animFrame=requestAnimationFrame(step);
+}
+
+// ── Setup stage ──
+const stage=document.getElementById('stage');
+const arcPath=document.getElementById('arc-path');
+const arcSVG=document.getElementById('arc-svg');
+
+// Draw the arc path
+function updateArcPath(){
+  if(mode==='arc'){
+    const sc=stage.offsetWidth/W;
+    arcPath.setAttribute('d',`M 30 220 C ${W/2-60} 20, ${W/2+60} 20, ${W-30} 220`);
+    arcSVG.classList.add('show');
+  } else {
+    arcSVG.classList.remove('show');
+  }
+}
+
+function init(){
+  stage.innerHTML='';
+  stage.appendChild(arcSVG);
+  cards=[];currPos=[];currRot=[];
+  const stacked=getStacked();
+  CARDS.forEach((c,i)=>{
+    const div=document.createElement('div');
+    div.className='card';
+    div.style.background=c.bg;
+    div.style.color=c.color;
+    div.innerHTML=`<div class="card-inner">
+      <div class="card-num">${c.emoji}</div>
+      <div class="card-label">${c.label}</div>
+    </div>`;
+    div.style.transform=`translate(${stacked[i].x}px,${stacked[i].y}px) rotate(${stacked[i].r}deg)`;
+    div.style.zIndex=i;
+    div.addEventListener('click',()=>{
+      if(expanded){
+        div.style.zIndex=CARDS.length+5;
+        div.style.boxShadow='0 20px 60px rgba(0,0,0,0.8)';
+        setTimeout(()=>{div.style.zIndex=i;div.style.boxShadow='';},600);
+      }
+    });
+    stage.appendChild(div);
+    cards.push(div);
+    currPos.push({x:stacked[i].x,y:stacked[i].y});
+    currRot.push(stacked[i].r);
+  });
+}
+
+// ── Trigger ──
+document.getElementById('trigger').addEventListener('click',function(){
+  expanded=!expanded;
+  this.textContent=expanded?'Collapse':'Expand';
+  if(expanded){
+    animateToTargets(getTargets());
+    updateArcPath();
+  } else {
+    arcSVG.classList.remove('show');
+    animateToTargets(getStacked());
+  }
+});
+
+function setMode(m,btn){
+  mode=m;
+  document.querySelectorAll('.mode').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  if(expanded){animateToTargets(getTargets());updateArcPath();}
+}
+
+// Handle responsive size
+const stageEl=document.getElementById('stage');
+stageEl.style.transform=`scale(${Math.min(1,stageEl.offsetWidth/W)})`;
+stageEl.style.transformOrigin='center center';
+
+window.addEventListener('resize',()=>{
+  stageEl.style.transform=`scale(${Math.min(1,stageEl.offsetWidth/W)})`;
+});
+
+init();
+</script>
+</body>
+</html>

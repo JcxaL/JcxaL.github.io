@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zero-JS Native Carousel — UI Spotlight</title>
+<style>
+  :root{
+    --bg:#07070d; --panel-bg:rgba(13,13,24,.72);
+    --pink:#ff5470; --teal:#00d9c0; --gold:#ffd23f; --violet:#6c5ce7; --cyan:#0aefff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:#f2f2f8;
+    font-family:system-ui,-apple-system,sans-serif;}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:100vh;padding:24px 16px;gap:14px;}
+  h1{font-size:15px;font-weight:600;letter-spacing:.02em;color:#c9c9de;margin:0;}
+
+  .carousel{position:relative;width:min(720px,100%);}
+  ul.track{
+    list-style:none;margin:0;padding:0;display:flex;
+    overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;
+    border-radius:18px;height:360px;scrollbar-width:none;
+  }
+  /* scroll-marker-group intentionally left unset (default: none) — in browsers that
+     paint native ::scroll-marker boxes, enabling the group here would render a second,
+     duplicate row of dots alongside the always-on JS fallback dots below. The native
+     ::scroll-button()/::scroll-marker rules stay as documentation of the technique. */
+  ul.track::-webkit-scrollbar{display:none;}
+  ul.track::scroll-button(left),ul.track::scroll-button(right){
+    color:#fff;background:rgba(0,0,0,.4);border-radius:50%;width:44px;height:44px;
+    font-size:22px;display:flex;align-items:center;justify-content:center;
+  }
+  ul.track::scroll-marker-group{display:flex;gap:8px;justify-content:center;margin-top:14px;}
+
+  li.slide{
+    flex:0 0 100%;scroll-snap-align:start;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:6px;border-radius:18px;
+    background:linear-gradient(135deg,var(--c1),var(--c2));
+  }
+  li.slide::scroll-marker{
+    content:"";width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.4);
+  }
+  li.slide::scroll-marker:target-current{
+    background:#fff;width:22px;border-radius:6px;
+  }
+  .emoji{font-size:64px;line-height:1;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35));}
+  .num{font-size:13px;letter-spacing:.15em;opacity:.75;font-weight:600;}
+  .label{font-size:22px;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,.3);}
+
+  /* JS fallback controls */
+  .nav-btn{
+    position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;
+    border-radius:50%;border:1px solid rgba(255,255,255,.18);cursor:pointer;
+    background:rgba(10,10,18,.55);backdrop-filter:blur(6px);color:#fff;font-size:22px;
+    display:flex;align-items:center;justify-content:center;transition:opacity .2s,transform .2s;
+  }
+  .nav-btn:hover{background:rgba(10,10,18,.8);}
+  .nav-btn:disabled{opacity:.25;cursor:default;}
+  .nav-btn.prev{left:-6px;} .nav-btn.next{right:-6px;}
+  .dots{display:flex;gap:6px;justify-content:center;margin-top:14px;}
+  button.dot{
+    width:32px;height:32px;border:none;background:transparent;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  button.dot::before{
+    content:"";width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.35);
+    transition:width .25s,background .25s;
+  }
+  button.dot.active::before{width:22px;border-radius:5px;
+    background:linear-gradient(90deg,var(--teal),var(--cyan));}
+
+  .native-note{position:absolute;bottom:10px;left:10px;font-size:10px;color:#65657a;
+    max-width:220px;background:rgba(10,10,18,.5);padding:4px 8px;border-radius:6px;
+    display:none;}
+  .native-note.show{display:block;}
+  .native-note code{color:#9a9ac0;}
+
+  /* Tuning panel */
+  .panel{
+    position:absolute;top:10px;right:10px;background:var(--panel-bg);
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;
+    gap:8px;font-size:12px;min-width:150px;
+  }
+  .panel-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .switch{position:relative;width:36px;height:20px;flex:0 0 auto;}
+  .switch input{opacity:0;width:100%;height:100%;position:absolute;margin:0;cursor:pointer;}
+  .slider-knob{position:absolute;inset:0;background:rgba(255,255,255,.2);border-radius:20px;
+    transition:background .2s;pointer-events:none;}
+  .slider-knob::before{content:"";position:absolute;width:14px;height:14px;left:3px;top:3px;
+    border-radius:50%;background:#fff;transition:transform .2s;}
+  .switch input:checked + .slider-knob{background:var(--violet);}
+  .switch input:checked + .slider-knob::before{transform:translateX(16px);}
+  #speedSlider{width:70px;accent-color:var(--pink);}
+
+  @media (max-width:480px){
+    .panel{position:static;margin-top:12px;width:100%;max-width:260px;}
+    .nav-btn{width:36px;height:36px;font-size:18px;}
+    ul.track{height:280px;}
+    .emoji{font-size:50px;}
+    .label{font-size:18px;}
+  }
+
+  footer{font-size:11px;color:#65657a;text-align:center;margin-top:4px;}
+</style>
+</head>
+<body>
+<h1>Zero-JS Native Carousel</h1>
+
+<div class="carousel" id="carousel">
+  <ul class="track" id="track">
+    <li class="slide" style="--c1:#ff5470;--c2:#6c5ce7"><span class="emoji">🚀</span><span class="num">01</span><span class="label">Launch</span></li>
+    <li class="slide" style="--c1:#00d9c0;--c2:#0aefff"><span class="emoji">🌊</span><span class="num">02</span><span class="label">Flow</span></li>
+    <li class="slide" style="--c1:#ffd23f;--c2:#ff5470"><span class="emoji">⚡</span><span class="num">03</span><span class="label">Spark</span></li>
+    <li class="slide" style="--c1:#6c5ce7;--c2:#0aefff"><span class="emoji">🪐</span><span class="num">04</span><span class="label">Orbit</span></li>
+    <li class="slide" style="--c1:#00d9c0;--c2:#ffd23f"><span class="emoji">🍃</span><span class="num">05</span><span class="label">Drift</span></li>
+    <li class="slide" style="--c1:#ff5470;--c2:#00d9c0"><span class="emoji">🔥</span><span class="num">06</span><span class="label">Blaze</span></li>
+  </ul>
+
+  <button class="nav-btn prev fallback-nav" id="prevBtn" aria-label="Previous slide">‹</button>
+  <button class="nav-btn next fallback-nav" id="nextBtn" aria-label="Next slide">›</button>
+  <div class="dots" id="dots"></div>
+
+  <div class="panel" id="panel">
+    <div class="panel-row">
+      <span>Autoplay</span>
+      <label class="switch"><input type="checkbox" id="autoplayToggle"><span class="slider-knob"></span></label>
+    </div>
+    <div class="panel-row">
+      <span>Speed</span>
+      <input type="range" id="speedSlider" min="2" max="6" step="0.5" value="3.5">
+      <span id="speedValue">3.5s</span>
+    </div>
+  </div>
+
+  <div class="native-note" id="nativeNote">Native <code>::scroll-marker</code>/<code>::scroll-button()</code> CSS is also active in this browser where supported.</div>
+</div>
+
+<footer>Inspired by Giorgio Saud · CSS Carousels 2026 · UI Spotlight Day 47 · Drop #1</footer>
+
+<script>
+(function(){
+  var track = document.getElementById('track');
+  var slides = Array.prototype.slice.call(track.children);
+  var prevBtn = document.getElementById('prevBtn');
+  var nextBtn = document.getElementById('nextBtn');
+  var dotsWrap = document.getElementById('dots');
+  var carousel = document.getElementById('carousel');
+  var autoplayToggle = document.getElementById('autoplayToggle');
+  var speedSlider = document.getElementById('speedSlider');
+  var speedValue = document.getElementById('speedValue');
+
+  // Native ::scroll-button()/::scroll-marker CSS (above) is always left active as a
+  // progressive enhancement, but browser support for *rendering* these pseudo-elements
+  // is inconsistent even when CSS.supports('selector(...)') reports true (some engines
+  // parse the selector without yet painting the generated boxes) — so the JS-built
+  // prev/next buttons and dots below are the reliable, always-on primary controls.
+  var nativeParses = false;
+  try { nativeParses = CSS.supports('selector(::scroll-marker)'); } catch (e) { nativeParses = false; }
+  if (nativeParses) document.getElementById('nativeNote').classList.add('show');
+
+  slides.forEach(function(_, i){
+    var b = document.createElement('button');
+    b.className = 'dot';
+    b.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+    b.addEventListener('click', function(){ goTo(i); });
+    dotsWrap.appendChild(b);
+  });
+  var dots = Array.prototype.slice.call(dotsWrap.children);
+
+  function goTo(i){ track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }); }
+  function currentIndex(){ return Math.round(track.scrollLeft / track.clientWidth); }
+
+  function updateActive(){
+    var idx = currentIndex();
+    dots.forEach(function(d, i){ d.classList.toggle('active', i === idx); });
+    prevBtn.disabled = idx <= 0;
+    nextBtn.disabled = idx >= slides.length - 1;
+  }
+
+  var ticking = false;
+  track.addEventListener('scroll', function(){
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(function(){ updateActive(); ticking = false; });
+    }
+  });
+
+  prevBtn.addEventListener('click', function(){ track.scrollBy({ left: -track.clientWidth, behavior: 'smooth' }); });
+  nextBtn.addEventListener('click', function(){ track.scrollBy({ left: track.clientWidth, behavior: 'smooth' }); });
+
+  var autoplayTimer = null;
+  function nextSlide(){ goTo((currentIndex() + 1) % slides.length); }
+  function startAutoplay(){
+    stopAutoplay();
+    autoplayTimer = setInterval(nextSlide, parseFloat(speedSlider.value) * 1000);
+  }
+  function stopAutoplay(){
+    if (autoplayTimer) { clearInterval(autoplayTimer); autoplayTimer = null; }
+  }
+
+  autoplayToggle.addEventListener('change', function(){
+    if (autoplayToggle.checked) startAutoplay(); else stopAutoplay();
+  });
+  speedSlider.addEventListener('input', function(){
+    speedValue.textContent = speedSlider.value + 's';
+    if (autoplayToggle.checked) startAutoplay();
+  });
+  carousel.addEventListener('mouseenter', stopAutoplay);
+  carousel.addEventListener('mouseleave', function(){ if (autoplayToggle.checked) startAutoplay(); });
+  carousel.addEventListener('touchstart', stopAutoplay, { passive: true });
+  carousel.addEventListener('touchend', function(){ if (autoplayToggle.checked) startAutoplay(); }, { passive: true });
+
+  updateActive();
+})();
+</script>
+</body>
+</html>

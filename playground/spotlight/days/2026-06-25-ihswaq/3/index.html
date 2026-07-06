@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drop 3 — Per-Letter Variable Font Hover</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;background:#060610;color:#eee;
+  font-family:system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:40px 20px;
+  overflow:hidden;
+}
+
+/* Words container */
+.words{display:flex;flex-direction:column;gap:16px;align-items:center;
+  position:relative;z-index:1}
+
+.word{
+  display:flex;gap:0;cursor:default;
+  font-size:clamp(40px,8vw,90px);
+  font-weight:300;
+  line-height:1;
+  white-space:nowrap;
+}
+.word span{
+  display:inline-block;
+  transition:font-weight .35s cubic-bezier(.34,1.56,.64,1),
+             color .25s,
+             transform .3s cubic-bezier(.34,1.56,.64,1),
+             letter-spacing .25s;
+  font-weight:200;
+  color:#444;
+  transform-origin:bottom center;
+}
+/* Different default weights per row for variety */
+.word:nth-child(1) span{color:#2a2a45;font-size:clamp(36px,7vw,80px)}
+.word:nth-child(2) span{color:#1e2a1e;font-size:clamp(42px,8.5vw,96px)}
+.word:nth-child(3) span{color:#2a1e1e;font-size:clamp(32px,6.5vw,72px)}
+
+/* Active states driven by JS via data-level 0-5 */
+.word span[data-level="5"]{font-weight:900;color:#fff;transform:translateY(-6px) scale(1.08)}
+.word span[data-level="4"]{font-weight:700;color:#e0e0ff;transform:translateY(-4px) scale(1.05)}
+.word span[data-level="3"]{font-weight:600;color:#b0b0dd;transform:translateY(-3px) scale(1.03)}
+.word span[data-level="2"]{font-weight:500;color:#8080bb;transform:translateY(-1px) scale(1.01)}
+.word span[data-level="1"]{font-weight:400;color:#606088;transform:translateY(0)}
+
+/* Colour themes per word */
+.word.t-purple span[data-level="5"]{color:#c084fc}
+.word.t-purple span[data-level="4"]{color:#a855f7}
+.word.t-purple span[data-level="3"]{color:#7c3aed}
+.word.t-green span[data-level="5"]{color:#4ade80}
+.word.t-green span[data-level="4"]{color:#22c55e}
+.word.t-green span[data-level="3"]{color:#16a34a}
+.word.t-red span[data-level="5"]{color:#fb7185}
+.word.t-red span[data-level="4"]{color:#f43f5e}
+.word.t-red span[data-level="3"]{color:#e11d48}
+
+/* Glow on max level */
+.word span[data-level="5"]{text-shadow:0 0 30px currentColor}
+
+/* Mode buttons */
+.mode-row{
+  display:flex;gap:8px;flex-wrap:wrap;justify-content:center;
+  margin-bottom:30px;position:relative;z-index:1;
+}
+.m-btn{
+  padding:6px 16px;border-radius:20px;border:1px solid #2a2a45;
+  background:#111;color:#888;font-size:11px;cursor:pointer;
+  transition:all .2s;font-weight:600;letter-spacing:.5px;
+}
+.m-btn.active{background:#7c3aed;border-color:#7c3aed;color:#fff}
+
+/* Panel */
+.panel{
+  position:fixed;top:12px;right:12px;background:#111a;
+  border:1px solid #2a2a45;border-radius:10px;
+  padding:10px 14px;font-size:11px;color:#666;
+  backdrop-filter:blur(8px);max-width:200px;
+}
+.panel strong{color:#888;display:block;margin-bottom:4px}
+code{color:#a855f7;font-size:10px}
+
+footer{position:fixed;bottom:8px;left:0;right:0;text-align:center;
+  font-size:10px;color:#333}
+
+/* Animated background chars */
+.bg-chars{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.bg-char{
+  position:absolute;font-size:120px;font-weight:900;
+  opacity:.03;color:#fff;
+  animation:floatChar linear infinite;
+}
+@keyframes floatChar{
+  from{transform:translateY(100vh)}
+  to{transform:translateY(-20vh)}
+}
+</style>
+</head>
+<body>
+
+<div class="bg-chars" id="bgChars"></div>
+
+<div class="mode-row">
+  <button class="m-btn active" data-mode="proximity">Proximity</button>
+  <button class="m-btn" data-mode="wave">Wave</button>
+  <button class="m-btn" data-mode="center">Center-out</button>
+  <button class="m-btn" data-mode="random">Random</button>
+</div>
+
+<div class="words">
+  <div class="word t-purple" data-text="KINETIC">
+    <!-- spans injected by JS -->
+  </div>
+  <div class="word t-green" data-text="VARIABLE">
+  </div>
+  <div class="word t-red" data-text="WEIGHT">
+  </div>
+</div>
+
+<div class="panel">
+  <strong>The Technique</strong>
+  Each letter is a <code>&lt;span&gt;</code>. Mouse proximity drives a <code>data-level</code> attr, and CSS transitions animate <code>font-weight</code> + <code>transform</code>. Variable fonts interpolate weight continuously.
+</div>
+
+<footer>Inspired by Daniel Pethő / Fancy Components / github.com/danielpetho · UI Spotlight Day 40 · Drop #3</footer>
+
+<script>
+// Split words into letter spans
+document.querySelectorAll('.word').forEach(w=>{
+  const text = w.dataset.text;
+  w.innerHTML = [...text].map(ch=>
+    `<span data-level="0">${ch}</span>`
+  ).join('');
+});
+
+const allWords = [...document.querySelectorAll('.word')];
+let mode = 'proximity';
+let waveT = 0, waveId = null;
+
+// Proximity mode
+function applyProximity(mx, my){
+  allWords.forEach(word=>{
+    [...word.querySelectorAll('span')].forEach(span=>{
+      const r = span.getBoundingClientRect();
+      const cx = r.left + r.width/2;
+      const cy = r.top + r.height/2;
+      const dist = Math.hypot(mx-cx, my-cy);
+      const maxDist = 200;
+      const level = Math.max(0, Math.round(5 * (1 - dist/maxDist)));
+      span.dataset.level = level;
+    });
+  });
+}
+
+document.addEventListener('mousemove',e=>{
+  if(mode==='proximity') applyProximity(e.clientX, e.clientY);
+});
+document.addEventListener('touchmove',e=>{
+  if(mode==='proximity'){
+    const t = e.touches[0];
+    applyProximity(t.clientX, t.clientY);
+    e.preventDefault();
+  }
+},{passive:false});
+
+// Wave mode
+function startWave(){
+  stopWave();
+  const allSpans = allWords.flatMap(w=>[...w.querySelectorAll('span')]);
+  const total = allSpans.length;
+  function tick(){
+    waveT += 0.08;
+    allSpans.forEach((sp,i)=>{
+      const val = Math.sin(waveT + i*0.4);
+      const level = Math.max(0, Math.round((val+1)/2*5));
+      sp.dataset.level = level;
+    });
+    waveId = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// Center-out mode
+function startCenter(){
+  stopWave();
+  const allSpans = allWords.flatMap(w=>[...w.querySelectorAll('span')]);
+  const total = allSpans.length;
+  let center = total/2;
+  let dir = 1;
+  function tick(){
+    waveT += 0.04;
+    allSpans.forEach((sp,i)=>{
+      const dist = Math.abs(i - (total/2 + Math.sin(waveT)*total/2));
+      const level = Math.max(0, Math.round(5 * (1 - dist/(total/2))));
+      sp.dataset.level = level;
+    });
+    waveId = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// Random mode
+function startRandom(){
+  stopWave();
+  const allSpans = allWords.flatMap(w=>[...w.querySelectorAll('span')]);
+  function tick(){
+    allSpans.forEach(sp=>{
+      if(Math.random()<0.05) sp.dataset.level = Math.floor(Math.random()*6);
+    });
+    waveId = setTimeout(tick, 80);
+  }
+  tick();
+}
+
+function stopWave(){
+  cancelAnimationFrame(waveId);
+  clearTimeout(waveId);
+  waveId = null;
+}
+
+function resetAll(){
+  document.querySelectorAll('.word span').forEach(s=>s.dataset.level='0');
+}
+
+document.querySelector('.mode-row').addEventListener('click',e=>{
+  const btn = e.target.closest('[data-mode]');
+  if(!btn) return;
+  document.querySelectorAll('.m-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  mode = btn.dataset.mode;
+  stopWave();
+  resetAll();
+  if(mode==='wave') startWave();
+  else if(mode==='center') startCenter();
+  else if(mode==='random') startRandom();
+});
+
+// Background floating characters
+const bgChars = document.getElementById('bgChars');
+const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+for(let i=0;i<12;i++){
+  const d = document.createElement('div');
+  d.className = 'bg-char';
+  d.textContent = alphabet[Math.floor(Math.random()*alphabet.length)];
+  d.style.left = Math.random()*100+'%';
+  d.style.animationDuration = (15+Math.random()*20)+'s';
+  d.style.animationDelay = -(Math.random()*30)+'s';
+  bgChars.appendChild(d);
+}
+
+// Start in proximity mode, trigger a quick center demo to show the effect
+startCenter();
+setTimeout(()=>{
+  stopWave();
+  resetAll();
+  mode='proximity';
+}, 2500);
+</script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Grid Lanes Masonry</title>
+<style>
+  :root{ --accent:#60a5fa; --accent2:#a78bfa; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:#0a0a12; color:#eef0fb; font-family:system-ui,-apple-system,sans-serif;}
+  header{padding:16px 20px; border-bottom:1px solid #ffffff14;}
+  header h1{margin:0; font-size:16px;}
+  header p{margin:4px 0 0; font-size:12.5px; color:#9aa0c0;}
+  #badge{display:inline-block; margin-left:6px; padding:3px 7px; border-radius:6px; font-size:10px; background:#ffffff12; color:#9aa0c0;}
+  #badge.native{background:#60a5fa33; color:#93c1ff;}
+
+  #panel{
+    position:fixed; top:70px; right:12px; z-index:20; width:200px; background:#12121ee6; backdrop-filter:blur(12px);
+    border:1px solid #ffffff1c; border-radius:12px; padding:12px; font-size:11.5px;
+  }
+  #panel h2{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:#9aa0c0;}
+  #panel label{display:block; margin-bottom:9px; color:#c7cbe6;}
+  #panel input[type=range]{width:100%; accent-color:var(--accent);}
+  #panel button{
+    width:100%; padding:7px; border-radius:8px; border:1px solid #ffffff22; background:#ffffff10; color:#eef0fb;
+    font-size:11.5px; cursor:pointer;
+  }
+  @media (max-width:760px){ #panel{position:static; width:auto; margin:12px 16px;} }
+
+  #gallery{
+    position:relative;
+    margin:20px;
+  }
+  .lane-item{
+    position:absolute;
+    border-radius:14px;
+    padding:16px;
+    background:linear-gradient(160deg, var(--c1), var(--c2));
+    transition:top .45s cubic-bezier(.22,1,.36,1), left .45s cubic-bezier(.22,1,.36,1), height .3s ease;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    color:#0a0a12; font-weight:700;
+  }
+  .lane-item span{font-size:12px; opacity:.75; font-weight:600;}
+  .lane-item h3{margin:2px 0 0; font-size:15px;}
+
+  footer{padding:16px 20px 30px; font-size:11px; color:#666a86;}
+  footer a{color:#8a8fc0;}
+
+  /* Progressive enhancement: real CSS Grid Lanes (WebKit STP) or native masonry rows.
+     #gallery gets a data-native flag from JS only when the browser genuinely
+     lays out that way; otherwise the absolute-positioned JS lanes above apply. */
+  @supports (display: grid-lanes) or (grid-template-rows: masonry) {
+    #gallery[data-native="1"]{
+      display: grid-lanes;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      flow-tolerance: 1em;
+    }
+    #gallery[data-native="1"] .lane-item{ position:static; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Grid Lanes Masonry <span id="badge">checking support&hellip;</span></h1>
+  <p>Bumper-to-bumper placement &mdash; each new tile goes into whichever lane is currently shortest, DOM order preserved for a11y.</p>
+</header>
+
+<div id="panel">
+  <h2>Lane tuning</h2>
+  <label>Lanes <span id="laneVal">4</span>
+    <input type="range" id="lanes" min="2" max="7" value="4">
+  </label>
+  <label>Gap <span id="gapVal">14px</span>
+    <input type="range" id="gap" min="4" max="30" value="14">
+  </label>
+  <button id="regen">&#8635; Regenerate tiles</button>
+</div>
+
+<div id="gallery"></div>
+
+<footer>Inspired by WebKit Blog &mdash; "Introducing CSS Grid Lanes" (display: grid-lanes, shortest-lane placement, flow-tolerance) &middot; UI Spotlight Day 46 &middot; Drop #2</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var nativeSupported = false;
+  try{ nativeSupported = CSS.supports('display','grid-lanes') || CSS.supports('grid-template-rows','masonry'); }catch(err){}
+  var badge = document.getElementById('badge');
+  var gallery = document.getElementById('gallery');
+  if(nativeSupported){
+    badge.textContent = 'native grid-lanes active';
+    badge.classList.add('native');
+    gallery.dataset.native = '1';
+  } else {
+    badge.textContent = 'JS shortest-lane fallback (grid-lanes not yet supported here)';
+  }
+
+  var PALETTE = [
+    ['#60a5fa','#a78bfa'], ['#4ee6c0','#60a5fa'], ['#f472b6','#fbbf24'],
+    ['#a78bfa','#f472b6'], ['#34d399','#4ee6c0'], ['#fbbf24','#f97316']
+  ];
+  var WORDS = ['Nova','Quartz','Ember','Delta','Lumen','Orbit','Pixel','Cobalt','Vertex','Nimbus','Aster','Flux'];
+
+  function makeTiles(n){
+    var frag = [];
+    for(var i=0;i<n;i++){
+      var h = 90 + Math.floor(Math.random()*160);
+      var col = PALETTE[i % PALETTE.length];
+      frag.push({ h:h, c1:col[0], c2:col[1], label: WORDS[i % WORDS.length]+'-'+(10+i), sub: (h)+'px tall' });
+    }
+    return frag;
+  }
+
+  var tiles = makeTiles(22);
+
+  function render(){
+    gallery.innerHTML = '';
+    tiles.forEach(function(t){
+      var el = document.createElement('div');
+      el.className = 'lane-item';
+      el.style.setProperty('--c1', t.c1);
+      el.style.setProperty('--c2', t.c2);
+      el.style.height = t.h + 'px';
+      el.innerHTML = '<span>'+t.sub+'</span><h3>'+t.label+'</h3>';
+      gallery.appendChild(el);
+    });
+    layout();
+  }
+
+  // Shortest-lane-first placement — the core Grid Lanes algorithm,
+  // reimplemented in JS for browsers that don't support it natively yet.
+  function layout(){
+    if(gallery.dataset.native === '1') return; // native engine handles it
+    var laneCount = parseInt(document.getElementById('lanes').value, 10);
+    var gap = parseInt(document.getElementById('gap').value, 10);
+    var width = gallery.getBoundingClientRect().width;
+    var laneW = (width - gap*(laneCount-1)) / laneCount;
+    var laneHeights = new Array(laneCount).fill(0);
+    var items = gallery.querySelectorAll('.lane-item');
+    items.forEach(function(el){
+      // find shortest lane (bumper-to-bumper)
+      var lane = 0;
+      for(var i=1;i<laneCount;i++){ if(laneHeights[i] < laneHeights[lane]) lane = i; }
+      var x = lane * (laneW + gap);
+      var y = laneHeights[lane];
+      el.style.width = laneW + 'px';
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      laneHeights[lane] += el.getBoundingClientRect().height + gap;
+    });
+    var maxH = Math.max.apply(null, laneHeights);
+    gallery.style.height = maxH + 'px';
+  }
+
+  document.getElementById('lanes').addEventListener('input', function(e){
+    document.getElementById('laneVal').textContent = e.target.value;
+    layout();
+  });
+  document.getElementById('gap').addEventListener('input', function(e){
+    document.getElementById('gapVal').textContent = e.target.value+'px';
+    gallery.style.setProperty('--gap', e.target.value+'px');
+    layout();
+  });
+  document.getElementById('regen').addEventListener('click', function(){
+    tiles = makeTiles(22);
+    render();
+  });
+
+  window.addEventListener('resize', layout);
+  render();
+})();
+</script>
+</body>
+</html>

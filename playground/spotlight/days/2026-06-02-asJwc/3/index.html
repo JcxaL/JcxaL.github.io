@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Holographic Type — UI Spotlight</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#05050c;
+  color:#d0d0f0;
+  font-family:system-ui,-apple-system,sans-serif;
+  min-height:100vh;
+  overflow-x:hidden;
+  cursor:none;
+}
+
+/* custom cursor */
+#cursor{
+  position:fixed;width:14px;height:14px;border-radius:50%;
+  background:rgba(255,255,255,.6);
+  pointer-events:none;z-index:1000;
+  transform:translate(-50%,-50%);
+  transition:width .12s,height .12s;
+  mix-blend-mode:difference;
+}
+
+section{
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:60px 24px;gap:64px;
+}
+
+.word-wrap{
+  display:flex;gap:0;
+  perspective:600px;
+  cursor:default;
+}
+
+/* each letter is a tilt-able block */
+.letter{
+  display:inline-block;
+  font-weight:900;
+  line-height:1;
+  white-space:pre;
+
+  /* holographic gradient, angle driven by JS */
+  background:linear-gradient(
+    var(--holo-angle,120deg),
+    #ff6b9d 0%,
+    #c056d4 16%,
+    #6060f0 33%,
+    #38d4f5 50%,
+    #34e8a0 66%,
+    #f5e842 83%,
+    #ff6b9d 100%
+  );
+  background-size:200% 200%;
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+
+  /* 3D tilt */
+  transform:perspective(400px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
+  transition:transform .08s ease-out, background-position .08s ease-out;
+  will-change:transform;
+}
+
+/* shimmer overlay per letter */
+.letter::after{
+  content:attr(data-l);
+  position:absolute;inset:0;
+  background:linear-gradient(
+    var(--shine-angle,45deg),
+    transparent 30%,
+    rgba(255,255,255,var(--shine,.0)) 50%,
+    transparent 70%
+  );
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  pointer-events:none;
+}
+.letter{position:relative}
+
+/* font sizes per row */
+.row-xl .letter{font-size:clamp(3.5rem,10vw,8rem)}
+.row-lg .letter{font-size:clamp(2.5rem,7vw,5.5rem)}
+.row-md .letter{font-size:clamp(1.8rem,5vw,3.5rem)}
+
+.label{
+  font-size:.75rem;letter-spacing:.15em;text-transform:uppercase;
+  color:#40408a;margin-bottom:-50px;
+}
+
+footer{text-align:center;padding:24px;font-size:11px;color:#2a2a5a;
+  border-top:1px solid #0f0f2a}
+</style>
+</head>
+<body>
+<div id="cursor"></div>
+
+<section>
+  <span class="label">move your cursor</span>
+  <div class="word-wrap row-xl" data-word="HOLO"></div>
+  <div class="word-wrap row-lg" data-word="GRAPHIC"></div>
+  <div class="word-wrap row-md" data-word="TYPOGRAPHY"></div>
+</section>
+
+<footer>Inspired by Basement Studio / Emil Kowalski holographic card effects · UI Spotlight Day 17 · Drop #3</footer>
+
+<script>
+// Build letter spans
+document.querySelectorAll('.word-wrap').forEach(wrap => {
+  const word = wrap.dataset.word;
+  wrap.innerHTML = '';
+  for (const ch of word) {
+    const s = document.createElement('span');
+    s.className = 'letter';
+    s.textContent = ch === ' ' ? ' ' : ch;
+    s.dataset.l = ch === ' ' ? ' ' : ch;
+    wrap.appendChild(s);
+  }
+});
+
+const letters = document.querySelectorAll('.letter');
+const cursor = document.getElementById('cursor');
+let mx = window.innerWidth/2, my = window.innerHeight/2;
+
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  cursor.style.left = mx + 'px';
+  cursor.style.top  = my + 'px';
+});
+document.addEventListener('mouseleave', () => { mx=-999; my=-999; });
+
+// Touch support
+document.addEventListener('touchmove', e => {
+  mx = e.touches[0].clientX;
+  my = e.touches[0].clientY;
+  cursor.style.left = mx + 'px';
+  cursor.style.top  = my + 'px';
+}, {passive:true});
+
+function lerp(a, b, t){ return a + (b - a) * t; }
+
+let lerpMx = mx, lerpMy = my;
+
+function animate() {
+  requestAnimationFrame(animate);
+  lerpMx = lerp(lerpMx, mx, 0.1);
+  lerpMy = lerp(lerpMy, my, 0.1);
+
+  letters.forEach(el => {
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top  + r.height / 2;
+    const dx = lerpMx - cx;
+    const dy = lerpMy - cy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const maxDist = 320;
+    const inf = Math.max(0, 1 - dist / maxDist);
+
+    // 3D tilt
+    const rx = -(dy / Math.max(r.height,1)) * 25 * inf;
+    const ry =  (dx / Math.max(r.width,1))  * 25 * inf;
+
+    // holo gradient angle from mouse direction
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    // background position shift for shimmer sweep
+    const bpx = 50 + dx * 0.03 * inf;
+    const bpy = 50 + dy * 0.03 * inf;
+
+    el.style.setProperty('--rx', rx.toFixed(1) + 'deg');
+    el.style.setProperty('--ry', ry.toFixed(1) + 'deg');
+    el.style.setProperty('--holo-angle', (angle + 120).toFixed(1) + 'deg');
+    el.style.setProperty('--shine', (inf * 0.45).toFixed(3));
+    el.style.setProperty('--shine-angle', (angle + 90).toFixed(1) + 'deg');
+    el.style.backgroundPosition = `${bpx.toFixed(1)}% ${bpy.toFixed(1)}%`;
+  });
+}
+animate();
+
+// Touch: make cursor visible
+document.addEventListener('touchstart', () => {
+  cursor.style.display = 'block';
+}, {passive:true});
+</script>
+</body>
+</html>

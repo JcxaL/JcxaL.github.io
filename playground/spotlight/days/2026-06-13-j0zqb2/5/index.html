@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spring Snap Bottom Sheet</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--sheet-h:0px}
+body{
+  background:#05040d;
+  font-family:system-ui,-apple-system,sans-serif;
+  color:#e2e8f0;overflow:hidden;height:100vh;
+  user-select:none;
+}
+
+/* ── Background content ── */
+#bg{
+  position:fixed;inset:0;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:20px;padding:20px;
+  pointer-events:none;
+}
+.bg-title{
+  font-size:clamp(1.5rem,5vw,3rem);font-weight:900;letter-spacing:-.05em;
+  background:linear-gradient(135deg,#fbbf24,#f59e0b);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  text-align:center;
+}
+.bg-sub{font-size:13px;color:#334155;text-align:center;max-width:320px;line-height:1.7}
+.trigger-btn{
+  pointer-events:all;
+  padding:10px 24px;border-radius:20px;
+  background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);
+  color:#fbbf24;font-size:13px;font-weight:700;cursor:pointer;
+  transition:background .2s;
+}
+.trigger-btn:hover{background:rgba(251,191,36,0.2)}
+
+/* ── Sheet ── */
+#sheet{
+  position:fixed;left:0;right:0;bottom:0;
+  border-radius:24px 24px 0 0;
+  background:#0d0d1e;
+  border:1px solid rgba(255,255,255,0.08);
+  border-bottom:none;
+  box-shadow:0 -20px 80px rgba(0,0,0,0.6);
+  will-change:transform;
+  touch-action:none;
+  /* Height is set dynamically */
+  height:90vh;
+  transform:translateY(100%);
+}
+
+/* Handle bar */
+#handle{
+  width:100%;height:44px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:grab;flex-shrink:0;
+}
+#handle:active{cursor:grabbing}
+.pill{
+  width:40px;height:4px;border-radius:2px;
+  background:rgba(255,255,255,0.2);
+}
+
+/* Sheet content */
+#sheet-body{
+  padding:0 24px 24px;overflow-y:auto;height:calc(100% - 44px);
+}
+.sheet-title{
+  font-size:20px;font-weight:800;letter-spacing:-.04em;margin-bottom:6px;
+}
+.sheet-sub{font-size:13px;color:#475569;margin-bottom:24px;line-height:1.6}
+
+/* State indicators */
+.snap-states{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.snap-dot{
+  padding:5px 14px;border-radius:10px;
+  border:1px solid #1e1e38;background:#0f0f20;
+  font-size:11px;color:#6060a0;transition:all .2s;
+}
+.snap-dot.active{background:#1e0e4a;border-color:#4a1fb0;color:#c4a8ff}
+
+/* Content items */
+.item{
+  padding:14px 16px;border-radius:14px;margin-bottom:10px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;gap:14px;
+  transition:background .15s;cursor:pointer;
+}
+.item:hover{background:rgba(255,255,255,0.06)}
+.item-icon{
+  width:40px;height:40px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+}
+.item-info .item-title{font-size:14px;font-weight:600;margin-bottom:2px}
+.item-info .item-desc{font-size:11px;color:#475569}
+
+/* Spring velocity indicator */
+#vel-dbg{
+  position:fixed;top:16px;right:16px;
+  background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,0.08);border-radius:12px;
+  padding:10px 14px;font-size:11px;color:#475569;z-index:200;
+  line-height:1.7;
+}
+@media(max-width:480px){#vel-dbg{display:none}}
+
+footer{
+  position:fixed;bottom:8px;left:0;right:0;text-align:center;
+  font-size:10px;color:#151525;pointer-events:none;z-index:5;
+}
+</style>
+</head>
+<body>
+
+<!-- Background -->
+<div id="bg">
+  <div class="bg-title">Spring Snap Sheet</div>
+  <div class="bg-sub">Drag the handle up — snaps to peek, half, and full. Spring physics with configurable stiffness and damping.</div>
+  <button class="trigger-btn" onclick="snapTo(1)">Open Sheet</button>
+</div>
+
+<!-- Sheet -->
+<div id="sheet">
+  <div id="handle"><div class="pill"></div></div>
+  <div id="sheet-body">
+    <div class="sheet-title">Bottom Sheet</div>
+    <div class="sheet-sub">Drag the handle or fling up/down. The sheet snaps to three positions using a spring physics model.</div>
+
+    <div class="snap-states">
+      <div class="snap-dot" id="sd-0">● Peek  12%</div>
+      <div class="snap-dot" id="sd-1">● Half  55%</div>
+      <div class="snap-dot" id="sd-2">● Full  90%</div>
+    </div>
+
+    <div class="item" onclick="snapTo(0)">
+      <div class="item-icon" style="background:rgba(251,191,36,.15);color:#fbbf24">⌄</div>
+      <div class="item-info">
+        <div class="item-title">Peek (12%)</div>
+        <div class="item-desc">Snap to the smallest visible state</div>
+      </div>
+    </div>
+    <div class="item" onclick="snapTo(1)">
+      <div class="item-icon" style="background:rgba(99,102,241,.15);color:#818cf8">▧</div>
+      <div class="item-info">
+        <div class="item-title">Half (55%)</div>
+        <div class="item-desc">Mid-state — content partially visible</div>
+      </div>
+    </div>
+    <div class="item" onclick="snapTo(2)">
+      <div class="item-icon" style="background:rgba(16,185,129,.15);color:#34d399">⬆</div>
+      <div class="item-info">
+        <div class="item-title">Full (90%)</div>
+        <div class="item-desc">Full-height sheet for rich content</div>
+      </div>
+    </div>
+
+    <div style="height:20px"></div>
+
+    <div class="item">
+      <div class="item-icon" style="background:rgba(244,63,94,.15);color:#f43f5e">⚡</div>
+      <div class="item-info">
+        <div class="item-title">Spring stiffness: 220</div>
+        <div class="item-desc">Controls snap speed and overshoot</div>
+      </div>
+    </div>
+    <div class="item">
+      <div class="item-icon" style="background:rgba(168,85,247,.15);color:#a855f7">∿</div>
+      <div class="item-info">
+        <div class="item-title">Spring damping: 28</div>
+        <div class="item-desc">Reduces oscillation after snap</div>
+      </div>
+    </div>
+    <div class="item">
+      <div class="item-icon" style="background:rgba(56,189,248,.15);color:#38bdf8">↕</div>
+      <div class="item-info">
+        <div class="item-title">Velocity threshold</div>
+        <div class="item-desc">Fast fling jumps a snap point</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="vel-dbg">
+  <div>Sheet state</div>
+  <div id="dbg-state">—</div>
+  <div style="margin-top:4px">Velocity</div>
+  <div id="dbg-vel">0 px/s</div>
+  <div style="margin-top:4px">Height</div>
+  <div id="dbg-h">0%</div>
+</div>
+
+<footer>Spring snap bottom sheet · UI Spotlight Day 28 · Drop #5</footer>
+
+<script>
+const sheet=document.getElementById('sheet');
+const handle=document.getElementById('handle');
+
+// Snap points as fraction of viewport height
+const SNAPS=[0.12,0.55,0.90];
+const SNAP_LABELS=['Peek','Half','Full'];
+let snapIdx=1; // start at half
+
+// Spring state
+let pos=0;    // current height fraction
+let vel=0;    // velocity (fraction/s)
+let target=SNAPS[snapIdx];
+let dragging=false;
+let dragStartY=0, dragStartPos=0, lastY=0, lastT=0, dragVel=0;
+
+const K=220; // stiffness
+const C=28;  // damping
+const DT=1/60;
+
+function applyTransform(){
+  const h=pos*100;
+  sheet.style.transform=`translateY(${(1-pos)*100}%)`;
+  // Update debug
+  document.getElementById('dbg-h').textContent=h.toFixed(1)+'%';
+  document.getElementById('dbg-vel').textContent=(vel*window.innerHeight).toFixed(0)+' px/s';
+}
+
+// Spring step
+function springStep(){
+  const F=K*(target-pos)-C*vel;
+  vel+=F*DT;
+  pos+=vel*DT;
+  // Clamp
+  pos=Math.max(0,Math.min(SNAPS[2]+0.02,pos));
+  applyTransform();
+  updateDots();
+}
+
+let animating=false;
+function startAnim(){
+  if(animating) return;
+  animating=true;
+  function loop(){
+    springStep();
+    const diff=Math.abs(target-pos),spd=Math.abs(vel);
+    if(diff<0.0003&&spd<0.0005){
+      pos=target; vel=0; animating=false;
+      applyTransform(); updateDots();
+    } else {
+      requestAnimationFrame(loop);
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+function snapTo(idx){
+  snapIdx=Math.max(0,Math.min(SNAPS.length-1,idx));
+  target=SNAPS[snapIdx];
+  document.getElementById('dbg-state').textContent=SNAP_LABELS[snapIdx];
+  startAnim();
+}
+
+function updateDots(){
+  SNAPS.forEach((_,i)=>{
+    document.getElementById(`sd-${i}`).classList.toggle('active',i===snapIdx);
+  });
+}
+
+// ── Drag handling ──
+function onDragStart(e){
+  dragging=true;
+  dragStartY=e.touches?e.touches[0].clientY:e.clientY;
+  dragStartPos=pos;
+  lastY=dragStartY; lastT=performance.now();
+  dragVel=0;
+  vel=0;
+  sheet.style.transition='none';
+  e.preventDefault();
+}
+
+function onDragMove(e){
+  if(!dragging) return;
+  const y=e.touches?e.touches[0].clientY:e.clientY;
+  const dy=dragStartY-y;
+  const newPos=Math.max(0,Math.min(SNAPS[2]+0.05,dragStartPos+dy/window.innerHeight));
+  pos=newPos;
+  // Track velocity
+  const dt=(performance.now()-lastT)/1000;
+  if(dt>0.01){
+    dragVel=(lastY-y)/(dt*window.innerHeight);
+    lastY=y; lastT=performance.now();
+  }
+  applyTransform();
+  e.preventDefault();
+}
+
+function onDragEnd(){
+  if(!dragging) return;
+  dragging=false;
+  // Determine snap point based on position + velocity
+  vel=dragVel;
+  let best=0,bestDist=Infinity;
+  SNAPS.forEach((s,i)=>{
+    const d=Math.abs(s-pos);
+    // Bias toward direction of fling
+    const biased=d-vel*0.15;
+    if(biased<bestDist){bestDist=biased;best=i;}
+  });
+  snapIdx=best;
+  target=SNAPS[snapIdx];
+  document.getElementById('dbg-state').textContent=SNAP_LABELS[snapIdx];
+  startAnim();
+}
+
+handle.addEventListener('pointerdown',onDragStart);
+window.addEventListener('pointermove',e=>{if(dragging)onDragMove(e);});
+window.addEventListener('pointerup',onDragEnd);
+handle.addEventListener('touchstart',onDragStart,{passive:false});
+window.addEventListener('touchmove',e=>{if(dragging)onDragMove(e);},{passive:false});
+window.addEventListener('touchend',onDragEnd);
+
+// Boot at peek
+pos=0; vel=0;
+applyTransform();
+// Animate in to half after short delay
+setTimeout(()=>snapTo(1),300);
+</script>
+</body>
+</html>

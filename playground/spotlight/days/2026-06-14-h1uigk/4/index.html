@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elastic Sticker Follow — UI Spotlight</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  min-height: 100dvh;
+  background: #040408;
+  font-family: system-ui, sans-serif;
+  overflow: hidden;
+  cursor: none;
+}
+
+.label {
+  position: absolute;
+  top: 24px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  color: #475569;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Custom cursor */
+#cursor {
+  position: fixed;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  pointer-events: none;
+  z-index: 1000;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+  transition: width .15s, height .15s;
+}
+body:active #cursor { width: 20px; height: 20px; }
+
+/* Sticker base */
+.sticker {
+  position: absolute;
+  font-size: 52px;
+  line-height: 1;
+  cursor: none;
+  user-select: none;
+  will-change: transform;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,.6));
+  transition: filter .2s;
+}
+
+.sticker.attracted {
+  filter: drop-shadow(0 0 20px var(--glow, #fff8)) drop-shadow(0 4px 12px rgba(0,0,0,.6));
+}
+
+/* SVG elastic trails */
+#trails {
+  position: fixed; inset: 0;
+  width: 100vw; height: 100vh;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.trail-path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity .2s;
+}
+
+.trail-path.visible { opacity: 1; }
+
+/* Info panel */
+#info {
+  position: fixed;
+  bottom: 40px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13,13,30,.85);
+  border: 1px solid #1e1e3a;
+  border-radius: 12px;
+  padding: 10px 20px;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+footer {
+  position: fixed; bottom: 12px; left: 0; right: 0;
+  text-align: center; font-size: 11px; color: #1e293b;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<div class="label">Elastic Sticker Follow</div>
+<div id="cursor"></div>
+
+<svg id="trails"></svg>
+
+<div id="info">Move cursor near a sticker — it stretches toward you, snaps back when you leave</div>
+
+<footer>Inspired by spring-based magnetic UI patterns · UI Spotlight Day 29 · Drop #4</footer>
+
+<script>
+const stickers = [
+  {emoji:'🎯',x:0.15,y:0.25,glow:'#ef4444'},
+  {emoji:'⚡',x:0.75,y:0.18,glow:'#fbbf24'},
+  {emoji:'🌊',x:0.55,y:0.65,glow:'#38bdf8'},
+  {emoji:'🔮',x:0.25,y:0.70,glow:'#a855f7'},
+  {emoji:'🔥',x:0.82,y:0.55,glow:'#f97316'},
+  {emoji:'🌿',x:0.42,y:0.30,glow:'#4ade80'},
+  {emoji:'💜',x:0.68,y:0.82,glow:'#c084fc'},
+  {emoji:'⭐',x:0.12,y:0.52,glow:'#fde68a'},
+];
+
+const ATTRACT_RADIUS = 160;
+const SPRING_K = 0.08;
+const DAMPING  = 0.72;
+const MAX_STRETCH = 90;
+
+const cursor = document.getElementById('cursor');
+const trailsSVG = document.getElementById('trails');
+
+let mx = window.innerWidth/2, my = window.innerHeight/2;
+let stickerEls = [], trailEls = [];
+
+// Create stickers
+stickers.forEach((s, i) => {
+  const el = document.createElement('div');
+  el.className = 'sticker';
+  el.textContent = s.emoji;
+  el.style.setProperty('--glow', s.glow);
+  document.body.appendChild(el);
+
+  const ox = s.x * window.innerWidth;
+  const oy = s.y * window.innerHeight;
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.classList.add('trail-path');
+  path.style.stroke = s.glow;
+  trailsSVG.appendChild(path);
+
+  stickerEls.push({
+    el, path,
+    ox, oy,       // origin (px)
+    x: ox, y: oy, // current pos
+    vx: 0, vy: 0, // velocity
+    glow: s.glow,
+    attracted: false,
+  });
+});
+
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+document.addEventListener('touchmove', e => {
+  e.preventDefault();
+  mx = e.touches[0].clientX; my = e.touches[0].clientY;
+}, {passive:false});
+
+cursor.style.transform = `translate(${mx}px,${my}px)`;
+
+// Handle resize
+window.addEventListener('resize', () => {
+  stickerEls.forEach((s, i) => {
+    s.ox = stickers[i].x * window.innerWidth;
+    s.oy = stickers[i].y * window.innerHeight;
+  });
+});
+
+function tick() {
+  // Move cursor
+  cursor.style.left = mx+'px';
+  cursor.style.top  = my+'px';
+
+  stickerEls.forEach(s => {
+    const dx = mx - s.ox, dy = my - s.oy;
+    const dist = Math.hypot(dx, dy);
+    const attracted = dist < ATTRACT_RADIUS;
+
+    if (attracted) {
+      // target: move toward cursor but cap stretch
+      const t = Math.min(dist, MAX_STRETCH) / dist;
+      const tx = s.ox + dx * t;
+      const ty = s.oy + dy * t;
+      const ax = (tx - s.x) * SPRING_K;
+      const ay = (ty - s.y) * SPRING_K;
+      s.vx = (s.vx + ax) * DAMPING;
+      s.vy = (s.vy + ay) * DAMPING;
+    } else {
+      // spring back to origin
+      const ax = (s.ox - s.x) * SPRING_K;
+      const ay = (s.oy - s.y) * SPRING_K;
+      s.vx = (s.vx + ax) * DAMPING;
+      s.vy = (s.vy + ay) * DAMPING;
+    }
+
+    s.x += s.vx;
+    s.y += s.vy;
+
+    const hw = s.el.offsetWidth  / 2 || 26;
+    const hh = s.el.offsetHeight / 2 || 26;
+    s.el.style.left = (s.x - hw) + 'px';
+    s.el.style.top  = (s.y - hh) + 'px';
+
+    // scale based on stretch from origin
+    const stretch = Math.hypot(s.x - s.ox, s.y - s.oy);
+    const sc = 1 + stretch * 0.004;
+    const angle = Math.atan2(s.y - s.oy, s.x - s.ox);
+    s.el.style.transform = `scale(${sc}) rotate(${(angle*0.3).toFixed(2)}rad)`;
+
+    if (attracted && !s.attracted) { s.el.classList.add('attracted'); s.attracted=true; }
+    if (!attracted && s.attracted && stretch < 5) { s.el.classList.remove('attracted'); s.attracted=false; }
+
+    // SVG elastic trail (cubic bezier from origin to sticker)
+    const midx = (s.ox + s.x)/2 - (s.y-s.oy)*0.3;
+    const midy = (s.oy + s.y)/2 + (s.x-s.ox)*0.3;
+    if (stretch > 8) {
+      s.path.setAttribute('d', `M${s.ox},${s.oy} Q${midx},${midy} ${s.x},${s.y}`);
+      s.path.classList.add('visible');
+    } else {
+      s.path.classList.remove('visible');
+    }
+  });
+
+  requestAnimationFrame(tick);
+}
+
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

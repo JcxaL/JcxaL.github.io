@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>3D Perspective Tilt + Glare</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#07080c;color:#e8eeff;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;overflow-x:hidden}
+h1{font-size:clamp(1.5rem,4vw,2.2rem);font-weight:900;text-align:center;margin-bottom:.3rem}
+h1 span{background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.tagline{color:#2a304a;font-size:.85rem;text-align:center;margin-bottom:1.5rem}
+
+.controls{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-bottom:2.5rem;align-items:center}
+.ctrl{display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:#2a304a;background:#0d0f18;border:1px solid #1a2038;border-radius:8px;padding:.4rem .8rem}
+.ctrl input[type=range]{accent-color:#a78bfa;width:80px}
+.ctrl span.val{color:#a78bfa;min-width:24px;text-align:right}
+
+/* ── Card grid ────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1.5rem;width:100%;max-width:960px;perspective:1200px}
+
+.tilt-card{
+  position:relative;
+  border-radius:18px;
+  padding:1.5rem;
+  cursor:pointer;
+  transform-style:preserve-3d;
+  transition:transform .1s ease-out, box-shadow .1s ease-out;
+  transform:perspective(800px) rotateX(0deg) rotateY(0deg) scale(1);
+  will-change:transform;
+  overflow:hidden;
+  isolation:isolate;
+}
+.tilt-card:hover{transition:none}
+.tilt-card.returning{transition:transform .6s cubic-bezier(.25,.46,.45,.94),box-shadow .6s ease}
+
+/* glare layer */
+.glare{
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  pointer-events:none;
+  background:radial-gradient(circle at var(--gx,50%) var(--gy,50%), rgba(255,255,255,.18) 0%, transparent 60%);
+  opacity:0;
+  transition:opacity .2s;
+}
+.tilt-card:hover .glare{opacity:1}
+
+/* shine top edge */
+.tilt-card::before{
+  content:'';position:absolute;top:0;left:10%;right:10%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);
+  border-radius:50%;
+  transform:translateZ(1px);
+}
+
+/* Card styles */
+.card-inner{position:relative;z-index:1;transform:translateZ(20px)}
+.card-icon{font-size:2.8rem;margin-bottom:.8rem;display:block}
+.card-title{font-size:1rem;font-weight:700;margin-bottom:.4rem}
+.card-desc{font-size:.78rem;line-height:1.5;opacity:.6}
+.card-tag{display:inline-block;margin-top:.8rem;font-size:.68rem;padding:.2rem .6rem;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+
+/* Depth layers using translateZ */
+.depth-1{transform:translateZ(10px);display:inline-block}
+.depth-2{transform:translateZ(20px);display:inline-block}
+.depth-3{transform:translateZ(35px);display:inline-block}
+
+/* Card themes */
+.c1{background:linear-gradient(135deg,#0d0f1e,#151a35);box-shadow:0 20px 60px rgba(0,0,50,.5)}
+.c2{background:linear-gradient(135deg,#0e150a,#162212);box-shadow:0 20px 60px rgba(0,30,0,.5)}
+.c3{background:linear-gradient(135deg,#1a0e0a,#2d1510);box-shadow:0 20px 60px rgba(40,10,0,.5)}
+.c4{background:linear-gradient(135deg,#0e0a1a,#1a0f2d);box-shadow:0 20px 60px rgba(20,0,40,.5)}
+.c5{background:linear-gradient(135deg,#0a0f1a,#0f1830);box-shadow:0 20px 60px rgba(0,10,40,.5)}
+.c6{background:linear-gradient(135deg,#1a0a0a,#2d1010);box-shadow:0 20px 60px rgba(40,0,0,.5)}
+
+.t1{background:#1e2560;color:#7b9eff}
+.t2{background:#0f2a12;color:#5bcc6a}
+.t3{background:#2a1500;color:#ff9933}
+.t4{background:#1a0a30;color:#cc66ff}
+.t5{background:#0a1530;color:#3399ff}
+.t6{background:#2a0a0a;color:#ff5544}
+
+/* info panel */
+.info{max-width:600px;width:100%;margin:2.5rem auto 0;background:#0d0f18;border:1px solid #1a2038;border-radius:12px;padding:1.2rem;font-size:.82rem;color:#2a304a;line-height:1.7}
+.info strong{color:#a78bfa}
+.info code{background:#07080c;color:#60a5fa;padding:.1rem .4rem;border-radius:3px;font-size:.75rem}
+
+footer{margin-top:2rem;text-align:center;color:#1a2038;font-size:.72rem;border-top:1px solid #0d0f18;width:100%;max-width:960px;padding-top:1rem}
+</style>
+</head>
+<body>
+
+<h1>3D Perspective <span>Tilt + Glare</span></h1>
+<p class="tagline">CSS perspective + JS mouse tracking — hover any card</p>
+
+<div class="controls">
+  <div class="ctrl">
+    Max Tilt <input type="range" id="r-tilt" min="5" max="30" value="15"> <span class="val" id="v-tilt">15°</span>
+  </div>
+  <div class="ctrl">
+    Depth (Z) <input type="range" id="r-z" min="10" max="60" value="35"> <span class="val" id="v-z">35px</span>
+  </div>
+  <div class="ctrl">
+    Perspective <input type="range" id="r-persp" min="400" max="1200" step="50" value="800"> <span class="val" id="v-p">800</span>
+  </div>
+</div>
+
+<div class="grid" id="grid">
+  <div class="tilt-card c1">
+    <div class="glare"></div>
+    <div class="card-inner">
+      <span class="card-icon depth-3">🌌</span>
+      <div class="card-title depth-2">Deep Space UI</div>
+      <div class="card-desc">Nebula-dark surfaces with shimmer highlights on tilt. Perfect for premium SaaS.</div>
+      <span class="card-tag t1">3D</span>
+    </div>
+  </div>
+
+  <div class="tilt-card c2">
+    <div class="glare"></div>
+    <div class="card-inner">
+      <span class="card-icon depth-3">🌿</span>
+      <div class="card-title depth-2">Organic Growth</div>
+      <div class="card-desc">Earth-tone cards with directional light. Eco brands love this depth.</div>
+      <span class="card-tag t2">Nature</span>
+    </div>
+  </div>
+
+  <div class="tilt-card c3">
+    <div class="glare"></div>
+    <div class="card-inner">
+      <span class="card-icon depth-3">🔥</span>
+      <div class="card-title depth-2">Ember Forge</div>
+      <div class="card-desc">Heat-haze shimmer follows your cursor. Friction-heavy, tactile feel.</div>
+      <span class="card-tag t3">Warm</span>
+    </div>
+  </div>
+
+  <div class="tilt-card c4">
+    <div class="glare"></div>
+    <div class="card-inner">
+      <span class="card-icon depth-3">💎</span>
+      <div class="card-title depth-2">Crystal Vault</div>
+      <div class="card-desc">High-contrast glare like light through a gemstone. Luxury ecommerce.</div>
+      <span class="card-tag t4">Premium</span>
+    </div>
+  </div>
+
+  <div class="tilt-card c5">
+    <div class="glare"></div>
+    <div class="card-inner">
+      <span class="card-icon depth-3">⚡</span>
+      <div class="card-title depth-2">Voltage Grid</div>
+      <div class="card-desc">Electric blue tones catch light like polished aluminium. Tech hardware.</div>
+      <span class="card-tag t5">Tech</span>
+    </div>
+  </div>
+
+  <div class="tilt-card c6">
+    <div class="glare"></div>
+    <div class="card-inner">
+      <span class="card-icon depth-3">🌋</span>
+      <div class="card-title depth-2">Magma Core</div>
+      <div class="card-desc">Deep crimson with a hot-glare centre. Game menus and esports.</div>
+      <span class="card-tag t6">Intense</span>
+    </div>
+  </div>
+</div>
+
+<div class="info">
+  <strong>The technique:</strong> On <code>mousemove</code>, compute cursor's offset from the card's centre normalised to −1→+1. Multiply by <code>maxTilt</code> to get <code>rotateX</code> / <code>rotateY</code>. Apply via inline <code>style.transform</code>. The glare is a <code>radial-gradient</code> whose centre CSS variable tracks the same normalised position. On <code>mouseleave</code>, re-add a CSS <code>transition</code> and reset the transform — giving the spring-back feel.
+</div>
+
+<footer>Inspired by vanilla-tilt.js (micku7zu) · Framer Motion card example · UI Spotlight Day 23 · Drop #4</footer>
+
+<script>
+let MAX_TILT = 15;
+let Z_DEPTH = 35;
+let PERSP = 800;
+
+document.getElementById('r-tilt').addEventListener('input', function() {
+  MAX_TILT = +this.value;
+  document.getElementById('v-tilt').textContent = MAX_TILT + '°';
+});
+document.getElementById('r-z').addEventListener('input', function() {
+  Z_DEPTH = +this.value;
+  document.getElementById('v-z').textContent = Z_DEPTH + 'px';
+  document.querySelectorAll('.card-inner').forEach(el => el.style.transform = `translateZ(${Z_DEPTH}px)`);
+});
+document.getElementById('r-persp').addEventListener('input', function() {
+  PERSP = +this.value;
+  document.getElementById('v-p').textContent = PERSP;
+});
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+document.querySelectorAll('.tilt-card').forEach(card => {
+  let raf = null;
+  let curX = 0, curY = 0;
+  let tarX = 0, tarY = 0;
+  let isOver = false;
+
+  function animate() {
+    curX = lerp(curX, tarX, 0.12);
+    curY = lerp(curY, tarY, 0.12);
+    const dist = Math.sqrt((curX - tarX) ** 2 + (curY - tarY) ** 2);
+    const scale = isOver ? 1.04 : 1;
+    card.style.transform = `perspective(${PERSP}px) rotateX(${curX}deg) rotateY(${curY}deg) scale(${scale})`;
+    if (dist > 0.05 || isOver) raf = requestAnimationFrame(animate);
+    else {
+      card.style.transform = '';
+      raf = null;
+    }
+  }
+
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    const dx = (e.clientX - rect.left - rect.width / 2) / (rect.width / 2);
+    const dy = (e.clientY - rect.top - rect.height / 2) / (rect.height / 2);
+    tarY = dx * MAX_TILT;
+    tarX = -dy * MAX_TILT;
+    // glare position
+    const gx = ((dx + 1) / 2 * 100).toFixed(1);
+    const gy = ((dy + 1) / 2 * 100).toFixed(1);
+    card.style.setProperty('--gx', gx + '%');
+    card.style.setProperty('--gy', gy + '%');
+    if (!raf) { raf = requestAnimationFrame(animate); }
+  });
+
+  card.addEventListener('mouseenter', () => {
+    isOver = true;
+    card.classList.remove('returning');
+    if (!raf) raf = requestAnimationFrame(animate);
+  });
+
+  card.addEventListener('mouseleave', () => {
+    isOver = false;
+    tarX = 0; tarY = 0;
+    card.classList.add('returning');
+    if (!raf) raf = requestAnimationFrame(animate);
+  });
+
+  // Touch support
+  card.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = card.getBoundingClientRect();
+    const dx = (t.clientX - rect.left - rect.width / 2) / (rect.width / 2);
+    const dy = (t.clientY - rect.top - rect.height / 2) / (rect.height / 2);
+    tarY = dx * MAX_TILT; tarX = -dy * MAX_TILT;
+    if (!raf) raf = requestAnimationFrame(animate);
+  }, { passive: false });
+
+  card.addEventListener('touchend', () => {
+    isOver = false; tarX = 0; tarY = 0;
+    card.classList.add('returning');
+    if (!raf) raf = requestAnimationFrame(animate);
+  });
+});
+</script>
+</body>
+</html>

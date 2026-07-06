@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Jelly Lab</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#080612;color:#e8e0f8;font-family:system-ui,sans-serif;overflow:hidden;height:100dvh;display:flex;flex-direction:column}
+#top{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(12,8,24,0.92);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;flex-wrap:wrap;z-index:10}
+#top h1{font-size:14px;font-weight:700;letter-spacing:0.05em;color:#c084fc;white-space:nowrap;margin-right:4px}
+.sep{width:1px;height:20px;background:rgba(255,255,255,0.1);flex-shrink:0}
+.btn{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:#e8e0f8;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;transition:all 0.15s;white-space:nowrap;user-select:none}
+.btn:hover{background:rgba(255,255,255,0.14);border-color:rgba(192,132,252,0.4)}
+.btn.primary{background:rgba(192,132,252,0.2);border-color:rgba(192,132,252,0.5);color:#c084fc}
+.btn.primary:hover{background:rgba(192,132,252,0.35)}
+.btn.danger{background:rgba(239,68,68,0.15);border-color:rgba(239,68,68,0.4);color:#f87171}
+.btn.danger:hover{background:rgba(239,68,68,0.28)}
+select,input[type=range]{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:#e8e0f8;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer}
+select option{background:#1a0a2e}
+input[type=color]{width:32px;height:28px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer;padding:2px;background:rgba(255,255,255,0.07)}
+label{font-size:11px;color:#a090c8;white-space:nowrap}
+.ctrl{display:flex;align-items:center;gap:5px}
+#canvasWrap{flex:1;position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:crosshair}
+#hud{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:rgba(192,132,252,0.6);pointer-events:none;text-align:center}
+#panel{position:absolute;right:10px;top:10px;background:rgba(12,8,24,0.88);border:1px solid rgba(255,255,255,0.09);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:160px;backdrop-filter:blur(10px)}
+#panel label{font-size:10px;color:#a090c8}
+#panel .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#panel input[type=range]{width:90px}
+.val{font-size:10px;color:#c084fc;min-width:22px;text-align:right}
+#panelToggle{position:absolute;right:10px;top:10px;z-index:5}
+@media(max-width:600px){#top{padding:6px 8px;gap:6px}#panel{display:none}}
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>🫧 Jelly Lab</h1>
+  <div class="sep"></div>
+  <div class="ctrl">
+    <label>Shape</label>
+    <select id="shapeSelect">
+      <option value="circle">Circle</option>
+      <option value="square">Square</option>
+      <option value="star">Star</option>
+      <option value="triangle">Triangle</option>
+      <option value="pentagon">Pentagon</option>
+      <option value="blob">Blob</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Color</label>
+    <input type="color" id="colorPick" value="#c084fc">
+  </div>
+  <button class="btn primary" id="addBtn">+ Add Jelly</button>
+  <button class="btn" id="shakeBtn">🌊 Shake</button>
+  <button class="btn" id="rainBtn">🌧️ Rain</button>
+  <div class="sep"></div>
+  <button class="btn" id="saveBtn">💾 Save</button>
+  <button class="btn" id="exportBtn">📸 Export</button>
+  <button class="btn danger" id="clearBtn">Clear</button>
+</div>
+<div id="canvasWrap">
+  <canvas id="c"></canvas>
+  <div id="panel">
+    <div class="row"><label>Gravity</label><input type="range" id="rGrav" min="0" max="30" value="10" step="1"><span class="val" id="vGrav">10</span></div>
+    <div class="row"><label>Stiffness</label><input type="range" id="rStiff" min="1" max="30" value="12" step="1"><span class="val" id="vStiff">12</span></div>
+    <div class="row"><label>Pressure</label><input type="range" id="rPress" min="0" max="30" value="15" step="1"><span class="val" id="vPress">15</span></div>
+    <div class="row"><label>Damping</label><input type="range" id="rDamp" min="1" max="20" value="5" step="1"><span class="val" id="vDamp">5</span></div>
+    <div class="row"><label>Bodies</label><span class="val" id="vCount">0</span></div>
+  </div>
+  <div id="hud">Click canvas to add • Drag to grab & throw</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+
+let W, H;
+function resize(){
+  const r = wrap.getBoundingClientRect();
+  W = canvas.width = r.width * devicePixelRatio;
+  H = canvas.height = r.height * devicePixelRatio;
+  canvas.style.width = r.width + 'px';
+  canvas.style.height = r.height + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Physics params ──────────────────────────────────────────────
+let GRAVITY = 10;
+let STIFFNESS = 12;
+let PRESSURE = 15;
+let DAMPING = 5;
+
+function sliderWire(sliderId, valueId, varSetter){
+  const s = document.getElementById(sliderId);
+  const v = document.getElementById(valueId);
+  s.addEventListener('input',()=>{ v.textContent=s.value; varSetter(+s.value); });
+}
+sliderWire('rGrav','vGrav', v=>GRAVITY=v);
+sliderWire('rStiff','vStiff', v=>STIFFNESS=v);
+sliderWire('rPress','vPress', v=>PRESSURE=v);
+sliderWire('rDamp','vDamp', v=>DAMPING=v);
+
+// ── Palette ─────────────────────────────────────────────────────
+const PALETTE = ['#c084fc','#38bdf8','#f472b6','#34d399','#fb923c','#facc15','#a78bfa','#22d3ee','#f43f5e','#4ade80'];
+let palIdx = 0;
+
+// ── Shape definitions (as normalized offsets on unit circle) ────
+function makePoints(shape, cx, cy, r) {
+  const pts = [];
+  switch(shape){
+    case 'circle': {
+      const N = 16;
+      for(let i=0;i<N;i++){
+        const a = (i/N)*Math.PI*2;
+        pts.push({x: cx+Math.cos(a)*r, y: cy+Math.sin(a)*r});
+      }
+      break;
+    }
+    case 'square': {
+      const N = 16;
+      for(let i=0;i<N;i++){
+        const a = (i/N)*Math.PI*2;
+        const squash = r * 1.2;
+        const bx = Math.cos(a), by = Math.sin(a);
+        const m = Math.max(Math.abs(bx), Math.abs(by));
+        pts.push({x: cx+(bx/m)*squash, y: cy+(by/m)*squash});
+      }
+      break;
+    }
+    case 'star': {
+      const N = 20;
+      for(let i=0;i<N;i++){
+        const a = (i/N)*Math.PI*2 - Math.PI/2;
+        const ro = i%2===0 ? r : r*0.45;
+        pts.push({x: cx+Math.cos(a)*ro, y: cy+Math.sin(a)*ro});
+      }
+      break;
+    }
+    case 'triangle': {
+      const N = 12;
+      for(let i=0;i<N;i++){
+        const a = (i/N)*Math.PI*2 - Math.PI/2;
+        const seg = i % (N/3);
+        const t = seg / (N/3);
+        const v0 = Math.floor(i/(N/3));
+        const a0 = (v0/3)*Math.PI*2 - Math.PI/2;
+        const a1 = ((v0+1)/3)*Math.PI*2 - Math.PI/2;
+        const x0 = cx+Math.cos(a0)*r*1.1, y0 = cy+Math.sin(a0)*r*1.1;
+        const x1 = cx+Math.cos(a1)*r*1.1, y1 = cy+Math.sin(a1)*r*1.1;
+        pts.push({x: x0+(x1-x0)*t, y: y0+(y1-y0)*t});
+      }
+      break;
+    }
+    case 'pentagon': {
+      const N = 15;
+      for(let i=0;i<N;i++){
+        const a = (i/N)*Math.PI*2 - Math.PI/2;
+        const seg = i % (N/5);
+        const t = seg / (N/5);
+        const v0 = Math.floor(i/(N/5));
+        const a0 = (v0/5)*Math.PI*2 - Math.PI/2;
+        const a1 = ((v0+1)/5)*Math.PI*2 - Math.PI/2;
+        const x0 = cx+Math.cos(a0)*r*1.05, y0 = cy+Math.sin(a0)*r*1.05;
+        const x1 = cx+Math.cos(a1)*r*1.05, y1 = cy+Math.sin(a1)*r*1.05;
+        pts.push({x: x0+(x1-x0)*t, y: y0+(y1-y0)*t});
+      }
+      break;
+    }
+    case 'blob': {
+      const N = 18;
+      const rng = mulberry(Date.now()|0);
+      const offs = [];
+      for(let i=0;i<N;i++) offs.push(0.75 + rng()*0.5);
+      // smooth
+      for(let s=0;s<3;s++){
+        for(let i=0;i<N;i++) offs[i]=(offs[(i-1+N)%N]+offs[i]+offs[(i+1)%N])/3;
+      }
+      for(let i=0;i<N;i++){
+        const a = (i/N)*Math.PI*2;
+        pts.push({x: cx+Math.cos(a)*r*offs[i], y: cy+Math.sin(a)*r*offs[i]});
+      }
+      break;
+    }
+  }
+  return pts;
+}
+
+function mulberry(seed){
+  return ()=>{
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// ── SoftBody ─────────────────────────────────────────────────────
+class SoftBody {
+  constructor(shape, cx, cy, r, color) {
+    this.color = color;
+    this.shape = shape;
+    const pts = makePoints(shape, cx, cy, r);
+    this.N = pts.length;
+    this.p = pts.map(p=>({x:p.x, y:p.y}));
+    this.q = pts.map(p=>({x:p.x, y:p.y})); // prev
+    this.springs = [];
+    this.buildSprings();
+    this.restArea = this.area();
+    this.grabbed = -1; // index of grabbed point
+  }
+
+  buildSprings(){
+    const N = this.N;
+    const dist = (i,j)=>{
+      const dx=this.p[j].x-this.p[i].x, dy=this.p[j].y-this.p[i].y;
+      return Math.sqrt(dx*dx+dy*dy)||1;
+    };
+    // edge
+    for(let i=0;i<N;i++){
+      const j=(i+1)%N;
+      this.springs.push({a:i,b:j,r:dist(i,j),k:1.0});
+    }
+    // skip-1 (flex)
+    for(let i=0;i<N;i++){
+      const j=(i+2)%N;
+      this.springs.push({a:i,b:j,r:dist(i,j),k:0.6});
+    }
+    // skip-2 (shape)
+    for(let i=0;i<N;i++){
+      const j=(i+3)%N;
+      if(j!==i) this.springs.push({a:i,b:j,r:dist(i,j),k:0.3});
+    }
+    // diameter (volume)
+    const half=Math.floor(N/2);
+    for(let i=0;i<half;i++){
+      const j=i+half;
+      if(j<N) this.springs.push({a:i,b:j,r:dist(i,j),k:0.25});
+    }
+  }
+
+  area(){
+    let a=0, N=this.N;
+    for(let i=0;i<N;i++){
+      const j=(i+1)%N;
+      a += this.p[i].x*this.p[j].y - this.p[j].x*this.p[i].y;
+    }
+    return Math.abs(a)*0.5;
+  }
+
+  centroid(){
+    let cx=0,cy=0;
+    for(const p of this.p){cx+=p.x;cy+=p.y;}
+    return {x:cx/this.N, y:cy/this.N};
+  }
+
+  update(){
+    const N=this.N, dt=0.55;
+    const damp = 1 - DAMPING * 0.004;
+    const fx = new Float64Array(N);
+    const fy = new Float64Array(N);
+
+    // gravity
+    const g = GRAVITY * 0.8;
+    for(let i=0;i<N;i++) fy[i] += g;
+
+    // springs
+    const stiff = STIFFNESS * 0.25;
+    for(const sp of this.springs){
+      const a=this.p[sp.a], b=this.p[sp.b];
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const d=Math.sqrt(dx*dx+dy*dy)||0.001;
+      const f=(d-sp.r)*stiff*sp.k;
+      const nx=dx/d, ny=dy/d;
+      fx[sp.a]+=nx*f; fy[sp.a]+=ny*f;
+      fx[sp.b]-=nx*f; fy[sp.b]-=ny*f;
+    }
+
+    // pressure
+    const curArea = this.area();
+    const pr = (this.restArea - curArea) * PRESSURE * 0.003;
+    for(let i=0;i<N;i++){
+      const j=(i+1)%N;
+      const a=this.p[i], b=this.p[j];
+      const ex=b.x-a.x, ey=b.y-a.y;
+      // inward normal
+      fx[i]-=ey*pr; fy[i]+=ex*pr;
+      fx[j]-=ey*pr; fy[j]+=ex*pr;
+    }
+
+    // verlet + collision
+    for(let i=0;i<N;i++){
+      if(this.grabbed===i) continue;
+      const p=this.p[i], q=this.q[i];
+      const vx=(p.x-q.x)*damp;
+      const vy=(p.y-q.y)*damp;
+      q.x=p.x; q.y=p.y;
+      p.x+=vx+fx[i]*dt*dt;
+      p.y+=vy+fy[i]*dt*dt;
+      // walls
+      const margin=3;
+      if(p.x<margin){p.x=margin; q.x=p.x+Math.abs(vx)*0.4;}
+      if(p.x>W-margin){p.x=W-margin; q.x=p.x-Math.abs(vx)*0.4;}
+      if(p.y>H-margin){p.y=H-margin; q.y=p.y+Math.abs(vy)*0.3;}
+      if(p.y<margin){p.y=margin; q.y=p.y-Math.abs(vy)*0.4;}
+    }
+  }
+
+  draw(){
+    const N=this.N;
+    if(N<3) return;
+    ctx.beginPath();
+    // smooth bezier through midpoints
+    for(let i=0;i<N;i++){
+      const a=this.p[i], b=this.p[(i+1)%N];
+      const mx=(a.x+b.x)*0.5, my=(a.y+b.y)*0.5;
+      if(i===0) ctx.moveTo(mx,my);
+      else ctx.quadraticCurveTo(a.x,a.y,mx,my);
+    }
+    ctx.closePath();
+    // fill
+    const c=this.color;
+    const grd=ctx.createRadialGradient(
+      this.centroid().x, this.centroid().y, 0,
+      this.centroid().x, this.centroid().y, 80
+    );
+    grd.addColorStop(0, c+'cc');
+    grd.addColorStop(1, c+'44');
+    ctx.fillStyle=grd;
+    ctx.fill();
+    ctx.strokeStyle=c;
+    ctx.lineWidth=2.5;
+    ctx.stroke();
+    // highlight
+    ctx.beginPath();
+    ctx.arc(this.centroid().x-5, this.centroid().y-8, 8, 0, Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.12)';
+    ctx.fill();
+  }
+
+  nearestPoint(x,y){
+    let best=-1, bestD=Infinity;
+    for(let i=0;i<this.N;i++){
+      const dx=this.p[i].x-x, dy=this.p[i].y-y;
+      const d=dx*dx+dy*dy;
+      if(d<bestD){bestD=d;best=i;}
+    }
+    return {idx:best, dist:Math.sqrt(bestD)};
+  }
+}
+
+// ── Bodies ────────────────────────────────────────────────────────
+let bodies = [];
+let grabBody = null;
+let grabIdx = -1;
+let mouseVx = 0, mouseVy = 0;
+let lastMx = 0, lastMy = 0;
+
+function loadSaved(){
+  try{
+    const saved = localStorage.getItem('jellylab_v1');
+    if(!saved) return;
+    const data = JSON.parse(saved);
+    for(const d of data.bodies){
+      const b = new SoftBody(d.shape||'circle', 0, 0, d.r, d.color);
+      b.p = d.p; b.q = d.q.map(pp=>({...pp}));
+      b.N = b.p.length;
+      b.buildSprings();
+      b.restArea = b.area()*0.9;
+      bodies.push(b);
+    }
+  }catch(e){}
+}
+
+function saveScene(){
+  const data = {bodies: bodies.map(b=>({
+    shape: b.shape, r: 50, color: b.color,
+    p: b.p.map(pp=>({x:pp.x,y:pp.y})),
+    q: b.q.map(pp=>({x:pp.x,y:pp.y}))
+  }))};
+  localStorage.setItem('jellylab_v1', JSON.stringify(data));
+  const btn = document.getElementById('saveBtn');
+  const orig = btn.textContent;
+  btn.textContent='✓ Saved!'; btn.style.color='#34d399';
+  setTimeout(()=>{ btn.textContent=orig; btn.style.color=''; }, 1200);
+}
+
+function addBody(cx, cy){
+  const shape = document.getElementById('shapeSelect').value;
+  const color = document.getElementById('colorPick').value;
+  const r = 40 + Math.random()*20;
+  bodies.push(new SoftBody(shape, cx, cy, r, color));
+  document.getElementById('vCount').textContent = bodies.length;
+  // auto-cycle color
+  palIdx=(palIdx+1)%PALETTE.length;
+  document.getElementById('colorPick').value=PALETTE[palIdx];
+}
+
+// ── Input ─────────────────────────────────────────────────────────
+function pointerPos(e){
+  const r=canvas.getBoundingClientRect();
+  const ratio=W/r.width;
+  const src=e.touches?e.touches[0]:e;
+  return {x:(src.clientX-r.left)*ratio, y:(src.clientY-r.top)*ratio};
+}
+
+canvas.addEventListener('pointerdown', e=>{
+  const {x,y}=pointerPos(e);
+  // try grab
+  let best=null, bestD=35*devicePixelRatio;
+  for(const b of bodies){
+    const {idx,dist}=b.nearestPoint(x,y);
+    if(dist<bestD){bestD=dist;best={b,idx};}
+  }
+  if(best){
+    grabBody=best.b; grabIdx=best.idx;
+    grabBody.grabbed=grabIdx;
+    lastMx=x; lastMy=y; mouseVx=0; mouseVy=0;
+  } else {
+    addBody(x,y);
+    document.getElementById('vCount').textContent=bodies.length;
+  }
+  e.preventDefault();
+},{passive:false});
+
+canvas.addEventListener('pointermove', e=>{
+  const {x,y}=pointerPos(e);
+  mouseVx=x-lastMx; mouseVy=y-lastMy;
+  lastMx=x; lastMy=y;
+  if(grabBody && grabIdx>=0){
+    grabBody.p[grabIdx].x=x;
+    grabBody.p[grabIdx].y=y;
+    grabBody.q[grabIdx].x=x-mouseVx;
+    grabBody.q[grabIdx].y=y-mouseVy;
+  }
+  e.preventDefault();
+},{passive:false});
+
+canvas.addEventListener('pointerup', e=>{
+  if(grabBody){
+    grabBody.grabbed=-1;
+    grabBody=null; grabIdx=-1;
+  }
+  e.preventDefault();
+},{passive:false});
+
+canvas.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+
+// ── Shake ─────────────────────────────────────────────────────────
+document.getElementById('shakeBtn').addEventListener('click',()=>{
+  for(const b of bodies){
+    for(let i=0;i<b.N;i++){
+      b.q[i].x=b.p[i].x+(Math.random()-0.5)*60;
+      b.q[i].y=b.p[i].y+(Math.random()-0.5)*60;
+    }
+  }
+});
+
+document.getElementById('rainBtn').addEventListener('click',()=>{
+  const shapes=['circle','square','star','triangle','pentagon','blob'];
+  for(let k=0;k<5;k++){
+    setTimeout(()=>{
+      const shape=shapes[Math.floor(Math.random()*shapes.length)];
+      const color=PALETTE[Math.floor(Math.random()*PALETTE.length)];
+      const cx=50+Math.random()*(W-100);
+      const b=new SoftBody(shape,cx,-60,35+Math.random()*25,color);
+      bodies.push(b);
+      document.getElementById('vCount').textContent=bodies.length;
+    }, k*180);
+  }
+});
+
+document.getElementById('addBtn').addEventListener('click',()=>{
+  const cx=W/2+(Math.random()-0.5)*200;
+  const cy=H*0.25+(Math.random()-0.5)*80;
+  addBody(cx,cy);
+});
+
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  bodies=[];
+  document.getElementById('vCount').textContent=0;
+  localStorage.removeItem('jellylab_v1');
+});
+
+document.getElementById('saveBtn').addEventListener('click', saveScene);
+
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  // draw one frame, then export
+  const a=document.createElement('a');
+  a.href=canvas.toDataURL('image/png');
+  a.download='jellylab.png';
+  a.click();
+});
+
+// ── Body–body repulsion (centroid-based) ──────────────────────────
+function bodyRepulsion(){
+  for(let i=0;i<bodies.length;i++){
+    for(let j=i+1;j<bodies.length;j++){
+      const ci=bodies[i].centroid(), cj=bodies[j].centroid();
+      const dx=cj.x-ci.x, dy=cj.y-ci.y;
+      const d=Math.sqrt(dx*dx+dy*dy)||1;
+      const minD=70;
+      if(d<minD){
+        const f=(minD-d)*0.015;
+        const nx=dx/d, ny=dy/d;
+        for(const p of bodies[i].p){p.x-=nx*f;p.y-=ny*f;}
+        for(const p of bodies[j].p){p.x+=nx*f;p.y+=ny*f;}
+      }
+    }
+  }
+}
+
+// ── Stars background ──────────────────────────────────────────────
+const stars=[];
+for(let i=0;i<80;i++) stars.push({x:Math.random(),y:Math.random(),r:Math.random()*1.2+0.3,a:Math.random()});
+
+// ── Main loop ─────────────────────────────────────────────────────
+let t=0;
+function frame(){
+  requestAnimationFrame(frame);
+  t++;
+
+  // background
+  ctx.fillStyle='#080612';
+  ctx.fillRect(0,0,W,H);
+  // stars
+  for(const s of stars){
+    const pulse=0.3+0.5*(Math.sin(t*0.04+s.a*10)*0.5+0.5);
+    ctx.beginPath();
+    ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(200,180,255,${pulse*0.6})`;
+    ctx.fill();
+  }
+  // floor glow
+  const floorG=ctx.createLinearGradient(0,H-60,0,H);
+  floorG.addColorStop(0,'transparent');
+  floorG.addColorStop(1,'rgba(192,132,252,0.08)');
+  ctx.fillStyle=floorG;
+  ctx.fillRect(0,H-60,W,60);
+
+  // physics
+  for(const b of bodies) b.update();
+  if(bodies.length>1) bodyRepulsion();
+
+  // draw (back to front)
+  for(const b of bodies) b.draw();
+}
+
+loadSaved();
+// seed with 3 default bodies
+if(bodies.length===0){
+  addBody(W*0.3, H*0.3);
+  addBody(W*0.5, H*0.2);
+  addBody(W*0.7, H*0.35);
+  document.getElementById('vCount').textContent=3;
+}
+
+frame();
+})();
+</script>
+</body>
+</html>

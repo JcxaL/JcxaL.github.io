@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Strange Attractor Studio — Day 39</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body { background: #050508; color: #e2e8f0; font-family: system-ui, sans-serif; overflow: hidden; height: 100dvh; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+
+.panel {
+  position: fixed; top: 12px; left: 12px; width: 208px;
+  background: rgba(7,7,18,0.90); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+  padding: 11px 12px; display: flex; flex-direction: column; gap: 9px;
+  z-index: 10; max-height: calc(100dvh - 24px); overflow-y: auto;
+}
+.panel::-webkit-scrollbar { width: 3px }
+.panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px }
+
+.lbl {
+  font-size: 9px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 5px;
+}
+
+.btn-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.btn {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09);
+  color: #94a3b8; border-radius: 6px; padding: 4px 8px; font-size: 11px;
+  cursor: pointer; transition: all .15s; font-family: inherit;
+}
+.btn:hover { background: rgba(255,255,255,0.11); color: #e2e8f0; }
+.btn.on { background: rgba(139,92,246,0.22); border-color: rgba(139,92,246,0.5); color: #c4b5fd; }
+
+.row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.row label { font-size: 10px; color: rgba(255,255,255,0.35); width: 32px; font-family: ui-monospace,monospace; flex-shrink:0; }
+.row input[type=range] {
+  flex: 1; -webkit-appearance: none; height: 3px;
+  background: rgba(255,255,255,0.1); border-radius: 2px; outline: none; cursor: pointer;
+}
+.row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 11px; height: 11px;
+  border-radius: 50%; background: #8b5cf6; cursor: pointer;
+}
+.row .v { font-size: 10px; color: rgba(255,255,255,0.55); width: 28px; text-align: right; font-family: ui-monospace,monospace; flex-shrink:0; }
+
+hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); }
+
+.cm-row { display: flex; gap: 5px; }
+.dot {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.12);
+  cursor: pointer; transition: transform .15s, border-color .15s; flex-shrink: 0;
+}
+.dot:hover { transform: scale(1.15); }
+.dot.on { border-color: rgba(255,255,255,0.7); transform: scale(1.1); }
+
+.act-row { display: flex; gap: 4px; }
+.act-row .btn { flex: 1; text-align: center; font-size: 10px; padding: 5px 2px; }
+
+.stats {
+  position: fixed; bottom: 10px; left: 12px;
+  font-size: 9px; font-family: ui-monospace,monospace; color: rgba(255,255,255,0.18);
+  pointer-events: none;
+}
+.hint {
+  position: fixed; bottom: 10px; right: 12px;
+  font-size: 9px; color: rgba(255,255,255,0.18); pointer-events: none; text-align: right;
+}
+
+@media (max-width: 480px) {
+  .panel { width: 176px; left: 8px; top: 8px; }
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="panel">
+  <div>
+    <div class="lbl">Attractor</div>
+    <div class="btn-grid" id="attr-btns">
+      <button class="btn on" data-a="lorenz">Lorenz</button>
+      <button class="btn" data-a="rossler">Rössler</button>
+      <button class="btn" data-a="halvorsen">Halvorsen</button>
+      <button class="btn" data-a="thomas">Thomas</button>
+      <button class="btn" data-a="chen">Chen</button>
+    </div>
+  </div>
+
+  <hr>
+
+  <div>
+    <div class="lbl">Parameters</div>
+    <div id="prm"></div>
+  </div>
+
+  <hr>
+
+  <div>
+    <div class="lbl">Controls</div>
+    <div class="row">
+      <label>Speed</label>
+      <input type="range" id="sl-spd" min="1" max="32" value="10" step="1">
+      <span class="v" id="vl-spd">10</span>
+    </div>
+    <div class="row">
+      <label>Trail</label>
+      <input type="range" id="sl-trl" min="2000" max="60000" value="20000" step="1000">
+      <span class="v" id="vl-trl">20k</span>
+    </div>
+    <div class="row">
+      <label>Glow</label>
+      <input type="range" id="sl-glw" min="10" max="100" value="45" step="5">
+      <span class="v" id="vl-glw">45</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="lbl" style="margin-bottom:6px">Color</div>
+    <div class="cm-row">
+      <div class="dot on" data-cm="0" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6,#ef4444)" title="Velocity"></div>
+      <div class="dot" data-cm="1" style="background:linear-gradient(135deg,#06b6d4,#6366f1,#ec4899)" title="Depth"></div>
+      <div class="dot" data-cm="2" style="background:linear-gradient(135deg,#f59e0b,#ef4444,#06b6d4)" title="Time"></div>
+      <div class="dot" data-cm="3" style="background:conic-gradient(#ef4444,#f59e0b,#22c55e,#06b6d4,#8b5cf6,#ec4899,#ef4444)" title="Rainbow"></div>
+      <div class="dot" data-cm="4" style="background:linear-gradient(135deg,#334155,#e2e8f0)" title="Mono"></div>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="act-row">
+    <button class="btn" id="btn-pause">Pause</button>
+    <button class="btn" id="btn-clear">Clear</button>
+    <button class="btn" id="btn-png">PNG</button>
+    <button class="btn" id="btn-share">Link</button>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+<div class="hint">Drag to rotate · Scroll to zoom</div>
+
+<script>
+// ── Attractor definitions ─────────────────────────────────────────
+const DEFS = {
+  lorenz: {
+    dt: 0.009,
+    params: [
+      { lbl:'σ', key:'sigma', min:1,   max:20,   step:0.1,  def:10    },
+      { lbl:'ρ', key:'rho',   min:1,   max:60,   step:0.5,  def:28    },
+      { lbl:'β', key:'beta',  min:0.1, max:8,    step:0.1,  def:2.667 },
+    ],
+    seed: ()=>[0.1,0,0],
+    fn(x,y,z,p,h) {
+      return [x+p.sigma*(y-x)*h, y+(x*(p.rho-z)-y)*h, z+(x*y-p.beta*z)*h];
+    }
+  },
+  rossler: {
+    dt: 0.05,
+    params: [
+      { lbl:'a', key:'a', min:0.05, max:0.5, step:0.01, def:0.2 },
+      { lbl:'b', key:'b', min:0.05, max:2,   step:0.05, def:0.2 },
+      { lbl:'c', key:'c', min:2,    max:18,  step:0.1,  def:5.7 },
+    ],
+    seed: ()=>[0.1,0,0],
+    fn(x,y,z,p,h) {
+      return [x+(-y-z)*h, y+(x+p.a*y)*h, z+(p.b+z*(x-p.c))*h];
+    }
+  },
+  halvorsen: {
+    dt: 0.01,
+    params: [
+      { lbl:'a', key:'a', min:0.5, max:3, step:0.05, def:1.4 },
+    ],
+    seed: ()=>[-5,0,0],
+    fn(x,y,z,p,h) {
+      const a=p.a;
+      return [
+        x+(-a*x-4*y-4*z-y*y)*h,
+        y+(-a*y-4*z-4*x-z*z)*h,
+        z+(-a*z-4*x-4*y-x*x)*h
+      ];
+    }
+  },
+  thomas: {
+    dt: 0.05,
+    params: [
+      { lbl:'b', key:'b', min:0.10, max:0.22, step:0.002, def:0.208 },
+    ],
+    seed: ()=>[0.1,0,0],
+    fn(x,y,z,p,h) {
+      return [x+(-p.b*x+Math.sin(y))*h, y+(-p.b*y+Math.sin(z))*h, z+(-p.b*z+Math.sin(x))*h];
+    }
+  },
+  chen: {
+    dt: 0.002,
+    params: [
+      { lbl:'a', key:'a', min:20, max:50, step:0.5, def:35 },
+      { lbl:'b', key:'b', min:1,  max:10, step:0.1, def:3  },
+      { lbl:'c', key:'c', min:10, max:35, step:0.5, def:28 },
+    ],
+    seed: ()=>[-10,0,37],
+    fn(x,y,z,p,h) {
+      return [
+        x+p.a*(y-x)*h,
+        y+((p.c-p.a)*x-x*z+p.c*y)*h,
+        z+(x*y-p.b*z)*h
+      ];
+    }
+  },
+};
+
+// ── Color LUTs ────────────────────────────────────────────────────
+function mkLUT(stops) {
+  const buf = new Uint8Array(256*3);
+  const n = stops.length-1;
+  for (let i=0;i<256;i++) {
+    const t=i/255, s=Math.min((t*n)|0,n-1), u=t*n-s;
+    const a=stops[s],b=stops[s+1];
+    buf[i*3]  =(a[0]+(b[0]-a[0])*u)|0;
+    buf[i*3+1]=(a[1]+(b[1]-a[1])*u)|0;
+    buf[i*3+2]=(a[2]+(b[2]-a[2])*u)|0;
+  }
+  return buf;
+}
+const LUTS = [
+  mkLUT([[20,40,220],[139,92,246],[236,72,153],[239,68,68],[251,191,36],[255,255,200]]),
+  mkLUT([[6,182,212],[99,102,241],[168,85,247],[236,72,153],[244,63,94]]),
+  mkLUT([[245,158,11],[239,68,68],[139,92,246],[6,182,212],[52,211,153]]),
+  null,
+  mkLUT([[50,65,85],[148,163,184],[226,232,240]]),
+];
+function hsl(h,s,l) {
+  s/=100;l/=100;
+  const a=s*Math.min(l,1-l);
+  const f=n=>{ const k=(n+h/30)%12; return l-a*Math.max(-1,Math.min(k-3,9-k,1)); };
+  return [(f(0)*255)|0,(f(8)*255)|0,(f(4)*255)|0];
+}
+function getRGB(vel,depth,t) {
+  let ci;
+  switch(colorMode) {
+    case 0: ci=Math.min(255,(vel*8)|0); break;
+    case 1: ci=Math.max(0,Math.min(255,((depth+50)/100*255)|0)); break;
+    case 2: ci=((t*0.35)|0)&255; break;
+    case 3: return hsl((t*0.45)%360,100,60);
+    case 4: ci=Math.min(255,(vel*5)|0); break;
+  }
+  const L=LUTS[colorMode];
+  return [L[ci*3],L[ci*3+1],L[ci*3+2]];
+}
+
+// ── Canvas & state ────────────────────────────────────────────────
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H;
+
+let maxPts=20000;
+let pts,ptHead=0,ptCount=0;
+let state=[0.1,0,0];
+let curKey='lorenz', params={};
+let frame=0, paused=false, colorMode=0;
+let rotX=0.4,rotY=-0.5,scl=1;
+let drag=null, dirty=true;
+let stepsPerFrame=10, glowA=45;
+let autoS=4;
+
+function resetBuf() { pts=new Float32Array(maxPts*5); ptHead=0; ptCount=0; }
+
+function setAttr(key) {
+  curKey=key;
+  const d=DEFS[key]; params={};
+  d.params.forEach(p=>{params[p.key]=p.def;});
+  state=d.seed(); resetBuf(); buildParams(); dirty=true;
+  document.querySelectorAll('[data-a]').forEach(b=>b.classList.toggle('on',b.dataset.a===key));
+  saveLS();
+}
+
+function buildParams() {
+  const c=document.getElementById('prm'); c.innerHTML='';
+  DEFS[curKey].params.forEach(p=>{
+    const row=document.createElement('div'); row.className='row';
+    const lbl=document.createElement('label'); lbl.textContent=p.lbl;
+    const inp=document.createElement('input'); inp.type='range';
+    inp.min=p.min; inp.max=p.max; inp.step=p.step; inp.value=params[p.key];
+    const val=document.createElement('span'); val.className='v';
+    val.textContent=(+params[p.key]).toFixed(2);
+    inp.addEventListener('input',()=>{ params[p.key]=+inp.value; val.textContent=(+inp.value).toFixed(2); });
+    row.append(lbl,inp,val); c.append(row);
+  });
+}
+
+// ── Resize ────────────────────────────────────────────────────────
+function resize() { W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; dirty=true; }
+
+// ── 3D projection ─────────────────────────────────────────────────
+function project(x,y,z) {
+  const cy=Math.cos(rotY),sy=Math.sin(rotY);
+  const x1=x*cy+z*sy, z1=-x*sy+z*cy;
+  const cx2=Math.cos(rotX),sx2=Math.sin(rotX);
+  const y2=y*cx2-z1*sx2, z2=y*sx2+z1*cx2;
+  const fov=640, d=fov/(fov+z2*1.8);
+  return { px:W/2+x1*d, py:H/2+y2*d, dz:z2 };
+}
+
+function estimateScale() {
+  if(ptCount<10) return 4;
+  let mx=0;
+  const step=Math.max(1,ptCount/400);
+  const start=ptCount===maxPts?ptHead:0;
+  for(let i=0;i<ptCount;i+=step) {
+    const idx=(start+(i|0))%maxPts;
+    mx=Math.max(mx,Math.abs(pts[idx*5]),Math.abs(pts[idx*5+1]),Math.abs(pts[idx*5+2]));
+  }
+  return mx>0 ? Math.min(W,H)*0.31/mx : 4;
+}
+
+// ── Full ImageData redraw ─────────────────────────────────────────
+let imgBuf=null;
+function fullRedraw() {
+  if(!imgBuf||imgBuf.width!==W||imgBuf.height!==H) imgBuf=new ImageData(W,H);
+  const d=imgBuf.data; d.fill(0);
+  const S=autoS*scl, g=glowA/100;
+  const alpha=(g*220)|0, alphaLo=(alpha*0.28)|0;
+  const start=ptCount===maxPts?ptHead:0;
+  for(let i=0;i<ptCount;i++) {
+    const idx=(start+i)%maxPts;
+    plotToBuf(d,idx,S,alpha,alphaLo);
+  }
+  ctx.putImageData(imgBuf,0,0);
+}
+
+function plotToBuf(d,idx,S,a,aLo) {
+  const x=pts[idx*5]*S,y=pts[idx*5+1]*S,z=pts[idx*5+2]*S;
+  const vel=pts[idx*5+3],t=pts[idx*5+4];
+  const p=project(x,y,z);
+  const px=p.px|0,py=p.py|0;
+  if(px<1||px>=W-1||py<1||py>=H-1) return;
+  const [r,g2,b]=getRGB(vel,p.dz,t);
+  const pi=(py*W+px)*4;
+  d[pi]  =Math.min(255,d[pi]  +r);
+  d[pi+1]=Math.min(255,d[pi+1]+g2);
+  d[pi+2]=Math.min(255,d[pi+2]+b);
+  d[pi+3]=Math.min(255,d[pi+3]+a);
+  const neighbors=[(py*W+px-1)*4,(py*W+px+1)*4,((py-1)*W+px)*4,((py+1)*W+px)*4];
+  for(const ni of neighbors) {
+    d[ni]  =Math.min(255,d[ni]  +r);
+    d[ni+1]=Math.min(255,d[ni+1]+g2);
+    d[ni+2]=Math.min(255,d[ni+2]+b);
+    d[ni+3]=Math.min(255,d[ni+3]+aLo);
+  }
+}
+
+// ── Trail-fade incremental draw ───────────────────────────────────
+function drawNew(n) {
+  const fade=0.016+(1-glowA/100)*0.02;
+  ctx.fillStyle=`rgba(5,5,8,${fade.toFixed(3)})`;
+  ctx.fillRect(0,0,W,H);
+  const S=autoS*scl, g=Math.max(0.12,glowA/100);
+  for(let i=n-1;i>=0;i--) {
+    if(ptCount===0||i>=ptCount) break;
+    const idx=(ptHead-1-i+maxPts)%maxPts;
+    const x=pts[idx*5]*S,y=pts[idx*5+1]*S,z=pts[idx*5+2]*S;
+    const vel=pts[idx*5+3],t=pts[idx*5+4];
+    const p=project(x,y,z);
+    const [r,g2,b]=getRGB(vel,p.dz,t);
+    ctx.beginPath();
+    ctx.arc(p.px,p.py,1.5,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${r},${g2},${b},${g})`;
+    ctx.fill();
+    if(glowA>30) {
+      ctx.beginPath();
+      ctx.arc(p.px,p.py,4,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${r},${g2},${b},${(g*0.25).toFixed(3)})`;
+      ctx.fill();
+    }
+  }
+}
+
+// ── Integration step ──────────────────────────────────────────────
+function integrate(n) {
+  const def=DEFS[curKey]; const h=def.dt;
+  let [x,y,z]=state;
+  for(let i=0;i<n;i++) {
+    let nx,ny,nz;
+    try { [nx,ny,nz]=def.fn(x,y,z,params,h); } catch(e) { [x,y,z]=def.seed(); continue; }
+    if(!isFinite(nx)||!isFinite(ny)||!isFinite(nz)) { [x,y,z]=def.seed(); continue; }
+    const vx=(nx-x)/h,vy=(ny-y)/h,vz=(nz-z)/h;
+    const vel=Math.sqrt(vx*vx+vy*vy+vz*vz);
+    x=nx;y=ny;z=nz;
+    pts[ptHead*5]=x; pts[ptHead*5+1]=y; pts[ptHead*5+2]=z;
+    pts[ptHead*5+3]=vel; pts[ptHead*5+4]=frame+i;
+    ptHead=(ptHead+1)%maxPts;
+    if(ptCount<maxPts) ptCount++;
+  }
+  state=[x,y,z];
+}
+
+// ── Main loop ─────────────────────────────────────────────────────
+function tick() {
+  requestAnimationFrame(tick);
+  if(!paused) {
+    integrate(stepsPerFrame);
+    frame++;
+    if(frame%200===0) autoS=estimateScale();
+  }
+  if(dirty) { if(autoS===4&&ptCount>50) autoS=estimateScale(); fullRedraw(); dirty=false; }
+  else if(!paused) drawNew(stepsPerFrame);
+  document.getElementById('stats').textContent=
+    `${curKey} · ${ptCount.toLocaleString()} pts · ${frame.toLocaleString()} frames`;
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+document.querySelectorAll('[data-a]').forEach(b=>b.addEventListener('click',()=>setAttr(b.dataset.a)));
+document.querySelectorAll('[data-cm]').forEach(b=>b.addEventListener('click',()=>{
+  colorMode=+b.dataset.cm;
+  document.querySelectorAll('[data-cm]').forEach(x=>x.classList.toggle('on',x.dataset.cm===b.dataset.cm));
+  dirty=true;
+}));
+
+function wire(sid,vid,fn) {
+  const i=document.getElementById(sid),v=document.getElementById(vid);
+  i.addEventListener('input',()=>fn(+i.value,v));
+}
+wire('sl-spd','vl-spd',(v,el)=>{stepsPerFrame=v;el.textContent=v;});
+wire('sl-glw','vl-glw',(v,el)=>{glowA=v;el.textContent=v;dirty=true;});
+wire('sl-trl','vl-trl',(v,el)=>{
+  maxPts=v; el.textContent=v>=1000?(v/1000).toFixed(0)+'k':v;
+  resetBuf(); state=DEFS[curKey].seed(); frame=0; dirty=true;
+});
+
+document.getElementById('btn-pause').addEventListener('click',()=>{
+  paused=!paused;
+  document.getElementById('btn-pause').textContent=paused?'Resume':'Pause';
+});
+document.getElementById('btn-clear').addEventListener('click',()=>{
+  state=DEFS[curKey].seed(); resetBuf(); frame=0;
+  ctx.clearRect(0,0,W,H); if(imgBuf) imgBuf.data.fill(0);
+});
+document.getElementById('btn-png').addEventListener('click',()=>{
+  const oc=document.createElement('canvas'); oc.width=W; oc.height=H;
+  const o=oc.getContext('2d');
+  o.fillStyle='#050508'; o.fillRect(0,0,W,H);
+  o.drawImage(canvas,0,0);
+  const a=document.createElement('a');
+  a.href=oc.toDataURL('image/png');
+  a.download=`attractor-${curKey}-${Date.now()}.png`;
+  a.click();
+});
+document.getElementById('btn-share').addEventListener('click',()=>{
+  const data={a:curKey,p:params,rx:+rotX.toFixed(3),ry:+rotY.toFixed(3),cm:colorMode};
+  location.hash=btoa(JSON.stringify(data));
+  navigator.clipboard?.writeText(location.href).catch(()=>{});
+  const btn=document.getElementById('btn-share');
+  btn.textContent='Copied!'; setTimeout(()=>{btn.textContent='Link';},2000);
+});
+
+// ── Persist settings ──────────────────────────────────────────────
+function saveLS() {
+  try {
+    localStorage.setItem('attractor_v1',JSON.stringify({a:curKey,cm:colorMode,spd:stepsPerFrame,glw:glowA,trl:maxPts}));
+  } catch(e){}
+}
+function loadLS() {
+  try {
+    const d=JSON.parse(localStorage.getItem('attractor_v1')||'{}');
+    if(d.cm!==undefined) colorMode=d.cm;
+    if(d.spd) { stepsPerFrame=d.spd; document.getElementById('sl-spd').value=d.spd; document.getElementById('vl-spd').textContent=d.spd; }
+    if(d.glw) { glowA=d.glw; document.getElementById('sl-glw').value=d.glw; document.getElementById('vl-glw').textContent=d.glw; }
+    if(d.trl) { maxPts=d.trl; document.getElementById('sl-trl').value=d.trl; document.getElementById('vl-trl').textContent=d.trl>=1000?(d.trl/1000).toFixed(0)+'k':d.trl; }
+    document.querySelectorAll('[data-cm]').forEach(b=>b.classList.toggle('on',+b.dataset.cm===colorMode));
+    return d.a||null;
+  } catch(e){ return null; }
+}
+
+// ── Load URL hash ─────────────────────────────────────────────────
+function loadHash() {
+  try {
+    if(!location.hash) return false;
+    const d=JSON.parse(atob(location.hash.slice(1)));
+    if(d.a&&DEFS[d.a]) {
+      curKey=d.a;
+      params={};
+      DEFS[curKey].params.forEach(p=>{params[p.key]=p.def;});
+      Object.assign(params,d.p||{});
+      if(d.rx!==undefined) rotX=d.rx;
+      if(d.ry!==undefined) rotY=d.ry;
+      if(d.cm!==undefined) { colorMode=d.cm; document.querySelectorAll('[data-cm]').forEach(b=>b.classList.toggle('on',+b.dataset.cm===colorMode)); }
+      state=DEFS[curKey].seed();
+      document.querySelectorAll('[data-a]').forEach(b=>b.classList.toggle('on',b.dataset.a===curKey));
+      return true;
+    }
+  } catch(e){}
+  return false;
+}
+
+// ── Drag to rotate ────────────────────────────────────────────────
+canvas.addEventListener('pointerdown',e=>{
+  if(e.button!==0) return;
+  drag={x:e.clientX,y:e.clientY,rx:rotX,ry:rotY};
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  rotY=drag.ry+(e.clientX-drag.x)*0.006;
+  rotX=drag.rx+(e.clientY-drag.y)*0.006;
+  dirty=true;
+});
+canvas.addEventListener('pointerup',()=>drag=null);
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  scl*=e.deltaY>0?0.93:1.075;
+  scl=Math.max(0.05,Math.min(20,scl));
+  dirty=true;
+},{passive:false});
+
+// Pinch zoom
+let pinchD=0;
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===2) pinchD=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(e.touches.length===2&&pinchD>0) {
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    scl*=d/pinchD; scl=Math.max(0.05,Math.min(20,scl)); pinchD=d; dirty=true;
+  }
+},{passive:true});
+
+// ── Init ──────────────────────────────────────────────────────────
+window.addEventListener('resize',resize);
+resize();
+const savedKey=loadLS();
+if(!loadHash()) setAttr(savedKey||'lorenz');
+else { buildParams(); }
+resetBuf();
+tick();
+</script>
+</body>
+</html>

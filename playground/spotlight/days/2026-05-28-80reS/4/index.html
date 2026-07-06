@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Spring Rubber-Band Drag</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#06040f;color:#e0d8ff;font-family:system-ui,sans-serif;min-height:100vh;overflow-x:hidden;user-select:none}
+h1{text-align:center;padding:50px 20px 10px;font-size:clamp(1.3rem,4vw,2rem);color:#b080ff;letter-spacing:.05em;font-weight:300}
+p.sub{text-align:center;color:#4a3870;font-size:.82rem;margin-bottom:60px}
+
+/* Arena */
+.arena{
+  display:flex;flex-wrap:wrap;gap:24px;justify-content:center;
+  padding:0 20px 40px;max-width:900px;margin:0 auto;
+}
+
+/* Draggable card */
+.spring-card{
+  width:200px;height:140px;
+  border-radius:18px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;
+  font-size:.85rem;font-weight:600;
+  cursor:grab;
+  position:relative;
+  touch-action:none;
+  will-change:transform;
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 10px 40px rgba(0,0,0,.5);
+}
+.spring-card:active{cursor:grabbing}
+.spring-card .icon{font-size:2rem}
+.spring-card .label{opacity:.85;letter-spacing:.04em}
+.spring-card .hint{font-size:.65rem;opacity:.45;margin-top:2px}
+
+/* Spring indicator */
+.spring-card .indicator{
+  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+  width:40px;height:3px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden;
+}
+.spring-card .indicator-fill{
+  height:100%;background:rgba(255,255,255,.5);border-radius:2px;
+  transition:width .05s;
+}
+
+/* Snap zone */
+.snap-zone{
+  width:200px;height:140px;border-radius:18px;
+  border:2px dashed rgba(120,80,255,.3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:.75rem;color:#6040a0;letter-spacing:.08em;
+  position:relative;
+}
+.snap-zone.active{border-color:rgba(120,180,255,.5);background:rgba(60,120,255,.05)}
+
+/* Trails canvas */
+#trail-cv{position:fixed;inset:0;pointer-events:none;z-index:0}
+
+/* Info cards */
+.info-row{
+  display:flex;flex-wrap:wrap;gap:16px;justify-content:center;
+  padding:40px 20px;max-width:900px;margin:0 auto;
+}
+.info-card{
+  flex:1 1 220px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(120,80,255,.15);
+  border-radius:12px;padding:20px;
+}
+.info-card h3{font-size:.85rem;color:#9060ff;margin-bottom:8px}
+.info-card p{font-size:.78rem;color:#4a3870;line-height:1.65}
+
+/* Panel */
+#panel{position:fixed;top:14px;right:14px;background:rgba(6,4,18,.88);backdrop-filter:blur(12px);border:1px solid rgba(100,60,220,.25);border-radius:10px;padding:10px 14px;font-size:11px;color:#4a3870;z-index:20;min-width:120px}
+#panel b{color:#8060c0;display:block;margin-bottom:6px}
+.knob{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px}
+.knob label{font-size:10px}
+.knob input{width:70px;accent-color:#8060ff}
+
+footer{text-align:center;padding:40px 20px;font-size:10px;color:#2a1a40}
+</style>
+</head>
+<body>
+<canvas id="trail-cv"></canvas>
+<h1>Spring Rubber-Band Drag</h1>
+<p class="sub">Drag cards — spring physics snap them back with overshoot</p>
+
+<div id="panel">
+  <b>Physics</b>
+  <div class="knob"><label>Stiffness</label><input type="range" id="k-stiff" min="0.02" max="0.3" step="0.01" value="0.12"></div>
+  <div class="knob"><label>Damping</label><input type="range" id="k-damp" min="0.05" max="0.95" step="0.05" value="0.65"></div>
+  <div class="knob"><label>Mass</label><input type="range" id="k-mass" min="0.5" max="5" step="0.5" value="1.5"></div>
+</div>
+
+<div class="arena" id="arena">
+  <div class="spring-card" style="background:linear-gradient(135deg,#4a0e8c,#1a0450)" data-id="0">
+    <div class="icon">🪐</div><div class="label">Gravity</div><div class="hint">drag &amp; release</div>
+    <div class="indicator"><div class="indicator-fill" style="width:0%"></div></div>
+  </div>
+  <div class="snap-zone" id="snap-0">drop here</div>
+
+  <div class="spring-card" style="background:linear-gradient(135deg,#0a4a6a,#021a28)" data-id="1">
+    <div class="icon">💧</div><div class="label">Fluid</div><div class="hint">drag &amp; release</div>
+    <div class="indicator"><div class="indicator-fill" style="width:0%"></div></div>
+  </div>
+  <div class="snap-zone" id="snap-1">drop here</div>
+
+  <div class="spring-card" style="background:linear-gradient(135deg,#6a0a2a,#280410)" data-id="2">
+    <div class="icon">🔥</div><div class="label">Energy</div><div class="hint">drag &amp; release</div>
+    <div class="indicator"><div class="indicator-fill" style="width:0%"></div></div>
+  </div>
+  <div class="snap-zone" id="snap-2">drop here</div>
+
+  <div class="spring-card" style="background:linear-gradient(135deg,#1a5a20,#081808)" data-id="3">
+    <div class="icon">🌿</div><div class="label">Elastic</div><div class="hint">drag &amp; release</div>
+    <div class="indicator"><div class="indicator-fill" style="width:0%"></div></div>
+  </div>
+  <div class="snap-zone" id="snap-3">drop here</div>
+
+  <div class="spring-card" style="background:linear-gradient(135deg,#5a4a08,#201a04)" data-id="4">
+    <div class="icon">⚡</div><div class="label">Impulse</div><div class="hint">drag &amp; release</div>
+    <div class="indicator"><div class="indicator-fill" style="width:0%"></div></div>
+  </div>
+  <div class="snap-zone" id="snap-4">drop here</div>
+
+  <div class="spring-card" style="background:linear-gradient(135deg,#2a0a5a,#0c0420)" data-id="5">
+    <div class="icon">🌌</div><div class="label">Inertia</div><div class="hint">drag &amp; release</div>
+    <div class="indicator"><div class="indicator-fill" style="width:0%"></div></div>
+  </div>
+  <div class="snap-zone" id="snap-5">drop here</div>
+</div>
+
+<div class="info-row">
+  <div class="info-card"><h3>Spring Equation</h3><p>F = -k·x − d·v. Stiffness k pulls toward origin, damping d bleeds velocity. When d &lt; 2√(k·m) the system oscillates — the classic underdamped spring.</p></div>
+  <div class="info-card"><h3>Why it Feels Right</h3><p>iOS rubber-banding uses exactly this model. The overshoot and settle matches our intuition of physical objects, making digital interfaces feel touchable.</p></div>
+  <div class="info-card"><h3>Implementation</h3><p>Each frame: acceleration = (-k·displacement − d·velocity) / mass. Integrate with Euler. requestAnimationFrame keeps it GPU-paced at 60fps.</p></div>
+</div>
+
+<footer>Inspired by iOS UIKit spring animations / WWDC 2023 Spring Animation talk · UI Spotlight Day 12 · Drop #4</footer>
+
+<script>
+const cv=document.getElementById('trail-cv');
+const ctx=cv.getContext('2d');
+cv.width=innerWidth; cv.height=innerHeight;
+window.addEventListener('resize',()=>{cv.width=innerWidth;cv.height=innerHeight;});
+
+const springs=[];
+const cards=[...document.querySelectorAll('.spring-card')];
+
+cards.forEach((card,idx)=>{
+  const state={
+    ox:0,oy:0,   // origin (rest position)
+    x:0,y:0,     // current offset from origin
+    vx:0,vy:0,
+    dragging:false,
+    mx:0,my:0,   // mouse offset within card
+    trail:[],
+    card
+  };
+  springs.push(state);
+
+  // Set origin from layout
+  function setOrigin(){
+    const r=card.getBoundingClientRect();
+    state.ox=r.left+r.width/2;
+    state.oy=r.top+r.height/2;
+  }
+  setTimeout(setOrigin,100);
+  window.addEventListener('resize',setOrigin);
+
+  card.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    const r=card.getBoundingClientRect();
+    state.mx=e.clientX-r.left-r.width/2;
+    state.my=e.clientY-r.top-r.height/2;
+    state.dragging=true;
+    state.vx=0; state.vy=0;
+    card.setPointerCapture(e.pointerId);
+    card.style.zIndex=100;
+    card.style.transition='none';
+  });
+
+  card.addEventListener('pointermove',e=>{
+    if(!state.dragging) return;
+    const tx=e.clientX-state.ox-state.mx;
+    const ty=e.clientY-state.oy-state.my;
+    // Rubber-band resistance increases with distance
+    const dist=Math.hypot(tx,ty);
+    const factor=dist<80?1:80/dist*Math.sqrt(dist/80);
+    state.x=tx*factor;
+    state.y=ty*factor;
+    card.style.transform=`translate(${state.x}px,${state.y}px) scale(1.06)`;
+    state.trail.push({x:state.ox+state.x,y:state.oy+state.y,t:Date.now()});
+    if(state.trail.length>30) state.trail.shift();
+    // Indicator
+    const pct=Math.min(100,dist/3);
+    card.querySelector('.indicator-fill').style.width=pct+'%';
+    // Snap zone highlight
+    checkSnap(state,e.clientX,e.clientY);
+  });
+
+  card.addEventListener('pointerup',e=>{
+    state.dragging=false;
+    card.style.transition='transform .05s';
+    card.style.zIndex='';
+    card.querySelector('.indicator-fill').style.width='0%';
+    document.querySelectorAll('.snap-zone').forEach(z=>z.classList.remove('active'));
+    // Check snap
+    const dropped=trySnap(state,e.clientX,e.clientY);
+    if(!dropped){ state.vx*=2; state.vy*=2; } // give spring initial velocity
+  });
+});
+
+function checkSnap(state,cx,cy){
+  document.querySelectorAll('.snap-zone').forEach(z=>{
+    const r=z.getBoundingClientRect();
+    z.classList.toggle('active',cx>r.left&&cx<r.right&&cy>r.top&&cy<r.bottom);
+  });
+}
+function trySnap(state,cx,cy){
+  let snapped=false;
+  document.querySelectorAll('.snap-zone').forEach(z=>{
+    const r=z.getBoundingClientRect();
+    if(cx>r.left&&cx<r.right&&cy>r.top&&cy<r.bottom){
+      // Snap: teleport origin to snap zone
+      state.ox=r.left+r.width/2; state.oy=r.top+r.height/2;
+      state.x=0; state.y=0; state.vx=0; state.vy=0;
+      state.card.style.transform='translate(0,0) scale(1)';
+      snapped=true;
+    }
+  });
+  return snapped;
+}
+
+// Animation loop
+function loop(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const k=+document.getElementById('k-stiff').value;
+  const d=+document.getElementById('k-damp').value;
+  const m=+document.getElementById('k-mass').value;
+
+  springs.forEach(state=>{
+    if(state.dragging) return;
+    if(Math.abs(state.x)<0.1&&Math.abs(state.y)<0.1&&Math.abs(state.vx)<0.1&&Math.abs(state.vy)<0.1){
+      state.x=state.y=state.vx=state.vy=0;
+      return;
+    }
+    const ax=(-k*state.x - d*state.vx)/m;
+    const ay=(-k*state.y - d*state.vy)/m;
+    state.vx+=ax; state.vy+=ay;
+    state.x+=state.vx; state.y+=state.vy;
+    state.card.style.transform=`translate(${state.x}px,${state.y}px) scale(${1+Math.hypot(state.vx,state.vy)*.01})`;
+    // Draw spring line
+    if(Math.hypot(state.x,state.y)>5){
+      ctx.beginPath();
+      ctx.moveTo(state.ox,state.oy);
+      ctx.lineTo(state.ox+state.x,state.oy+state.y);
+      ctx.strokeStyle=`rgba(150,100,255,${Math.min(.4,Math.hypot(state.x,state.y)/200)})`;
+      ctx.lineWidth=1;ctx.setLineDash([3,5]);ctx.stroke();ctx.setLineDash([]);
+    }
+  });
+
+  // Draw drag trails
+  springs.forEach(state=>{
+    if(state.trail.length<2) return;
+    const now=Date.now();
+    ctx.beginPath();
+    state.trail.forEach((p,i)=>{
+      const age=(now-p.t)/500;
+      if(age>1) return;
+      if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+    });
+    ctx.strokeStyle='rgba(180,120,255,.25)';ctx.lineWidth=2;ctx.stroke();
+    // Fade old trail points
+    state.trail=state.trail.filter(p=>(now-p.t)<500);
+  });
+
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

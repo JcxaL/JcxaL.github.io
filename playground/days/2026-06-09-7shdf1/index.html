@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Force Graph Studio</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#09090f;color:#e2e8ff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;height:100dvh;user-select:none}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%;touch-action:none}
+
+/* TOP BAR */
+#topbar{
+  position:fixed;top:0;left:0;right:0;z-index:20;
+  display:flex;align-items:center;gap:6px;padding:7px 10px;
+  background:rgba(9,9,15,0.88);backdrop-filter:blur(14px);
+  border-bottom:1px solid rgba(255,255,255,0.07);
+  overflow-x:auto;white-space:nowrap;scrollbar-width:none;
+}
+#topbar::-webkit-scrollbar{display:none}
+#tb-title{font-size:13px;font-weight:700;letter-spacing:.05em;color:#7ca0ff;flex-shrink:0;margin-right:4px}
+.sep{width:1px;height:18px;background:rgba(255,255,255,0.1);flex-shrink:0}
+.btn{
+  padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);
+  background:rgba(255,255,255,0.05);color:#b8ccff;font-size:11px;
+  cursor:pointer;transition:all .15s;flex-shrink:0;white-space:nowrap;
+}
+.btn:hover{background:rgba(255,255,255,0.12);color:#fff}
+.btn.on{background:rgba(124,160,255,0.22);border-color:#7ca0ff;color:#7ca0ff}
+.btn-group{display:flex;gap:3px;flex-shrink:0}
+#tb-stats{margin-left:auto;font-size:10px;color:rgba(255,255,255,0.3);flex-shrink:0;padding-left:8px}
+
+/* BOTTOM PANEL */
+#panel{
+  position:fixed;bottom:0;left:0;right:0;z-index:20;
+  background:rgba(9,9,15,0.9);backdrop-filter:blur(16px);
+  border-top:1px solid rgba(255,255,255,0.07);
+  transition:transform .25s ease;
+}
+#panel.shut{transform:translateY(calc(100% - 30px))}
+#ph{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 12px;cursor:pointer;
+}
+#ph-lbl{font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);letter-spacing:.1em}
+#ph-arr{font-size:10px;color:rgba(255,255,255,0.25);transition:transform .25s}
+#panel.shut #ph-arr{transform:rotate(180deg)}
+#pb{padding:8px 14px 14px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.cg{display:flex;flex-direction:column;gap:5px}
+.cg>span{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,0.35)}
+.cr{display:flex;align-items:center;gap:7px}
+.cr>em{font-size:10px;font-style:normal;color:rgba(255,255,255,0.5);min-width:26px;text-align:right}
+input[type=range]{width:90px;height:3px;accent-color:#7ca0ff;cursor:pointer}
+.swrow{display:flex;gap:5px}
+.sw{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .15s}
+.sw.on{border-color:#fff;transform:scale(1.25)}
+
+/* CONTEXT MENU */
+#cmenu{
+  position:fixed;z-index:50;display:none;
+  background:rgba(14,16,24,0.97);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,0.1);border-radius:9px;
+  padding:4px;min-width:150px;
+}
+.ci{padding:7px 12px;font-size:12px;color:#c0d4ff;cursor:pointer;border-radius:6px;transition:background .1s}
+.ci:hover{background:rgba(124,160,255,0.15)}
+.ci.red{color:#ff7070}
+.ci.red:hover{background:rgba(255,100,100,0.12)}
+
+/* LABEL INPUT */
+#linput{
+  position:fixed;display:none;z-index:60;
+  background:rgba(14,16,24,0.97);border:1px solid #7ca0ff;border-radius:6px;
+  color:#fff;font-size:12px;padding:5px 8px;outline:none;width:110px;
+}
+
+/* TOAST */
+#toast{
+  position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:rgba(100,140,255,0.18);backdrop-filter:blur(8px);
+  border:1px solid rgba(100,140,255,0.28);border-radius:20px;
+  padding:6px 16px;font-size:11px;color:#9ab8ff;
+  opacity:0;pointer-events:none;z-index:80;transition:all .25s;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* HINT */
+#hint{
+  position:fixed;bottom:74px;left:10px;z-index:15;
+  font-size:9px;color:rgba(255,255,255,0.18);line-height:1.8;pointer-events:none;
+}
+@media(max-width:500px){#hint{display:none}}
+
+/* MODE indicator */
+#modeindicator{
+  position:fixed;top:46px;right:10px;z-index:15;
+  font-size:10px;color:rgba(255,200,100,0.6);pointer-events:none;display:none;
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="topbar">
+  <div id="tb-title">Force Graph Studio</div>
+  <div class="sep"></div>
+  <div class="btn-group">
+    <button class="btn on" id="mbForce" onclick="setLayout('force')">Force</button>
+    <button class="btn" id="mbCirc" onclick="setLayout('circular')">Circle</button>
+    <button class="btn" id="mbTree" onclick="setLayout('radial')">Radial</button>
+  </div>
+  <div class="sep"></div>
+  <div class="btn-group">
+    <button class="btn" onclick="loadPreset('social')">Social</button>
+    <button class="btn" onclick="loadPreset('tree')">Tree</button>
+    <button class="btn" onclick="loadPreset('mesh')">Grid</button>
+    <button class="btn" onclick="loadPreset('star')">Star</button>
+    <button class="btn" onclick="loadPreset('ring')">Ring</button>
+  </div>
+  <div class="sep"></div>
+  <button class="btn" id="btnConnect" onclick="toggleConnectMode()">Connect</button>
+  <button class="btn" onclick="addNodeCenter()">+ Node</button>
+  <div class="sep"></div>
+  <button class="btn" onclick="exportPNG()">↓ PNG</button>
+  <button class="btn" onclick="exportSVG()">↓ SVG</button>
+  <button class="btn" onclick="saveGraph()">Save</button>
+  <button class="btn" onclick="clearAll()">Clear</button>
+  <div id="tb-stats">0 nodes · 0 edges</div>
+</div>
+
+<div id="modeindicator">CONNECT MODE — click source then target</div>
+
+<div id="panel">
+  <div id="ph" onclick="togglePanel()">
+    <span id="ph-lbl">PHYSICS &amp; THEME</span>
+    <span id="ph-arr">▲</span>
+  </div>
+  <div id="pb">
+    <div class="cg">
+      <span>Repulsion</span>
+      <div class="cr"><input type="range" id="sCharge" min="100" max="1000" value="350" oninput="syncPhysics()"><em id="vCharge">350</em></div>
+    </div>
+    <div class="cg">
+      <span>Spring Length</span>
+      <div class="cr"><input type="range" id="sSpring" min="40" max="300" value="130" oninput="syncPhysics()"><em id="vSpring">130</em></div>
+    </div>
+    <div class="cg">
+      <span>Gravity</span>
+      <div class="cr"><input type="range" id="sGrav" min="0" max="80" value="25" oninput="syncPhysics()"><em id="vGrav">25</em></div>
+    </div>
+    <div class="cg">
+      <span>Damping</span>
+      <div class="cr"><input type="range" id="sDamp" min="70" max="99" value="87" oninput="syncPhysics()"><em id="vDamp">.87</em></div>
+    </div>
+    <div class="cg">
+      <span>Node Size</span>
+      <div class="cr"><input type="range" id="sSize" min="8" max="38" value="20" oninput="syncPhysics()"><em id="vSize">20</em></div>
+    </div>
+    <div class="cg">
+      <span>Theme</span>
+      <div class="swrow" id="swatches"></div>
+    </div>
+  </div>
+</div>
+
+<div id="cmenu">
+  <div class="ci" onclick="ctxDo('pin')">📌 Pin / Unpin</div>
+  <div class="ci" onclick="ctxDo('label')">✏ Edit label</div>
+  <div class="ci" onclick="ctxDo('recolor')">🎨 Cycle color</div>
+  <div class="ci red" onclick="ctxDo('del')">✕ Delete node</div>
+</div>
+
+<input id="linput" type="text" maxlength="12">
+
+<div id="toast"></div>
+
+<div id="hint">
+  Double-click: new node<br>
+  Drag node: move<br>
+  [Connect] btn → click A → click B<br>
+  Right-click: node menu<br>
+  Del key: remove hovered
+</div>
+
+<script>
+// ====================================================
+//  CANVAS + RESIZE
+// ====================================================
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+let W, H;
+function resize(){ W = cv.width = window.innerWidth; H = cv.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+// ====================================================
+//  THEMES
+// ====================================================
+const THEMES = [
+  { bg:'#09090f', nc:['#7ca0ff','#5de0aa','#ff7eb0','#ffb84d','#b87cff'], ec:'rgba(110,150,255,0.28)' },
+  { bg:'#0d0014', nc:['#d050ff','#ff4090','#9070ff','#ff80d0','#c090ff'], ec:'rgba(180,60,255,0.25)' },
+  { bg:'#001510', nc:['#00e5a0','#00c8d4','#50ff90','#10ddb0','#80ffe8'], ec:'rgba(0,210,150,0.28)' },
+  { bg:'#110800', nc:['#ffb000','#ff6a00','#ffd060','#ff8c40','#ffe090'], ec:'rgba(255,160,0,0.28)' },
+  { bg:'#000a18', nc:['#30c8ff','#0090ff','#60e0ff','#00d8d8','#40b0ff'], ec:'rgba(40,180,255,0.28)' },
+  { bg:'#111111', nc:['#f0f0f0','#d0d0d0','#a8a8a8','#808080','#c0c0c0'], ec:'rgba(200,200,200,0.22)' },
+];
+let themeIdx = 0;
+const T = () => THEMES[themeIdx];
+
+function buildSwatches(){
+  const wrap = document.getElementById('swatches');
+  wrap.innerHTML='';
+  THEMES.forEach((t,i)=>{
+    const el = document.createElement('div');
+    el.className='sw'+(i===themeIdx?' on':'');
+    el.style.background=`linear-gradient(135deg,${t.nc[0]},${t.nc[2]})`;
+    el.onclick=()=>{ themeIdx=i; buildSwatches(); };
+    wrap.appendChild(el);
+  });
+}
+buildSwatches();
+
+// ====================================================
+//  GRAPH STATE
+// ====================================================
+let nodes = [], edges = [];
+let nid = 0;
+let physics = { charge:350, spring:130, grav:25, damp:87, size:20 };
+let layoutMode = 'force';
+let connectMode = false;
+let connectSrc = null;
+
+function mkNode(x,y,lbl,ci){
+  return { id:nid++, x, y, vx:0, vy:0, label:lbl||`N${nid-1}`, ci:ci||0, pinned:false, r:physics.size };
+}
+function addNode(x,y,lbl,ci){ const n=mkNode(x,y,lbl,ci); nodes.push(n); return n; }
+function addEdge(a,b){
+  if(a===b) return;
+  if(edges.some(e=>(e.a===a&&e.b===b)||(e.a===b&&e.b===a))) return;
+  edges.push({a,b});
+}
+function delNode(n){
+  edges = edges.filter(e=>e.a!==n.id&&e.b!==n.id);
+  nodes = nodes.filter(x=>x!==n);
+}
+
+// ====================================================
+//  PHYSICS
+// ====================================================
+function tick(){
+  if(layoutMode!=='force') return;
+  const cx0=W/2, cy0=H/2;
+  const damp = physics.damp/100;
+
+  for(let i=0;i<nodes.length;i++){
+    const a=nodes[i];
+    if(a.pinned||a===dragNode) continue;
+    let fx=0,fy=0;
+
+    // Repulsion (O(n²))
+    for(let j=0;j<nodes.length;j++){
+      if(i===j) continue;
+      const b=nodes[j];
+      const dx=a.x-b.x, dy=a.y-b.y;
+      const d2=Math.max(dx*dx+dy*dy,1);
+      const d=Math.sqrt(d2);
+      const f=physics.charge/d2;
+      fx+=f*dx/d; fy+=f*dy/d;
+    }
+
+    // Spring
+    for(const e of edges){
+      let oid=null;
+      if(e.a===a.id) oid=e.b; else if(e.b===a.id) oid=e.a;
+      if(oid===null) continue;
+      const b=nodes.find(n=>n.id===oid);
+      if(!b) continue;
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const d=Math.sqrt(dx*dx+dy*dy)+.001;
+      const f=(d-physics.spring)*.04;
+      fx+=f*dx/d; fy+=f*dy/d;
+    }
+
+    // Gravity
+    const gdx=cx0-a.x, gdy=cy0-a.y;
+    const gd=Math.sqrt(gdx*gdx+gdy*gdy)+.001;
+    const gf=gd*(physics.grav/4000);
+    fx+=gf*gdx/gd; fy+=gf*gdy/gd;
+
+    a.vx=(a.vx+fx)*damp;
+    a.vy=(a.vy+fy)*damp;
+    a.x+=a.vx; a.y+=a.vy;
+  }
+}
+
+// ====================================================
+//  DRAW
+// ====================================================
+let hovNode=null;
+let dragNode=null, dragOx=0, dragOy=0;
+let connPt=null;
+
+function draw(){
+  cx.clearRect(0,0,W,H);
+  cx.fillStyle=T().bg;
+  cx.fillRect(0,0,W,H);
+
+  // Subtle dot grid
+  cx.fillStyle='rgba(255,255,255,0.03)';
+  const gs=50;
+  for(let x=gs*.5;x<W;x+=gs) for(let y=gs*.5;y<H;y+=gs){
+    cx.beginPath(); cx.arc(x,y,1,0,Math.PI*2); cx.fill();
+  }
+
+  // Edges
+  for(const e of edges){
+    const na=nodes.find(n=>n.id===e.a), nb=nodes.find(n=>n.id===e.b);
+    if(!na||!nb) continue;
+    cx.strokeStyle=T().ec;
+    cx.lineWidth=1.8;
+    cx.beginPath(); cx.moveTo(na.x,na.y); cx.lineTo(nb.x,nb.y); cx.stroke();
+  }
+
+  // Connect line preview
+  if(connPt&&connectSrc){
+    cx.strokeStyle='rgba(255,255,120,0.5)';
+    cx.setLineDash([5,4]); cx.lineWidth=1.5;
+    cx.beginPath(); cx.moveTo(connectSrc.x,connectSrc.y); cx.lineTo(connPt.x,connPt.y); cx.stroke();
+    cx.setLineDash([]);
+  }
+
+  // Nodes
+  for(const n of nodes){
+    const r=n.r||physics.size;
+    const col=T().nc[n.ci%T().nc.length];
+    const hov=n===hovNode;
+    const isSrc=n===connectSrc;
+
+    // Glow for hovered / pinned / source
+    if(hov||n.pinned||isSrc){
+      const gr=cx.createRadialGradient(n.x,n.y,0,n.x,n.y,r*2.4);
+      gr.addColorStop(0,col+'55'); gr.addColorStop(1,'transparent');
+      cx.fillStyle=gr;
+      cx.beginPath(); cx.arc(n.x,n.y,r*2.4,0,Math.PI*2); cx.fill();
+    }
+
+    // Fill
+    const gr2=cx.createRadialGradient(n.x-r*.3,n.y-r*.35,0,n.x,n.y,r);
+    gr2.addColorStop(0,col+'ff'); gr2.addColorStop(1,col+'c0');
+    cx.fillStyle=gr2;
+    cx.beginPath(); cx.arc(n.x,n.y,r,0,Math.PI*2); cx.fill();
+
+    // Border
+    cx.strokeStyle=isSrc?'#ffff60':hov?'#ffffff':col;
+    cx.lineWidth=isSrc?2.5:hov?2:1;
+    cx.beginPath(); cx.arc(n.x,n.y,r,0,Math.PI*2); cx.stroke();
+
+    // Label
+    const fs=Math.max(9,Math.min(13,r*.75));
+    cx.font=`${fs}px system-ui`;
+    cx.textAlign='center'; cx.textBaseline='middle';
+    cx.fillStyle='rgba(0,0,0,0.75)';
+    cx.fillText(n.label,n.x+.5,n.y+.5);
+    cx.fillStyle='rgba(255,255,255,0.92)';
+    cx.fillText(n.label,n.x,n.y);
+
+    // Pin icon
+    if(n.pinned){
+      cx.font='9px system-ui'; cx.textAlign='center'; cx.textBaseline='middle';
+      cx.fillStyle='#fff'; cx.fillText('⬡',n.x+r*.7,n.y-r*.7);
+    }
+  }
+
+  document.getElementById('tb-stats').textContent=`${nodes.length} nodes · ${edges.length} edges`;
+}
+
+// ====================================================
+//  ANIMATION
+// ====================================================
+function loop(){ tick(); draw(); requestAnimationFrame(loop); }
+loop();
+
+// ====================================================
+//  LAYOUT
+// ====================================================
+function setLayout(mode){
+  layoutMode=mode;
+  ['Force','Circ','Tree'].forEach(n=>document.getElementById('mb'+n).classList.remove('on'));
+  const map={force:'Force',circular:'Circ',radial:'Tree'};
+  document.getElementById('mb'+map[mode]).classList.add('on');
+  if(mode!=='force') applyStaticLayout(mode);
+  toast(mode==='force'?'Physics simulation':'Layout: '+mode);
+}
+
+function applyStaticLayout(mode){
+  const x0=W/2, y0=H/2;
+  if(mode==='circular'){
+    const r=Math.min(W,H)*.38;
+    nodes.forEach((n,i)=>{
+      const a=(i/nodes.length)*Math.PI*2-Math.PI/2;
+      n.x=x0+Math.cos(a)*r; n.y=y0+Math.sin(a)*r; n.vx=n.vy=0;
+    });
+  } else if(mode==='radial'){
+    // BFS from first node
+    if(!nodes.length) return;
+    const depth=new Map([[nodes[0].id,0]]);
+    const q=[nodes[0].id]; const vis=new Set(q);
+    while(q.length){
+      const id=q.shift();
+      for(const e of edges){
+        let oid=null;
+        if(e.a===id&&!vis.has(e.b)) oid=e.b;
+        else if(e.b===id&&!vis.has(e.a)) oid=e.a;
+        if(oid!==null){vis.add(oid);q.push(oid);depth.set(oid,(depth.get(id)||0)+1);}
+      }
+    }
+    nodes.forEach(n=>{ if(!depth.has(n.id)) depth.set(n.id,0); });
+    const maxD=Math.max(...depth.values(),0);
+    const byD={};
+    nodes.forEach(n=>{ const d=depth.get(n.id); (byD[d]||(byD[d]=[])).push(n); });
+    for(let d=0;d<=maxD;d++){
+      const arr=byD[d]||[];
+      const rr=(d/(maxD+1))*Math.min(W,H)*.44+50;
+      arr.forEach((n,i)=>{
+        const a=(i/arr.length)*Math.PI*2;
+        n.x=x0+Math.cos(a)*rr; n.y=y0+Math.sin(a)*rr; n.vx=n.vy=0;
+      });
+    }
+  }
+}
+
+// ====================================================
+//  PRESETS
+// ====================================================
+function loadPreset(type){
+  nodes=[]; edges=[]; nid=0;
+  const x0=W/2, y0=H/2;
+
+  if(type==='social'){
+    // 3 clusters with inter-cluster bridges
+    const clusters=[[x0-200,y0-80],[x0+200,y0-80],[x0,y0+150]];
+    const cids=[];
+    clusters.forEach(([cx2,cy2],ci)=>{
+      const ids=[];
+      const cnt=5+Math.floor(Math.random()*3);
+      for(let i=0;i<cnt;i++){
+        const a=(i/cnt)*Math.PI*2, r=55+Math.random()*25;
+        const n=addNode(cx2+Math.cos(a)*r, cy2+Math.sin(a)*r, `P${nid}`, ci);
+        ids.push(n.id);
+      }
+      for(let i=0;i<ids.length;i++) addEdge(ids[i],ids[(i+1)%ids.length]);
+      if(ids.length>3) addEdge(ids[0],ids[2]);
+      cids.push(ids);
+    });
+    addEdge(cids[0][1],cids[1][0]);
+    addEdge(cids[1][2],cids[2][0]);
+    addEdge(cids[0][3],cids[2][2]);
+  } else if(type==='tree'){
+    const mk=(pid,x,y,d,maxD)=>{
+      if(d>maxD) return;
+      const n=addNode(x,y,`T${nid}`,d%5);
+      if(pid!==null) addEdge(pid,n.id);
+      const sp=Math.max(60,220/Math.pow(2,d));
+      mk(n.id,x-sp,y+80,d+1,maxD);
+      mk(n.id,x+sp,y+80,d+1,maxD);
+    };
+    mk(null,x0,y0-160,0,3);
+  } else if(type==='mesh'){
+    const rows=4, cols=5, sx=100, sy=90;
+    const ids=[];
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+      const n=addNode(x0+(c-(cols-1)/2)*sx, y0+(r-(rows-1)/2)*sy, `M${nid}`, (r+c)%5);
+      ids.push(n.id);
+    }
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+      if(c<cols-1) addEdge(ids[r*cols+c],ids[r*cols+c+1]);
+      if(r<rows-1) addEdge(ids[r*cols+c],ids[(r+1)*cols+c]);
+    }
+  } else if(type==='star'){
+    const hub=addNode(x0,y0,'Hub',0); hub.pinned=true;
+    for(let i=0;i<14;i++){
+      const a=(i/14)*Math.PI*2;
+      const n=addNode(x0+Math.cos(a)*175, y0+Math.sin(a)*175, `S${i+1}`, (i%4)+1);
+      addEdge(hub.id,n.id);
+    }
+  } else if(type==='ring'){
+    const cnt=14, r=180, ids=[];
+    for(let i=0;i<cnt;i++){
+      const a=(i/cnt)*Math.PI*2-Math.PI/2;
+      const n=addNode(x0+Math.cos(a)*r, y0+Math.sin(a)*r, `R${i+1}`, i%5);
+      ids.push(n.id);
+    }
+    for(let i=0;i<cnt;i++) addEdge(ids[i],ids[(i+1)%cnt]);
+    addEdge(ids[0],ids[7]); addEdge(ids[3],ids[10]); addEdge(ids[5],ids[12]);
+  }
+
+  if(layoutMode!=='force') applyStaticLayout(layoutMode);
+  toast('Preset: '+type);
+}
+
+function addNodeCenter(){
+  const n=addNode(W/2+(-80+Math.random()*160), H/2+(-80+Math.random()*160));
+  toast('Node added — drag to place');
+}
+
+// ====================================================
+//  PHYSICS SLIDERS
+// ====================================================
+function syncPhysics(){
+  physics.charge=+document.getElementById('sCharge').value;
+  physics.spring=+document.getElementById('sSpring').value;
+  physics.grav=+document.getElementById('sGrav').value;
+  physics.damp=+document.getElementById('sDamp').value;
+  physics.size=+document.getElementById('sSize').value;
+  document.getElementById('vCharge').textContent=physics.charge;
+  document.getElementById('vSpring').textContent=physics.spring;
+  document.getElementById('vGrav').textContent=physics.grav;
+  document.getElementById('vDamp').textContent='.'+(physics.damp%100+'').padStart(2,'0');
+  document.getElementById('vSize').textContent=physics.size;
+  nodes.forEach(n=>n.r=physics.size);
+}
+
+// ====================================================
+//  CONNECT MODE
+// ====================================================
+function toggleConnectMode(){
+  connectMode=!connectMode;
+  connectSrc=null; connPt=null;
+  document.getElementById('btnConnect').classList.toggle('on',connectMode);
+  document.getElementById('modeindicator').style.display=connectMode?'block':'none';
+  toast(connectMode?'Connect mode ON — click source node':'Connect mode OFF');
+}
+
+// ====================================================
+//  INPUT
+// ====================================================
+function ptFrom(e){
+  const r=cv.getBoundingClientRect();
+  const src=e.touches?e.touches[0]||e.changedTouches[0]:e;
+  return { x:src.clientX-r.left, y:src.clientY-r.top };
+}
+function nodeAt(x,y){
+  for(let i=nodes.length-1;i>=0;i--){
+    const n=nodes[i], r=n.r||physics.size;
+    if((x-n.x)**2+(y-n.y)**2<r*r) return n;
+  }
+  return null;
+}
+
+let tapTimer=0, tapPt=null;
+let panSt=null;
+
+// MOUSE
+cv.addEventListener('mousedown',e=>{
+  if(e.button===2) return;
+  hideCMenu();
+  const p=ptFrom(e);
+  const n=nodeAt(p.x,p.y);
+  if(connectMode){
+    if(n){
+      if(!connectSrc){ connectSrc=n; connPt={x:p.x,y:p.y}; }
+      else{ addEdge(connectSrc.id,n.id); connectSrc=null; connPt=null; toast('Edge added'); }
+    } else { connectSrc=null; connPt=null; }
+    return;
+  }
+  if(n){ dragNode=n; dragOx=p.x-n.x; dragOy=p.y-n.y; }
+  e.preventDefault();
+},{passive:false});
+
+cv.addEventListener('mousemove',e=>{
+  const p=ptFrom(e);
+  hovNode=nodeAt(p.x,p.y);
+  if(dragNode){
+    dragNode.x=p.x-dragOx; dragNode.y=p.y-dragOy;
+    dragNode.vx=0; dragNode.vy=0;
+    cv.style.cursor='grabbing';
+  } else {
+    cv.style.cursor=hovNode?'grab':'crosshair';
+    if(connectMode&&connectSrc) connPt={x:p.x,y:p.y};
+  }
+});
+
+cv.addEventListener('mouseup',e=>{ dragNode=null; });
+
+cv.addEventListener('dblclick',e=>{
+  if(connectMode) return;
+  const p=ptFrom(e);
+  if(!nodeAt(p.x,p.y)) addNode(p.x,p.y);
+});
+
+cv.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  const p=ptFrom(e);
+  const n=nodeAt(p.x,p.y);
+  if(n){ ctxTarget=n; showCMenu(e.clientX,e.clientY); }
+});
+
+// TOUCH
+let lastTouchTime=0;
+cv.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  hideCMenu();
+  const p=ptFrom(e);
+  const n=nodeAt(p.x,p.y);
+  const now=Date.now();
+
+  if(connectMode){
+    if(n){
+      if(!connectSrc){ connectSrc=n; connPt={x:p.x,y:p.y}; }
+      else{ addEdge(connectSrc.id,n.id); connectSrc=null; connPt=null; toast('Edge added'); }
+    }
+    return;
+  }
+  if(n){ dragNode=n; dragOx=p.x-n.x; dragOy=p.y-n.y; }
+  else if(now-lastTouchTime<320){ addNode(p.x,p.y); }
+  lastTouchTime=now;
+},{passive:false});
+
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  const p=ptFrom(e);
+  if(dragNode){ dragNode.x=p.x-dragOx; dragNode.y=p.y-dragOy; dragNode.vx=0; dragNode.vy=0; }
+  else if(connectMode&&connectSrc) connPt={x:p.x,y:p.y};
+},{passive:false});
+
+cv.addEventListener('touchend',e=>{ dragNode=null; },{passive:false});
+
+// KEYBOARD
+document.addEventListener('keydown',e=>{
+  if(document.activeElement===document.getElementById('linput')) return;
+  if((e.key==='Delete'||e.key==='Backspace')&&hovNode){ delNode(hovNode); hovNode=null; }
+  if(e.key==='Escape'){ hideCMenu(); if(connectMode) toggleConnectMode(); }
+  if(e.key==='c') toggleConnectMode();
+});
+
+// ====================================================
+//  CONTEXT MENU
+// ====================================================
+let ctxTarget=null;
+function showCMenu(x,y){
+  const m=document.getElementById('cmenu');
+  m.style.display='block';
+  m.style.left=Math.min(x,W-160)+'px';
+  m.style.top=Math.min(y,H-140)+'px';
+}
+function hideCMenu(){ document.getElementById('cmenu').style.display='none'; }
+document.addEventListener('click',()=>hideCMenu());
+
+function ctxDo(action){
+  if(!ctxTarget) return;
+  hideCMenu();
+  if(action==='del'){ delNode(ctxTarget); }
+  else if(action==='pin'){ ctxTarget.pinned=!ctxTarget.pinned; }
+  else if(action==='recolor'){ ctxTarget.ci=(ctxTarget.ci+1)%T().nc.length; }
+  else if(action==='label'){ editLabel(ctxTarget); }
+  ctxTarget=null;
+}
+
+function editLabel(n){
+  const inp=document.getElementById('linput');
+  inp.style.display='block';
+  inp.style.left=(n.x-55)+'px';
+  inp.style.top=(n.y-14)+'px';
+  inp.value=n.label; inp.focus(); inp.select();
+  const done=(ev)=>{
+    if(!ev.type||ev.key==='Enter'||ev.key==='Escape'){
+      if(ev.key!=='Escape') n.label=inp.value.trim()||n.label;
+      inp.style.display='none';
+      inp.removeEventListener('blur',done);
+      inp.removeEventListener('keydown',done);
+    }
+  };
+  inp.addEventListener('blur',done);
+  inp.addEventListener('keydown',done);
+}
+
+// ====================================================
+//  PANEL
+// ====================================================
+let panelOpen=true;
+function togglePanel(){
+  panelOpen=!panelOpen;
+  document.getElementById('panel').classList.toggle('shut',!panelOpen);
+}
+
+// ====================================================
+//  EXPORT
+// ====================================================
+function exportPNG(){
+  const link=document.createElement('a');
+  link.download='force-graph.png';
+  link.href=cv.toDataURL('image/png');
+  link.click();
+  toast('PNG saved!');
+}
+
+function exportSVG(){
+  const th=T();
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">`;
+  s+=`<rect width="${W}" height="${H}" fill="${th.bg}"/>`;
+
+  // Parse edge color
+  const ec=th.ec;
+  for(const e of edges){
+    const na=nodes.find(n=>n.id===e.a), nb=nodes.find(n=>n.id===e.b);
+    if(!na||!nb) continue;
+    s+=`<line x1="${na.x.toFixed(1)}" y1="${na.y.toFixed(1)}" x2="${nb.x.toFixed(1)}" y2="${nb.y.toFixed(1)}" stroke="${ec}" stroke-width="1.8"/>`;
+  }
+  for(const n of nodes){
+    const col=th.nc[n.ci%th.nc.length];
+    s+=`<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r}" fill="${col}" stroke="${col}" stroke-width="1"/>`;
+    s+=`<text x="${n.x.toFixed(1)}" y="${n.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-family="system-ui" font-size="12" fill="rgba(0,0,0,0.8)">${n.label}</text>`;
+  }
+  s+='</svg>';
+  const blob=new Blob([s],{type:'image/svg+xml'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.download='force-graph.svg';
+  link.href=url; link.click();
+  URL.revokeObjectURL(url);
+  toast('SVG saved!');
+}
+
+// ====================================================
+//  SAVE / LOAD
+// ====================================================
+const STORAGE_KEY='fgs_v1';
+function saveGraph(){
+  const data={ nodes:nodes.map(n=>({...n})), edges:[...edges], nid, theme:themeIdx, physics };
+  try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(data)); toast('Saved to browser'); }
+  catch(e){ toast('Save failed'); }
+}
+
+function loadGraph(){
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    const d=JSON.parse(raw);
+    nodes=d.nodes; edges=d.edges; nid=d.nid;
+    themeIdx=d.theme||0;
+    physics=d.physics||physics;
+    buildSwatches();
+    document.getElementById('sCharge').value=physics.charge;
+    document.getElementById('sSpring').value=physics.spring;
+    document.getElementById('sGrav').value=physics.grav;
+    document.getElementById('sDamp').value=physics.damp;
+    document.getElementById('sSize').value=physics.size;
+    syncPhysics();
+    toast('Restored saved graph');
+    return true;
+  } catch(e){ return false; }
+}
+
+function clearAll(){ nodes=[]; edges=[]; nid=0; toast('Cleared'); }
+
+// ====================================================
+//  TOAST
+// ====================================================
+let toastTimer=0;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2200);
+}
+
+// ====================================================
+//  BOOT
+// ====================================================
+if(!loadGraph()) loadPreset('social');
+</script>
+</body>
+</html>

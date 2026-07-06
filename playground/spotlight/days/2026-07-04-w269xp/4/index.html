@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Momentum Drag-to-Reorder List — UI Spotlight Day 49 · Drop 4</title>
+<style>
+  :root{ --bg:#0c0d13; --panel:#181a24; --line:#282a38; --accent:#4fd1a5; --text:#eae7f5; --muted:#8b8fa8; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  header{padding:26px 20px 10px;}
+  h1{font-size:19px;margin:0 0 4px;}
+  p.sub{margin:0;color:var(--muted);font-size:12.5px;}
+  main{ padding:14px 20px 40px; max-width:420px; margin:0 auto; }
+  .list{ position:relative; user-select:none; }
+  .item{
+    position:absolute; left:0; right:0; height:56px; border-radius:12px; background:var(--panel);
+    border:1px solid var(--line); display:flex; align-items:center; gap:12px; padding:0 14px;
+    box-shadow:0 2px 8px rgba(0,0,0,.25); cursor:grab; touch-action:none; will-change:transform;
+  }
+  .item.dragging{ cursor:grabbing; z-index:10; box-shadow:0 12px 30px rgba(0,0,0,.45); border-color:var(--accent); }
+  .item .rank{ width:22px; text-align:center; color:var(--muted); font-size:12px; font-weight:700; }
+  .item .ic{ font-size:20px; }
+  .item .lbl{ flex:1; font-size:14px; font-weight:600; }
+  .item .handle{ color:var(--muted); font-size:16px; padding:4px; }
+  .msg{ margin-top:14px; font-size:11.5px; color:var(--muted); min-height:16px; }
+  .debug{
+    position:fixed; top:16px; right:16px; background:rgba(21,22,31,.9); border:1px solid var(--line); border-radius:12px;
+    padding:10px 12px; font-size:11px; color:var(--muted); backdrop-filter:blur(8px); width:150px;
+  }
+  .debug label{ display:block; margin-top:8px; }
+  .debug input[type=range]{ width:100%; }
+  @media (max-width:640px){ .debug{ display:none; } }
+  footer{ padding:6px 20px 26px; color:var(--muted); font-size:10.5px; max-width:420px; margin:0 auto; }
+  footer a{ color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Momentum Drag-to-Reorder List</h1>
+  <p class="sub">Grab a row and drag — release fast and it overshoots into place like a tiny spring.</p>
+</header>
+<main>
+  <div class="list" id="list"></div>
+  <div class="msg" id="msg">Drag any row to reorder your morning routine.</div>
+</main>
+
+<div class="debug">
+  <div>Spring tuning</div>
+  <label>Stiffness <span id="stiffVal">0.22</span>
+    <input type="range" id="stiffSlider" min="0.08" max="0.4" step="0.01" value="0.22">
+  </label>
+  <label>Damping <span id="dampVal">0.62</span>
+    <input type="range" id="dampSlider" min="0.3" max="0.9" step="0.02" value="0.62">
+  </label>
+</div>
+
+<footer>Inspired by Taha Shashtari's drag-to-reorder tutorial (tahazsh.com) — extended with velocity-based spring settle · UI Spotlight Day 49 · Drop #4</footer>
+
+<script>
+(function(){
+"use strict";
+const H = 64;
+let ROUTINE = [
+  {icon:'☀️', label:'Open the blinds'},
+  {icon:'💧', label:'Drink a glass of water'},
+  {icon:'🧘', label:'5 minutes of stretching'},
+  {icon:'☕', label:'Make coffee'},
+  {icon:'📓', label:'Write 3 priorities'},
+  {icon:'🚶', label:'Short walk outside'},
+];
+let order = ROUTINE.map((_,i)=>i); // order[slot] = item index
+
+const listEl = document.getElementById('list');
+listEl.style.height = (ROUTINE.length*H)+'px';
+
+const els = ROUTINE.map((item, idx)=>{
+  const d = document.createElement('div');
+  d.className = 'item';
+  d.dataset.idx = idx;
+  d.innerHTML = '<div class="rank"></div><div class="ic">'+item.icon+'</div><div class="lbl">'+item.label+'</div><div class="handle">☰</div>';
+  listEl.appendChild(d);
+  return d;
+});
+
+let stiffness = 0.22, damping = 0.62;
+const springs = {}; // idx -> {pos, vel, target, raf}
+
+function slotOf(idx){ return order.indexOf(idx); }
+
+function layout(exceptIdx, animate){
+  ROUTINE.forEach((_, idx)=>{
+    if (idx===exceptIdx) return;
+    const target = slotOf(idx)*H;
+    if (animate) springTo(idx, target);
+    else { els[idx].style.transform = `translateY(${target}px)`; if(springs[idx]) springs[idx].pos = target; }
+  });
+  ROUTINE.forEach((_, idx)=>{
+    els[idx].querySelector('.rank').textContent = slotOf(idx)+1;
+  });
+}
+
+function springTo(idx, target){
+  if (!springs[idx]) springs[idx] = {pos: target, vel:0, raf:null};
+  const s = springs[idx];
+  s.target = target;
+  if (s.raf) return;
+  function tick(){
+    const force = (s.target - s.pos) * stiffness;
+    s.vel = (s.vel + force) * damping;
+    s.pos += s.vel;
+    els[idx].style.transform = `translateY(${s.pos}px)`;
+    if (Math.abs(s.target-s.pos) > 0.5 || Math.abs(s.vel) > 0.5){
+      s.raf = requestAnimationFrame(tick);
+    } else {
+      s.pos = s.target; els[idx].style.transform = `translateY(${s.pos}px)`;
+      s.raf = null;
+    }
+  }
+  s.raf = requestAnimationFrame(tick);
+}
+
+layout(-1, false);
+
+let dragging = null, startY=0, originY=0, lastY=0, lastT=0, vel=0;
+
+function onDown(idx, clientY){
+  dragging = idx;
+  const el = els[idx];
+  el.classList.add('dragging');
+  startY = clientY;
+  originY = slotOf(idx)*H;
+  lastY = clientY; lastT = performance.now(); vel = 0;
+  if (springs[idx] && springs[idx].raf){ cancelAnimationFrame(springs[idx].raf); springs[idx].raf=null; }
+}
+function onMove(clientY){
+  if (dragging==null) return;
+  const el = els[dragging];
+  const dy = clientY - startY;
+  const pos = originY + dy;
+  el.style.transform = `translateY(${pos}px)`;
+  if (springs[dragging]) springs[dragging].pos = pos;
+
+  const now = performance.now();
+  const dt = Math.max(1, now-lastT);
+  vel = (clientY-lastY)/dt * 16.6;
+  lastY = clientY; lastT = now;
+
+  const targetSlot = Math.max(0, Math.min(ROUTINE.length-1, Math.round(pos/H)));
+  const curSlot = slotOf(dragging);
+  if (targetSlot !== curSlot){
+    order.splice(curSlot,1);
+    order.splice(targetSlot,0,dragging);
+    layout(dragging, true);
+  }
+}
+function onUp(){
+  if (dragging==null) return;
+  const idx = dragging;
+  els[idx].classList.remove('dragging');
+  const target = slotOf(idx)*H;
+  if (!springs[idx]) springs[idx] = {pos: target, vel:0, raf:null};
+  springs[idx].vel = vel * 0.5;
+  springTo(idx, target);
+  layout(idx, false); // ranks refresh (already fine), no-op on position for others
+  dragging = null;
+  document.getElementById('msg').textContent = 'Order saved: ' + order.map(i=>ROUTINE[i].label).join(' → ');
+}
+
+els.forEach((el, idx)=>{
+  el.addEventListener('pointerdown', e=>{ el.setPointerCapture(e.pointerId); onDown(idx, e.clientY); });
+  el.addEventListener('pointermove', e=> onMove(e.clientY));
+  el.addEventListener('pointerup', onUp);
+  el.addEventListener('pointercancel', onUp);
+});
+
+document.getElementById('stiffSlider').oninput = e=>{ stiffness=+e.target.value; document.getElementById('stiffVal').textContent=stiffness.toFixed(2); };
+document.getElementById('dampSlider').oninput = e=>{ damping=+e.target.value; document.getElementById('dampVal').textContent=damping.toFixed(2); };
+})();
+</script>
+</body>
+</html>

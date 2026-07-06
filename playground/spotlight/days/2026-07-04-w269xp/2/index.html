@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Drag-Rotate Content Cube — UI Spotlight Day 49 · Drop 2</title>
+<style>
+  :root{ --bg:#0b0c14; --panel:#15161f; --line:#282a38; --accent:#7dd3fc; --text:#eae7f5; --muted:#8b8fa8; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 20%, #1a1c2c, var(--bg));color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;overflow:hidden;}
+  header{position:absolute;top:0;left:0;right:0;padding:20px;text-align:center;z-index:5;pointer-events:none;}
+  h1{font-size:19px;margin:0 0 4px;}
+  p.sub{margin:0;color:var(--muted);font-size:12.5px;}
+  .stage{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; perspective:900px; touch-action:none; cursor:grab; }
+  .stage.dragging{ cursor:grabbing; }
+  .cube{ position:relative; width:200px; height:200px; transform-style:preserve-3d; }
+  .face{
+    position:absolute; width:200px; height:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    border-radius:18px; border:1px solid rgba(255,255,255,.15); font-size:15px; font-weight:700; color:#fff;
+    box-shadow:inset 0 0 40px rgba(255,255,255,.06);
+  }
+  .face .ic{ font-size:42px; }
+  .f0{ background:linear-gradient(145deg,#3b4a7c,#25304f); transform:translateZ(100px); }
+  .f1{ background:linear-gradient(145deg,#7c3f5c,#4a2438); transform:rotateY(90deg) translateZ(100px); }
+  .f2{ background:linear-gradient(145deg,#2f6b4f,#1c4331); transform:rotateY(180deg) translateZ(100px); }
+  .f3{ background:linear-gradient(145deg,#8a5a2c,#5a391b); transform:rotateY(-90deg) translateZ(100px); }
+  .f4{ background:linear-gradient(145deg,#5c4a8a,#382c56); transform:rotateX(90deg) translateZ(100px); }
+  .f5{ background:linear-gradient(145deg,#2c6b7c,#1a4048); transform:rotateX(-90deg) translateZ(100px); }
+  .dots{ position:absolute; bottom:26px; left:0; right:0; display:flex; justify-content:center; gap:8px; z-index:5; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.25); transition:background .25s, transform .25s; }
+  .dot.active{ background:var(--accent); transform:scale(1.3); }
+  .hint{ position:absolute; bottom:52px; left:0; right:0; text-align:center; color:var(--muted); font-size:11px; z-index:5; pointer-events:none; }
+  .debug{
+    position:fixed; top:16px; right:16px; background:rgba(21,22,31,.85); border:1px solid var(--line); border-radius:12px;
+    padding:10px 12px; font-size:11px; color:var(--muted); backdrop-filter:blur(8px); width:150px; z-index:6;
+  }
+  .debug label{ display:block; margin-top:8px; }
+  .debug input[type=range]{ width:100%; }
+  .debug button{ width:100%; margin-top:8px; padding:6px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--text); font-size:11px; cursor:pointer; }
+  @media (max-width:640px){ .debug{ display:none; } }
+  footer{ position:absolute; bottom:4px; left:0; right:0; text-align:center; color:var(--muted); font-size:10px; z-index:5; }
+  footer a{ color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Drag-Rotate Content Cube</h1>
+  <p class="sub">Drag to spin the cube — release and it snaps to the nearest face.</p>
+</header>
+
+<div class="stage" id="stage">
+  <div class="cube" id="cube">
+    <div class="face f0"><div class="ic">🪐</div>Orbit</div>
+    <div class="face f1"><div class="ic">🧭</div>Explore</div>
+    <div class="face f2"><div class="ic">🛠️</div>Build</div>
+    <div class="face f3"><div class="ic">🎯</div>Focus</div>
+    <div class="face f4"><div class="ic">☀️</div>Rise</div>
+    <div class="face f5"><div class="ic">🌙</div>Rest</div>
+  </div>
+</div>
+<div class="hint">Drag horizontally or vertically</div>
+<div class="dots" id="dots"></div>
+
+<div class="debug">
+  <div>Cube tuning</div>
+  <label><input type="checkbox" id="autoChk"> Auto-rotate</label>
+  <label>Sensitivity <span id="sensVal">0.4</span>
+    <input type="range" id="sensSlider" min="0.1" max="1" step="0.05" value="0.4">
+  </label>
+  <button id="resetBtn">Reset view</button>
+</div>
+
+<footer>Inspired by a Codrops 3D cube gallery tutorial (tympanus.net) — rebuilt as a drag-controlled vanilla cube · UI Spotlight Day 49 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+const stage = document.getElementById('stage');
+const cube = document.getElementById('cube');
+const dotsEl = document.getElementById('dots');
+const FACES = 4; // front/right/back/left primary faces for the dot indicator
+for (let i=0;i<FACES;i++){ const d=document.createElement('div'); d.className='dot'+(i===0?' active':''); dotsEl.appendChild(d); }
+
+let rotY = 0, rotX = -14;
+let dragging = false, startX=0, startY=0, lastX=0, lastY=0, lastT=0, velY=0;
+let sensitivity = 0.4;
+let autoRotate = false;
+let autoT = null;
+
+function apply(){
+  cube.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+  const norm = ((Math.round(rotY/90) % FACES) + FACES) % FACES;
+  dotsEl.querySelectorAll('.dot').forEach((d,i)=> d.classList.toggle('active', i===norm));
+}
+
+function clampX(v){ return Math.max(-35, Math.min(35, v)); }
+
+function onDown(x,y){
+  dragging = true;
+  stage.classList.add('dragging');
+  startX = lastX = x; startY = lastY = y;
+  lastT = performance.now();
+  velY = 0;
+  stopAuto();
+}
+function onMove(x,y){
+  if (!dragging) return;
+  const dx = x - lastX, dy = y - lastY;
+  const now = performance.now();
+  const dt = Math.max(1, now-lastT);
+  rotY += dx * sensitivity;
+  rotX = clampX(rotX - dy * sensitivity * 0.6);
+  velY = (dx/dt) * sensitivity;
+  lastX = x; lastY = y; lastT = now;
+  apply();
+}
+function onUp(){
+  if (!dragging) return;
+  dragging = false;
+  stage.classList.remove('dragging');
+  // momentum + snap to nearest 90deg
+  const projected = rotY + velY*70;
+  const target = Math.round(projected/90)*90;
+  animateTo(target, rotX);
+}
+
+function animateTo(targetY, targetX){
+  const startYVal = rotY, startXVal = rotX;
+  const dY = targetY - startYVal, dX = targetX - startXVal;
+  const dur = 420; const t0 = performance.now();
+  function step(){
+    const t = Math.min(1, (performance.now()-t0)/dur);
+    const e = 1 - Math.pow(1-t, 3);
+    rotY = startYVal + dY*e;
+    rotX = startXVal + dX*e;
+    apply();
+    if (t<1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+stage.addEventListener('pointerdown', e=> onDown(e.clientX, e.clientY));
+window.addEventListener('pointermove', e=> onMove(e.clientX, e.clientY));
+window.addEventListener('pointerup', onUp);
+
+document.getElementById('sensSlider').oninput = e=>{ sensitivity = +e.target.value; document.getElementById('sensVal').textContent = sensitivity.toFixed(2); };
+document.getElementById('resetBtn').onclick = ()=> animateTo(0, -14);
+
+function startAuto(){
+  stopAuto();
+  autoT = setInterval(()=>{ if (!dragging){ rotY += 0.35; apply(); } }, 16);
+}
+function stopAuto(){ if (autoT){ clearInterval(autoT); autoT=null; } }
+document.getElementById('autoChk').onchange = e=>{ autoRotate = e.target.checked; if (autoRotate) startAuto(); else stopAuto(); };
+
+apply();
+})();
+</script>
+</body>
+</html>
