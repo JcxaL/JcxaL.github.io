@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>Liquid Glass · UI Spotlight</title>
+<link rel="icon" href="data:,">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#05050a;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+  #stage{position:fixed;inset:0;}
+  #bgReal{position:fixed;inset:0;overflow:hidden;}
+  .scene-swirl{position:absolute;inset:-50%;width:200%;height:200%;
+    background:repeating-conic-gradient(from 0deg,#ff2d7a 0deg,#ff9718 55deg,#ffe600 110deg,
+      #29e0ff 165deg,#8a5cff 220deg,#1dffb0 275deg,#ff2d7a 330deg,#ff2d7a 360deg);
+    animation:swirl 46s linear infinite;filter:saturate(1.3);}
+  .scene-glow{position:absolute;inset:-30%;width:160%;height:160%;mix-blend-mode:screen;
+    background:radial-gradient(circle at 22% 28%,rgba(255,255,255,.35),transparent 40%),
+      radial-gradient(circle at 78% 66%,rgba(0,255,210,.35),transparent 42%),
+      radial-gradient(circle at 60% 15%,rgba(255,80,180,.3),transparent 45%);
+    animation:swirl 70s linear infinite reverse;}
+  .scene-grid{position:absolute;inset:0;opacity:.45;
+    background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.08) 0 2px,transparent 2px 14px),
+      repeating-linear-gradient(-45deg,rgba(0,0,0,.18) 0 2px,transparent 2px 14px);}
+  @keyframes swirl{to{transform:rotate(360deg);}}
+  .panel{position:absolute;overflow:hidden;touch-action:none;
+    box-shadow:0 10px 34px rgba(0,0,0,.55),inset 0 1px 1px rgba(255,255,255,.45),inset 0 0 0 1px rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.22);}
+  .panel.draggable{cursor:grab;}
+  .panel.draggable:active{cursor:grabbing;}
+  .lens-bg{position:absolute;inset:0;}
+  .scene-anchor{position:absolute;top:0;left:0;width:100vw;height:100vh;}
+  .panel-content{position:relative;z-index:2;height:100%;padding:14px 16px;pointer-events:none;
+    text-shadow:0 1px 3px rgba(0,0,0,.65);display:flex;flex-direction:column;justify-content:center;gap:4px;}
+  .panel-content h3{margin:0;font-size:15px;}
+  .panel-content h4{margin:0;font-size:13px;text-align:center;}
+  .panel-content p{margin:0;font-size:12px;opacity:.85;line-height:1.4;}
+  .pill-label{font-size:13px;font-weight:600;text-align:center;display:block;}
+  .ctrl{pointer-events:auto;gap:8px;}
+  .ctrl h3{margin-bottom:4px;}
+  .ctrl label{font-size:11.5px;display:flex;flex-direction:column;gap:2px;opacity:.9;}
+  .ctrl input[type=range]{width:100%;}
+  .ctrl .toggle{flex-direction:row;align-items:center;gap:6px;}
+  footer{position:fixed;left:0;right:0;bottom:6px;text-align:center;font-size:11px;
+    color:rgba(255,255,255,.4);pointer-events:none;z-index:5;}
+  @media (max-width:420px){
+    .panel-content{padding:10px 12px;}
+    .panel-content p{display:none;}
+  }
+</style>
+</head>
+<body>
+<div id="bgReal"></div>
+<div id="stage"></div>
+<svg id="filterDefs" width="0" height="0" style="position:absolute;overflow:hidden"><defs></defs></svg>
+<footer>Inspired by samasante/liquid-glass · UI Spotlight Day 51 · Drop #2</footer>
+<script>
+(function(){
+  "use strict";
+  var XLINK="http://www.w3.org/1999/xlink";
+  var defs=document.querySelector("#filterDefs defs");
+  var stage=document.getElementById("stage");
+  var registry=[];
+  var state={strength:26,chroma:9,radius:28,specular:true};
+
+  function sceneChildren(){
+    var f=document.createDocumentFragment();
+    ["scene-swirl","scene-glow","scene-grid"].forEach(function(c){
+      var d=document.createElement("div"); d.className=c; f.appendChild(d);
+    });
+    return f;
+  }
+  document.getElementById("bgReal").appendChild(sceneChildren());
+
+  function smoothStep(e0,e1,x){
+    var t=Math.min(Math.max((x-e0)/(e1-e0),0),1);
+    return t*t*(3-2*t);
+  }
+  function roundedRectSDF(x,y,hw,hh,r){
+    var qx=Math.abs(x)-hw+r, qy=Math.abs(y)-hh+r;
+    var ax=Math.max(qx,0), ay=Math.max(qy,0);
+    return Math.sqrt(ax*ax+ay*ay)+Math.min(Math.max(qx,qy),0)-r;
+  }
+  function buildMap(w,h,radius){
+    var pad=0.25;
+    var W=Math.max(2,Math.round(w*(1+2*pad))), H=Math.max(2,Math.round(h*(1+2*pad)));
+    var cnv=document.createElement("canvas"); cnv.width=W; cnv.height=H;
+    var ctx=cnv.getContext("2d");
+    var img=ctx.createImageData(W,H), data=img.data;
+    var hw=w/2, hh=h/2, r=Math.min(radius,hw,hh);
+    var cx=W/2, cy=H/2, band=Math.max(14,r*0.9+8);
+    for(var j=0;j<H;j++){
+      for(var i=0;i<W;i++){
+        var idx=(j*W+i)*4;
+        var x=i-cx, y=j-cy;
+        var d=roundedRectSDF(x,y,hw,hh,r);
+        var t=smoothStep(-band,4,d);
+        var len=Math.hypot(x,y)||1;
+        var nx=x/len, ny=y/len;
+        data[idx]=Math.max(0,Math.min(255,128+nx*t*110));
+        data[idx+1]=Math.max(0,Math.min(255,128+ny*t*110));
+        var spec=t*Math.max(0,-ny);
+        data[idx+2]=Math.max(0,Math.min(255,spec*255*1.4));
+        data[idx+3]=255;
+      }
+    }
+    ctx.putImageData(img,0,0);
+    return cnv.toDataURL("image/png");
+  }
+
+  function filterMarkup(fid){
+    return '<filter id="'+fid+'" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">'+
+      '<feImage id="'+fid+'-map" x="-25%" y="-25%" width="150%" height="150%" result="map"/>'+
+      '<feDisplacementMap id="'+fid+'-r" in="SourceGraphic" in2="map" xChannelSelector="R" yChannelSelector="G" scale="26" result="dr"/>'+
+      '<feColorMatrix in="dr" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="drC"/>'+
+      '<feDisplacementMap id="'+fid+'-g" in="SourceGraphic" in2="map" xChannelSelector="R" yChannelSelector="G" scale="26" result="dg"/>'+
+      '<feColorMatrix in="dg" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="dgC"/>'+
+      '<feDisplacementMap id="'+fid+'-b" in="SourceGraphic" in2="map" xChannelSelector="R" yChannelSelector="G" scale="26" result="db"/>'+
+      '<feColorMatrix in="db" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="dbC"/>'+
+      '<feComposite in="drC" in2="dgC" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="rg"/>'+
+      '<feComposite in="rg" in2="dbC" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="rgb"/>'+
+      '<feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="specMask"/>'+
+      '<feFlood id="'+fid+'-flood" flood-color="#ffffff" flood-opacity="0.85" result="white"/>'+
+      '<feComposite in="white" in2="specMask" operator="in" result="spec"/>'+
+      '<feBlend in="rgb" in2="spec" mode="screen"/>'+
+      '</filter>';
+  }
+  function setHref(el,url){ el.setAttribute("href",url); el.setAttributeNS(XLINK,"href",url); }
+  function makeFilter(fid,w,h,radius){
+    defs.insertAdjacentHTML("beforeend",filterMarkup(fid));
+    var mapEl=document.getElementById(fid+"-map");
+    setHref(mapEl,buildMap(w,h,radius));
+    return{ map:mapEl, r:document.getElementById(fid+"-r"), g:document.getElementById(fid+"-g"),
+      b:document.getElementById(fid+"-b"), flood:document.getElementById(fid+"-flood"), w:w, h:h };
+  }
+  function applyScales(f){
+    f.r.setAttribute("scale",state.strength+state.chroma);
+    f.g.setAttribute("scale",state.strength);
+    f.b.setAttribute("scale",Math.max(0,state.strength-state.chroma));
+  }
+  function applySpecular(f){ f.flood.setAttribute("flood-opacity",state.specular?"0.85":"0"); }
+  function rebuildRadius(en){
+    setHref(en.filter.map,buildMap(en.filter.w,en.filter.h,state.radius));
+    var rad=Math.min(state.radius,en.filter.w/2,en.filter.h/2);
+    en.panel.style.borderRadius=rad+"px";
+  }
+
+  function measureBase(entry){
+    entry.panel.style.transform="translate(0px,0px)";
+    var r=entry.panel.getBoundingClientRect();
+    entry.base.left=r.left; entry.base.top=r.top;
+    updateAnchor(entry);
+  }
+  function updateAnchor(entry){
+    var left=entry.base.left+entry.tx, top=entry.base.top+entry.ty;
+    entry.anchor.style.transform="translate("+(-left)+"px,"+(-top)+"px)";
+  }
+  function attachDrag(entry){
+    var el=entry.panel;
+    el.addEventListener("pointerdown",function(e){
+      el.setPointerCapture(e.pointerId);
+      var sx=e.clientX, sy=e.clientY, stx=entry.tx, sty=entry.ty;
+      function move(ev){
+        entry.tx=stx+(ev.clientX-sx); entry.ty=sty+(ev.clientY-sy);
+        el.style.transform="translate3d("+entry.tx+"px,"+entry.ty+"px,0)";
+        updateAnchor(entry);
+      }
+      function up(){
+        el.removeEventListener("pointermove",move);
+        el.removeEventListener("pointerup",up);
+        el.removeEventListener("pointercancel",up);
+      }
+      el.addEventListener("pointermove",move);
+      el.addEventListener("pointerup",up);
+      el.addEventListener("pointercancel",up);
+    });
+  }
+
+  function createPanel(cfg){
+    var panel=document.createElement("div");
+    panel.className="panel"+(cfg.draggable?" draggable":"");
+    for(var k in cfg.pos) panel.style[k]=cfg.pos[k];
+    panel.style.width=cfg.w+"px"; panel.style.height=cfg.h+"px";
+    var fid="lens-"+cfg.id;
+    var lensBg=document.createElement("div");
+    lensBg.className="lens-bg"; lensBg.style.filter="url(#"+fid+")";
+    var anchor=document.createElement("div");
+    anchor.className="scene-anchor"; anchor.appendChild(sceneChildren());
+    lensBg.appendChild(anchor);
+    var content=document.createElement("div");
+    content.className="panel-content"+(cfg.ctrl?" ctrl":"");
+    content.innerHTML=cfg.html;
+    panel.appendChild(lensBg); panel.appendChild(content);
+    stage.appendChild(panel);
+    var filter=makeFilter(fid,cfg.w,cfg.h,state.radius);
+    applyScales(filter); applySpecular(filter);
+    panel.style.borderRadius=Math.min(state.radius,cfg.w/2,cfg.h/2)+"px";
+    var entry={id:cfg.id,panel:panel,anchor:anchor,filter:filter,tx:0,ty:0,base:{left:0,top:0}};
+    measureBase(entry);
+    if(cfg.draggable) attachDrag(entry);
+    registry.push(entry);
+  }
+
+  var controlsHTML='<h3>Lens Controls</h3>'+
+    '<label>Strength<input id="ctrlStrength" type="range" min="0" max="60" value="26"></label>'+
+    '<label>Chromatic Aberration<input id="ctrlChroma" type="range" min="0" max="30" value="9"></label>'+
+    '<label>Corner Radius<input id="ctrlRadius" type="range" min="0" max="60" value="28"></label>'+
+    '<label class="toggle"><input id="ctrlSpecular" type="checkbox" checked> Specular Highlight</label>';
+
+  [
+    {id:"p0",w:260,h:170,draggable:true,pos:{left:"24px",top:"110px"},
+      html:"<h3>Glass Card</h3><p>Drag me — real SVG refraction, no blur() trick.</p>"},
+    {id:"p1",w:240,h:72,draggable:true,pos:{left:"calc(50% - 120px)",top:"62vh"},
+      html:'<span class="pill-label">Liquid Pill — drag</span>'},
+    {id:"p2",w:150,h:150,draggable:true,pos:{right:"36px",top:"280px"},
+      html:"<h4>Lens</h4>"},
+    {id:"p3",w:230,h:230,draggable:false,ctrl:true,pos:{right:"14px",top:"14px"},
+      html:controlsHTML}
+  ].forEach(createPanel);
+
+  document.getElementById("ctrlStrength").addEventListener("input",function(e){
+    state.strength=+e.target.value; registry.forEach(function(en){applyScales(en.filter);});
+  });
+  document.getElementById("ctrlChroma").addEventListener("input",function(e){
+    state.chroma=+e.target.value; registry.forEach(function(en){applyScales(en.filter);});
+  });
+  document.getElementById("ctrlRadius").addEventListener("input",function(e){
+    state.radius=+e.target.value; registry.forEach(function(en){rebuildRadius(en);});
+  });
+  document.getElementById("ctrlSpecular").addEventListener("change",function(e){
+    state.specular=e.target.checked; registry.forEach(function(en){applySpecular(en.filter);});
+  });
+  window.addEventListener("resize",function(){
+    registry.forEach(function(en){ en.tx=0; en.ty=0; measureBase(en); });
+  });
+})();
+</script>
+</body>
+</html>
