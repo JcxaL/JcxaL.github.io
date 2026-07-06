@@ -34,7 +34,20 @@ Today's date: use `date +%Y-%m-%d` as the date portion of new folder names.
   Time Machine hubs live in `playground/index.html` and
   `playground/spotlight/index.html`. Don't modify casually.
 
-## Directory layout (do not restructure)
+## Non-daily changes (features, infra, site work) — PR + auto-review flow
+The direct-push-to-`main` rule above applies ONLY to the daily playground
+routine. Anything else — workflow changes, hub/infrastructure edits,
+`src/` work, refactors — goes through a PR with an automated review pass:
+
+1. Develop on your session branch (`claude/<session-slug>`), commit, push.
+2. Open a PR against `main`.
+3. **Launch a separate review agent on the PR** (e.g. the `/review` skill
+   or a code-review subagent) rather than reviewing your own diff inline —
+   a fresh context catches what the authoring session is blind to.
+4. Address any findings with follow-up commits on the same branch.
+5. Wait for CI green, then merge the PR into `main`.
+
+Don't merge before the review agent has reported back and CI has passed.
 ```
 CLAUDE.md                                  ← these instructions
 playground/
