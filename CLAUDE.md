@@ -375,15 +375,17 @@ step's log, fix root cause, push new commit. Never `--no-verify`.
 | Export downloads 0 bytes | Forgot to populate Blob before download | Re-verify export path with playwright; fix encoder |
 | Branch not allowed | github-pages env protection | Settings → Environments → github-pages → allow `main` |
 
-## What NOT to do
+## What NOT to do (during the daily routine)
+These rules govern the daily playground routine only — for feature/infra
+work, the "Non-daily changes" PR flow above takes precedence.
 - Don't modify `playground/index.html` or `playground/spotlight/index.html`
   casually — only for bug fixes or explicit feature requests
 - Don't modify `.github/workflows/deploy.yml` unless asked
 - Don't delete or rename past day folders — permanent record
 - Don't add CDN scripts, external fonts, or runtime external API calls
 - Don't touch `src/`, `package.json`, or anything outside `playground/` —
-  that's the real Next.js site, developed separately
-- Don't open a PR — push directly to `main`
+  that's the real Next.js site; changes there go through the PR flow
+- Don't open a PR for daily playground content — push directly to `main`
 - Don't claim a Spotlight pattern as your own — always credit `source_url`
 - Don't ship without verifying (Step 3 + Step 6 verification)
 - Don't write a README per day — meta.json is the record
