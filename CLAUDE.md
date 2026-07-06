@@ -2,8 +2,9 @@
 
 ## Mission
 You maintain `jcxal/jcxal.github.io`'s **daily playground** — a public,
-constantly-rotating set of interactive web experiences that lives at jccl.me
-while the owner's real Next.js site is under construction.
+constantly-rotating set of interactive web experiences that lives at
+jccl.me/playground/ while the owner's real Next.js site is under
+construction at the site root.
 
 **Each day you ship TWO things:**
 1. **Playground** — ONE substantial mini-app (your own original idea — think
@@ -17,14 +18,18 @@ the page**. Every past day is preserved forever in Time Machine drawers.
 Today's date: use `date +%Y-%m-%d` as the date portion of new folder names.
 
 ## Repository state when you arrive
-- **Push to:** `daily-playground` branch (exists; do not recreate)
+- **Push to:** `main` branch (playground and the Next.js site now share one
+  branch and one deploy).
 - **Develop on:** `claude/<session-slug>` (auto-assigned). Merge → push.
-- **GitHub Pages** auto-deploys `daily-playground` via
-  `.github/workflows/deploy-playground.yml`. CI validates BOTH manifests
-  AND the 5-drop spotlight structure (presence of `1/`..`5/index.html`,
-  meta.json `drops` array length). Don't touch the workflow unless asked.
+- **GitHub Pages** auto-deploys `main` via `.github/workflows/deploy.yml`.
+  That workflow validates BOTH manifests AND the 5-drop spotlight structure
+  (presence of `1/`..`5/index.html`, meta.json `drops` array length), then
+  builds the Next.js site and copies `playground/` into the build output at
+  `/playground/` so neither deploy replaces the other. Don't touch the
+  workflow unless asked.
 - **Next.js source** (`src/`, `package.json`, etc.) lives on the same branch
-  but is NOT deployed. Leave it alone.
+  and IS deployed (at the site root, separate from `/playground/`). Leave
+  it alone regardless.
 - **Persistent infrastructure** — iOS mode-toggle, welcome popup, and both
   Time Machine hubs live in `playground/index.html` and
   `playground/spotlight/index.html`. Don't modify casually.
@@ -307,25 +312,27 @@ Create `playground/spotlight/days/YYYY-MM-DD-{id}/meta.json`:
 ## Step 9 — Push & verify CI
 
 ```bash
-git checkout daily-playground
-git pull origin daily-playground
+git checkout main
+git pull origin main
 git add playground/days/YYYY-MM-DD-{id}/
 git add playground/spotlight/days/YYYY-MM-DD-{id}/
 git add playground/days/manifest.json
 git add playground/spotlight/manifest.json
 git commit -m "feat(day-N): <playground-title> + 5 spotlights (<5-bucket-summary>)"
-git push -u origin daily-playground
+git push -u origin main
 ```
 
-The `deploy-playground.yml` workflow runs:
+The `deploy.yml` workflow runs:
 
-1. **validate** —
+1. **validate-playground** —
    - Both manifests are valid JSON
    - Exactly 1 active Playground; its `index.html` exists
    - At most 1 active Spotlight day; its gallery `index.html` exists AND
      when `drops_count > 1`, all `{1..N}/index.html` files exist AND
      `meta.json` has exactly `drops_count` entries in `drops` array
-2. **deploy** — bundles `playground/` + `CNAME` + `.nojekyll` to Pages
+2. **build** — builds the Next.js site, then copies `playground/` into the
+   build output at `/playground/` alongside `CNAME`
+3. **deploy** — ships the combined output to Pages
 
 **Confirm green via `mcp__github__get_commit`.** If red: read the failed
 step's log, fix root cause, push new commit. Never `--no-verify`.
@@ -353,16 +360,17 @@ step's log, fix root cause, push new commit. Never `--no-verify`.
 | `meta.json has X drops, manifest says Y` | `drops_count` mismatch | Make them equal (count of drops array = drops_count) |
 | Audio silent on mobile | AudioContext created on load instead of first gesture | Move `new AudioContext()` into first click handler |
 | Export downloads 0 bytes | Forgot to populate Blob before download | Re-verify export path with playwright; fix encoder |
-| Branch not allowed | github-pages env protection | Settings → Environments → github-pages → allow `daily-playground` |
+| Branch not allowed | github-pages env protection | Settings → Environments → github-pages → allow `main` |
 
 ## What NOT to do
 - Don't modify `playground/index.html` or `playground/spotlight/index.html`
   casually — only for bug fixes or explicit feature requests
-- Don't modify `.github/workflows/deploy-playground.yml` unless asked
+- Don't modify `.github/workflows/deploy.yml` unless asked
 - Don't delete or rename past day folders — permanent record
 - Don't add CDN scripts, external fonts, or runtime external API calls
-- Don't push to `main` — that's the real Next.js site
-- Don't open a PR — push directly to `daily-playground`
+- Don't touch `src/`, `package.json`, or anything outside `playground/` —
+  that's the real Next.js site, developed separately
+- Don't open a PR — push directly to `main`
 - Don't claim a Spotlight pattern as your own — always credit `source_url`
 - Don't ship without verifying (Step 3 + Step 6 verification)
 - Don't write a README per day — meta.json is the record
@@ -378,9 +386,9 @@ step's log, fix root cause, push new commit. Never `--no-verify`.
       - `meta.json` with exactly 5 `drops`, one per bucket, distinct sources
 - [ ] Each drop's `index.html` has a `← All 5 drops` back link
 - [ ] Both manifests: yesterday `"archived"`, today `"active"`
-- [ ] Committed and pushed to `daily-playground`
-- [ ] CI green (validate + deploy)
-- [ ] jccl.me (Playground) shows new day at top of Time Machine
-- [ ] jccl.me/spotlight/ shows new 5-up gallery; iOS toggle works on both pages
+- [ ] Committed and pushed to `main`
+- [ ] CI green (validate-playground + build + deploy)
+- [ ] jccl.me/playground/ shows new day at top of Time Machine
+- [ ] jccl.me/playground/spotlight/ shows new 5-up gallery; iOS toggle works on both pages
 
 Begin.
