@@ -1,20 +1,31 @@
-# Web Design Docs — Travel Section
+# Web Design Docs — The Metro Museum
 
-Research-backed design documentation for the `jccl.me` rebuild, focused on the travel
-section that leads the launch (see [`TRAVEL_PLAN.md`](../../TRAVEL_PLAN.md) and
-[`SITE_PLAN.md`](../../SITE_PLAN.md)). These docs distill a survey of **100+ acclaimed and
-award-winning travel websites** into patterns, tokens, and build recommendations for a
-static-export Next.js 15 site with a cinematic, sci-fi-HUD-meets-travel-journal direction.
+Research-backed design documentation for the `jccl.me` rebuild. Two research rounds feed
+two doc generations:
+
+- **Round 1 (docs 01–05):** a survey of **100+ acclaimed and award-winning travel
+  websites** — patterns, visual language, and motion craft for a travel site.
+- **Round 2 (docs 06–10):** the whole-site **metro/rail concept** ("an interactive museum
+  entered through the Metro"): station intro → ticket unlock → train-ride navigation →
+  city exhibits → rotating globe. 138 additional items researched (rail/metro web
+  experiences, the 2025–26 motion stack, globe zoom tech, parallax craft, agent-driven
+  design workflows, dev standards, media hosting, audio, transit typography) with 24
+  adversarial claim verifications against primary sources.
 
 ## The documents
 
 | Doc | What it covers |
 |-----|----------------|
-| [01 — Inspiration Gallery](./01-inspiration-gallery.md) | The award-winning sites themselves: who won what, why it mattered, what to steal. Organized by category, awards cited to archives. |
-| [02 — UX Patterns](./02-ux-patterns.md) | Information architecture and interaction patterns: the two-layer architecture, destination-card schema, status system, list↔map sync, guide-page anatomy, filters, anti-patterns. |
-| [03 — Visual Language](./03-visual-language.md) | Palette formulas, the three-voice typography system, imagery treatment (scrims, grading), HUD-as-a-layer, and how it maps onto the site's existing tokens. |
-| [04 — Motion & Interaction](./04-motion-interaction.md) | Scroll choreography rules, the flight-path camera recipe, map/globe techniques, arc animation, performance tiers, reduced-motion policy. |
-| [05 — Applied Recommendations](./05-recommendations.md) | The synthesis, mapped onto TRAVEL_PLAN milestones M1–M4: concrete build items ranked by impact. |
+| [01 — Inspiration Gallery](./01-inspiration-gallery.md) | Award-winning travel sites: who won what, why it mattered, what to steal. Awards cited to archives. |
+| [02 — UX Patterns](./02-ux-patterns.md) | IA and interaction patterns: card schema, status system, list↔map sync, guide-page anatomy, filters, anti-patterns. |
+| [03 — Visual Language](./03-visual-language.md) | Palette formulas, three-voice typography, imagery treatment, HUD-as-a-layer, map styling. |
+| [04 — Motion & Interaction](./04-motion-interaction.md) | Scroll choreography laws, flight-path camera recipes, arc animation, reduced-motion policy, performance budgets. |
+| [05 — Applied Recommendations](./05-recommendations.md) | Round-1 synthesis mapped onto the original TRAVEL_PLAN milestones (partially superseded by doc 10). |
+| [06 — Experience Blueprint](./06-experience-blueprint.md) | The Metro Museum concept: scene-by-scene journey, 2.5D-that-reads-as-3D art direction, mobile adaptation, content template, acceptance criteria. |
+| [07 — Technical Architecture](./07-technical-architecture.md) | Verified decision records: persistent canvas, motion stack, View Transitions, MapLibre globe, media/hosting (Cloudflare+R2), transit typography, audio, banned list. |
+| [08 — Agent Design Workflow](./08-agent-design-workflow.md) | How agents build and verify by vision + code: seekable timelines, two-tier verification, screenshot manifest, design tokens as machine contract, CI gates. |
+| [09 — Engineering Standards](./09-engineering-standards.md) | Toolchain, animation code architecture, testing strategy, CI/CD conventions, media pipeline, docs standards, budgets. |
+| [10 — Roadmap](./10-roadmap.md) | Phased delivery plan (Phase 0–6) with exit criteria, open decisions, and risk register. |
 
 ## How this research was done
 
