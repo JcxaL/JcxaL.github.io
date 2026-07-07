@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Source_Sans_3, Doto } from "next/font/google";
 import "./globals.css";
+import "@/styles/tokens.css";
 import ClientLayout from "@/components/ClientLayout";
 
 const geistSans = Geist({
@@ -10,6 +11,18 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+// Signage voice - MTR Myriad register (docs/design/12-brand-signage.md)
+const signage = Source_Sans_3({
+  variable: "--font-signage",
+  subsets: ["latin"],
+});
+
+// Departure-board voice - dot-matrix display face; boards only, never body
+const board = Doto({
+  variable: "--font-board",
   subsets: ["latin"],
 });
 
@@ -100,9 +113,9 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} ${signage.variable} ${board.variable} antialiased min-h-screen`}
         style={{
-          fontFamily: 'var(--font-geist-sans), system-ui, -apple-system, sans-serif',
+          fontFamily: 'var(--font-signage), var(--font-geist-sans), system-ui, -apple-system, sans-serif',
           background: 'linear-gradient(135deg, #0e131f 0%, #38405f 50%, #59546c 100%)',
           position: 'relative',
         }}
