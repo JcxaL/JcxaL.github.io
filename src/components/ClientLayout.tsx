@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -22,6 +23,15 @@ const ScrollProgress = dynamic(() => import("@/components/ScrollProgress"), {
 });
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  // JccL Line routes own their entire viewport: no legacy chrome (cursor,
+  // particles, nav, theme, pt-24 offset). The metro shell replaces this
+  // layout wholesale as the rebuild progresses (docs/design/10-roadmap.md).
+  if (pathname?.startsWith("/station")) {
+    return <main id="main-content">{children}</main>;
+  }
+
   return (
     <ThemeProvider>
       {/* Skip to main content link for accessibility */}

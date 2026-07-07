@@ -5,6 +5,8 @@ import rehypeHighlight from 'rehype-highlight'
 
 const nextConfig: NextConfig = {
   output: 'export',
+  // Also consumed by next/jest: these untranspiled-ESM packages get transformed in tests.
+  transpilePackages: ['gsap', '@gsap/react', 'lenis'],
   trailingSlash: true,
   images: {
     unoptimized: true
