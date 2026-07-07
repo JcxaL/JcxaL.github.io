@@ -26,6 +26,7 @@ two doc generations:
 | [08 — Agent Design Workflow](./08-agent-design-workflow.md) | How agents build and verify by vision + code: seekable timelines, two-tier verification, screenshot manifest, design tokens as machine contract, CI gates. |
 | [09 — Engineering Standards](./09-engineering-standards.md) | Toolchain, animation code architecture, testing strategy, CI/CD conventions, media pipeline, docs standards, budgets. |
 | [10 — Roadmap](./10-roadmap.md) | Phased delivery plan (Phase 0–6) with exit criteria, open decisions, and risk register. |
+| [11 — RedNote References Triage](./11-rednote-references-triage.md) | Owner-supplied 29-item reference report mapped onto the plan: adopted ideas, convergences, and claims to verify. |
 
 ## How this research was done
 
