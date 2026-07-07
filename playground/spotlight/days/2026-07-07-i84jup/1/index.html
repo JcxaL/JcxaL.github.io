@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scroll-Scrubbed Sprites — UI Spotlight Drop 1</title>
+<style>
+  :root{ --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:#07090d; color:#e8eef2; font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed; top:14px; left:14px; z-index:50; background:rgba(20,24,30,0.7); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); color:#e8eef2; text-decoration:none; padding:8px 14px; border-radius:999px;
+    font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,0.4);}
+  .back-link:hover{background:rgba(30,36,44,0.85);}
+
+  .hero{height:78vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 20px;}
+  .hero h1{font-size:clamp(28px,6vw,54px); margin:0 0 12px; background:linear-gradient(90deg,#38bdf8,#818cf8);
+    -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{color:#9aa8b5; max-width:520px; margin:0; font-size:15px;}
+  .scrolldown{margin-top:26px; font-size:12px; color:#6b7885; animation:bob 1.6s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0);} 50%{transform:translateY(6px);}}
+
+  .stage{height:340vh; position:relative;}
+  .sticky{position:sticky; top:0; height:100vh; display:flex; align-items:center; justify-content:center; overflow:hidden;}
+  .rig{display:flex; flex-direction:column; align-items:center; gap:36px;}
+  .sprite-row{display:flex; gap:56px; align-items:flex-end; flex-wrap:wrap; justify-content:center;}
+  .sprite-card{display:flex; flex-direction:column; align-items:center; gap:10px;}
+  .sprite-label{font-size:11px; color:#7f8ea0; text-transform:uppercase; letter-spacing:0.08em;}
+
+  .sprite{ image-rendering:pixelated; background-repeat:no-repeat; }
+  #walker{ width:96px; height:96px; }
+  #loader{ width:80px; height:80px; }
+  #odometer{ width:110px; height:80px; }
+
+  @supports (animation-timeline: scroll()) {
+    .sprite{ animation-name: scrub; animation-timing-function: steps(var(--frames), jump-none);
+      animation-timeline: scroll(root); animation-range: entry 0% cover 100%; }
+  }
+  @keyframes scrub{ from{ background-position-x: 0px; } to{ background-position-x: calc(-1 * var(--scrub-total, 0px)); } }
+
+  #hud{position:fixed; top:16px; right:16px; background:rgba(18,22,28,0.72); border:1px solid rgba(255,255,255,0.12);
+    border-radius:12px; padding:12px 14px; font-size:11.5px; backdrop-filter:blur(10px); z-index:40; min-width:190px;}
+  #hud h3{margin:0 0 8px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:#8b98a8;}
+  #hud .bar{height:6px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden; margin-top:6px;}
+  #hud .fill{height:100%; width:0%; background:linear-gradient(90deg,#38bdf8,#818cf8);}
+  #hud .pct{margin-top:4px; color:#cfe0ea;}
+  @media (max-width:700px){ #hud{display:none;} }
+
+  footer{text-align:center; padding:60px 20px 90px; color:#6b7885; font-size:12px;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div id="hud">
+  <h3>Scroll Progress</h3>
+  <div class="bar"><div class="fill" id="fillBar"></div></div>
+  <div class="pct" id="pctLabel">0%</div>
+</div>
+
+<div class="hero">
+  <h1>Scroll-Scrubbed Sprites</h1>
+  <p>Every frame below is generated on a &lt;canvas&gt; at load time, baked into one sprite strip, then scrubbed frame-by-frame by <code>animation-timeline: scroll()</code> + <code>steps()</code> — no scroll listener, no requestAnimationFrame.</p>
+  <div class="scrolldown">scroll ↓ to scrub</div>
+</div>
+
+<div class="stage">
+  <div class="sticky">
+    <div class="rig">
+      <div class="sprite-row">
+        <div class="sprite-card">
+          <div class="sprite" id="walker"></div>
+          <div class="sprite-label">Walk cycle · 8 frames</div>
+        </div>
+        <div class="sprite-card">
+          <div class="sprite" id="loader"></div>
+          <div class="sprite-label">Spin loader · 12 frames</div>
+        </div>
+        <div class="sprite-card">
+          <div class="sprite" id="odometer"></div>
+          <div class="sprite-label">Digit odometer · 10 frames</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Inspired by Codrops' scroll-driven animation guide + classic CSS steps() sprite technique · UI Spotlight Day 52 · Drop #1</footer>
+
+<script>
+(function(){
+  'use strict';
+
+  function buildSprite(el, frameW, frameH, frames, draw){
+    const canvas = document.createElement('canvas');
+    canvas.width = frameW * frames;
+    canvas.height = frameH;
+    const ctx = canvas.getContext('2d');
+    for(let i=0;i<frames;i++){
+      ctx.save();
+      ctx.translate(i*frameW, 0);
+      draw(ctx, i, frames, frameW, frameH);
+      ctx.restore();
+    }
+    const url = canvas.toDataURL('image/png');
+    el.style.backgroundImage = `url(${url})`;
+    el.style.backgroundSize = `${frameW*frames}px ${frameH}px`;
+    el.style.setProperty('--frames', frames);
+    el.style.setProperty('--scrub-total', `${frameW*(frames-1)}px`);
+  }
+
+  // Walk cycle: simple stick figure, legs/arms swing via sine offset per frame
+  buildSprite(document.getElementById('walker'), 96, 96, 8, (ctx,i,n)=>{
+    const t = i/n * Math.PI*2;
+    const swing = Math.sin(t)*20;
+    const bob = Math.abs(Math.cos(t))*4;
+    ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 5; ctx.lineCap='round';
+    const cx=48, hipY=52-bob, headY=20-bob;
+    ctx.beginPath(); ctx.arc(cx, headY, 10, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, headY+10); ctx.lineTo(cx, hipY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, 34-bob); ctx.lineTo(cx+swing*0.6, 46-bob); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, 34-bob); ctx.lineTo(cx-swing*0.6, 46-bob); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, hipY); ctx.lineTo(cx+swing, hipY+34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, hipY); ctx.lineTo(cx-swing, hipY+34); ctx.stroke();
+  });
+
+  // Spin loader: rotating gradient arc
+  buildSprite(document.getElementById('loader'), 80, 80, 12, (ctx,i,n)=>{
+    const angle = (i/n)*Math.PI*2;
+    ctx.translate(40,40); ctx.rotate(angle);
+    const grad = ctx.createLinearGradient(-30,0,30,0);
+    grad.addColorStop(0,'rgba(129,140,248,0)'); grad.addColorStop(1,'#818cf8');
+    ctx.strokeStyle = grad; ctx.lineWidth = 7; ctx.lineCap='round';
+    ctx.beginPath(); ctx.arc(0,0,28,-Math.PI*0.9, Math.PI*0.7); ctx.stroke();
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath(); ctx.arc(28*Math.cos(Math.PI*0.7),28*Math.sin(Math.PI*0.7),4,0,Math.PI*2); ctx.fill();
+  });
+
+  // Odometer digits 0-9
+  buildSprite(document.getElementById('odometer'), 110, 80, 10, (ctx,i)=>{
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,110,80);
+    ctx.strokeStyle='rgba(56,189,248,0.35)'; ctx.strokeRect(4,4,102,72);
+    ctx.fillStyle = '#38bdf8'; ctx.font = '700 48px system-ui, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(String(i), 55, 42);
+  });
+
+  function onScroll(){
+    const doc = document.documentElement;
+    const max = doc.scrollHeight - doc.clientHeight;
+    const pct = max>0 ? Math.min(100, Math.max(0,(doc.scrollTop||document.body.scrollTop)/max*100)) : 0;
+    document.getElementById('fillBar').style.width = pct.toFixed(1)+'%';
+    document.getElementById('pctLabel').textContent = Math.round(pct)+'%';
+  }
+  document.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Flow Forge — Sankey Diagram Studio</title>
+<style>
+  :root{
+    --bg:#08080f; --panel:rgba(255,255,255,0.05); --panel-strong:rgba(255,255,255,0.09);
+    --border:rgba(255,255,255,0.1); --text:#e8e8f0; --sub:#9494a8; --accent:#8b5cf6;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; overflow:hidden;}
+  #app{display:flex; flex-direction:column; height:100dvh; width:100vw;}
+
+  header{display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(10,10,18,0.9);
+    border-bottom:1px solid var(--border); backdrop-filter:blur(12px); z-index:20; flex-wrap:wrap;}
+  header h1{font-size:15px; margin:0; font-weight:700; letter-spacing:-0.02em; white-space:nowrap;}
+  header h1 span{color:var(--accent);}
+  .spacer{flex:1;}
+  select, button, input[type=text]{
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:7px 10px; font-size:12.5px; font-family:inherit; cursor:pointer;
+  }
+  button:hover, select:hover{background:var(--panel-strong);}
+  button:active{transform:scale(0.96);}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
+  button.primary:hover{background:#7c3aed;}
+  button.icon{padding:7px 9px;}
+
+  main{flex:1; position:relative; display:flex; overflow:hidden; min-height:0;}
+  #canvasWrap{flex:1; position:relative; min-width:0;}
+  svg#sankey{width:100%; height:100%; display:block; touch-action:none;}
+  .node-rect{cursor:grab; transition:filter .15s;}
+  .node-rect:hover{filter:brightness(1.25);}
+  .node-rect.dragging{cursor:grabbing; filter:brightness(1.4);}
+  .node-label{font-size:12px; fill:var(--text); font-weight:600; pointer-events:none;
+    paint-order:stroke; stroke:var(--bg); stroke-width:3px;}
+  .node-value{font-size:9.5px; fill:var(--sub); pointer-events:none; paint-order:stroke; stroke:var(--bg); stroke-width:3px;}
+  .link-path{transition:opacity .15s;}
+  .link-path:hover{opacity:0.85 !important;}
+
+  #tooltip{position:absolute; pointer-events:none; background:rgba(15,15,24,0.95); border:1px solid var(--border);
+    border-radius:8px; padding:7px 10px; font-size:12px; color:var(--text); display:none; z-index:30;
+    box-shadow:0 8px 24px rgba(0,0,0,0.5); white-space:nowrap;}
+
+  #sidePanel{width:340px; max-width:82vw; background:rgba(10,10,18,0.92); border-left:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden; backdrop-filter:blur(12px); flex-shrink:0;}
+  #sidePanel.hidden{display:none;}
+  .panel-section{padding:12px 14px; border-bottom:1px solid var(--border); overflow-y:auto;}
+  .panel-section h2{font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--sub); margin:0 0 8px;}
+  .stat-row{display:flex; justify-content:space-between; font-size:12.5px; padding:3px 0; color:var(--sub);}
+  .stat-row b{color:var(--text); font-weight:600;}
+
+  #flowForm{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;}
+  #flowForm input, #flowForm select{width:100%; font-size:12px; padding:6px 8px;}
+  #flowForm button{grid-column:1/-1;}
+
+  #flowList{flex:1; overflow-y:auto; max-height:220px;}
+  .flow-row{display:flex; align-items:center; gap:6px; font-size:11.5px; padding:5px 6px; border-radius:6px;}
+  .flow-row:hover{background:var(--panel);}
+  .flow-row .fname{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sub);}
+  .flow-row .fval{color:var(--text); font-weight:600; margin-right:2px;}
+  .flow-row button{padding:2px 7px; font-size:11px; line-height:1;}
+
+  #savedList{display:flex; flex-direction:column; gap:5px; max-height:130px; overflow-y:auto;}
+  .saved-item{display:flex; align-items:center; gap:6px; font-size:12px; padding:5px 7px; background:var(--panel);
+    border-radius:7px; cursor:pointer;}
+  .saved-item:hover{background:var(--panel-strong);}
+  .saved-item span{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .saved-item button{padding:2px 6px; font-size:10px;}
+
+  #toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:#1a1a26;
+    border:1px solid var(--border); color:var(--text); padding:9px 18px; border-radius:10px; font-size:13px;
+    opacity:0; pointer-events:none; transition:all .25s; z-index:100; box-shadow:0 8px 30px rgba(0,0,0,0.5);}
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  #mobileToggle{display:none;}
+  @media (max-width: 760px){
+    header h1{font-size:13px;}
+    header select, header button{font-size:11.5px; padding:6px 8px;}
+    #mobileToggle{display:inline-flex;}
+    #sidePanel{position:absolute; right:0; top:0; bottom:0; width:88vw; z-index:25;
+      box-shadow:-10px 0 30px rgba(0,0,0,0.5);}
+    .node-label{font-size:10.5px;}
+    .node-value{font-size:8.5px;}
+  }
+  ::-webkit-scrollbar{width:7px; height:7px;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15); border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Flow<span>Forge</span></h1>
+    <select id="presetSelect" title="Load a preset dataset">
+      <option value="energy">Energy Grid</option>
+      <option value="traffic">Website Traffic</option>
+      <option value="budget">Household Budget</option>
+      <option value="migration">Migration Routes</option>
+    </select>
+    <select id="themeSelect" title="Color theme">
+      <option value="aurora">Aurora</option>
+      <option value="sunset">Sunset</option>
+      <option value="ocean">Ocean</option>
+      <option value="forest">Forest</option>
+      <option value="mono">Mono</option>
+    </select>
+    <div class="spacer"></div>
+    <button id="shareBtn" class="icon" title="Copy shareable link">🔗</button>
+    <button id="pngBtn" class="icon" title="Export PNG">🖼️</button>
+    <button id="svgBtn" class="icon" title="Export SVG">📄</button>
+    <button id="mobileToggle" class="icon" title="Panel">☰</button>
+  </header>
+  <main>
+    <div id="canvasWrap">
+      <svg id="sankey" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="tooltip"></div>
+    </div>
+    <aside id="sidePanel">
+      <div class="panel-section">
+        <h2>Add Flow</h2>
+        <div id="flowForm">
+          <select id="srcInput"></select>
+          <select id="tgtInput"></select>
+          <input id="valInput" type="text" inputmode="numeric" placeholder="Value" value="10">
+          <input id="newNodeName" type="text" placeholder="or type new node name" style="grid-column:1/-1;">
+          <button id="addFlowBtn" class="primary">+ Add Flow</button>
+        </div>
+      </div>
+      <div class="panel-section" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+        <h2>Flows (<span id="flowCount">0</span>)</h2>
+        <div id="flowList"></div>
+      </div>
+      <div class="panel-section">
+        <h2>Stats</h2>
+        <div id="statsBox"></div>
+      </div>
+      <div class="panel-section">
+        <h2>Saved Diagrams</h2>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <input id="saveNameInput" type="text" placeholder="Diagram name" style="flex:1;">
+          <button id="saveBtn">Save</button>
+        </div>
+        <div id="savedList"></div>
+      </div>
+    </aside>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------- Presets ----------
+  const PRESETS = {
+    energy: [
+      ['Coal','Electricity Grid',120],['Gas','Electricity Grid',90],['Solar','Electricity Grid',40],
+      ['Wind','Electricity Grid',55],['Nuclear','Electricity Grid',70],['Hydro','Electricity Grid',35],
+      ['Electricity Grid','Residential',130],['Electricity Grid','Commercial',95],
+      ['Electricity Grid','Industrial',140],['Electricity Grid','Grid Losses',45],
+      ['Residential','Heating',70],['Residential','Appliances',60],
+      ['Commercial','Lighting',40],['Commercial','HVAC',55],
+      ['Industrial','Manufacturing',90],['Industrial','Motors',50]
+    ],
+    traffic: [
+      ['Organic Search','Landing Page',400],['Direct','Landing Page',150],['Social','Landing Page',220],
+      ['Referral','Landing Page',90],['Paid Ads','Landing Page',260],
+      ['Landing Page','Bounce',520],['Landing Page','Product Page',600],
+      ['Product Page','Exit',250],['Product Page','Sign Up',350],
+      ['Sign Up','Free Trial',220],['Sign Up','Paid Conversion',130]
+    ],
+    budget: [
+      ['Income','Rent',1800],['Income','Food',700],['Income','Transport',400],
+      ['Income','Savings',900],['Income','Entertainment',300],['Income','Taxes',1200],
+      ['Savings','Investments',600],['Savings','Emergency Fund',300]
+    ],
+    migration: [
+      ['Mexico','United States',45],['China','United States',30],['India','United States',38],
+      ['Philippines','United States',20],['Vietnam','United States',15],
+      ['United States','California',50],['United States','Texas',40],
+      ['United States','New York',30],['United States','Florida',28]
+    ]
+  };
+
+  const THEMES = {
+    aurora: ['#7c3aed','#06b6d4','#f472b6','#34d399','#fbbf24','#818cf8','#f97316','#38bdf8'],
+    sunset: ['#f97316','#ef4444','#f59e0b','#ec4899','#a855f7','#fb7185','#facc15','#fb923c'],
+    ocean:  ['#0ea5e9','#06b6d4','#14b8a6','#3b82f6','#818cf8','#22d3ee','#67e8f9','#38bdf8'],
+    forest: ['#22c55e','#84cc16','#10b981','#65a30d','#facc15','#4ade80','#a3e635','#2dd4bf'],
+    mono:   ['#94a3b8','#64748b','#475569','#cbd5e1','#e2e8f0','#7c8ba6','#5b6b85','#aab4c4']
+  };
+
+  const AUTOSAVE_KEY = 'flowForge_autosave_v1';
+  const SAVED_KEY = 'flowForge_saved_v1';
+
+  // ---------- State ----------
+  let state = {
+    theme: 'aurora',
+    links: [],       // {source, target, value}
+    order: {},       // nodeId -> manual order rank within its column
+  };
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('sankey');
+  const tooltip = document.getElementById('tooltip');
+  const canvasWrap = document.getElementById('canvasWrap');
+
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._h);
+    toast._h = setTimeout(()=>t.classList.remove('show'), 1800);
+  }
+
+  function nodeColor(id){
+    const palette = THEMES[state.theme];
+    let h = 0;
+    for(let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
+  }
+
+  // ---------- Graph computation ----------
+  function computeGraph(){
+    const nodes = {};
+    const ids = [];
+    function ensure(id){
+      if(!nodes[id]){ nodes[id] = {id, depth:0, incoming:[], outgoing:[]}; ids.push(id); }
+      return nodes[id];
+    }
+    state.links.forEach(l=>{
+      const s = ensure(l.source), t = ensure(l.target);
+      s.outgoing.push(l); t.incoming.push(l);
+    });
+
+    // longest-path layering (bounded iterations to tolerate cycles)
+    for(let iter=0; iter<ids.length+1; iter++){
+      let changed = false;
+      state.links.forEach(l=>{
+        const d = nodes[l.source].depth + 1;
+        if(d > nodes[l.target].depth && d < ids.length + 1){
+          nodes[l.target].depth = d; changed = true;
+        }
+      });
+      if(!changed) break;
+    }
+
+    const maxDepth = ids.length ? Math.max(...ids.map(id=>nodes[id].depth)) : 0;
+    const columns = Array.from({length:maxDepth+1}, ()=>[]);
+    ids.forEach(id=> columns[nodes[id].depth].push(id));
+
+    columns.forEach(col=>{
+      col.forEach((id,i)=>{ if(!(id in state.order)) state.order[id] = i; });
+      col.sort((a,b)=> (state.order[a] ?? 0) - (state.order[b] ?? 0));
+      col.forEach((id,i)=> state.order[id] = i);
+    });
+
+    ids.forEach(id=>{
+      const n = nodes[id];
+      const inSum = n.incoming.reduce((s,l)=>s+l.value,0);
+      const outSum = n.outgoing.reduce((s,l)=>s+l.value,0);
+      n.value = Math.max(inSum, outSum) || 1;
+    });
+
+    return {nodes, columns, ids};
+  }
+
+  // ---------- Layout ----------
+  let layoutCache = null;
+
+  function layout(){
+    const graph = computeGraph();
+    const rect = canvasWrap.getBoundingClientRect();
+    const width = Math.max(rect.width, 320);
+    const height = Math.max(rect.height, 320);
+    const nodeWidth = 16;
+    const nodePadding = 16;
+    const marginX = 90;
+    const marginY = 24;
+    const maxCol = graph.columns.length - 1;
+    const colGap = maxCol > 0 ? (width - marginX*2 - nodeWidth) / maxCol : 0;
+
+    let maxColumnUnits = 0;
+    graph.columns.forEach(col=>{
+      const total = col.reduce((s,id)=>s+graph.nodes[id].value,0) + nodePadding*Math.max(0,col.length-1);
+      maxColumnUnits = Math.max(maxColumnUnits, total);
+    });
+    const availableH = height - marginY*2;
+    const valueScale = maxColumnUnits > 0 ? Math.min(availableH / maxColumnUnits, 4) : 1;
+
+    graph.columns.forEach((col, ci)=>{
+      const colTotal = col.reduce((s,id)=>s+graph.nodes[id].value,0)*valueScale + nodePadding*Math.max(0,col.length-1);
+      let y = marginY + (availableH - colTotal)/2;
+      col.forEach(id=>{
+        const n = graph.nodes[id];
+        n.x = marginX + ci*colGap;
+        n.h = Math.max(n.value*valueScale, 4);
+        n.y = y;
+        n.color = nodeColor(id);
+        y += n.h + nodePadding;
+      });
+    });
+
+    // link vertical offsets, ordered by target/source column order for tidier crossing
+    graph.ids.forEach(id=>{
+      const n = graph.nodes[id];
+      n.outgoing.sort((a,b)=> graph.nodes[a.target].y - graph.nodes[b.target].y);
+      n.incoming.sort((a,b)=> graph.nodes[a.source].y - graph.nodes[b.source].y);
+      let so = n.y;
+      n.outgoing.forEach(l=>{ l._sy = so; l._sw = l.value*valueScale; so += l._sw; });
+      let ti = n.y;
+      n.incoming.forEach(l=>{ l._ty = ti; l._tw = l.value*valueScale; ti += l._tw; });
+    });
+
+    layoutCache = {graph, width, height, nodeWidth, colGap};
+    return layoutCache;
+  }
+
+  function linkPath(l, nodeWidth){
+    const g = layoutCache.graph;
+    const x0 = g.nodes[l.source].x + nodeWidth;
+    const x1 = g.nodes[l.target].x;
+    const y0 = l._sy + l._sw/2;
+    const y1 = l._ty + l._tw/2;
+    const xm = (x0+x1)/2;
+    return `M${x0},${y0} C${xm},${y0} ${xm},${y1} ${x1},${y1}`;
+  }
+
+  // ---------- Rendering ----------
+  let dragState = null;
+
+  function render(){
+    const {graph, width, height, nodeWidth} = layout();
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.innerHTML = '';
+
+    const defs = document.createElementNS(svgNS,'defs');
+    svg.appendChild(defs);
+
+    // links
+    const linkLayer = document.createElementNS(svgNS,'g');
+    linkLayer.setAttribute('class','link-layer');
+    svg.appendChild(linkLayer);
+
+    state.links.forEach((l, idx)=>{
+      const sColor = graph.nodes[l.source].color;
+      const tColor = graph.nodes[l.target].color;
+      const gradId = `grad-${idx}`;
+      const grad = document.createElementNS(svgNS,'linearGradient');
+      grad.setAttribute('id', gradId);
+      grad.setAttribute('gradientUnits','userSpaceOnUse');
+      grad.setAttribute('x1', graph.nodes[l.source].x);
+      grad.setAttribute('x2', graph.nodes[l.target].x);
+      grad.innerHTML = `<stop offset="0" stop-color="${sColor}" stop-opacity="0.55"/><stop offset="1" stop-color="${tColor}" stop-opacity="0.55"/>`;
+      defs.appendChild(grad);
+
+      const path = document.createElementNS(svgNS,'path');
+      path.setAttribute('class','link-path');
+      path.setAttribute('d', linkPath(l, nodeWidth));
+      path.setAttribute('fill','none');
+      path.setAttribute('stroke', `url(#${gradId})`);
+      path.setAttribute('stroke-width', Math.max(l._sw,1));
+      path.style.opacity = 0.7;
+      path.addEventListener('pointerenter', (e)=>{
+        tooltip.style.display='block';
+        tooltip.textContent = `${l.source} → ${l.target}: ${l.value}`;
+      });
+      path.addEventListener('pointermove', (e)=>{
+        const r = canvasWrap.getBoundingClientRect();
+        tooltip.style.left = (e.clientX - r.left + 12) + 'px';
+        tooltip.style.top = (e.clientY - r.top + 8) + 'px';
+      });
+      path.addEventListener('pointerleave', ()=> tooltip.style.display='none');
+      linkLayer.appendChild(path);
+    });
+
+    // nodes
+    const nodeLayer = document.createElementNS(svgNS,'g');
+    nodeLayer.setAttribute('class','node-layer');
+    svg.appendChild(nodeLayer);
+
+    graph.ids.forEach(id=>{
+      const n = graph.nodes[id];
+      const g = document.createElementNS(svgNS,'g');
+      g.setAttribute('transform', `translate(${n.x},${n.y})`);
+
+      const rect = document.createElementNS(svgNS,'rect');
+      rect.setAttribute('class','node-rect');
+      rect.setAttribute('width', nodeWidth);
+      rect.setAttribute('height', n.h);
+      rect.setAttribute('rx', 3);
+      rect.setAttribute('fill', n.color);
+      rect.dataset.id = id;
+      rect.addEventListener('pointerdown', (e)=> startDrag(e, id));
+      rect.addEventListener('pointerenter', ()=>{
+        tooltip.style.display='block';
+        tooltip.textContent = `${id}: ${Math.round(n.value)}`;
+      });
+      rect.addEventListener('pointermove', (e)=>{
+        const r = canvasWrap.getBoundingClientRect();
+        tooltip.style.left = (e.clientX - r.left + 12) + 'px';
+        tooltip.style.top = (e.clientY - r.top + 8) + 'px';
+      });
+      rect.addEventListener('pointerleave', ()=>{ if(!dragState) tooltip.style.display='none'; });
+      g.appendChild(rect);
+
+      const label = document.createElementNS(svgNS,'text');
+      label.setAttribute('class','node-label');
+      const onRight = n.x < width/2;
+      label.setAttribute('x', onRight ? nodeWidth+6 : -6);
+      label.setAttribute('y', n.h/2 - 4);
+      label.setAttribute('text-anchor', onRight ? 'start':'end');
+      label.textContent = id;
+      g.appendChild(label);
+
+      const valueLabel = document.createElementNS(svgNS,'text');
+      valueLabel.setAttribute('class','node-value');
+      valueLabel.setAttribute('x', onRight ? nodeWidth+6 : -6);
+      valueLabel.setAttribute('y', n.h/2 + 9);
+      valueLabel.setAttribute('text-anchor', onRight ? 'start':'end');
+      valueLabel.textContent = Math.round(n.value);
+      g.appendChild(valueLabel);
+
+      nodeLayer.appendChild(g);
+    });
+
+    updateFlowList();
+    updateStats();
+    updateNodeSelects();
+    autosave();
+  }
+
+  function startDrag(e, id){
+    e.preventDefault();
+    const g = layoutCache.graph;
+    const n = g.nodes[id];
+    const col = g.columns[n.depth];
+    dragState = {id, col, startClientY:e.clientY, startY:n.y};
+    e.target.setPointerCapture(e.pointerId);
+    e.target.classList.add('dragging');
+
+    function onMove(ev){
+      const rect = canvasWrap.getBoundingClientRect();
+      const scaleY = layoutCache.height / rect.height;
+      const dy = (ev.clientY - dragState.startClientY) * scaleY;
+      n.y = dragState.startY + dy;
+      // reorder based on new center position relative to siblings
+      const others = col.filter(cid=>cid!==id).map(cid=>({cid, center:g.nodes[cid].y + g.nodes[cid].h/2}));
+      others.sort((a,b)=>a.center-b.center);
+      const myCenter = n.y + n.h/2;
+      let rank = 0;
+      others.forEach(o=>{ if(o.center < myCenter) rank++; });
+      const newOrder = others.map(o=>o.cid);
+      newOrder.splice(rank, 0, id);
+      newOrder.forEach((cid, i)=> state.order[cid] = i);
+      render();
+      // re-grab the freshly rendered rect for continued capture-free dragging
+      dragState.col = layoutCache.graph.columns[layoutCache.graph.nodes[id].depth];
+    }
+    function onUp(ev){
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      dragState = null;
+      render();
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  // ---------- Side panel ----------
+  function updateFlowList(){
+    const list = document.getElementById('flowList');
+    document.getElementById('flowCount').textContent = state.links.length;
+    list.innerHTML = '';
+    state.links.forEach((l, i)=>{
+      const row = document.createElement('div');
+      row.className = 'flow-row';
+      row.innerHTML = `<span class="fname">${l.source} → ${l.target}</span><span class="fval">${l.value}</span>`;
+      const del = document.createElement('button');
+      del.textContent = '✕';
+      del.addEventListener('click', ()=>{
+        state.links.splice(i,1);
+        render();
+      });
+      row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  function updateStats(){
+    const box = document.getElementById('statsBox');
+    const g = layoutCache.graph;
+    const total = state.links.reduce((s,l)=>s+l.value,0);
+    box.innerHTML = `
+      <div class="stat-row"><span>Nodes</span><b>${g.ids.length}</b></div>
+      <div class="stat-row"><span>Flows</span><b>${state.links.length}</b></div>
+      <div class="stat-row"><span>Total value</span><b>${Math.round(total)}</b></div>
+      <div class="stat-row"><span>Columns</span><b>${g.columns.length}</b></div>
+    `;
+  }
+
+  function updateNodeSelects(){
+    const g = layoutCache.graph;
+    const src = document.getElementById('srcInput');
+    const tgt = document.getElementById('tgtInput');
+    const ids = g.ids.slice().sort();
+    [src, tgt].forEach(sel=>{
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">(select node)</option>' + ids.map(id=>`<option value="${escAttr(id)}">${escHtml(id)}</option>`).join('');
+      if(ids.includes(prev)) sel.value = prev;
+    });
+  }
+
+  function escHtml(s){ return s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+  function escAttr(s){ return escHtml(s).replace(/"/g,'&quot;'); }
+
+  // ---------- Persistence ----------
+  function autosave(){
+    try{ localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  function loadAutosave(){
+    try{
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if(raw){ const parsed = JSON.parse(raw);
+        if(parsed && Array.isArray(parsed.links) && parsed.links.length){ state = parsed; return true; }
+      }
+    }catch(e){}
+    return false;
+  }
+
+  function loadPreset(name){
+    state.links = PRESETS[name].map(([source,target,value])=>({source,target,value}));
+    state.order = {};
+    render();
+  }
+
+  function getSavedList(){
+    try{ return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); }catch(e){ return []; }
+  }
+  function setSavedList(arr){
+    try{ localStorage.setItem(SAVED_KEY, JSON.stringify(arr)); }catch(e){}
+  }
+  function renderSavedList(){
+    const list = document.getElementById('savedList');
+    const saved = getSavedList();
+    list.innerHTML = '';
+    if(!saved.length){ list.innerHTML = '<div style="font-size:11.5px;color:var(--sub);">No saved diagrams yet.</div>'; return; }
+    saved.forEach((item, i)=>{
+      const row = document.createElement('div');
+      row.className = 'saved-item';
+      row.innerHTML = `<span>${escHtml(item.name)}</span>`;
+      const load = document.createElement('button');
+      load.textContent = 'Load';
+      load.addEventListener('click', ()=>{
+        state = JSON.parse(JSON.stringify(item.state));
+        render();
+        toast(`Loaded "${item.name}"`);
+      });
+      const del = document.createElement('button');
+      del.textContent = '✕';
+      del.addEventListener('click', ()=>{
+        const arr = getSavedList(); arr.splice(i,1); setSavedList(arr); renderSavedList();
+      });
+      row.appendChild(load); row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  // ---------- URL hash sharing ----------
+  function encodeShare(){
+    try{
+      return btoa(encodeURIComponent(JSON.stringify({links:state.links, theme:state.theme, order:state.order})));
+    }catch(e){ return null; }
+  }
+  function decodeShare(hash){
+    try{
+      const json = decodeURIComponent(atob(hash));
+      const parsed = JSON.parse(json);
+      if(parsed && Array.isArray(parsed.links)) return parsed;
+    }catch(e){}
+    return null;
+  }
+
+  // ---------- Export ----------
+  function svgString(){
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', svgNS);
+    clone.style.background = '#08080f';
+    const rectBg = document.createElementNS(svgNS,'rect');
+    rectBg.setAttribute('x',0); rectBg.setAttribute('y',0);
+    rectBg.setAttribute('width', clone.getAttribute('viewBox').split(' ')[2]);
+    rectBg.setAttribute('height', clone.getAttribute('viewBox').split(' ')[3]);
+    rectBg.setAttribute('fill', '#08080f');
+    clone.insertBefore(rectBg, clone.firstChild);
+    return new XMLSerializer().serializeToString(clone);
+  }
+
+  function exportSVG(){
+    const blob = new Blob([svgString()], {type:'image/svg+xml'});
+    downloadBlob(blob, `flowforge-${Date.now()}.svg`);
+    toast('SVG exported');
+  }
+
+  function exportPNG(){
+    const str = svgString();
+    const vb = svg.getAttribute('viewBox').split(' ').map(Number);
+    const img = new Image();
+    const svgBlob = new Blob([str], {type:'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(svgBlob);
+    img.onload = function(){
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = vb[2]*scale; canvas.height = vb[3]*scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#08080f';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob=>{
+        if(blob) downloadBlob(blob, `flowforge-${Date.now()}.png`);
+        toast('PNG exported');
+      }, 'image/png');
+    };
+    img.onerror = function(){ toast('PNG export failed'); URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+
+  function downloadBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  }
+
+  // ---------- Wire up UI ----------
+  document.getElementById('presetSelect').addEventListener('change', (e)=>{
+    loadPreset(e.target.value);
+  });
+
+  document.getElementById('themeSelect').addEventListener('change', (e)=>{
+    state.theme = e.target.value;
+    render();
+  });
+
+  document.getElementById('addFlowBtn').addEventListener('click', ()=>{
+    const srcSel = document.getElementById('srcInput');
+    const tgtSel = document.getElementById('tgtInput');
+    const newName = document.getElementById('newNodeName').value.trim();
+    const val = parseFloat(document.getElementById('valInput').value);
+    let source = srcSel.value;
+    let target = tgtSel.value;
+    if(newName && !source) source = newName;
+    else if(newName && !target) target = newName;
+    if(!source || !target || source===target || !(val>0)){
+      toast('Pick source, target, and a positive value');
+      return;
+    }
+    state.links.push({source, target, value: val});
+    document.getElementById('newNodeName').value = '';
+    render();
+    toast('Flow added');
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', ()=>{
+    const name = document.getElementById('saveNameInput').value.trim() || `Diagram ${new Date().toISOString().slice(0,16)}`;
+    const arr = getSavedList();
+    arr.push({name, state: JSON.parse(JSON.stringify(state))});
+    setSavedList(arr);
+    document.getElementById('saveNameInput').value = '';
+    renderSavedList();
+    toast(`Saved "${name}"`);
+  });
+
+  document.getElementById('shareBtn').addEventListener('click', ()=>{
+    const hash = encodeShare();
+    if(!hash){ toast('Could not build link'); return; }
+    const url = location.origin + location.pathname + '#' + hash;
+    location.hash = hash;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(()=>toast('Link copied to clipboard')).catch(()=>toast('Link ready in address bar'));
+    } else {
+      toast('Link ready in address bar');
+    }
+  });
+
+  document.getElementById('pngBtn').addEventListener('click', exportPNG);
+  document.getElementById('svgBtn').addEventListener('click', exportSVG);
+
+  document.getElementById('mobileToggle').addEventListener('click', ()=>{
+    document.getElementById('sidePanel').classList.toggle('hidden');
+  });
+
+  window.addEventListener('resize', ()=> render());
+
+  // ---------- Boot ----------
+  function boot(){
+    let loaded = false;
+    if(location.hash.length > 1){
+      const shared = decodeShare(location.hash.slice(1));
+      if(shared){
+        state.links = shared.links;
+        state.theme = shared.theme || 'aurora';
+        state.order = shared.order || {};
+        loaded = true;
+      }
+    }
+    if(!loaded) loaded = loadAutosave();
+    if(!loaded) loadPreset('energy');
+
+    document.getElementById('themeSelect').value = state.theme;
+    renderSavedList();
+    render();
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
