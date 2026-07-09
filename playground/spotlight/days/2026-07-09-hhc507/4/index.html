@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accessible Swipe Actions — UI Spotlight #4</title>
+<style>
+  :root{ --accent:#fbbf24; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; min-height:100vh; background:#140f04; color:#fff6e0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    padding:70px 18px 40px;
+  }
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20;
+    background:rgba(20,15,4,0.7); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); border-radius:999px;
+    padding:8px 14px; font-size:12px; color:#fff; text-decoration:none;
+  }
+  main{max-width:520px; margin:0 auto;}
+  h1{font-size:clamp(22px,5vw,30px); margin:6px 0 6px; color:var(--accent);}
+  p.sub{color:#e3c98f; font-size:13px; max-width:60ch; line-height:1.5;}
+  .note{font-size:11px; color:#a8894a; margin-top:8px;}
+
+  .list{ margin-top:22px; display:flex; flex-direction:column; gap:10px; }
+  .row{
+    position:relative; border-radius:14px; overflow:hidden; border:1px solid rgba(255,255,255,0.1);
+    background:#1c1608;
+  }
+  .actions{
+    position:absolute; inset:0; display:flex; justify-content:flex-end; align-items:stretch;
+  }
+  .actions button{
+    border:none; width:76px; font-size:12px; font-weight:700; color:#140f04; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+  }
+  .actions .archive{ background:#fbbf24; }
+  .actions .delete{ background:#f87171; }
+
+  .front{
+    position:relative; display:flex; align-items:center; gap:12px; padding:14px 16px;
+    background:#1c1608; touch-action:pan-y; user-select:none;
+    transform:translateX(0px);
+    transition:transform 0.28s cubic-bezier(.2,.8,.3,1);
+  }
+  .front.dragging{ transition:none; }
+  .avatar{
+    width:38px; height:38px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center; font-weight:700; color:#140f04;
+  }
+  .front .body{ flex:1; min-width:0; }
+  .front .name{ font-size:13.5px; font-weight:700; }
+  .front .preview{ font-size:12px; color:#c9ac6d; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .kebab{
+    border:none; background:transparent; color:#c9ac6d; font-size:18px; cursor:pointer;
+    padding:6px 8px; border-radius:8px; flex:none;
+  }
+  .kebab:hover{ background:rgba(255,255,255,0.08); color:#fff; }
+  /* portaled to <body> (not nested in .row) so it isn't clipped by the row's overflow:hidden,
+     which is required to keep the swipe-revealed actions contained */
+  .kebab-menu{
+    position:fixed; z-index:50;
+    background:#241b0a; border:1px solid rgba(255,255,255,0.14); border-radius:10px;
+    padding:6px; display:none; flex-direction:column; min-width:130px;
+    box-shadow:0 12px 30px rgba(0,0,0,0.45);
+  }
+  .kebab-menu.open{ display:flex; }
+  .kebab-menu button{
+    border:none; background:transparent; color:#fff6e0; text-align:left; font-size:12.5px;
+    padding:8px 10px; border-radius:7px; cursor:pointer;
+  }
+  .kebab-menu button:hover{ background:rgba(255,255,255,0.08); }
+
+  .undo-toast{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+    background:#241b0a; border:1px solid rgba(255,255,255,0.16); border-radius:12px;
+    padding:10px 14px; font-size:12.5px; display:flex; align-items:center; gap:12px;
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+  }
+  .undo-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+  .undo-toast button{ background:none; border:none; color:var(--accent); font-weight:700; font-size:12.5px; cursor:pointer; }
+
+  footer.credit{ max-width:520px; margin:26px auto 0; font-size:10px; color:#8a7340; }
+</style>
+</head>
+<body>
+<a class="back-link" href="../">← All 5 drops</a>
+<main>
+  <h1>Accessible Swipe-to-Reveal Actions</h1>
+  <p class="sub">Drag any row left (mouse or touch) to reveal archive/delete actions, Mail-app style. The <strong>same actions are always reachable via the ⋮ menu</strong> — the gesture is a shortcut, never the only path, so keyboard and non-pointer users aren't locked out.</p>
+  <p class="note">Try dragging with a mouse too — this uses Pointer Events, not touch-only listeners.</p>
+
+  <div class="list" id="list"></div>
+</main>
+
+<div class="undo-toast" id="undoToast">
+  <span id="undoMsg"></span>
+  <button id="undoBtn">UNDO</button>
+</div>
+
+<footer class="credit">Inspired by argab/swipe · UI Spotlight Day 54 · Drop #4</footer>
+
+<script>
+(function(){
+  var data = [
+    {id:1, name:'Priya Natarajan', preview:'Re: Q3 roadmap review — can we push to Thursday?', color:'#38bdf8'},
+    {id:2, name:'Design Systems', preview:'New component tokens shipped to the shared library', color:'#a78bfa'},
+    {id:3, name:'Marcus Webb', preview:'Signed off on the contract, see attached PDF', color:'#4ade80'},
+    {id:4, name:'Ferrous CI', preview:'Build #4021 passed — 12 tests, 0 failures', color:'#f87171'}
+  ];
+
+  var list = document.getElementById('list');
+  var REVEAL = 152; // px of actions width
+
+  data.forEach(function(item){
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.dataset.id = item.id;
+    row.innerHTML =
+      '<div class="actions">' +
+        '<button class="archive" data-action="archive">📥<span>Archive</span></button>' +
+        '<button class="delete" data-action="delete">🗑️<span>Delete</span></button>' +
+      '</div>' +
+      '<div class="front" tabindex="0">' +
+        '<div class="avatar" style="background:' + item.color + '">' + item.name[0] + '</div>' +
+        '<div class="body"><div class="name"></div><div class="preview"></div></div>' +
+        '<button class="kebab" aria-haspopup="true" aria-expanded="false">⋮</button>' +
+      '</div>';
+    row.querySelector('.name').textContent = item.name;
+    row.querySelector('.preview').textContent = item.preview;
+    list.appendChild(row);
+    wireRow(row, item);
+  });
+
+  // single shared menu, portaled to <body> so it's never clipped by a row's overflow:hidden
+  var sharedMenu = document.createElement('div');
+  sharedMenu.className = 'kebab-menu';
+  sharedMenu.innerHTML =
+    '<button data-action="archive">📥 Archive</button>' +
+    '<button data-action="delete">🗑️ Delete</button>';
+  document.body.appendChild(sharedMenu);
+  var menuOwner = null; // {row, item, kebab}
+
+  function closeMenu(){
+    sharedMenu.classList.remove('open');
+    if(menuOwner) menuOwner.kebab.setAttribute('aria-expanded', 'false');
+    menuOwner = null;
+  }
+  document.addEventListener('click', function(e){
+    if(sharedMenu.contains(e.target)) return;
+    if(e.target.closest && e.target.closest('.kebab')) return;
+    closeMenu();
+  });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeMenu(); });
+
+  sharedMenu.querySelectorAll('[data-action]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if(!menuOwner) return;
+      var owner = menuOwner;
+      closeMenu();
+      performAction(owner.row, owner.item, btn.getAttribute('data-action'));
+    });
+  });
+
+  function wireRow(row, item){
+    var front = row.querySelector('.front');
+    var kebab = row.querySelector('.kebab');
+    var origin = null, dx = 0, dragging = false, open = false;
+
+    front.addEventListener('pointerdown', function(e){
+      if(e.target.closest('.kebab')) return;
+      origin = {x:e.clientX, y:e.clientY};
+      dragging = true;
+      front.classList.add('dragging');
+      front.setPointerCapture(e.pointerId);
+    });
+    front.addEventListener('pointermove', function(e){
+      if(!dragging) return;
+      var diffX = e.clientX - origin.x;
+      var diffY = e.clientY - origin.y;
+      if(Math.abs(diffY) > Math.abs(diffX) * 1.3) return; // vertical scroll intent, ignore
+      dx = Math.max(-REVEAL - 20, Math.min(20, diffX + (open ? -REVEAL : 0)));
+      front.style.transform = 'translateX(' + dx + 'px)';
+    });
+    function endDrag(){
+      if(!dragging) return;
+      dragging = false;
+      front.classList.remove('dragging');
+      var threshold = -REVEAL * 0.45;
+      if(dx < threshold){ setOpen(true); } else { setOpen(false); }
+    }
+    front.addEventListener('pointerup', endDrag);
+    front.addEventListener('pointercancel', endDrag);
+
+    function setOpen(v){
+      open = v;
+      front.style.transform = 'translateX(' + (v ? -REVEAL : 0) + 'px)';
+    }
+
+    kebab.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(menuOwner && menuOwner.row === row){ closeMenu(); return; }
+      var rect = kebab.getBoundingClientRect();
+      sharedMenu.style.top = (rect.bottom + 6) + 'px';
+      sharedMenu.style.left = Math.max(8, rect.right - 130) + 'px';
+      sharedMenu.classList.add('open');
+      kebab.setAttribute('aria-expanded', 'true');
+      menuOwner = {row:row, item:item, kebab:kebab};
+    });
+  }
+
+  var undoToast = document.getElementById('undoToast');
+  var undoMsg = document.getElementById('undoMsg');
+  var undoBtn = document.getElementById('undoBtn');
+  var lastAction = null;
+
+  function performAction(row, item, action){
+    row.style.transition = 'opacity .25s, max-height .25s, margin .25s';
+    row.style.maxHeight = row.offsetHeight + 'px';
+    requestAnimationFrame(function(){
+      row.style.opacity = '0';
+      row.style.maxHeight = '0px';
+      row.style.marginBottom = '0px';
+    });
+    var hideTimer = setTimeout(function(){ row.style.display = 'none'; }, 260);
+
+    lastAction = {row:row, action:action, hideTimer:hideTimer};
+    undoMsg.textContent = item.name + (action==='archive' ? ' archived' : ' deleted');
+    undoToast.classList.add('show');
+    clearTimeout(undoToast._t);
+    undoToast._t = setTimeout(function(){ undoToast.classList.remove('show'); }, 3200);
+  }
+
+  undoBtn.addEventListener('click', function(){
+    if(!lastAction) return;
+    var row = lastAction.row;
+    clearTimeout(lastAction.hideTimer);
+    row.style.display = '';
+    row.style.opacity = '1';
+    row.style.maxHeight = '';
+    row.style.marginBottom = '';
+    row.querySelector('.front').style.transform = 'translateX(0px)';
+    undoToast.classList.remove('show');
+    lastAction = null;
+  });
+})();
+</script>
+</body>
+</html>

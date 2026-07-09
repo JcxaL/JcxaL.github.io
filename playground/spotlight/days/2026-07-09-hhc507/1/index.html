@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starting-Style Toasts — UI Spotlight #1</title>
+<style>
+  :root{ --accent:#38bdf8; --dur:0.4s; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; min-height:100vh; background:#050b12; color:#eaf6ff;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    padding:70px 18px 40px;
+  }
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20;
+    background:rgba(5,11,18,0.7); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); border-radius:999px;
+    padding:8px 14px; font-size:12px; color:#fff; text-decoration:none;
+  }
+  main{max-width:760px; margin:0 auto;}
+  h1{font-size:clamp(22px,5vw,30px); margin:6px 0 6px; color:var(--accent);}
+  p.sub{color:#8fc7e0; font-size:13px; max-width:60ch; line-height:1.5;}
+
+  .debug{
+    position:fixed; top:14px; right:14px; z-index:20; width:190px;
+    background:rgba(10,18,28,0.75); backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:12px;
+    font-size:11px;
+  }
+  .debug h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:#7fa9c2;}
+  .debug .row{display:flex; justify-content:space-between; margin-bottom:6px;}
+  .debug input[type=range]{width:100%; accent-color:var(--accent);}
+  @media (max-width:640px){ .debug{ display:none; } }
+
+  .spawn-row{display:flex; gap:10px; flex-wrap:wrap; margin:16px 0 26px;}
+  button.spawn{
+    border:1px solid rgba(255,255,255,0.16); background:rgba(255,255,255,0.05); color:#eaf6ff;
+    border-radius:10px; padding:10px 16px; font-size:13px; cursor:pointer; font-weight:600;
+  }
+  button.spawn:hover{ background:rgba(255,255,255,0.12); }
+  button.spawn.success{ border-color:rgba(74,222,128,0.4); color:#4ade80; }
+  button.spawn.error{ border-color:rgba(248,113,113,0.4); color:#f87171; }
+  button.spawn.info{ border-color:rgba(56,189,248,0.4); color:var(--accent); }
+
+  .stack{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column-reverse; gap:10px; z-index:30;
+    width:min(360px, 90vw);
+  }
+  .toast{
+    display:flex; align-items:center; gap:10px;
+    background:rgba(15,23,34,0.92); border:1px solid rgba(255,255,255,0.14);
+    border-radius:14px; padding:12px 14px; box-shadow:0 10px 30px rgba(0,0,0,0.4);
+
+    opacity:1; transform:translateY(0) scale(1);
+    transition:
+      opacity var(--dur) ease,
+      transform var(--dur) cubic-bezier(.2,.9,.3,1.3),
+      display var(--dur) allow-discrete,
+      overlay var(--dur) allow-discrete;
+  }
+  @starting-style{
+    .toast{ opacity:0; transform:translateY(24px) scale(0.9); }
+  }
+  .toast.leaving{
+    opacity:0; transform:translateY(-14px) scale(0.92);
+    display:none;
+  }
+  .toast .dot{width:9px; height:9px; border-radius:50%; flex:none;}
+  .toast.success .dot{ background:#4ade80; }
+  .toast.error .dot{ background:#f87171; }
+  .toast.info .dot{ background:var(--accent); }
+  .toast .msg{ font-size:13px; flex:1; }
+  .toast .x{
+    border:none; background:transparent; color:#8fa4b8; cursor:pointer; font-size:15px;
+    padding:2px 6px; border-radius:6px;
+  }
+  .toast .x:hover{ background:rgba(255,255,255,0.1); color:#fff; }
+
+  footer.credit{ max-width:760px; margin:26px auto 0; font-size:10px; color:#5f8aa3; }
+</style>
+</head>
+<body>
+<a class="back-link" href="../">← All 5 drops</a>
+<main>
+  <h1>Starting-Style Toast Choreography</h1>
+  <p class="sub">Zero-JS-animation toasts. The CSS <code>@starting-style</code> at-rule plus <code>transition-behavior: allow-discrete</code> let a toast animate in the instant it's added to the DOM, and animate <em>out</em> before <code>display:none</code> actually removes it — no animation library, no manual class-timing hacks.</p>
+
+  <div class="spawn-row">
+    <button class="spawn success" data-type="success">✓ Spawn success</button>
+    <button class="spawn info" data-type="info">ⓘ Spawn info</button>
+    <button class="spawn error" data-type="error">✕ Spawn error</button>
+  </div>
+
+  <div class="stack" id="stack"></div>
+</main>
+
+<div class="debug">
+  <h3>Tuning</h3>
+  <div class="row"><span>Duration</span><output id="durVal">0.40s</output></div>
+  <input type="range" id="dur" min="0.15" max="1" step="0.05" value="0.4">
+  <div class="row" style="margin-top:8px;"><span>Auto-dismiss</span><output id="autoVal">3.0s</output></div>
+  <input type="range" id="autoDismiss" min="1" max="6" step="0.5" value="3">
+</div>
+
+<footer class="credit">Inspired by loke.dev — CSS @starting-style discrete transitions · UI Spotlight Day 54 · Drop #1</footer>
+
+<script>
+(function(){
+  var stack = document.getElementById('stack');
+  var msgs = {
+    success: ['Saved successfully', 'Changes published', 'File uploaded'],
+    info: ['New update available', 'Sync complete', 'Reminder: standup in 5m'],
+    error: ['Could not save file', 'Network request failed', 'Invalid input']
+  };
+  var autoDismissSec = 3;
+
+  document.querySelectorAll('.spawn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      spawn(btn.getAttribute('data-type'));
+    });
+  });
+
+  function spawn(type){
+    var list = msgs[type];
+    var text = list[Math.floor(Math.random()*list.length)];
+    var el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.innerHTML = '<span class="dot"></span><span class="msg"></span><button class="x" aria-label="Dismiss">✕</button>';
+    el.querySelector('.msg').textContent = text;
+    stack.appendChild(el);
+
+    var timer = setTimeout(function(){ dismiss(el); }, autoDismissSec*1000);
+    el.querySelector('.x').addEventListener('click', function(){
+      clearTimeout(timer);
+      dismiss(el);
+    });
+  }
+
+  function dismiss(el){
+    el.classList.add('leaving');
+    el.addEventListener('transitionend', function handler(e){
+      if(e.propertyName === 'opacity'){
+        el.removeEventListener('transitionend', handler);
+        if(el.parentNode) el.parentNode.removeChild(el);
+      }
+    });
+    // fallback removal in case transitionend never fires (e.g. reduced motion)
+    setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 900);
+  }
+
+  var durEl = document.getElementById('dur');
+  var durVal = document.getElementById('durVal');
+  durEl.addEventListener('input', function(){
+    document.documentElement.style.setProperty('--dur', durEl.value + 's');
+    durVal.textContent = parseFloat(durEl.value).toFixed(2) + 's';
+  });
+  var autoEl = document.getElementById('autoDismiss');
+  var autoVal = document.getElementById('autoVal');
+  autoEl.addEventListener('input', function(){
+    autoDismissSec = parseFloat(autoEl.value);
+    autoVal.textContent = autoDismissSec.toFixed(1) + 's';
+  });
+
+  // seed the stack with a couple toasts on load so the effect is visible immediately
+  setTimeout(function(){ spawn('info'); }, 200);
+  setTimeout(function(){ spawn('success'); }, 700);
+})();
+</script>
+</body>
+</html>
