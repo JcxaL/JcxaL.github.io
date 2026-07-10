@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subsequence-Match Command Palette — UI Spotlight</title>
+<style>
+  :root{ --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#0b0a14;color:#f1eefc;font-family:system-ui,-apple-system,sans-serif;}
+
+  .back-link{
+    position:fixed; top:16px; left:16px; z-index:50;
+    background:rgba(24,20,40,0.6); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.12);
+    color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:9px 14px; border-radius:999px;
+  }
+  #debug{
+    position:fixed; top:16px; right:16px; z-index:50; width:210px;
+    background:rgba(24,20,40,0.7); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.12);
+    border-radius:14px; padding:14px; font-size:12px;
+  }
+  #debug h4{margin:0 0 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#cbf;}
+  #debug .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+  #debug .stat{color:var(--accent);font-weight:700;}
+  @media (max-width:640px){ #debug{ display:none; } }
+
+  main{
+    height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; padding:0 20px; text-align:center;
+  }
+  h1{ font-size:clamp(1.6rem,4vw,2.4rem); margin:0; font-weight:800; }
+  p.hint{ color:rgba(255,255,255,0.45); font-size:14px; margin:0; max-width:440px; }
+  kbd{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-bottom-width:2px;
+    border-radius:6px; padding:2px 7px; font-size:13px; font-family:inherit;
+  }
+  #openBtn{
+    border:none; border-radius:12px; padding:14px 22px; font-size:14px; font-weight:700; cursor:pointer;
+    background:rgba(167,139,250,0.18); color:#f1eefc; border:1px solid rgba(167,139,250,0.4);
+  }
+
+  #overlay{
+    position:fixed; inset:0; background:rgba(6,5,12,0.6); backdrop-filter:blur(4px);
+    display:flex; align-items:flex-start; justify-content:center; padding-top:14vh;
+    opacity:0; pointer-events:none; transition:opacity 160ms ease; z-index:60;
+  }
+  #overlay.open{ opacity:1; pointer-events:auto; }
+  #palette{
+    width:min(560px, 90vw); background:#141220; border:1px solid rgba(255,255,255,0.1); border-radius:16px;
+    box-shadow:0 30px 80px rgba(0,0,0,0.6); overflow:hidden;
+    transform:translateY(-10px) scale(0.98); transition:transform 160ms ease;
+  }
+  #overlay.open #palette{ transform:translateY(0) scale(1); }
+  #pInput{
+    width:100%; border:none; background:transparent; color:#fff; font-size:17px; padding:18px 20px;
+    outline:none; border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  #pList{ list-style:none; margin:0; padding:8px; max-height:320px; overflow-y:auto; }
+  #pList li{
+    padding:11px 14px; border-radius:10px; font-size:14px; cursor:pointer; display:flex; justify-content:space-between; gap:10px;
+  }
+  #pList li .match{ color:var(--accent); font-weight:700; }
+  #pList li.selected{ background:rgba(167,139,250,0.22); }
+  #pList li .tag{ font-size:11px; color:rgba(255,255,255,0.4); }
+  #pEmpty{ padding:24px; text-align:center; color:rgba(255,255,255,0.4); font-size:13px; display:none; }
+
+  footer{
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:50;
+    font-size:11px; color:rgba(255,255,255,0.4); background:rgba(16,14,26,0.5); backdrop-filter:blur(8px);
+    padding:6px 12px; border-radius:999px; white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">&larr; All 5 drops</a>
+
+<div id="debug">
+  <h4>Palette Debug</h4>
+  <div class="row"><span>Match mode</span><span class="stat" id="modeLabel">subsequence</span></div>
+  <div class="row"><span>Commands run</span><span class="stat" id="runCount">0</span></div>
+</div>
+
+<main>
+  <h1>Sloppy-Query &#8984;K Palette</h1>
+  <p class="hint">Type a rough sequence of letters &mdash; "tgldk" still finds "Toggle dark mode." No substring required.</p>
+  <button id="openBtn"><kbd>&#8984;</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd> to open</button>
+</main>
+
+<div id="overlay">
+  <div id="palette" role="combobox" aria-expanded="false" aria-haspopup="listbox">
+    <input id="pInput" type="text" placeholder="Type a command&hellip;" autocomplete="off" role="searchbox" aria-controls="pList">
+    <ul id="pList" role="listbox"></ul>
+    <div id="pEmpty">No matching commands</div>
+  </div>
+</div>
+
+<footer>Inspired by "Rebuilding Cmd-K in ~60 lines" &middot; UI Spotlight Day 55 &middot; Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+  const overlay = document.getElementById('overlay');
+  const input = document.getElementById('pInput');
+  const list = document.getElementById('pList');
+  const empty = document.getElementById('pEmpty');
+  const openBtn = document.getElementById('openBtn');
+  const runCountEl = document.getElementById('runCount');
+  let runCount = 0;
+
+  const commands = [
+    { label: 'Toggle dark mode', tag: 'view', run: () => flash('Toggled dark mode') },
+    { label: 'Create new document', tag: 'file', run: () => flash('New document created') },
+    { label: 'Open recent files', tag: 'file', run: () => flash('Showing recent files') },
+    { label: 'Search everywhere', tag: 'nav', run: () => flash('Searching everywhere') },
+    { label: 'Go to dashboard', tag: 'nav', run: () => flash('Navigated to dashboard') },
+    { label: 'Invite a teammate', tag: 'team', run: () => flash('Invite link copied') },
+    { label: 'Change workspace', tag: 'team', run: () => flash('Workspace switcher opened') },
+    { label: 'Export as PDF', tag: 'export', run: () => flash('Exporting as PDF') },
+    { label: 'Duplicate current page', tag: 'edit', run: () => flash('Page duplicated') },
+    { label: 'Delete this project', tag: 'danger', run: () => flash('Project deleted (not really)') },
+    { label: 'Open keyboard shortcuts', tag: 'help', run: () => flash('Shortcut sheet opened') },
+    { label: 'Sign out', tag: 'account', run: () => flash('Signed out') },
+  ];
+
+  let filtered = commands.slice();
+  let selectedIndex = 0;
+
+  function subsequenceMatch(query, label){
+    query = query.toLowerCase(); label = label.toLowerCase();
+    if(!query) return { match:true, positions:[] };
+    let qi = 0;
+    const positions = [];
+    for(let i=0;i<label.length && qi<query.length;i++){
+      if(label[i] === query[qi]){ positions.push(i); qi++; }
+    }
+    return { match: qi === query.length, positions };
+  }
+
+  function highlight(label, positions){
+    let out = '';
+    let pi = 0;
+    for(let i=0;i<label.length;i++){
+      if(pi < positions.length && positions[pi] === i){ out += `<span class="match">${label[i]}</span>`; pi++; }
+      else out += label[i];
+    }
+    return out;
+  }
+
+  function render(){
+    const query = input.value;
+    filtered = commands
+      .map(c => ({ c, m: subsequenceMatch(query, c.label) }))
+      .filter(x => x.m.match)
+      .sort((a,b) => a.m.positions[a.m.positions.length-1] - b.m.positions[b.m.positions.length-1] || a.c.label.length - b.c.label.length)
+      .map(x => ({ ...x.c, positions: x.m.positions }));
+
+    selectedIndex = 0;
+    list.innerHTML = '';
+    filtered.forEach((cmd, i) => {
+      const li = document.createElement('li');
+      li.id = 'cmd-' + i;
+      li.setAttribute('role','option');
+      li.className = i === selectedIndex ? 'selected' : '';
+      li.innerHTML = `<span>${highlight(cmd.label, cmd.positions)}</span><span class="tag">${cmd.tag}</span>`;
+      li.addEventListener('mousedown', (e) => { e.preventDefault(); runCommand(i); });
+      list.appendChild(li);
+    });
+    empty.style.display = filtered.length ? 'none' : 'block';
+    updateActiveDescendant();
+  }
+
+  function updateActiveDescendant(){
+    Array.from(list.children).forEach((li,i) => li.classList.toggle('selected', i===selectedIndex));
+    const active = list.children[selectedIndex];
+    document.getElementById('palette').setAttribute('aria-activedescendant', active ? active.id : '');
+    if(active) active.scrollIntoView({ block:'nearest' });
+  }
+
+  function runCommand(i){
+    const cmd = filtered[i];
+    if(!cmd) return;
+    cmd.run();
+    runCount++; runCountEl.textContent = runCount;
+    close();
+  }
+
+  function flash(msg){
+    const el = document.createElement('div');
+    el.textContent = msg;
+    el.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#a78bfa;color:#1a1030;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:80;';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1600);
+  }
+
+  function open(){
+    overlay.classList.add('open');
+    document.getElementById('palette').setAttribute('aria-expanded','true');
+    input.value = '';
+    render();
+    input.focus();
+  }
+  function close(){
+    overlay.classList.remove('open');
+    document.getElementById('palette').setAttribute('aria-expanded','false');
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'){
+      e.preventDefault();
+      overlay.classList.contains('open') ? close() : open();
+    } else if(e.key === 'Escape' && overlay.classList.contains('open')){
+      close();
+    }
+  });
+  openBtn.addEventListener('click', open);
+  overlay.addEventListener('mousedown', (e) => { if(e.target === overlay) close(); });
+
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', (e) => {
+    if(e.key === 'ArrowDown'){ e.preventDefault(); selectedIndex = (selectedIndex+1) % Math.max(filtered.length,1); updateActiveDescendant(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); selectedIndex = (selectedIndex-1+filtered.length) % Math.max(filtered.length,1); updateActiveDescendant(); }
+    else if(e.key === 'Enter'){ e.preventDefault(); runCommand(selectedIndex); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
