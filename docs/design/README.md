@@ -27,6 +27,7 @@ two doc generations:
 | [09 — Engineering Standards](./09-engineering-standards.md) | Toolchain, animation code architecture, testing strategy, CI/CD conventions, media pipeline, docs standards, budgets. |
 | [10 — Roadmap](./10-roadmap.md) | Phased delivery plan (Phase 0–6) with exit criteria, open decisions, and risk register. |
 | [11 — RedNote References Triage](./11-rednote-references-triage.md) | Owner-supplied 29-item reference report mapped onto the plan: adopted ideas, convergences, and claims to verify. |
+| [13 — Code as Asset](./13-code-as-asset.md) | The design-asset pipeline: tokens → generated CSS/filters/map styles, verified techniques per asset class (duotone, globe, variable fonts, sound, texture), and the verification workflow. |
 
 ## How this research was done
 
