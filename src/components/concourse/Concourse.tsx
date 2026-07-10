@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useTransitionRouter } from "next-view-transitions";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import SplitFlapBoard from "@/components/transit/SplitFlapBoard";
@@ -12,6 +12,9 @@ import DotMatrixSign from "@/components/transit/DotMatrixSign";
 import Ticket from "@/components/transit/Ticket";
 import TransitDiagram from "@/components/transit/TransitDiagram";
 import StatusLegend from "@/components/transit/StatusLegend";
+import JourneyRecord from "@/components/ticket/JourneyRecord";
+import { punchStation } from "@/lib/ticket/punchStore";
+import { playChime } from "@/lib/sound/engine";
 import { SITE_NETWORK, networkStats } from "@/lib/transit/network";
 import {
   createConcourseIntro,
@@ -71,7 +74,7 @@ const HERO_CSS = `
 `;
 
 export default function Concourse() {
-  const router = useRouter();
+  const router = useTransitionRouter();
   const rootRef = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
   const stats = networkStats();
@@ -95,8 +98,10 @@ export default function Concourse() {
     { scope: rootRef, dependencies: [reducedMotion] },
   );
 
-  /** Punching the ticket boards the Travel line (doors, then depart). */
+  /** Punching the ticket starts the journey and boards the Travel line. */
   const handlePunch = () => {
+    punchStation("X01");
+    playChime("punch");
     const delay = reducedMotion
       ? 0
       : readMotionMs(rootRef.current, "door");
@@ -147,6 +152,9 @@ export default function Concourse() {
           <p className="jccl-telemetry mt-3">
             VALID FOR ONE JOURNEY · PUNCH TO BOARD THE TRAVEL LINE
           </p>
+          <div className="mt-6">
+            <JourneyRecord />
+          </div>
         </div>
       </section>
 
@@ -156,7 +164,10 @@ export default function Concourse() {
           <h2 className="jccl-signage text-xl">Departures</h2>
           <p className="jccl-telemetry">ALL SERVICES · UPDATED DAILY</p>
         </div>
-        <DepartureBoard departures={DEPARTURES} />
+        {/* Delegated chime: any departure row click sounds the doors. */}
+        <div onClick={() => playChime("doors")}>
+          <DepartureBoard departures={DEPARTURES} />
+        </div>
       </section>
 
       {/* ---- Network map ---- */}

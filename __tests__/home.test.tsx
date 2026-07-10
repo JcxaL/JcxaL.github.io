@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { ViewTransitions } from "next-view-transitions";
 import Home from "@/app/page";
 
 // Concourse uses next/navigation for ticket boarding + map deep links.
@@ -9,7 +10,7 @@ jest.mock("next/navigation", () => ({
 
 describe("Home (concourse)", () => {
   it("signs the station in the brand voice", () => {
-    render(<Home />);
+    render(<ViewTransitions><Home /></ViewTransitions>);
 
     expect(
       screen.getByRole("heading", { level: 1, name: /The JccL\s*Line/i }),
@@ -17,7 +18,7 @@ describe("Home (concourse)", () => {
   });
 
   it("boards Travel from the departures board", () => {
-    render(<Home />);
+    render(<ViewTransitions><Home /></ViewTransitions>);
 
     const board = screen.getByRole("navigation", { name: /Departures/i });
     const travel = within(board).getByRole("link", {
@@ -28,7 +29,7 @@ describe("Home (concourse)", () => {
   });
 
   it("keeps under-construction stations visible and reachable", () => {
-    render(<Home />);
+    render(<ViewTransitions><Home /></ViewTransitions>);
 
     const board = screen.getByRole("navigation", { name: /Departures/i });
     for (const name of ["Photography", "Music", "Design"]) {
@@ -40,7 +41,7 @@ describe("Home (concourse)", () => {
   });
 
   it("offers the concourse ticket for boarding", () => {
-    render(<Home />);
+    render(<ViewTransitions><Home /></ViewTransitions>);
 
     expect(screen.getByTestId("jccl-ticket")).toBeInTheDocument();
     expect(
@@ -49,7 +50,7 @@ describe("Home (concourse)", () => {
   });
 
   it("renders the network map with the status legend", () => {
-    render(<Home />);
+    render(<ViewTransitions><Home /></ViewTransitions>);
 
     expect(screen.getByTestId("transit-diagram")).toBeInTheDocument();
     const legend = screen.getByRole("list", { name: /Status legend/i });

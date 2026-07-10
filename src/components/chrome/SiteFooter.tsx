@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "next-view-transitions";
 import { usePathname } from "next/navigation";
 import type { LineId } from "@/lib/transit/types";
 import { lineColorVar } from "@/lib/transit/types";
 import LineMark from "./LineMark";
+import SoundToggle from "./SoundToggle";
 
 /**
  * SiteFooter — end-of-platform signage. System voice; the line-color strip
@@ -23,6 +24,7 @@ const STATIONS: { href: string; label: string }[] = [
 const DEPOT: { href: string; label: string; external?: boolean }[] = [
   { href: "https://github.com/JcxaL", label: "GitHub", external: true },
   { href: "/station/", label: "Platform preview" },
+  { href: "/depot/experiments/", label: "Experiments" },
 ];
 
 const LIVERY: LineId[] = ["a", "b", "c", "d", "e", "f"];
@@ -114,6 +116,9 @@ export default function SiteFooter() {
           <p className="jccl-telemetry jccl-footer-meta">
             © {new Date().getFullYear()} JCCL · SERVICE SINCE 2024
           </p>
+          <div className="jccl-footer-meta">
+            <SoundToggle />
+          </div>
         </div>
         <nav aria-label="Footer stations">
           <span className="jccl-kicker">Stations</span>

@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
+import { Link } from "next-view-transitions";
 import { MDXComponents } from "mdx/types";
 import ImageGallery from "./ImageGallery";
 import ImageComparison from "./ImageComparison";

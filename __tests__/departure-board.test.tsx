@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { ViewTransitions } from "next-view-transitions";
 import DepartureBoard, {
   type Departure,
 } from "@/components/transit/DepartureBoard";
@@ -22,9 +23,15 @@ const DEPARTURES: Departure[] = [
   },
 ];
 
+// The view-transition Link resolves next/navigation's router internally.
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn(), prefetch: jest.fn() }),
+  usePathname: () => "/",
+}));
+
 describe("DepartureBoard", () => {
   it("announces each service as one link (no nested links)", () => {
-    render(<DepartureBoard departures={DEPARTURES} />);
+    render(<ViewTransitions><DepartureBoard departures={DEPARTURES} /></ViewTransitions>);
 
     const board = screen.getByRole("navigation", { name: /Departures/i });
     const links = within(board).getAllByRole("link");
@@ -36,7 +43,7 @@ describe("DepartureBoard", () => {
   });
 
   it("keeps the printed columns decorative (status = word in the label)", () => {
-    render(<DepartureBoard departures={DEPARTURES} />);
+    render(<ViewTransitions><DepartureBoard departures={DEPARTURES} /></ViewTransitions>);
 
     // Column cells are aria-hidden; the link's aria-label carries the meaning.
     const travel = screen.getByTestId("departure-travel");
@@ -45,7 +52,7 @@ describe("DepartureBoard", () => {
   });
 
   it("renders a distinct status shape per tone, never color alone", () => {
-    render(<DepartureBoard departures={DEPARTURES} />);
+    render(<ViewTransitions><DepartureBoard departures={DEPARTURES} /></ViewTransitions>);
 
     const boarding = screen.getByTestId("departure-travel");
     const works = screen.getByTestId("departure-music");

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Link } from "next-view-transitions";
 import CodeDisc from "@/components/transit/CodeDisc";
 
 export const metadata: Metadata = {

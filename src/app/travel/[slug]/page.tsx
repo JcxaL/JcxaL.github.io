@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Link } from "next-view-transitions";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import StationPlate from "@/components/transit/StationPlate";
 import DotMatrixSign from "@/components/transit/DotMatrixSign";
+import StationPunch from "@/components/ticket/StationPunch";
+import ArrivalName from "@/components/transit/ArrivalName";
+import DuotoneImage from "@/components/media/DuotoneImage";
 import { SITE_NETWORK, STATION_NOTES } from "@/lib/transit/network";
 import type { Station } from "@/lib/transit/types";
 import { getAllSlugs, getPostBySlug } from "@/lib/mdx";
@@ -181,6 +184,7 @@ export default async function ExhibitPage({
           {line?.name ?? "The JccL Line"} · Station {station.code} · Exhibit
         </p>
         <div className="mt-6">
+          <ArrivalName name={station.name} className="mb-6" />
           <StationPlate
             name={station.name}
             nameLocal={station.nameLocal}
@@ -214,6 +218,21 @@ export default async function ExhibitPage({
         </p>
       </header>
 
+      {slug === "paris" ? (
+        <div className="mt-10">
+          <DuotoneImage
+            src="/media/samples/paris.jpg"
+            alt="The Eiffel Tower over the Seine at dusk, riverboats moored along the bank"
+            width={1200}
+            height={798}
+            line={line?.id ?? "amber"}
+            caption="The tower from the river on the first evening — placeholder frame until the real rolls are scanned."
+            credit="PHOTO: SAMPLE ASSET (UNSPLASH) · PRODUCTION MEDIA SHIPS FROM R2"
+            priority
+          />
+        </div>
+      ) : null}
+
       <article className="jccl-exhibit jccl-measure mt-10">
         <MDXRemote
           source={post.content}
@@ -227,6 +246,9 @@ export default async function ExhibitPage({
       </article>
 
       <footer className="mt-16">
+        <div className="mb-4">
+          <StationPunch code={station.code} />
+        </div>
         <DotMatrixSign text={`THANK YOU FOR VISITING ${station.name.toUpperCase()} · MIND THE GAP`} />
         <nav aria-label="Platform edge" className="jccl-platform-edge mt-6">
           {prev ? (

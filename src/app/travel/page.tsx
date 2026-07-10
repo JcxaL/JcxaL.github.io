@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Link } from "next-view-transitions";
 import type { CSSProperties, ReactNode } from "react";
 import TransitDiagram from "@/components/transit/TransitDiagram";
 import StationPlate from "@/components/transit/StationPlate";
 import StatusLegend from "@/components/transit/StatusLegend";
+import GlobeAtlas from "@/components/atlas/GlobeAtlas";
 import { SITE_NETWORK, STATION_NOTES, networkStats } from "@/lib/transit/network";
 import type { Line, Station } from "@/lib/transit/types";
 import { lineColorVar } from "@/lib/transit/types";
@@ -268,6 +269,16 @@ export default function TravelPage() {
           </section>
         );
       })}
+
+      <section className="mt-14">
+        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="jccl-signage text-2xl">Atlas</h2>
+          <p className="jccl-telemetry">
+            THE NETWORK ON THE GLOBE · TILES: OPENFREEMAP · LOADS ON REQUEST
+          </p>
+        </div>
+        <GlobeAtlas />
+      </section>
 
       <section className="mt-14">
         <p className="jccl-telemetry">

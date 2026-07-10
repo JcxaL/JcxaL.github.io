@@ -1,9 +1,16 @@
 import { render, screen, within } from "@testing-library/react";
+import { ViewTransitions } from "next-view-transitions";
 import TravelPage from "@/app/travel/page";
+
+// The view-transition Link resolves next/navigation's router internally.
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn(), prefetch: jest.fn() }),
+  usePathname: () => "/",
+}));
 
 describe("Travel (line guide)", () => {
   it("titles the line guide", () => {
-    render(<TravelPage />);
+    render(<ViewTransitions><TravelPage /></ViewTransitions>);
 
     expect(
       screen.getByRole("heading", { level: 1, name: /Travel/i }),
@@ -11,7 +18,7 @@ describe("Travel (line guide)", () => {
   });
 
   it("renders a plate for every destination station", () => {
-    render(<TravelPage />);
+    render(<ViewTransitions><TravelPage /></ViewTransitions>);
 
     for (const code of ["A01", "A02", "B01", "B02", "B03"]) {
       expect(screen.getByTestId(`station-plate-${code}`)).toBeInTheDocument();
@@ -19,7 +26,7 @@ describe("Travel (line guide)", () => {
   });
 
   it("links stations with a guide and marks the rest in production", () => {
-    render(<TravelPage />);
+    render(<ViewTransitions><TravelPage /></ViewTransitions>);
 
     const paris = screen.getByRole("link", {
       name: /Paris — guide in service/i,
@@ -35,7 +42,7 @@ describe("Travel (line guide)", () => {
   });
 
   it("shows the network diagram with line strips per line", () => {
-    render(<TravelPage />);
+    render(<ViewTransitions><TravelPage /></ViewTransitions>);
 
     expect(screen.getByTestId("transit-diagram")).toBeInTheDocument();
     expect(
@@ -51,7 +58,7 @@ describe("Travel (line guide)", () => {
   });
 
   it("prints provenance telemetry (season + coordinates)", () => {
-    render(<TravelPage />);
+    render(<ViewTransitions><TravelPage /></ViewTransitions>);
 
     const kyoto = screen.getByTestId("strip-A01");
     expect(within(kyoto).getByText(/SPRING 2024/i)).toBeInTheDocument();

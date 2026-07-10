@@ -2,9 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Source_Sans_3, Doto } from "next/font/google";
 import "./globals.css";
 import "@/styles/tokens.css";
+import { ViewTransitions } from "next-view-transitions";
 import { SmoothScrollProvider } from "@/components/providers/SmoothScrollProvider";
 import SiteHeader from "@/components/chrome/SiteHeader";
 import SiteFooter from "@/components/chrome/SiteFooter";
+import DuotoneDefs from "@/components/media/DuotoneDefs";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,10 +24,13 @@ const signage = Source_Sans_3({
   subsets: ["latin"],
 });
 
-// Departure-board voice - dot-matrix display face; boards only, never body
+// Departure-board voice - dot-matrix display face; boards only, never body.
+// ROND axis loaded for the two reserved axis-animation moments (doc 12):
+// exhibit arrival name + ticket validation.
 const board = Doto({
   variable: "--font-board",
   subsets: ["latin"],
+  axes: ["ROND"],
 });
 
 export const metadata: Metadata = {
@@ -88,6 +93,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    <ViewTransitions>
     <html lang="en">
       <head>
         <script
@@ -120,6 +126,7 @@ export default function RootLayout({
         >
           Skip to concourse
         </a>
+        <DuotoneDefs />
         <SmoothScrollProvider>
           <SiteHeader />
           <main id="main-content">{children}</main>
@@ -127,5 +134,6 @@ export default function RootLayout({
         </SmoothScrollProvider>
       </body>
     </html>
+    </ViewTransitions>
   );
 }

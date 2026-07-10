@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "next-view-transitions";
 import { usePathname } from "next/navigation";
 import LineMark from "./LineMark";
 
@@ -30,6 +30,8 @@ const HEADER_CSS = `
   position: sticky;
   top: 0;
   z-index: 50;
+  /* Own snapshot during route transitions: the doors move, the sign stays. */
+  view-transition-name: jccl-header;
   background: color-mix(in srgb, var(--color-ground-0) 88%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--color-ground-line);

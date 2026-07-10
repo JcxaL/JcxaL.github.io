@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "next-view-transitions";
 import type { LineId } from "@/lib/transit/types";
 import StationPlate from "@/components/transit/StationPlate";
 import DotMatrixSign from "@/components/transit/DotMatrixSign";
