@@ -19,6 +19,15 @@ describe("TransitDiagram", () => {
     );
   });
 
+  it("exposes a group (not img) when stations are clickable", () => {
+    render(<TransitDiagram network={DEMO_NETWORK} onStationClick={() => {}} />);
+    // role=img would flatten the interactive station buttons for AT.
+    expect(screen.getByTestId("transit-diagram")).toHaveAttribute(
+      "role",
+      "group",
+    );
+  });
+
   it("renders one node group per unique station", () => {
     const { container } = render(<TransitDiagram network={DEMO_NETWORK} />);
     const groups = container.querySelectorAll('[data-testid^="station-"]');

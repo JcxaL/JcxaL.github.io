@@ -216,7 +216,9 @@ export function TransitDiagram({
   return (
     <svg
       data-testid="transit-diagram"
-      role="img"
+      // role=img flattens children for AT; with clickable stations inside,
+      // that nests interactive controls — expose a labelled group instead.
+      role={onStationClick ? "group" : "img"}
       aria-label={ariaLabel}
       viewBox={viewBox}
       width={width}

@@ -1,233 +1,286 @@
 import type { Metadata } from "next";
-import { getTravelGuideDrafts, getTravelLocations } from "@/lib/travel";
+import Link from "next/link";
+import type { CSSProperties, ReactNode } from "react";
+import TransitDiagram from "@/components/transit/TransitDiagram";
+import StationPlate from "@/components/transit/StationPlate";
+import StatusLegend from "@/components/transit/StatusLegend";
+import { SITE_NETWORK, STATION_NOTES, networkStats } from "@/lib/transit/network";
+import type { Line, Station } from "@/lib/transit/types";
+import { lineColorVar } from "@/lib/transit/types";
 
 export const metadata: Metadata = {
-  title: "Travel Mission Control | JcxaL",
+  title: "Travel — the line guide",
   description:
-    "Live travel tracker with map view, destination backlog, and self-authored field guides.",
+    "The JccL Line network guide: every station on the map, its status, and the field guides in service. Please choose a station to visit its exhibit.",
 };
 
-export default function Travel() {
-  const { visited: visitedLocations, onDeck: onDeckLocations } =
-    getTravelLocations();
-  const guideDrafts = getTravelGuideDrafts();
+/**
+ * Travel index — the line guide. Each line renders as a vertical strip map:
+ * the running rail carries the line color; stations hang off it as plates
+ * with journal metadata. System voice for chrome; hooks are journal register.
+ */
 
+const STRIP_CSS = `
+.jccl-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.jccl-strip-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 18px;
+  padding: 14px 0;
+  scroll-margin-top: 6rem;
+}
+/* The running rail. First/last entries half-mast it so the line terminates. */
+.jccl-strip-entry::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--line-color);
+}
+.jccl-strip-entry[data-first="true"]::before { top: 50%; }
+.jccl-strip-entry[data-last="true"]::before { bottom: 50%; }
+/* Station node, in the diagram's grammar: ground fill, line-color ring. */
+.jccl-strip-node {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  justify-self: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-ground-0);
+  border: 3px solid var(--line-color);
+}
+.jccl-strip-node[data-status="planning"] { border-style: dashed; }
+.jccl-strip-node[data-origin="true"] {
+  border-color: var(--color-ink-signage);
+}
+.jccl-strip-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.jccl-strip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 18px;
+  margin-top: 12px;
+}
+.jccl-strip-hook {
+  margin-top: 8px;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-ink-muted);
+  max-width: 60ch;
+}
+.jccl-strip-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.jccl-strip-tag {
+  font-family: var(--font-stack-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  border: 1px solid var(--color-ground-line);
+  border-radius: var(--layout-radius-pill);
+  padding: 2px 10px;
+}
+.jccl-strip-guide {
+  font-family: var(--font-stack-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.jccl-strip-guide[data-live="true"] { color: var(--color-board-amber); }
+.jccl-strip-guide[data-live="false"] { color: var(--color-ink-faint); }
+`;
+
+function LineHeader({ line }: { line: Line }) {
   return (
-    <div className="min-h-screen pt-24 bg-gradient-to-b from-[#04050d] via-[#0e1628] to-[#151f33] text-white">
-      <div className="max-w-6xl mx-auto px-4 py-12 space-y-12">
-        <header className="space-y-4 text-center">
-          <p className="text-sm uppercase tracking-[0.4em] text-cyan-300">
-            Field Ops
-          </p>
-          <h1 className="text-4xl sm:text-5xl font-bold">
-            Travel Mission Control
-          </h1>
-          <p className="text-base sm:text-lg text-gray-300 max-w-3xl mx-auto">
-            The travel section leads the rebuild. Follow the evolving map,
-            backlog, and guide drafts while other verticals incubate.
-          </p>
-        </header>
+    <div className="mb-2 flex flex-wrap items-center gap-4">
+      <span
+        aria-hidden="true"
+        className="inline-block h-4 w-10 rounded-full"
+        style={{ backgroundColor: lineColorVar(line.id) }}
+      />
+      <h2 className="jccl-signage text-2xl">{line.name}</h2>
+      <span className="jccl-telemetry">
+        LINE {line.id.toUpperCase()} · {line.stations.length - 1} STATIONS
+      </span>
+    </div>
+  );
+}
 
-        {/* Map + Legend */}
-        <section className="grid gap-8 lg:grid-cols-[2fr,1fr]">
-          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-900/20 via-blue-900/10 to-transparent p-6 relative overflow-hidden">
-            <div
-              aria-hidden
-              className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_20%_20%,rgba(0,255,255,0.3),transparent_40%),radial-gradient(circle_at_80%_30%,rgba(255,31,75,0.25),transparent_35%)]"
-            />
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">Map View (Preview)</h2>
-              <span className="text-xs uppercase tracking-[0.3em] text-gray-400">
-                Deck Mode
+function StationEntry({
+  line,
+  station,
+  first,
+  last,
+}: {
+  line: Line;
+  station: Station;
+  first: boolean;
+  last: boolean;
+}) {
+  const isOrigin = station.code === "X01";
+  const note = STATION_NOTES[station.code];
+
+  const card: ReactNode = isOrigin ? (
+    <p className="jccl-telemetry self-center">
+      {station.code} · HOME — INTERCHANGE · ALL LINES BEGIN HERE
+    </p>
+  ) : (
+    <div className="jccl-panel jccl-lift p-4 sm:p-5">
+      <StationPlate
+        name={station.name}
+        nameLocal={station.nameLocal}
+        nameLocalLang={station.nameLocalLang}
+        code={station.code}
+        line={line.id}
+        status={station.status}
+      />
+      {note ? (
+        <>
+          <div className="jccl-strip-meta">
+            <span className="jccl-telemetry">{note.season.toUpperCase()}</span>
+            {station.coords ? (
+              <span className="jccl-telemetry">
+                {Math.abs(station.coords.lat).toFixed(4)}°
+                {station.coords.lat >= 0 ? "N" : "S"} ·{" "}
+                {Math.abs(station.coords.lng).toFixed(4)}°
+                {station.coords.lng >= 0 ? "E" : "W"}
               </span>
-            </div>
-            <p className="text-sm text-gray-400 mt-1 mb-6">
-              Interactive Mapbox layer coming soon. For now, follow the plotted
-              coordinates of current missions.
-            </p>
-            <div className="relative h-72 rounded-xl border border-white/5 bg-[#050913] overflow-hidden">
-              <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[length:40px_40px]" />
-              {[...visitedLocations, ...onDeckLocations].map((loc, index) => (
-                <div
-                  key={loc.id}
-                  className="absolute flex flex-col items-center text-center"
-                  style={{
-                    top: `${20 + index * 15}%`,
-                    left: `${30 + (index % 3) * 20}%`,
-                  }}
-                >
-                  <span className="text-xs uppercase tracking-[0.3em] text-gray-400 mb-1">
-                    {index < visitedLocations.length ? "Visited" : "On Deck"}
-                  </span>
-                  <div className="w-3 h-3 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_15px_rgba(34,211,238,0.7)]" />
-                  <p className="text-sm font-semibold mt-2">{loc.name}</p>
-                </div>
-              ))}
-            </div>
+            ) : null}
           </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
-            <div className="border-b border-white/10 p-6">
-              <p className="text-xs uppercase tracking-[0.4em] text-gray-400">
-                Legend
-              </p>
-            </div>
-            <ul className="divide-y divide-white/5">
-              <li className="p-6 flex items-center gap-4">
-                <span className="w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]" />
-                <div>
-                  <p className="font-semibold">Visited Coordinates</p>
-                  <p className="text-sm text-gray-400">
-                    Locations with field notes + assets ready for guides.
-                  </p>
-                </div>
-              </li>
-              <li className="p-6 flex items-center gap-4">
-                <span className="w-3 h-3 rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(232,121,249,0.8)]" />
-                <div>
-                  <p className="font-semibold">On Deck</p>
-                  <p className="text-sm text-gray-400">
-                    Scheduled missions currently in research & logistics mode.
-                  </p>
-                </div>
-              </li>
-              <li className="p-6 flex items-center gap-4">
-                <span className="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]" />
-                <div>
-                  <p className="font-semibold">Guide Drafts</p>
-                  <p className="text-sm text-gray-400">
-                    MDX guides being authored — expect release dates below.
-                  </p>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </section>
-
-        {/* List View */}
-        <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 p-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
-            <div>
-              <p className="text-xs uppercase tracking-[0.4em] text-gray-400">
-                List View
-              </p>
-              <h2 className="text-3xl font-semibold">Mission Ledger</h2>
-            </div>
-            <span className="text-sm text-gray-400">
-              Scroll sync + filters arriving once CMS wiring is ready.
-            </span>
-          </div>
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-cyan-300 tracking-[0.2em] uppercase">
-                Visited
-              </h3>
-              {visitedLocations.map((loc) => (
-                <article
-                  key={loc.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-5"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xl font-semibold">{loc.name}</h4>
-                    <span className="text-xs uppercase tracking-[0.3em] text-gray-400">
-                      {loc.season}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-300 mb-3">{loc.highlight}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {loc.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-3 py-1 text-xs rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-fuchsia-300 tracking-[0.2em] uppercase">
-                On Deck
-              </h3>
-              {onDeckLocations.map((loc) => (
-                <article
-                  key={loc.id}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-fuchsia-500/10 to-indigo-500/10 p-5"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xl font-semibold">{loc.name}</h4>
-                    <span className="text-xs uppercase tracking-[0.3em] text-gray-300">
-                      {loc.target}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-200 mb-3">{loc.mission}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {loc.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-3 py-1 text-xs rounded-full bg-white/10 text-white border border-white/20"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Guide Drafts */}
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.4em] text-gray-400">
-                Author Room
-              </p>
-              <h2 className="text-3xl font-semibold">
-                Guides in Production
-              </h2>
-            </div>
-            <span className="text-sm text-gray-400">
-              Full MDX pipeline hooks in after schema finalization.
-            </span>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {guideDrafts.map((guide) => (
-              <article
-                key={guide.id}
-                className="rounded-2xl border border-white/10 bg-white/5 p-5 flex flex-col gap-3"
-              >
-                <p className="text-sm uppercase tracking-[0.3em] text-gray-400">
-                  {guide.eta}
-                </p>
-                <h3 className="text-xl font-semibold">{guide.title}</h3>
-                <p className="text-sm text-gray-300 flex-1">{guide.status}</p>
-                <p className="text-xs text-amber-300 uppercase tracking-[0.3em]">
-                  Draft Mode
-                </p>
-              </article>
+          <p className="jccl-strip-hook">{note.hook}</p>
+          <div className="jccl-strip-tags" aria-label="Themes">
+            {note.tags.map((tag) => (
+              <span key={tag} className="jccl-strip-tag">
+                {tag}
+              </span>
             ))}
           </div>
-        </section>
+          <p
+            className="jccl-strip-guide mt-4"
+            data-live={note.guideSlug ? "true" : "false"}
+          >
+            {note.guideSlug ? "Guide in service →" : "Guide in production"}
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
 
-        <footer className="rounded-3xl border border-white/10 bg-black/30 p-8 text-center space-y-3">
-          <p className="text-sm uppercase tracking-[0.4em] text-gray-400">
-            Next Up
-          </p>
-          <h3 className="text-2xl font-semibold">
-            Travel leads the launch sequence. Other sections are in standby.
-          </h3>
-          <p className="text-gray-300 max-w-3xl mx-auto">
-            Subscribe or ping me to beta test the upcoming map engine, interactive
-            packing overlay, and narrative guides before they ship to the main
-            homepage experience.
-          </p>
-        </footer>
-      </div>
+  return (
+    <li
+      id={station.code}
+      className="jccl-strip-entry"
+      data-first={first ? "true" : undefined}
+      data-last={last ? "true" : undefined}
+      style={{ "--line-color": lineColorVar(line.id) } as CSSProperties}
+      data-testid={`strip-${station.code}`}
+    >
+      <span
+        aria-hidden="true"
+        className="jccl-strip-node"
+        data-status={station.status}
+        data-origin={isOrigin ? "true" : undefined}
+      />
+      {note?.guideSlug ? (
+        <Link
+          href={`/travel/${note.guideSlug}/`}
+          className="jccl-strip-card"
+          aria-label={`${station.name} — guide in service`}
+        >
+          {card}
+        </Link>
+      ) : (
+        <div className="jccl-strip-card">{card}</div>
+      )}
+    </li>
+  );
+}
+
+export default function TravelPage() {
+  const stats = networkStats();
+
+  return (
+    <div className="mx-auto max-w-6xl px-6">
+      <style>{STRIP_CSS}</style>
+
+      <section className="pt-14 md:pt-20">
+        <p className="jccl-kicker">The JccL Line · Line guide</p>
+        <h1 className="jccl-signage mt-5 text-5xl sm:text-6xl">Travel</h1>
+        <p
+          className="jccl-measure mt-6 text-lg leading-relaxed"
+          style={{ color: "var(--color-ink-muted)", maxWidth: "52ch" }}
+        >
+          Every journey runs on a line. This is the network as it stands —
+          stations visited, works in progress, and extensions under survey.
+          Please choose a station to visit its exhibit.
+        </p>
+      </section>
+
+      <section className="mt-10">
+        <div className="jccl-panel overflow-x-auto p-6 sm:p-8">
+          <TransitDiagram network={SITE_NETWORK} currentCode="X01" />
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+            <StatusLegend />
+            <p className="jccl-telemetry">
+              {stats.stations} STATIONS · {stats.lines} LINES ·{" "}
+              {stats.byStatus.visited} VISITED · {stats.byStatus.progress} IN
+              PROGRESS · {stats.byStatus.planning} PLANNING
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {SITE_NETWORK.lines.map((line) => {
+        const stations = line.stations
+          .map((code) => SITE_NETWORK.stations[code])
+          .filter((s): s is Station => Boolean(s));
+        return (
+          <section key={line.id} className="mt-14">
+            <LineHeader line={line} />
+            <ol className="jccl-strip">
+              {stations.map((station, i) => (
+                <StationEntry
+                  key={station.code}
+                  line={line}
+                  station={station}
+                  first={i === 0}
+                  last={i === stations.length - 1}
+                />
+              ))}
+            </ol>
+          </section>
+        );
+      })}
+
+      <section className="mt-14">
+        <p className="jccl-telemetry">
+          EXTENSIONS UNDER SURVEY · NEW STATIONS ANNOUNCED IN THE{" "}
+          <Link
+            href="/blog/"
+            className="underline"
+            style={{ color: "var(--color-board-amber)" }}
+          >
+            NOTICES
+          </Link>
+        </p>
+      </section>
     </div>
   );
 }
