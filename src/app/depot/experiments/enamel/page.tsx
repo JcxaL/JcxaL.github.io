@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 export default function EnamelPreviewPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 pb-24">
+      <h1 className="sr-only">Depot trial — enamel plate texture</h1>
       <EnamelTrial />
     </div>
   );

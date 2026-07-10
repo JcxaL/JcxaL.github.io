@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Link } from "next-view-transitions";
 import DuotoneImage from "@/components/media/DuotoneImage";
+import DayServiceTrial from "@/components/experiments/DayServiceTrial";
+import EnamelTrial from "@/components/experiments/EnamelTrial";
 import type { LineId } from "@/lib/transit/types";
 
 export const metadata: Metadata = {
@@ -92,6 +94,10 @@ export default function ExperimentsPage() {
           </div>
         ))}
       </section>
+
+      <DayServiceTrial />
+
+      <EnamelTrial />
 
       <section className="mt-10">
         <p className="jccl-telemetry">

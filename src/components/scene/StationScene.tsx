@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import type { LineId } from "@/lib/transit/types";
 import {
   CanopyLayer,
@@ -46,15 +47,40 @@ export interface StationSceneProps {
  * DotMatrixSign component overlays this spot in the DOM later.
  */
 function DestinationStripPlaceholder() {
+  // Unique per instance; strip useId's punctuation for a plain url(#…) ref.
+  const glowId = `jccl-strip-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
     <g
       aria-hidden="true"
       data-depth={SCENE_DEPTHS.canopy}
       data-testid="destination-strip"
     >
+      <defs>
+        <radialGradient id={glowId}>
+          <stop offset="0" stopColor="var(--color-board-amber)" stopOpacity={0.14} />
+          <stop offset="0.6" stopColor="var(--color-board-amber)" stopOpacity={0.05} />
+          <stop offset="1" stopColor="var(--color-board-amber)" stopOpacity={0} />
+        </radialGradient>
+      </defs>
+      {/* Paint-only glow spill from the board (no filters). */}
+      <ellipse cx={800} cy={226} rx={300} ry={78} fill={`url(#${glowId})`} />
       {/* Hanger stems from the canopy. */}
-      <rect x={604} y={140} width={6} height={52} fill="var(--color-ground-line)" />
-      <rect x={990} y={140} width={6} height={52} fill="var(--color-ground-line)" />
+      <rect
+        x={604}
+        y={140}
+        width={6}
+        height={52}
+        rx={3}
+        fill="var(--color-ground-line)"
+      />
+      <rect
+        x={990}
+        y={140}
+        width={6}
+        height={52}
+        rx={3}
+        fill="var(--color-ground-line)"
+      />
       {/* Sign housing. */}
       <rect
         x={560}
@@ -83,7 +109,7 @@ function DestinationStripPlaceholder() {
         height={28}
         rx={4}
         fill="var(--color-board-amber)"
-        opacity={0.8}
+        opacity={0.9}
       />
     </g>
   );
