@@ -1,20 +1,60 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import Home from "@/app/page";
 
-describe("Home Page", () => {
-  it("emphasizes the travel section as active", () => {
-    render(<Home />);
+// Concourse uses next/navigation for ticket boarding + map deep links.
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+  usePathname: () => "/",
+}));
 
-    const travelLink = screen.getByRole("link", { name: /Travel/i });
-    expect(travelLink).toBeInTheDocument();
-    expect(screen.getByText(/Build in progress/i)).toBeInTheDocument();
-  });
-
-  it("keeps standby sections non-interactive", () => {
+describe("Home (concourse)", () => {
+  it("signs the station in the brand voice", () => {
     render(<Home />);
 
     expect(
-      screen.queryByRole("link", { name: /Music/i })
-    ).not.toBeInTheDocument();
+      screen.getByRole("heading", { level: 1, name: /The JccL\s*Line/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("boards Travel from the departures board", () => {
+    render(<Home />);
+
+    const board = screen.getByRole("navigation", { name: /Departures/i });
+    const travel = within(board).getByRole("link", {
+      name: /Travel — platform 1, Boarding/i,
+    });
+    // next/link normalizes the trailing slash away outside the real build.
+    expect(travel.getAttribute("href")).toMatch(/^\/travel\/?$/);
+  });
+
+  it("keeps under-construction stations visible and reachable", () => {
+    render(<Home />);
+
+    const board = screen.getByRole("navigation", { name: /Departures/i });
+    for (const name of ["Photography", "Music", "Design"]) {
+      const link = within(board).getByRole("link", {
+        name: new RegExp(`${name} — platform \\d+, Under construction`, "i"),
+      });
+      expect(link).toBeInTheDocument();
+    }
+  });
+
+  it("offers the concourse ticket for boarding", () => {
+    render(<Home />);
+
+    expect(screen.getByTestId("jccl-ticket")).toBeInTheDocument();
+    expect(
+      screen.getByRole("slider", { name: /Insert ticket to board/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the network map with the status legend", () => {
+    render(<Home />);
+
+    expect(screen.getByTestId("transit-diagram")).toBeInTheDocument();
+    const legend = screen.getByRole("list", { name: /Status legend/i });
+    for (const word of ["VISITED", "IN PROGRESS", "PLANNING"]) {
+      expect(within(legend).getByText(word)).toBeInTheDocument();
+    }
   });
 });
