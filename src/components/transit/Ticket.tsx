@@ -364,7 +364,10 @@ export default function Ticket({
               transition={reduceMotion ? INSTANT : SPRING}
             >
               <span aria-hidden="true" className="jccl-ticket-hole" />
-              VALIDATED
+              {/* Board-resolve: the second reserved Doto axis moment (doc 12). */}
+              <span className="jccl-board-arrive" style={{ fontSize: "0.8125rem" }}>
+                VALIDATED
+              </span>
             </motion.div>
           ) : (
             /* The stub tracks the range value; springs back on release. */
