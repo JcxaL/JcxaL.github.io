@@ -1,65 +1,39 @@
-import { MetadataRoute } from 'next';
+import { MetadataRoute } from "next";
+import { STATION_NOTES } from "@/lib/transit/network";
+import { getAllSlugs } from "@/lib/mdx";
 
 // Required for `output: 'export'` — prerender the sitemap at build time.
 export const dynamic = "force-static";
 
+const BASE_URL = "https://jcxal.github.io";
+
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://jcxal.github.io';
-  
-  return [
-    {
-      url: baseUrl,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 1,
-    },
-    {
-      url: `${baseUrl}/about`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/travel`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/photography`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/music`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/design`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/blog`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/contact`,
-      lastModified: new Date(),
-      changeFrequency: 'yearly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/projects`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
+  const staticRoutes: MetadataRoute.Sitemap = [
+    { url: `${BASE_URL}/`, changeFrequency: "weekly", priority: 1 },
+    { url: `${BASE_URL}/travel/`, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${BASE_URL}/blog/`, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${BASE_URL}/about/`, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${BASE_URL}/contact/`, changeFrequency: "yearly", priority: 0.6 },
+    { url: `${BASE_URL}/photography/`, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${BASE_URL}/music/`, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${BASE_URL}/design/`, changeFrequency: "monthly", priority: 0.5 },
   ];
+
+  const guideFiles = new Set(getAllSlugs("travel"));
+  const guideRoutes: MetadataRoute.Sitemap = Object.values(STATION_NOTES)
+    .map((note) => note.guideSlug)
+    .filter((slug): slug is string => Boolean(slug) && guideFiles.has(slug!))
+    .map((slug) => ({
+      url: `${BASE_URL}/travel/${slug}/`,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    }));
+
+  const postRoutes: MetadataRoute.Sitemap = getAllSlugs("blog").map((slug) => ({
+    url: `${BASE_URL}/blog/${slug}/`,
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+
+  return [...staticRoutes, ...guideRoutes, ...postRoutes];
 }

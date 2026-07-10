@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Source_Sans_3, Doto } from "next/font/google";
 import "./globals.css";
 import "@/styles/tokens.css";
-import ClientLayout from "@/components/ClientLayout";
+import { SmoothScrollProvider } from "@/components/providers/SmoothScrollProvider";
+import SiteHeader from "@/components/chrome/SiteHeader";
+import SiteFooter from "@/components/chrome/SiteFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,58 +29,57 @@ const board = Doto({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://jcxal.github.io'),
+  metadataBase: new URL("https://jcxal.github.io"),
   title: {
-    default: "JcxaL - Future Tech Developer",
-    template: "%s | JcxaL"
+    default: "The JccL Line — a travel network by JccL",
+    template: "%s · The JccL Line",
   },
-  description: "Welcome to my futuristic digital realm - Showcasing cutting-edge technology and innovative solutions",
-  keywords: ["developer", "technology", "futuristic", "web development", "programming", "innovation", "Next.js", "React", "TypeScript", "travel", "photography", "design"],
-  authors: [{ name: "JcxaL", url: "https://jcxal.github.io" }],
-  creator: "JcxaL",
-  publisher: "JcxaL",
+  description:
+    "A personal museum of places, entered through the Metro. Travel journals, photography, and field notes by JccL — one station at a time.",
+  keywords: [
+    "travel",
+    "travel journal",
+    "photography",
+    "field notes",
+    "metro",
+    "JccL",
+  ],
+  authors: [{ name: "JccL", url: "https://jcxal.github.io" }],
+  creator: "JccL",
+  publisher: "JccL",
   robots: {
     index: true,
     follow: true,
     googleBot: {
       index: true,
       follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
     },
   },
-  icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
-  },
   openGraph: {
-    type: 'website',
-    locale: 'en_US',
-    url: 'https://jcxal.github.io',
-    siteName: 'JcxaL',
-    title: 'JcxaL - Future Tech Developer',
-    description: 'Welcome to my futuristic digital realm - Showcasing cutting-edge technology and innovative solutions',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'JcxaL - Future Tech Developer',
-      },
-    ],
+    type: "website",
+    locale: "en_US",
+    url: "https://jcxal.github.io",
+    siteName: "The JccL Line",
+    title: "The JccL Line — a travel network by JccL",
+    description:
+      "A personal museum of places, entered through the Metro. Travel journals, photography, and field notes — one station at a time.",
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'JcxaL - Future Tech Developer',
-    description: 'Welcome to my futuristic digital realm - Showcasing cutting-edge technology and innovative solutions',
-    images: ['/og-image.png'],
-    creator: '@jcxal',
+    card: "summary",
+    title: "The JccL Line — a travel network by JccL",
+    description:
+      "A personal museum of places, entered through the Metro. Travel journals, photography, and field notes — one station at a time.",
   },
-  verification: {
-    google: 'your-google-site-verification-code',
-  },
+};
+
+export const viewport: Viewport = {
+  // Mirrors the --color-ground-0 token (station black); meta tags can't read CSS vars.
+  themeColor: "#0a0c10",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -87,43 +88,43 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <head>
-        <meta name="theme-color" content="#0e131f" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-        
-        {/* Structured Data for SEO */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "Person",
-              "name": "JcxaL",
-              "url": "https://jcxal.github.io",
-              "sameAs": [
-                "https://github.com/JcxaL"
-              ],
-              "jobTitle": "Software Developer",
-              "description": "Future Tech Developer specializing in web development, design, and innovative solutions",
-              "knowsAbout": ["Web Development", "React", "Next.js", "TypeScript", "UI/UX Design", "Photography", "Travel"],
-            })
+              name: "JccL",
+              url: "https://jcxal.github.io",
+              sameAs: ["https://github.com/JcxaL"],
+              description:
+                "Traveller and photographer publishing journals and field notes as The JccL Line.",
+              knowsAbout: ["Travel", "Photography", "Web Development"],
+            }),
           }}
         />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${signage.variable} ${board.variable} antialiased min-h-screen`}
-        style={{
-          fontFamily: 'var(--font-signage), var(--font-geist-sans), system-ui, -apple-system, sans-serif',
-          background: 'linear-gradient(135deg, #0e131f 0%, #38405f 50%, #59546c 100%)',
-          position: 'relative',
-        }}
         suppressHydrationWarning
       >
-        <ClientLayout>
-          {children}
-        </ClientLayout>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-5 focus:py-3 focus:font-semibold focus:rounded-md"
+          style={{
+            backgroundColor: "var(--color-board-amber)",
+            color: "var(--color-ink-inverse)",
+          }}
+        >
+          Skip to concourse
+        </a>
+        <SmoothScrollProvider>
+          <SiteHeader />
+          <main id="main-content">{children}</main>
+          <SiteFooter />
+        </SmoothScrollProvider>
       </body>
     </html>
   );

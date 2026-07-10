@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { SmoothScrollProvider } from "@/components/providers/SmoothScrollProvider";
 import StationDemo from "./StationDemo";
 
 export const metadata: Metadata = {
@@ -9,12 +8,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Preview route (unlinked): the first composed JccL Line experience.
-// Becomes the basis of the real station homepage in Phase 2 (docs/design/10-roadmap.md).
+// Preview route: the first composed JccL Line scene experiment. The root
+// layout provides SmoothScrollProvider; site chrome self-suppresses here.
 export default function StationPage() {
-  return (
-    <SmoothScrollProvider>
-      <StationDemo />
-    </SmoothScrollProvider>
-  );
+  return <StationDemo />;
 }

@@ -14,7 +14,8 @@ export default function NotFound() {
       className="min-h-screen flex items-center justify-center px-6"
       style={{ background: "var(--color-ground-0)", color: "var(--color-ink-signage)" }}
     >
-      <main className="max-w-xl w-full">
+      {/* div, not <main>: the root layout already provides the main landmark. */}
+      <div className="max-w-xl w-full">
         <p
           className="text-xs uppercase tracking-[0.35em] mb-6"
           style={{ color: "var(--color-ink-muted)", fontFamily: "var(--font-mono, monospace)" }}
@@ -50,7 +51,7 @@ export default function NotFound() {
         <p className="mt-6 text-sm" style={{ color: "var(--color-ink-faint)" }}>
           Next departure: wherever you were actually going.
         </p>
-      </main>
+      </div>
     </div>
   );
 }
