@@ -1,65 +1,137 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
+import type { Metadata } from "next";
+import Link from "next/link";
+import CodeDisc from "@/components/transit/CodeDisc";
 
 export const metadata: Metadata = {
-  title: 'About | JccL',
-  description: 'Learn more about JccL - software developer and technology enthusiast',
+  title: "Operator",
+  description:
+    "Operator information for the JccL Line. This service is driven, photographed and maintained by one member of staff.",
 };
+
+/** Staff-pass rows — telemetry register, system voice. */
+const ID_ROWS = [
+  { label: "OPERATOR", value: "JCCL" },
+  { label: "ROLE", value: "DRIVER · PHOTOGRAPHER · DEVELOPER" },
+  { label: "BASE", value: "X01 HOME" },
+  { label: "SERVICE SINCE", value: "2024" },
+];
+
+const COMPETENCIES = [
+  "TypeScript",
+  "React",
+  "Next.js",
+  "Node.js",
+  "Python",
+  "Tailwind CSS",
+  "Git",
+  "Docker",
+];
 
 export default function About() {
   return (
-    <div className="min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="max-w-4xl mx-auto">
-        <div className="mb-12">
-          <h1 className="text-4xl sm:text-6xl font-bold mb-4">About Me</h1>
-          <p className="text-lg text-gray-600 dark:text-gray-400">
-            Software developer and technology enthusiast
-          </p>
+    <div className="mx-auto max-w-3xl px-6 pt-14 pb-16">
+      {/* ---- Signage ---- */}
+      <p className="jccl-kicker">The JccL Line · Operator’s office</p>
+      <h1 className="jccl-signage mt-5 text-5xl sm:text-6xl">Operator</h1>
+      <div
+        aria-hidden="true"
+        className="mt-6 h-1.5 w-24"
+        style={{ backgroundColor: "var(--color-board-amber)" }}
+      />
+
+      {/* ---- Operator ID (staff pass) ---- */}
+      <section className="mt-10" aria-label="Operator identification">
+        <div className="jccl-panel flex flex-col gap-6 p-6 sm:flex-row sm:items-center sm:gap-8 sm:p-7">
+          <CodeDisc code="X01" line="a" size={56} />
+          <dl className="grid flex-1 gap-2.5">
+            {ID_ROWS.map((row) => (
+              <div
+                key={row.label}
+                className="grid grid-cols-[7.5rem_1fr] gap-3 sm:grid-cols-[9rem_1fr]"
+              >
+                <dt
+                  className="jccl-telemetry"
+                  style={{ color: "var(--color-ink-faint)" }}
+                >
+                  {row.label}
+                </dt>
+                <dd
+                  className="jccl-telemetry"
+                  style={{ color: "var(--color-ink-signage)" }}
+                >
+                  {row.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
+        <p className="jccl-telemetry mt-3">
+          STAFF PASS · NOT VALID FOR TRAVEL
+        </p>
+      </section>
 
-        <div className="prose prose-gray dark:prose-invert max-w-none">
-          <section className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4">Introduction</h2>
-            <p className="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
-              Welcome! I&apos;m JccL, a passionate software developer with a love for creating 
-              innovative solutions and exploring new technologies. This website serves as 
-              my digital portfolio and a place to share my thoughts on technology and development.
-            </p>
-          </section>
+      {/* ---- Journal register: first person from here to the divider ---- */}
+      <section className="mt-12">
+        <p
+          className="jccl-measure text-base leading-relaxed"
+          style={{ color: "var(--color-ink-muted)" }}
+        >
+          I write software for a living and take photographs when I travel.
+          This site is where the two meet — a portfolio of sorts and a place to
+          file thoughts on technology, laid out as a small metro system because
+          a plain list of posts felt like a missed opportunity.
+        </p>
+        <p
+          className="jccl-measure mt-5 text-base leading-relaxed"
+          style={{ color: "var(--color-ink-muted)" }}
+        >
+          Most of my work is on the modern web: building applications, keeping
+          them running at scale, contributing to open source where I can. I
+          like problems that resist the first attempt, and I pick up whatever
+          tools the job turns out to need. Everything else here is journals and
+          field notes from the places in between.
+        </p>
+      </section>
 
-          <section className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4">Skills & Technologies</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {[
-                'TypeScript', 'React', 'Next.js', 'Node.js', 
-                'Python', 'Tailwind CSS', 'Git', 'Docker'
-              ].map((skill) => (
-                <div key={skill} className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 text-center">
-                  <span className="font-medium">{skill}</span>
-                </div>
-              ))}
-            </div>
-          </section>
+      {/* ---- Competencies ---- */}
+      <section className="mt-14" aria-label="Competencies">
+        <p className="jccl-kicker">Certified for</p>
+        <h2 className="jccl-signage mt-4 text-xl">Competencies</h2>
+        <ul className="mt-6 flex flex-wrap gap-2.5">
+          {COMPETENCIES.map((skill) => (
+            <li
+              key={skill}
+              className="border px-3.5 py-1.5 text-xs"
+              style={{
+                borderColor: "var(--color-ground-line)",
+                borderRadius: "var(--layout-radius-pill)",
+                fontFamily: "var(--font-stack-mono)",
+                letterSpacing: "0.08em",
+                color: "var(--color-ink-signage)",
+              }}
+            >
+              {skill}
+            </li>
+          ))}
+        </ul>
+      </section>
 
-          <section className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4">Experience</h2>
-            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-              I have experience working with modern web technologies, building scalable 
-              applications, and contributing to open-source projects. I enjoy tackling 
-              complex problems and learning new technologies along the way.
-            </p>
-          </section>
-        </div>
-
-        <div className="mt-12">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            ← Back to Home
-          </Link>
-        </div>
-      </main>
+      {/* ---- Station office notice ---- */}
+      <section
+        className="mt-14 border-t pt-8"
+        style={{ borderColor: "var(--color-ground-line)" }}
+      >
+        <p style={{ color: "var(--color-ink-muted)" }}>
+          The operator is occasionally away driving trains.
+        </p>
+        <Link
+          href="/contact/"
+          className="jccl-telemetry mt-4 inline-block hover:underline"
+          style={{ color: "var(--color-board-amber)" }}
+        >
+          Contact the station office →
+        </Link>
+      </section>
     </div>
   );
-} 
+}

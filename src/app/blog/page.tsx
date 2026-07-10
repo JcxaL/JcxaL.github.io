@@ -1,73 +1,110 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { getAllPosts } from '@/lib/mdx';
+import type { Metadata } from "next";
+import Link from "next/link";
+import { getAllPosts } from "@/lib/mdx";
+
+/**
+ * Notices — the notice board (blog index).
+ * System voice throughout; each post is pinned to the board as a numbered
+ * service notice. No JS motion here — the shared .jccl-lift hover is enough.
+ */
 
 export const metadata: Metadata = {
-  title: 'Blog | JccL',
-  description: 'Thoughts and insights on technology and development',
+  title: "Notices",
+  description:
+    "Service notices, engineering works and posts from the operator of The JccL Line.",
 };
 
-export default function Blog() {
-  const blogPosts = getAllPosts('blog');
+export default function Notices() {
+  const posts = getAllPosts("blog");
+
   return (
-    <div className="min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)] pt-24">
-      <main className="max-w-4xl mx-auto">
-        <div className="mb-12">
-          <h1 className="text-4xl sm:text-6xl font-bold mb-4">Blog</h1>
-          <p className="text-lg text-gray-600 dark:text-gray-400">
-            Thoughts and insights on technology and development
+    <div className="mx-auto max-w-3xl px-6 pt-14 pb-16">
+      {/* ---- Board header ---- */}
+      <header>
+        <p className="jccl-kicker">The JccL Line · Notice board</p>
+        <h1 className="jccl-signage mt-5 text-4xl sm:text-5xl">Notices</h1>
+        <div
+          aria-hidden="true"
+          className="mt-6 h-1.5 w-24"
+          style={{ backgroundColor: "var(--color-board-amber)" }}
+        />
+        <p
+          className="jccl-measure mt-6 text-lg leading-relaxed"
+          style={{ color: "var(--color-ink-muted)" }}
+        >
+          Service notices, engineering works and posts from the operator.
+        </p>
+      </header>
+
+      {/* ---- Posted notices ---- */}
+      <section aria-label="Posted notices" className="mt-12">
+        <div className="mb-5 flex items-baseline justify-between gap-4">
+          <h2 className="jccl-signage text-xl">Currently posted</h2>
+          <p className="jccl-telemetry">
+            {String(posts.length).padStart(2, "0")}{" "}
+            {posts.length === 1 ? "NOTICE" : "NOTICES"} · ALL CURRENT
           </p>
         </div>
 
-        <div className="space-y-8">
-          {blogPosts.map((post) => (
-            <article key={post.slug} className="border-b border-gray-200 dark:border-gray-700 pb-8">
-              <div className="mb-4">
-                <h2 className="text-2xl font-semibold mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                  <Link href={`/blog/${post.slug}`}>
-                    {post.title}
-                  </Link>
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+        <div className="space-y-5">
+          {posts.map((post, index) => {
+            // Notice numbers are chronological: the oldest posting is 01.
+            const noticeNumber = String(posts.length - index).padStart(2, "0");
+            return (
+              <Link
+                key={post.slug}
+                href={`/blog/${post.slug}/`}
+                className="jccl-panel jccl-lift block p-6 sm:p-7"
+              >
+                <p className="jccl-telemetry">
+                  NOTICE {noticeNumber} · {post.date} ·{" "}
+                  {post.readTime.toUpperCase()}
+                </p>
+                <h3
+                  className="mt-3 text-xl leading-snug font-bold sm:text-2xl"
+                  style={{
+                    fontFamily: "var(--font-stack-signage)",
+                    color: "var(--color-ink-signage)",
+                  }}
+                >
+                  {post.title}
+                </h3>
+                <p
+                  className="mt-2 leading-relaxed"
+                  style={{ color: "var(--color-ink-muted)" }}
+                >
                   {post.excerpt}
                 </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                <time dateTime={post.date}>
-                  {new Date(post.date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </time>
-                <span>•</span>
-                <span>{post.readTime}</span>
-              </div>
-
-              <div className="flex flex-wrap gap-2 mt-4">
-                {post.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded text-xs">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            </article>
-          ))}
+                {post.tags.length > 0 && (
+                  <ul
+                    aria-label="Filed under"
+                    className="mt-5 flex flex-wrap gap-2"
+                  >
+                    {post.tags.map((tag) => (
+                      <li
+                        key={tag}
+                        className="jccl-telemetry border px-2.5 py-1 uppercase"
+                        style={{
+                          borderColor: "var(--color-ground-line)",
+                          borderRadius: "var(--layout-radius-pill)",
+                          fontSize: "0.6875rem",
+                        }}
+                      >
+                        {tag}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Link>
+            );
+          })}
         </div>
+      </section>
 
-        <div className="mt-12 text-center">
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            More posts coming soon! Stay tuned for updates.
-          </p>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            ← Back to Home
-          </Link>
-        </div>
-      </main>
+      {/* ---- Board foot line ---- */}
+      <p className="jccl-telemetry mt-10">
+        END OF NOTICES · NEW NOTICES ARE POSTED AS THE SERVICE REQUIRES
+      </p>
     </div>
   );
-} 
+}
