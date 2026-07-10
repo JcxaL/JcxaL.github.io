@@ -42,3 +42,151 @@ const css = `${banner}\n:root {\n${pairs
 mkdirSync(join(root, "src/styles"), { recursive: true });
 writeFileSync(join(root, "src/styles/tokens.css"), css);
 console.log(`tokens.css written (${pairs.length} tokens)`);
+
+/* ------------------------------------------------------------------ *
+ * Duotone filter defs — token → SVG asset (WP-core pattern).          *
+ * One feColorMatrix(Rec.709 luma) + feComponentTransfer table filter  *
+ * per line color (+ board amber), shadows pinned to ground-0. The     *
+ * numbers are generated from tokens.json, same contract as tokens.css.*
+ * ------------------------------------------------------------------ */
+
+/** #rrggbb -> [r,g,b] each normalized 0..1 with 6dp. */
+const hexToUnit = (hex) =>
+  [1, 3, 5].map((i) => (Number.parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(6));
+
+const LUMA_709 =
+  "0.2126 0.7152 0.0722 0 0 " +
+  "0.2126 0.7152 0.0722 0 0 " +
+  "0.2126 0.7152 0.0722 0 0 " +
+  "0 0 0 1 0";
+
+const shadow = hexToUnit(tokens.color.ground["0"].$value);
+const duotoneStops = [
+  ...Object.entries(tokens.color.lines).map(([id, t]) => [id, t.$value]),
+  ["amber", tokens.color.board.amber.$value],
+];
+
+const filterFor = ([id, hex]) => {
+  const hi = hexToUnit(hex);
+  const table = (ch) => `${shadow[ch]} ${hi[ch]}`;
+  return `      <filter
+        id="jccl-duo-${id}"
+        colorInterpolationFilters="sRGB"
+        x="0"
+        y="0"
+        width="100%"
+        height="100%"
+      >
+        <feColorMatrix type="matrix" values="${LUMA_709}" />
+        <feComponentTransfer>
+          <feFuncR type="table" tableValues="${table(0)}" />
+          <feFuncG type="table" tableValues="${table(1)}" />
+          <feFuncB type="table" tableValues="${table(2)}" />
+        </feComponentTransfer>
+      </filter>`;
+};
+
+const defsTsx = `/* GENERATED FILE — do not edit by hand.
+ * Source: tokens/tokens.json  ·  Build: pnpm tokens
+ * Duotone reference filters (doc 13): luminance → two-stop table ramp
+ * from station black to each line color. Mounted once in the root layout.
+ * Hidden via 0x0 + absolute — display:none breaks url(#) references. */
+
+export default function DuotoneDefs() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="0"
+      height="0"
+      style={{ position: "absolute", overflow: "hidden" }}
+    >
+      <defs>
+${duotoneStops.map(filterFor).join("\n")}
+      </defs>
+    </svg>
+  );
+}
+`;
+
+mkdirSync(join(root, "src/components/media"), { recursive: true });
+writeFileSync(join(root, "src/components/media/DuotoneDefs.tsx"), defsTsx);
+console.log(`DuotoneDefs.tsx written (${duotoneStops.length} filters)`);
+
+/* ------------------------------------------------------------------ *
+ * Night-service atlas style — token → MapLibre style JSON (ADR 0006). *
+ * A minimal openmaptiles-schema style for the globe atlas (z0–6):     *
+ * dark oceans on faintly-lit continents, hairline borders, muted      *
+ * country labels. Colors come from tokens.json; tiles/glyphs are      *
+ * OpenFreeMap (keyless — the economics decide, doc 07 D4).            *
+ * ------------------------------------------------------------------ */
+
+const g = tokens.color.ground;
+const atlasStyle = {
+  version: 8,
+  name: "JccL Night Service",
+  metadata: {
+    "jccl:generated": "scripts/build-tokens.mjs — edit tokens.json, run pnpm tokens",
+  },
+  glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+  sources: {
+    openfreemap: {
+      type: "vector",
+      url: "https://tiles.openfreemap.org/planet",
+    },
+  },
+  projection: { type: "globe" },
+  sky: {
+    "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.4, 6, 0],
+  },
+  light: { anchor: "map", intensity: 0.1 },
+  layers: [
+    // Land base — the faintly-lit continent plate.
+    { id: "land", type: "background", paint: { "background-color": g["2"].$value } },
+    {
+      id: "water",
+      type: "fill",
+      source: "openfreemap",
+      "source-layer": "water",
+      paint: { "fill-color": g["0"].$value },
+    },
+    {
+      id: "boundary-country",
+      type: "line",
+      source: "openfreemap",
+      "source-layer": "boundary",
+      filter: ["all", ["==", ["get", "admin_level"], 2], ["!=", ["get", "maritime"], 1]],
+      paint: {
+        "line-color": g.line.$value,
+        "line-width": ["interpolate", ["linear"], ["zoom"], 0, 0.4, 6, 1],
+      },
+    },
+    {
+      id: "place-country",
+      type: "symbol",
+      source: "openfreemap",
+      "source-layer": "place",
+      filter: ["==", ["get", "class"], "country"],
+      minzoom: 1.5,
+      maxzoom: 6,
+      layout: {
+        "text-field": ["get", "name:en"],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 2, 9, 6, 12],
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.12,
+      },
+      paint: {
+        "text-color": tokens.color.ink.faint.$value,
+        "text-halo-color": g["0"].$value,
+        "text-halo-width": 1,
+      },
+    },
+  ],
+};
+
+mkdirSync(join(root, "public/atlas"), { recursive: true });
+writeFileSync(
+  join(root, "public/atlas/night-service.json"),
+  JSON.stringify(atlasStyle, null, 2) + "\n",
+);
+console.log("atlas night-service.json written");
