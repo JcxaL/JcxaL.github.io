@@ -127,7 +127,7 @@ export default function About() {
         <Link
           href="/contact/"
           className="jccl-telemetry mt-4 inline-block hover:underline"
-          style={{ color: "var(--color-board-amber)" }}
+          style={{ color: "var(--color-accent-base)" }}
         >
           Contact the station office →
         </Link>

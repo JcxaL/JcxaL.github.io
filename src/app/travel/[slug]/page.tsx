@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ComponentPropsWithoutRef } from "react";
 import { Link } from "next-view-transitions";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
@@ -101,7 +102,7 @@ const EXHIBIT_CSS = `
 }
 .jccl-exhibit p { margin: 0 0 1.25em; }
 .jccl-exhibit a {
-  color: var(--color-board-amber);
+  color: var(--color-accent-base);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -156,10 +157,21 @@ const EXHIBIT_CSS = `
   letter-spacing: 0.1em;
   text-transform: uppercase;
   text-decoration: none;
-  color: var(--color-board-amber);
+  color: var(--color-accent-base);
 }
 .jccl-platform-edge a:hover { text-decoration: underline; }
 `;
+
+/* Code blocks are lit boards: pinning the night palette keeps code legible on
+   the pale day-service paper. Merges any hljs class rehype adds. */
+function LitPre({ className, ...props }: ComponentPropsWithoutRef<"pre">) {
+  return (
+    <pre
+      className={className ? `jccl-lit-board ${className}` : "jccl-lit-board"}
+      {...props}
+    />
+  );
+}
 
 export default async function ExhibitPage({
   params,
@@ -236,6 +248,7 @@ export default async function ExhibitPage({
       <article className="jccl-exhibit jccl-measure mt-10">
         <MDXRemote
           source={post.content}
+          components={{ pre: LitPre }}
           options={{
             mdxOptions: {
               remarkPlugins: [remarkGfm],

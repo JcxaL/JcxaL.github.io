@@ -27,13 +27,19 @@ export default function NotFound() {
           className="rounded-md border p-8"
           style={{ borderColor: "var(--color-ground-line)", background: "var(--color-ground-1)" }}
         >
-          <p
-            className="text-3xl sm:text-4xl font-bold mb-3"
-            style={{ color: "var(--color-board-amber)", fontFamily: "var(--font-board), monospace" }}
-            aria-hidden
+          {/* Lit board: the readout stays a dark amber display in both services. */}
+          <div
+            className="jccl-lit-board rounded-md border px-4 py-3 mb-4"
+            style={{ borderColor: "var(--color-ground-line)", background: "var(--color-ground-0)" }}
           >
-            404 · END OF THE LINE
-          </p>
+            <p
+              className="text-3xl sm:text-4xl font-bold"
+              style={{ color: "var(--color-board-amber)", fontFamily: "var(--font-board), monospace" }}
+              aria-hidden
+            >
+              404 · END OF THE LINE
+            </p>
+          </div>
           <h1 className="text-xl font-semibold mb-4">This station does not exist.</h1>
           <p className="mb-8" style={{ color: "var(--color-ink-muted)" }}>
             The address you followed leads beyond the network. It may have been renamed,

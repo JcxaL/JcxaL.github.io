@@ -63,10 +63,13 @@ export default function UnderConstructionStation({
         <StationPlate name={name} code={code} line={line} status={undefined} />
       </div>
 
-      {/* Hoarding band — tape and cones. Decorative; the words live below. */}
+      {/* Hoarding band — tape and cones. Decorative; the words live below.
+         Pinned to the lit-board (night) palette so the stripe reads as classic
+         amber-on-dark hazard tape in BOTH services — in day the themed ground-0
+         is pale and the tape would wash to amber-on-white. */}
       <div
         aria-hidden="true"
-        className="mt-4"
+        className="jccl-lit-board mt-4"
         style={{
           height: 20,
           borderRadius: "var(--layout-radius-plate)",

@@ -279,7 +279,7 @@ export default function GlobeAtlas() {
   };
 
   return (
-    <div className="jccl-atlas" data-testid="globe-atlas" data-state={state}>
+    <div className="jccl-atlas jccl-lit-board" data-testid="globe-atlas" data-state={state}>
       <style>{ATLAS_CSS}</style>
       <div
         ref={containerRef}

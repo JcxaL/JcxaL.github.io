@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ComponentPropsWithoutRef } from "react";
 import { Link } from "next-view-transitions";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
@@ -6,6 +7,18 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { getPostBySlug, getAllSlugs } from "@/lib/mdx";
 import MDXComponents from "@/components/mdx/MDXComponents";
+
+/* Code blocks are lit boards: pinning the night palette keeps the amber/jade
+   syntax colours legible on the pale day-service paper (they'd fail on it
+   otherwise). Merges any hljs class rehype adds. */
+function LitPre({ className, ...props }: ComponentPropsWithoutRef<"pre">) {
+  return (
+    <pre
+      className={className ? `jccl-lit-board ${className}` : "jccl-lit-board"}
+      {...props}
+    />
+  );
+}
 
 /**
  * Service notice — a single posting from the notice board (blog post).
@@ -79,12 +92,12 @@ const NOTICE_PROSE_CSS = `
 .notice-prose a {
   color: var(--color-ink-signage);
   text-decoration: underline;
-  text-decoration-color: var(--color-board-amber);
+  text-decoration-color: var(--color-accent-base);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 .notice-prose a:hover {
-  color: var(--color-board-amber);
+  color: var(--color-accent-base);
 }
 .notice-prose ul,
 .notice-prose ol {
@@ -197,7 +210,7 @@ const NOTICE_PROSE_CSS = `
   color: var(--color-ink-muted);
 }
 .notice-return:hover {
-  color: var(--color-board-amber);
+  color: var(--color-accent-base);
 }
 @media (prefers-reduced-motion: no-preference) {
   .notice-prose a,
@@ -256,7 +269,7 @@ export default async function ServiceNotice({
       <article className="notice-prose jccl-measure mt-10">
         <MDXRemote
           source={post.content}
-          components={MDXComponents}
+          components={{ ...MDXComponents, pre: LitPre }}
           options={{
             mdxOptions: {
               remarkPlugins: [remarkGfm],

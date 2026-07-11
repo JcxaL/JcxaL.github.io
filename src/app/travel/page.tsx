@@ -104,7 +104,7 @@ const STRIP_CSS = `
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
-.jccl-strip-guide[data-live="true"] { color: var(--color-board-amber); }
+.jccl-strip-guide[data-live="true"] { color: var(--color-accent-base); }
 .jccl-strip-guide[data-live="false"] { color: var(--color-ink-faint); }
 `;
 
@@ -286,7 +286,7 @@ export default function TravelPage() {
           <Link
             href="/blog/"
             className="underline"
-            style={{ color: "var(--color-board-amber)" }}
+            style={{ color: "var(--color-accent-base)" }}
           >
             NOTICES
           </Link>

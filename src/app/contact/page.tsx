@@ -79,7 +79,7 @@ export default function Contact() {
               >
                 <span
                   className="jccl-telemetry shrink-0"
-                  style={{ color: "var(--color-board-amber)" }}
+                  style={{ color: "var(--color-accent-base)" }}
                 >
                   COUNTER {c.number}
                 </span>

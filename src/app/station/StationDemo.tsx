@@ -113,6 +113,7 @@ export default function StationDemo() {
   return (
     <div
       ref={rootRef}
+      className="jccl-lit-board"
       style={{ background: "var(--color-ground-0)", color: "var(--color-ink-signage)" }}
     >
       {/* ——— Beat 1 · Arrival ——— */}

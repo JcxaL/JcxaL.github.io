@@ -28,8 +28,8 @@ const TOGGLE_CSS = `
   border-color: var(--color-ink-faint);
 }
 .jccl-sound-toggle[aria-pressed="true"] {
-  color: var(--color-board-amber);
-  border-color: var(--color-board-amber);
+  color: var(--color-accent-base);
+  border-color: var(--color-accent-base);
 }
 `;
 
