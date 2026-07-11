@@ -49,6 +49,11 @@ that one source:
   values so any element carrying the class stays a dark, lit display in *both*
   services. A departure board is a lit panel whatever the weather; wrap board
   readouts, code blocks, and the 404 in it.
+- `.jccl-glass` — **floating chrome floats on glass** (decided from depot Trial
+  02): the header, footer and toggle pills frost a translucent themed ground
+  (deep lilac at night, glassy lilac in day). Content panels stay solid
+  `.jccl-panel` — glass is chrome-only, because body text must keep AA and the
+  blur needs content behind it to read.
 
 Invariant tokens (`--color-board-amber*`, `--color-board-glow`,
 `--color-ink-inverse`, the six line colors, the status colors) do **not**

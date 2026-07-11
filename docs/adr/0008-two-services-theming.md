@@ -48,8 +48,11 @@ without a parallel component tree or a second set of raw colors.
   component change — components already consume the vars.
 - Every text pairing must clear AA on *both* grounds; `ink-faint` is the floor
   and is chosen to pass on the palest day ground and the darkest night ground.
-- Floating chrome now has a real decision per service — solid paper vs frosted
-  `.jccl-glass`; that trial lives on `/depot/experiments/` (Trial 02).
+- **Floating chrome floats on glass** (decided 2026-07 from Trial 02): the
+  header, footer and toggle pills use the frosted `.jccl-glass` treatment in
+  both services (translucent themed ground + blur). **Content panels stay
+  solid** `.jccl-panel` — glass needs content behind it to read, and body text
+  must keep AA. Trial 02 on `/depot/experiments/` remains as the reference.
 - Amber-as-text regressions are the predictable failure mode when new UI lands;
   the fix is always the same swap — accent for interactive text, or wrap the
   amber display element in `.jccl-lit-board`.

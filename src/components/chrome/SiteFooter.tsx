@@ -33,7 +33,12 @@ const FOOTER_CSS = `
 .jccl-footer {
   margin-top: 6rem;
   border-top: 1px solid var(--color-ground-line);
-  background: var(--color-ground-0);
+  /* Glassy chrome (day-service decision): frosts the deep lilac at night,
+     translucent glassy lilac in day. Content panels stay solid — only the
+     floating chrome floats on glass. */
+  background: color-mix(in srgb, var(--color-ground-0) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
 }
 .jccl-footer-inner {
   max-width: 72rem;

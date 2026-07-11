@@ -17,6 +17,10 @@ const TOGGLE_CSS = `
   border-radius: var(--layout-radius-pill);
   padding: 2px;
   gap: 2px;
+  /* Frosted pill — the glass chrome grammar (day-service decision). */
+  background: color-mix(in srgb, var(--color-ground-0) 55%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 .jccl-service button {
   display: inline-flex;

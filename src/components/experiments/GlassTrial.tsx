@@ -130,7 +130,9 @@ export function GlassTrial() {
         <h2 id="trial-02-heading" className="jccl-signage text-xl">
           Trial 02 · Glass vs solid
         </h2>
-        <p className="jccl-telemetry">DAY-SERVICE CHROME · FLOATING SURFACE</p>
+        <p className="jccl-telemetry" style={{ color: "var(--color-accent-base)" }}>
+          IN SERVICE · GLASS ADOPTED FOR FLOATING CHROME
+        </p>
       </div>
       <p
         className="jccl-measure mb-8 text-sm leading-relaxed"
@@ -138,9 +140,10 @@ export function GlassTrial() {
       >
         The same floating sub-header, two ways: an opaque paper panel that hides
         whatever it covers, and the frosted glass utility that lets the platform
-        show through. Deciding: does the day service float on glass, or sit on
-        solid paper? Glass needs content behind it to read — and must keep AA on
-        text.
+        show through. Decided: the day service floats its chrome on glass — the
+        header, footer and toggles are frosted. Content panels stay solid paper
+        (glass needs content behind it to read, and body text must keep AA).
+        This trial is the reference that settled it.
       </p>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

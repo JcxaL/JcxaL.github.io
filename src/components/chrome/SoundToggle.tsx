@@ -14,7 +14,10 @@ const TOGGLE_CSS = `
   gap: 8px;
   border: 1px solid var(--color-ground-line);
   border-radius: var(--layout-radius-pill);
-  background: none;
+  /* Frosted pill — the glass chrome grammar (day-service decision). */
+  background: color-mix(in srgb, var(--color-ground-0) 55%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   padding: 6px 14px;
   cursor: pointer;
   font-family: var(--font-stack-mono);
