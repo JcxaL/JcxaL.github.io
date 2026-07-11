@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Snap Slider — UI Spotlight</title>
+<style>
+  :root{ --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:#0a0810;color:#fff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;}
+
+  .back-link{
+    position:fixed; top:16px; left:16px; z-index:50;
+    background:rgba(22,18,32,0.6); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.12);
+    color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:9px 14px; border-radius:999px;
+  }
+  #debug{
+    position:fixed; top:16px; right:16px; z-index:50; width:210px;
+    background:rgba(20,16,28,0.7); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.12);
+    border-radius:14px; padding:14px; font-size:12px;
+  }
+  #debug h4{margin:0 0 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#cae;}
+  #debug .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+  #debug input[type=range]{flex:1;accent-color:var(--accent);}
+  @media (max-width:640px){ #debug{ display:none; } }
+
+  main{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:50px; padding:24px;
+  }
+
+  .slider-block{ width:min(80vw, 420px); text-align:center; }
+  .slider-block .title{ font-size:13px; color:rgba(255,255,255,0.55); margin-bottom:22px; letter-spacing:0.03em; }
+
+  .track-wrap{ position:relative; height:44px; }
+  .track{
+    position:absolute; top:50%; left:0; right:0; height:6px; transform:translateY(-50%);
+    background:rgba(255,255,255,0.12); border-radius:999px;
+  }
+  .track .fill{
+    position:absolute; top:0; left:0; height:100%; border-radius:999px;
+    background:linear-gradient(90deg, var(--accent), #7c6fff);
+  }
+  .tick{
+    position:absolute; top:50%; width:3px; height:3px; border-radius:50%;
+    background:rgba(255,255,255,0.35); transform:translate(-50%,-50%);
+  }
+  .tick.passed{ background:var(--accent); }
+
+  .thumb{
+    position:absolute; top:50%; width:26px; height:26px; border-radius:50%;
+    background:#fff; transform:translate(-50%,-50%);
+    box-shadow:0 4px 14px rgba(0,0,0,0.45), 0 0 0 4px rgba(167,139,250,0.25);
+    cursor:grab; touch-action:none;
+    transition:box-shadow 150ms ease;
+  }
+  .thumb.dragging{ cursor:grabbing; box-shadow:0 6px 20px rgba(0,0,0,0.55), 0 0 0 8px rgba(167,139,250,0.35); }
+  .thumb .tooltip{
+    position:absolute; bottom:36px; left:50%; transform:translateX(-50%) scale(0.85);
+    background:#1c1a28; border:1px solid rgba(255,255,255,0.15); padding:5px 10px; border-radius:8px;
+    font-size:12px; font-weight:700; white-space:nowrap; opacity:0; transition:opacity 150ms ease, transform 150ms ease;
+    pointer-events:none;
+  }
+  .thumb.dragging .tooltip, .thumb:hover .tooltip{ opacity:1; transform:translateX(-50%) scale(1); }
+
+  footer{
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:50;
+    font-size:11px; color:rgba(255,255,255,0.45); background:rgba(10,12,20,0.5); backdrop-filter:blur(8px);
+    padding:6px 12px; border-radius:999px; white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">&larr; All 5 drops</a>
+
+<div id="debug">
+  <h4>Snap Slider Debug</h4>
+  <div class="row"><span>Tick count</span><input type="range" id="tickCount" min="4" max="24" value="10"></div>
+  <div class="row"><span>Overshoot bounce</span><input type="range" id="bounceAmt" min="0" max="100" value="50"></div>
+</div>
+
+<main>
+  <div class="slider-block">
+    <div class="title">Single value &mdash; magnetic tick snapping</div>
+    <div class="track-wrap" id="single"></div>
+  </div>
+  <div class="slider-block">
+    <div class="title">Range &mdash; thumbs clamp inside track bounds, never cross</div>
+    <div class="track-wrap" id="range"></div>
+  </div>
+</main>
+
+<footer>Inspired by Base UI Slider release notes (thumbAlignment) &middot; UI Spotlight Day 56 &middot; Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+  var tickCountEl = document.getElementById('tickCount');
+  var bounceAmtEl = document.getElementById('bounceAmt');
+
+  function buildSlider(container, opts){
+    var track = document.createElement('div');
+    track.className = 'track';
+    var fill = document.createElement('div');
+    fill.className = 'fill';
+    track.appendChild(fill);
+    container.appendChild(track);
+
+    var ticks = [];
+    var thumbs = [];
+    var values = opts.initial.slice();
+
+    function layoutTicks(){
+      ticks.forEach(function(t){ t.remove(); });
+      ticks = [];
+      var n = parseInt(tickCountEl.value, 10);
+      for(var i = 0; i <= n; i++){
+        var t = document.createElement('div');
+        t.className = 'tick';
+        t.style.left = (i / n * 100) + '%';
+        track.appendChild(t);
+        ticks.push(t);
+      }
+    }
+
+    function snap(v){
+      var n = parseInt(tickCountEl.value, 10);
+      return Math.round(v * n) / n;
+    }
+
+    function render(){
+      var lo = Math.min.apply(null, values) * 100;
+      var hi = Math.max.apply(null, values) * 100;
+      if(values.length === 1){
+        fill.style.left = '0%';
+        fill.style.width = (values[0]*100) + '%';
+      } else {
+        fill.style.left = lo + '%';
+        fill.style.width = (hi - lo) + '%';
+      }
+      var n = parseInt(tickCountEl.value, 10);
+      ticks.forEach(function(t, i){
+        var tv = i / n;
+        var within = values.length === 1 ? tv <= values[0] : (tv >= Math.min.apply(null,values) && tv <= Math.max.apply(null,values));
+        t.classList.toggle('passed', within);
+      });
+      thumbs.forEach(function(th, i){
+        th.el.style.left = (values[i]*100) + '%';
+        th.tooltip.textContent = opts.format(values[i]);
+      });
+    }
+
+    values.forEach(function(v, i){
+      var th = document.createElement('div');
+      th.className = 'thumb';
+      var tooltip = document.createElement('div');
+      tooltip.className = 'tooltip';
+      th.appendChild(tooltip);
+      track.appendChild(th);
+      thumbs.push({ el: th, tooltip: tooltip });
+
+      var dragging = false;
+
+      function toValue(clientX){
+        var rect = track.getBoundingClientRect();
+        var raw = (clientX - rect.left) / rect.width;
+        raw = Math.max(0, Math.min(1, raw));
+        return raw;
+      }
+
+      function clampAgainstNeighbors(idx, v){
+        // thumbAlignment-inspired: clamp thumb so it never crosses siblings, avoiding overlap at track edges
+        var minGap = 1 / (parseInt(tickCountEl.value,10) * 4);
+        if(idx > 0) v = Math.max(v, values[idx-1] + minGap);
+        if(idx < values.length-1) v = Math.min(v, values[idx+1] - minGap);
+        return Math.max(0, Math.min(1, v));
+      }
+
+      th.addEventListener('pointerdown', function(e){
+        dragging = true;
+        th.classList.add('dragging');
+        th.setPointerCapture(e.pointerId);
+      });
+      th.addEventListener('pointermove', function(e){
+        if(!dragging) return;
+        var raw = toValue(e.clientX);
+        raw = clampAgainstNeighbors(i, raw);
+        values[i] = raw;
+        render();
+      });
+      function finish(e){
+        if(!dragging) return;
+        dragging = false;
+        th.classList.remove('dragging');
+        var target = snap(values[i]);
+        target = clampAgainstNeighbors(i, target);
+        animateTo(i, target);
+      }
+      th.addEventListener('pointerup', finish);
+      th.addEventListener('pointercancel', finish);
+    });
+
+    function animateTo(i, target){
+      var bounce = parseInt(bounceAmtEl.value, 10) / 100;
+      var v = values[i];
+      var vel = 0;
+      var overshootTarget = target + (target - v) * 0.15 * bounce;
+      var phase = 0;
+      function tick(){
+        phase++;
+        var toward = phase < 6 ? overshootTarget : target;
+        var force = (toward - values[i]) * 0.35;
+        vel = (vel + force) * 0.7;
+        values[i] += vel;
+        render();
+        if(Math.abs(values[i] - target) > 0.0015 || Math.abs(vel) > 0.0008){
+          requestAnimationFrame(tick);
+        } else {
+          values[i] = target;
+          render();
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    layoutTicks();
+    render();
+    tickCountEl.addEventListener('input', function(){ layoutTicks(); render(); });
+
+    return { render: render };
+  }
+
+  buildSlider(document.getElementById('single'), {
+    initial: [0.4],
+    format: function(v){ return Math.round(v*100) + '%'; }
+  });
+
+  buildSlider(document.getElementById('range'), {
+    initial: [0.25, 0.7],
+    format: function(v){ return '$' + Math.round(v*500); }
+  });
+})();
+</script>
+</body>
+</html>
