@@ -37,13 +37,22 @@ export default function ArrivalName({
   }, []);
 
   return (
+    // The name resolves on a lit platform board — dark-and-amber in both
+    // services (jccl-lit-board pins the night palette).
     <p
       ref={ref}
       aria-hidden="true"
-      className={["jccl-board-arrive", className].filter(Boolean).join(" ")}
+      className={["jccl-lit-board", "jccl-board-arrive", className]
+        .filter(Boolean)
+        .join(" ")}
       data-settled={settled ? "true" : undefined}
       data-testid="arrival-name"
       style={{
+        display: "block",
+        background: "var(--color-ground-0)",
+        border: "1px solid var(--color-ground-line)",
+        borderRadius: "var(--layout-radius-plate)",
+        padding: "0.35em 0.6em",
         fontSize: "clamp(2.5rem, 8vw, 4.5rem)",
         letterSpacing: "0.08em",
         textTransform: "uppercase",

@@ -154,7 +154,9 @@ export default function DepartureBoard({
   return (
     <nav
       aria-label="Departures"
-      className={["jccl-departures", className].filter(Boolean).join(" ")}
+      className={["jccl-lit-board", "jccl-departures", className]
+        .filter(Boolean)
+        .join(" ")}
       data-testid="departure-board"
     >
       <style>{BOARD_CSS}</style>

@@ -246,7 +246,9 @@ export default function SplitFlapBoard({
   return (
     <div
       ref={rootRef}
-      className={["jccl-splitflap", className].filter(Boolean).join(" ")}
+      className={["jccl-lit-board", "jccl-splitflap", className]
+        .filter(Boolean)
+        .join(" ")}
       data-settled={phase === "settled" ? "true" : undefined}
     >
       <style>{BOARD_CSS}</style>

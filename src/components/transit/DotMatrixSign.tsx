@@ -79,7 +79,9 @@ export default function DotMatrixSign({
       role="img"
       aria-label={text}
       data-marquee={marquee ? "true" : undefined}
-      className={["jccl-dotmatrix", className].filter(Boolean).join(" ")}
+      className={["jccl-lit-board", "jccl-dotmatrix", className]
+        .filter(Boolean)
+        .join(" ")}
     >
       <style>{SIGN_CSS}</style>
       <div className="jccl-dotmatrix-viewport" aria-hidden="true">

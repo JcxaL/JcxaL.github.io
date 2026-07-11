@@ -232,7 +232,7 @@ export function TransitDiagram({
       <style>{`
         .jccl-transit-diagram g[role="button"] { cursor: pointer; outline: none; }
         .jccl-transit-diagram g[role="button"]:focus-visible .jccl-focus-ring {
-          stroke: var(--color-board-amber);
+          stroke: var(--color-accent-base);
         }
       `}</style>
       {network.lines.map((line) => {

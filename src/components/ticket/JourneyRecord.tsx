@@ -98,7 +98,11 @@ export default function JourneyRecord() {
               data-testid={`journey-stop-${code}`}
             >
               <span
-                className="jccl-journey-hole"
+                className={
+                  punched
+                    ? "jccl-journey-hole jccl-lit-board"
+                    : "jccl-journey-hole"
+                }
                 role="img"
                 aria-label={`${station?.name ?? code} — ${punched ? "punched" : "not yet punched"}`}
               />

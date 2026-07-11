@@ -348,7 +348,7 @@ export default function Ticket({
 
       <div className="jccl-ticket-stub">
         <div
-          className="jccl-ticket-track"
+          className="jccl-lit-board jccl-ticket-track"
           data-testid="ticket-stub"
           onPointerDown={handlePointerDown}
           onPointerUp={springBack}
