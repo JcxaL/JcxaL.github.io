@@ -3,6 +3,7 @@
 import { Link } from "next-view-transitions";
 import { usePathname } from "next/navigation";
 import LineMark from "./LineMark";
+import ThemeToggle from "./ThemeToggle";
 
 /**
  * SiteHeader — the signage bar. System voice only (doc 12): station-plate
@@ -32,8 +33,11 @@ const HEADER_CSS = `
   z-index: 50;
   /* Own snapshot during route transitions: the doors move, the sign stays. */
   view-transition-name: jccl-header;
-  background: color-mix(in srgb, var(--color-ground-0) 88%, transparent);
-  backdrop-filter: blur(8px);
+  /* Glassy chrome: frosts the deep lilac at night, becomes translucent
+     glassy lilac in day service — both read the themed ground token. */
+  background: color-mix(in srgb, var(--color-ground-0) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
   border-bottom: 1px solid var(--color-ground-line);
 }
 .jccl-header-inner {
@@ -89,7 +93,13 @@ const HEADER_CSS = `
 }
 .jccl-header-link[aria-current] {
   color: var(--color-ink-signage);
-  border-bottom-color: var(--color-board-amber);
+  border-bottom-color: var(--color-accent-base);
+}
+.jccl-header-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 @media (prefers-reduced-motion: no-preference) {
   .jccl-header-link {
@@ -122,21 +132,24 @@ export default function SiteHeader() {
           <LineMark />
           <span className="jccl-header-wordmark">The JccL Line</span>
         </Link>
-        <nav aria-label="Stations" className="jccl-header-nav">
-          <ul>
-            {NAV.map((stop) => (
-              <li key={stop.href}>
-                <Link
-                  href={stop.href}
-                  className="jccl-header-link"
-                  aria-current={isActive(stop) ? "page" : undefined}
-                >
-                  {stop.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <div className="jccl-header-controls">
+          <nav aria-label="Stations" className="jccl-header-nav">
+            <ul>
+              {NAV.map((stop) => (
+                <li key={stop.href}>
+                  <Link
+                    href={stop.href}
+                    className="jccl-header-link"
+                    aria-current={isActive(stop) ? "page" : undefined}
+                  >
+                    {stop.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

@@ -23,9 +23,9 @@ export default function DuotoneDefs() {
       >
         <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0" />
         <feComponentTransfer>
-          <feFuncR type="table" tableValues="0.039216 0.886275" />
-          <feFuncG type="table" tableValues="0.047059 0.137255" />
-          <feFuncB type="table" tableValues="0.062745 0.101961" />
+          <feFuncR type="table" tableValues="0.062745 0.886275" />
+          <feFuncG type="table" tableValues="0.054902 0.137255" />
+          <feFuncB type="table" tableValues="0.090196 0.101961" />
         </feComponentTransfer>
       </filter>
       <filter
@@ -38,9 +38,9 @@ export default function DuotoneDefs() {
       >
         <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0" />
         <feComponentTransfer>
-          <feFuncR type="table" tableValues="0.039216 0.000000" />
-          <feFuncG type="table" tableValues="0.047059 0.458824" />
-          <feFuncB type="table" tableValues="0.062745 0.760784" />
+          <feFuncR type="table" tableValues="0.062745 0.000000" />
+          <feFuncG type="table" tableValues="0.054902 0.458824" />
+          <feFuncB type="table" tableValues="0.090196 0.760784" />
         </feComponentTransfer>
       </filter>
       <filter
@@ -53,9 +53,9 @@ export default function DuotoneDefs() {
       >
         <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0" />
         <feComponentTransfer>
-          <feFuncR type="table" tableValues="0.039216 0.000000" />
-          <feFuncG type="table" tableValues="0.047059 0.627451" />
-          <feFuncB type="table" tableValues="0.062745 0.250980" />
+          <feFuncR type="table" tableValues="0.062745 0.000000" />
+          <feFuncG type="table" tableValues="0.054902 0.627451" />
+          <feFuncB type="table" tableValues="0.090196 0.250980" />
         </feComponentTransfer>
       </filter>
       <filter
@@ -68,9 +68,9 @@ export default function DuotoneDefs() {
       >
         <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0" />
         <feComponentTransfer>
-          <feFuncR type="table" tableValues="0.039216 0.490196" />
-          <feFuncG type="table" tableValues="0.047059 0.286275" />
-          <feFuncB type="table" tableValues="0.062745 0.615686" />
+          <feFuncR type="table" tableValues="0.062745 0.490196" />
+          <feFuncG type="table" tableValues="0.054902 0.286275" />
+          <feFuncB type="table" tableValues="0.090196 0.615686" />
         </feComponentTransfer>
       </filter>
       <filter
@@ -83,9 +83,9 @@ export default function DuotoneDefs() {
       >
         <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0" />
         <feComponentTransfer>
-          <feFuncR type="table" tableValues="0.039216 0.000000" />
-          <feFuncG type="table" tableValues="0.047059 0.607843" />
-          <feFuncB type="table" tableValues="0.062745 0.607843" />
+          <feFuncR type="table" tableValues="0.062745 0.000000" />
+          <feFuncG type="table" tableValues="0.054902 0.607843" />
+          <feFuncB type="table" tableValues="0.090196 0.607843" />
         </feComponentTransfer>
       </filter>
       <filter
@@ -98,9 +98,9 @@ export default function DuotoneDefs() {
       >
         <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0" />
         <feComponentTransfer>
-          <feFuncR type="table" tableValues="0.039216 0.760784" />
-          <feFuncG type="table" tableValues="0.047059 0.094118" />
-          <feFuncB type="table" tableValues="0.062745 0.419608" />
+          <feFuncR type="table" tableValues="0.062745 0.760784" />
+          <feFuncG type="table" tableValues="0.054902 0.094118" />
+          <feFuncB type="table" tableValues="0.090196 0.419608" />
         </feComponentTransfer>
       </filter>
       <filter
@@ -113,9 +113,9 @@ export default function DuotoneDefs() {
       >
         <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0" />
         <feComponentTransfer>
-          <feFuncR type="table" tableValues="0.039216 1.000000" />
-          <feFuncG type="table" tableValues="0.047059 0.690196" />
-          <feFuncB type="table" tableValues="0.062745 0.000000" />
+          <feFuncR type="table" tableValues="0.062745 1.000000" />
+          <feFuncG type="table" tableValues="0.054902 0.690196" />
+          <feFuncB type="table" tableValues="0.090196 0.000000" />
         </feComponentTransfer>
       </filter>
       </defs>

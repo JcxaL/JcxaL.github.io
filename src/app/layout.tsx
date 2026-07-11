@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Source_Sans_3, Doto } from "next/font/google";
 import "./globals.css";
 import "@/styles/tokens.css";
 import { ViewTransitions } from "next-view-transitions";
+import { NO_FLASH_SCRIPT } from "@/lib/theme/themeStore";
 import { SmoothScrollProvider } from "@/components/providers/SmoothScrollProvider";
 import SiteHeader from "@/components/chrome/SiteHeader";
 import SiteFooter from "@/components/chrome/SiteFooter";
@@ -96,6 +97,9 @@ export default function RootLayout({
     <ViewTransitions>
     <html lang="en">
       <head>
+        {/* Apply an explicit theme choice before paint (no flash). System-
+            preference users are handled by the CSS media query — untouched. */}
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

@@ -33,6 +33,34 @@ Rules that make this work:
   first. When a mirror is unavoidable (GSAP eases, jsdom fallbacks), the
   mirror names the token it mirrors (CLAUDE.md rule-1 carve-outs).
 
+### 1.1 Two services from one token set (night default / day opt-in)
+
+The palette runs two services from the same JSON. In `tokens.json` a theme-
+varying color carries both a `$value` (night, the default) and a `$light`
+(day); an invariant color carries only `$value`. The generator emits, from
+that one source:
+
+- `:root` + `:root[data-theme="dark"]` — the night ground/ink ramp (also the
+  SSR / no-JS resting state).
+- `@media (prefers-color-scheme: light) :root:not([data-theme])` — day by OS
+  preference, and `:root[data-theme="light"]` — day by explicit toggle, which
+  always wins. The toggle persists `data-theme` on `<html>` (ADR 0008).
+- `.jccl-lit-board` — a **night-pin**: it re-declares the night ground/ink
+  values so any element carrying the class stays a dark, lit display in *both*
+  services. A departure board is a lit panel whatever the weather; wrap board
+  readouts, code blocks, and the 404 in it.
+
+Invariant tokens (`--color-board-amber*`, `--color-board-glow`,
+`--color-ink-inverse`, the six line colors, the status colors) do **not**
+flip — they mean the same thing in daylight. That anchors the one colour law
+this system runs on: **amber is lit-signage material** (board/LED text, the
+ticket strip, the boarding CTA fill, lamp glow — never text on a themeable
+ground, where it fails AA on the day paper; put it inside a `.jccl-lit-board`
+if it must sit on the page), and **lilac (`--color-accent-base`, which *does*
+flip) is the interactive accent** (links, active nav, focus rings, live
+indicators — text/stroke/border only, never a fill). Adding a service is a
+token edit, not a component edit; components already read the vars.
+
 ## 2. Asset classes — what is genuinely good to use
 
 ### 2.1 Color, motion, layout — design tokens

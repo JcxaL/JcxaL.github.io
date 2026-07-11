@@ -15,13 +15,21 @@ const tokens = JSON.parse(readFileSync(join(root, "tokens/tokens.json"), "utf8")
 
 const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 
-/** Flatten nested token groups into [cssVarName, value] pairs. */
+/**
+ * Flatten nested token groups. Every leaf carries its dark `$value` and,
+ * when it theme-switches, a `$light` value. Tokens without `$light` are
+ * invariant across both services (night default + day service).
+ */
 function flatten(node, path = []) {
   const out = [];
   for (const [key, value] of Object.entries(node)) {
     if (key.startsWith("$")) continue;
     if (value && typeof value === "object" && "$value" in value) {
-      out.push([`--${[...path, key].map(kebab).join("-")}`, value.$value]);
+      out.push({
+        name: `--${[...path, key].map(kebab).join("-")}`,
+        dark: value.$value,
+        light: "$light" in value ? value.$light : null,
+      });
     } else if (value && typeof value === "object") {
       out.push(...flatten(value, [...path, key]));
     }
@@ -29,19 +37,60 @@ function flatten(node, path = []) {
   return out;
 }
 
-const pairs = flatten(tokens);
+const leaves = flatten(tokens);
+const invariant = leaves.filter((l) => l.light === null);
+const themed = leaves.filter((l) => l.light !== null);
+
+const decls = (list, pick) =>
+  list.map((l) => `  ${l.name}: ${pick(l)};`).join("\n");
+
 const banner = `/* GENERATED FILE — do not edit by hand.
  * Source: tokens/tokens.json  ·  Build: pnpm tokens
  * House rule (CLAUDE.md): components consume these vars; raw hex/duration
- * literals in component code fail review. */`;
+ * literals in component code fail review.
+ *
+ * Two services share one system. Night is the default (:root); day service
+ * is opted in per prefers-color-scheme or an explicit data-theme on <html>.
+ * The lit boards (.jccl-lit-board) pin the night palette so departure
+ * displays stay dark-and-amber in daylight — a station board is a lit
+ * panel whatever the weather. */`;
 
-const css = `${banner}\n:root {\n${pairs
-  .map(([k, v]) => `  ${k}: ${v};`)
-  .join("\n")}\n}\n`;
+const css = `${banner}
+:root {
+${decls(invariant, (l) => l.dark)}
+
+  /* Night service — the default palette (also SSR / no-JS). */
+${decls(themed, (l) => l.dark)}
+}
+
+/* Explicit night selection beats the light media query. */
+:root[data-theme="dark"] {
+${decls(themed, (l) => l.dark)}
+}
+
+/* Day service — pale lilac paper. Opted in by OS preference… */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+${decls(themed, (l) => l.light).replace(/^ {2}/gm, "    ")}
+  }
+}
+
+/* …or by an explicit toggle, which always wins. */
+:root[data-theme="light"] {
+${decls(themed, (l) => l.light)}
+}
+
+/* Lit boards stay on the night palette in both services. */
+.jccl-lit-board {
+${decls(themed, (l) => l.dark)}
+}
+`;
 
 mkdirSync(join(root, "src/styles"), { recursive: true });
 writeFileSync(join(root, "src/styles/tokens.css"), css);
-console.log(`tokens.css written (${pairs.length} tokens)`);
+console.log(
+  `tokens.css written (${invariant.length} invariant + ${themed.length} themed)`,
+);
 
 /* ------------------------------------------------------------------ *
  * Duotone filter defs — token → SVG asset (WP-core pattern).          *
