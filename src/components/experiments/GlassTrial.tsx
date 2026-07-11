@@ -1,163 +1,169 @@
 import type { CSSProperties } from "react";
-import { Link } from "next-view-transitions";
-import StationPlate from "@/components/transit/StationPlate";
 
 /**
- * DayServiceTrial — Trial 02 on the depot experiments siding.
- * The night signage system re-lit for daylight: the four ground tokens and
- * three ink tokens are remapped to an enamel-white ramp, SCOPED to one
- * wrapper via inline custom properties. Amber and the six line colors ride
- * through unchanged — they are shared between services.
+ * GlassTrial — Trial 02 on the depot experiments siding.
  *
- * The same specimen composition renders twice (night = site theme untouched,
- * day = the ramp below) so the two services can be judged side by side.
- * Static render, no animation — nothing here needs a reduced-motion branch;
- * the only motion is the pre-existing `.jccl-lift` hover, which carries its
- * own no-motion-first branch in globals.css.
+ * The day service is now a real, togglable theme (header toggle → persisted
+ * `data-theme`), so the ground/ink ramp no longer needs a scoped trial. The
+ * open question that remains is a *chrome* decision: when a surface floats
+ * over the day-service paper, should it be a solid panel or frosted glass?
+ *
+ * This trial poses both treatments of one floating sub-header, over a real
+ * slice of station content so the blur has something to read:
+ *   A · SOLID PAPER — an opaque `.jccl-panel`. Hides whatever it covers.
+ *   B · GLASSY LILAC — the `.jccl-glass` utility. The line strip and heading
+ *       behind it frost through, so the chrome reads as translucent.
+ *
+ * The specimens theme with the running service (screenshot both), but the
+ * decision is about the DAY service: glass only earns its blur when there is
+ * content behind it, and it must still clear AA on the chrome's own text.
+ *
+ * Static render, no animation — nothing here needs a reduced-motion branch.
+ * Tokens + the `.jccl-glass` / `.jccl-panel` utilities only; no raw values.
  */
 
-/**
- * Day-service trial ramp — the ONE sanctioned raw-hex carve-out for this
- * experiment (theme-ramp trial, CLAUDE.md rule 1 does not apply to scoped
- * theme experiments on the depot siding). GRADUATION: if this ramp enters
- * service, move this palette into tokens/tokens.json as a second theme
- * ("day") and delete this object — components must never read these hexes.
- *
- * Every text pairing shown below was checked for WCAG AA (≥ 4.5:1):
- *   ink-signage #14171c on ground-0 #f4f5f7 → 16.47:1
- *   ink-muted   #4b5563 on ground-0 #f4f5f7 →  6.93:1 (7.56:1 on ground-1)
- *   ink-faint   #656e7d on ground-0 #f4f5f7 →  4.72:1
- *     (spec asked #6b7280 — that lands at 4.43:1 on day enamel, so the
- *      gray is darkened one step; same cool-gray family.)
- *   ink-inverse #0a0c10 on board-amber #ffb000 → 10.68:1 (CTA chip)
- * Amber, amber-dim, the six line colors, and the status colors are
- * deliberately absent: shared between services, never remapped.
- */
-const DAY_RAMP = {
-  "--color-ground-0": "#f4f5f7", // day enamel
-  "--color-ground-1": "#ffffff", // panel
-  "--color-ground-2": "#e8eaee", // raised
-  "--color-ground-line": "#d3d7de", // hairline
-  "--color-ink-signage": "#14171c",
-  "--color-ink-muted": "#4b5563",
-  "--color-ink-faint": "#656e7d",
-  "--color-board-glow": "rgba(255, 176, 0, 0.25)",
-} as const;
+/** The six line colors — invariant across services, allowed as fills. They
+ *  give the glass sample a strip of color to frost, so the blur is obvious. */
+const LINE_IDS = ["a", "b", "c", "d", "e", "f"] as const;
 
-/** Shared frame for both specimens — resolves against whichever theme scopes it.
- *  flex: 1 (inside the flex column) equalizes frame heights across the grid row
- *  without overflowing past the caption the way height:100% would. */
-const frameStyle: CSSProperties = {
-  flex: "1 1 auto",
+/** A believable slice of station content, painted behind the floating chrome
+ *  so the glass treatment has a backdrop to blur. Identical under both
+ *  treatments — only the floating bar differs. */
+const stageStyle: CSSProperties = {
+  position: "relative",
+  overflow: "hidden",
+  /* Contain the backdrop sample to this stage, not the page behind it. */
+  isolation: "isolate",
+  minHeight: 320,
   backgroundColor: "var(--color-ground-0)",
-  color: "var(--color-ink-signage)",
   border: "1px solid var(--color-ground-line)",
   borderRadius: "var(--layout-radius-card)",
-  padding: "clamp(20px, 3vw, 32px)",
 };
 
-const dayFrameStyle = { ...frameStyle, ...DAY_RAMP } as CSSProperties;
+const stripStyle: CSSProperties = {
+  display: "flex",
+  gap: 4,
+  marginBottom: 20,
+};
 
-const ctaChipStyle: CSSProperties = {
-  display: "inline-block",
+const chromeBarStyle: CSSProperties = {
+  position: "absolute",
+  top: 18,
+  left: 18,
+  right: 18,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 16,
+  padding: "12px 16px",
+  borderRadius: "var(--layout-radius-plate)",
+};
+
+const chromeLinkBase: CSSProperties = {
   fontFamily: "var(--font-stack-mono)",
   fontSize: "0.6875rem",
   letterSpacing: "0.12em",
   textTransform: "uppercase",
   fontWeight: 600,
-  padding: "8px 14px",
-  borderRadius: "var(--layout-radius-pill)",
-  backgroundColor: "var(--color-board-amber)",
-  color: "var(--color-ink-inverse)",
 };
 
-/**
- * The specimen: one believable slice of a station page — kicker, signage
- * heading, enamel plate, journal panel, amber CTA. Rendered identically in
- * both services so only the theme differs.
- */
-function ServiceSpecimen() {
+/** The floating sub-header — the chrome under evaluation. `variant` picks the
+ *  surface utility; everything else is shared so only the surface is judged. */
+function GlassStage({ variant }: { variant: "solid" | "glass" }) {
   return (
-    <div>
-      <p className="jccl-kicker">The JccL Line · Service preview</p>
-      <h3 className="jccl-signage mt-3 text-2xl">Day service — trial ramp</h3>
-
-      <div className="mt-6">
-        <StationPlate
-          name="Kyoto"
-          nameLocal="京都"
-          nameLocalLang="ja"
-          code="A01"
-          line="a"
-          status="visited"
-        />
-      </div>
-
-      <div className="jccl-panel jccl-lift mt-4 p-4">
-        <p className="jccl-telemetry">
-          A01 · 35.0116 N 135.7681 E · LINE A · 3 CALLS LOGGED
+    <div style={stageStyle}>
+      {/* Backdrop content — real station slice, sits behind the floating bar. */}
+      <div style={{ padding: "clamp(20px, 3vw, 28px)" }}>
+        <div style={stripStyle} aria-hidden>
+          {LINE_IDS.map((id) => (
+            <div
+              key={id}
+              style={{
+                height: 8,
+                flex: 1,
+                borderRadius: "var(--layout-radius-pill)",
+                backgroundColor: `var(--color-lines-${id})`,
+              }}
+            />
+          ))}
+        </div>
+        <h3 className="jccl-signage text-2xl">Kyoto · Line A</h3>
+        <p className="jccl-telemetry mt-2">
+          A01 · 35.0116 N 135.7681 E · 3 CALLS LOGGED
         </p>
         <p
-          className="jccl-measure mt-3 text-sm leading-relaxed"
+          className="jccl-measure mt-4 text-sm leading-relaxed"
           style={{ color: "var(--color-ink-muted)" }}
         >
           I learned to read Kyoto by its side streets — the lanes behind the
           shrine gates where the signs go quiet and the city slows to walking
-          pace. I still plan every trip around one unhurried morning there.
+          pace. The sub-header above floats over this while you scroll.
         </p>
       </div>
 
-      {/* CTA targets the travel index — the A01 exhibit page is not yet in
-          service, and a specimen must not ship a dead link. */}
-      <div className="mt-5">
-        <Link href="/travel/" style={ctaChipStyle}>
-          Board Line A →
-        </Link>
+      {/* The floating chrome under trial: opaque panel vs frosted glass. */}
+      <div
+        className={variant === "glass" ? "jccl-glass" : "jccl-panel"}
+        style={chromeBarStyle}
+      >
+        <span className="jccl-kicker" style={{ color: "var(--color-ink-signage)" }}>
+          Line A · Sub-services
+        </span>
+        <span style={{ display: "flex", gap: 16 }}>
+          {/* Active chrome link = lilac accent; the rest = signage ink. */}
+          <span style={{ ...chromeLinkBase, color: "var(--color-accent-base)" }}>
+            Stations
+          </span>
+          <span style={{ ...chromeLinkBase, color: "var(--color-ink-signage)" }}>
+            Journal
+          </span>
+        </span>
       </div>
     </div>
   );
 }
 
-export function DayServiceTrial() {
+export function GlassTrial() {
   return (
-    <section className="mt-14" id="day-service" aria-labelledby="trial-02-heading">
+    <section className="mt-14" id="glass" aria-labelledby="trial-02-heading">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
         <h2 id="trial-02-heading" className="jccl-signage text-xl">
-          Trial 02 · Day service
+          Trial 02 · Glass vs solid
         </h2>
-        <p className="jccl-telemetry">LIGHT THEME RAMP · SCOPED TOKEN REMAP</p>
+        <p className="jccl-telemetry">DAY-SERVICE CHROME · FLOATING SURFACE</p>
       </div>
       <p
         className="jccl-measure mb-8 text-sm leading-relaxed"
         style={{ color: "var(--color-ink-muted)" }}
       >
-        The same signage grammar re-lit for daylight: ground and ink tokens
-        swap to an enamel-white ramp, scoped to one wrapper; nothing else
-        changes. Deciding: does the enamel daylight ramp keep the signage
-        identity? Amber and line colors are shared between services.
+        The same floating sub-header, two ways: an opaque paper panel that hides
+        whatever it covers, and the frosted glass utility that lets the platform
+        show through. Deciding: does the day service float on glass, or sit on
+        solid paper? Glass needs content behind it to read — and must keep AA on
+        text.
       </p>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="flex flex-col">
-          <p className="jccl-telemetry mb-3">SPECIMEN N · NIGHT SERVICE — CURRENT</p>
-          <div style={frameStyle}>
-            <ServiceSpecimen />
-          </div>
+          <p className="jccl-telemetry mb-3">
+            TREATMENT A · SOLID PAPER — OPAQUE PANEL
+          </p>
+          <GlassStage variant="solid" />
         </div>
         <div className="flex flex-col">
-          <p className="jccl-telemetry mb-3">SPECIMEN D · DAY SERVICE — TRIAL</p>
-          <div style={dayFrameStyle}>
-            <ServiceSpecimen />
-          </div>
+          <p className="jccl-telemetry mb-3">
+            TREATMENT B · GLASSY LILAC — FROSTED CHROME
+          </p>
+          <GlassStage variant="glass" />
         </div>
       </div>
 
       <p className="jccl-telemetry mt-4">
-        ALL SHOWN PAIRINGS AA ≥ 4.5:1 · INK-FAINT DARKENED #6B7280 → #656E7D
-        FOR DAY ENAMEL · GRADUATION = SECOND THEME IN TOKENS.JSON
+        SOLID = .JCCL-PANEL (OPAQUE GROUND) · GLASS = .JCCL-GLASS (BLUR +
+        THEMED TRANSLUCENT GROUND) · CHROME ONLY, NEVER BODY-TEXT SURFACES
       </p>
     </section>
   );
 }
 
-export default DayServiceTrial;
+export default GlassTrial;

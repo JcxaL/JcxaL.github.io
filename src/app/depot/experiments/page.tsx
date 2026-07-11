@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Link } from "next-view-transitions";
 import DuotoneImage from "@/components/media/DuotoneImage";
-import DayServiceTrial from "@/components/experiments/DayServiceTrial";
+import GlassTrial from "@/components/experiments/GlassTrial";
 import EnamelTrial from "@/components/experiments/EnamelTrial";
 import type { LineId } from "@/lib/transit/types";
 
@@ -95,7 +95,7 @@ export default function ExperimentsPage() {
         ))}
       </section>
 
-      <DayServiceTrial />
+      <GlassTrial />
 
       <EnamelTrial />
 
@@ -105,7 +105,7 @@ export default function ExperimentsPage() {
           <Link
             href="/"
             className="underline"
-            style={{ color: "var(--color-board-amber)" }}
+            style={{ color: "var(--color-accent-base)" }}
           >
             RETURN TO THE CONCOURSE
           </Link>
