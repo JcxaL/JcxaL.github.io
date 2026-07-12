@@ -15,12 +15,20 @@ export default function Home() {
           </p>
         </div>
 
-        <a
-          className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-6 sm:px-8"
-          href="/playground/"
-        >
-          Explore the Daily Playground →
-        </a>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <a
+            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-6 sm:px-8"
+            href="/playground/"
+          >
+            Explore the Daily Playground →
+          </a>
+          <a
+            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-6 sm:px-8"
+            href="/travel/"
+          >
+            Take the Travel Line →
+          </a>
+        </div>
 
         <div className="flex gap-4 items-center flex-col sm:flex-row opacity-50 pointer-events-none">
           <a
