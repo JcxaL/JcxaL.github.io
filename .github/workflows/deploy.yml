@@ -1,32 +1,150 @@
-# Sample workflow for building and deploying a Next.js site to GitHub Pages
-#
-# To get started with Next.js see: https://nextjs.org/docs/getting-started
-#
-name: Deploy Next.js site to Pages
+# Builds the Next.js site and the daily playground from a single branch,
+# then deploys them together: playground/ lands at /playground/ inside the
+# Next.js static export so neither deploy replaces the other.
+name: Deploy site + playground to Pages
 
 on:
-  # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Build job
+  # ── 1. Validate playground manifests ────────────────────────────────────
+  validate-playground:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate manifest and active day
+        run: |
+          python3 - <<'EOF'
+          import json, sys, os
+
+          manifest_path = "playground/days/manifest.json"
+          if not os.path.exists(manifest_path):
+              print("ERROR: playground/days/manifest.json not found")
+              sys.exit(1)
+
+          with open(manifest_path) as f:
+              try:
+                  m = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"ERROR: manifest.json is not valid JSON — {e}")
+                  sys.exit(1)
+
+          days = m.get("days", [])
+          if not days:
+              print("ERROR: manifest.json has no days entries")
+              sys.exit(1)
+
+          active = [d for d in days if d.get("status") == "active"]
+          if len(active) != 1:
+              print(f"ERROR: Expected exactly 1 active day, found {len(active)}")
+              sys.exit(1)
+
+          day = active[0]
+          # 'folder' overrides 'date' for the directory name (supports YYYY-MM-DD-{id} naming)
+          folder = day.get("folder", day["date"])
+          html = f"playground/days/{folder}/index.html"
+          if not os.path.exists(html):
+              print(f"ERROR: Active day HTML missing — {html}")
+              sys.exit(1)
+
+          # Also validate spotlight manifest if it exists
+          spot_path = "playground/spotlight/manifest.json"
+          if os.path.exists(spot_path):
+              with open(spot_path) as f:
+                  try:
+                      sm = json.load(f)
+                  except json.JSONDecodeError as e:
+                      print(f"ERROR: spotlight/manifest.json is not valid JSON — {e}")
+                      sys.exit(1)
+              spot_active = [d for d in sm.get("days", []) if d.get("status") == "active"]
+              if len(spot_active) > 1:
+                  print(f"ERROR: spotlight manifest has {len(spot_active)} active entries (max 1)")
+                  sys.exit(1)
+              if spot_active:
+                  sd = spot_active[0]
+                  sf = sd.get("folder", sd["date"])
+                  shtml = f"playground/spotlight/days/{sf}/index.html"
+                  if not os.path.exists(shtml):
+                      print(f"ERROR: Active spotlight gallery HTML missing — {shtml}")
+                      sys.exit(1)
+                  # v2 spotlight format: drops_count >= 1 with N sub-folders 1..N/index.html
+                  drops_count = sd.get("drops_count", 1)
+                  if drops_count > 1:
+                      for i in range(1, drops_count + 1):
+                          drop_html = f"playground/spotlight/days/{sf}/{i}/index.html"
+                          if not os.path.exists(drop_html):
+                              print(f"ERROR: Spotlight drop missing — {drop_html}")
+                              sys.exit(1)
+                      # Also verify meta.json drops array matches
+                      meta_path = f"playground/spotlight/days/{sf}/meta.json"
+                      if os.path.exists(meta_path):
+                          with open(meta_path) as mf:
+                              meta = json.load(mf)
+                          actual_drops = len(meta.get("drops", []))
+                          if actual_drops != drops_count:
+                              print(f"ERROR: meta.json has {actual_drops} drops, manifest says {drops_count}")
+                              sys.exit(1)
+                  print(f"OK  spotlight: Day {sd['day_number']} — {sd['title']} ({drops_count} drop{'s' if drops_count != 1 else ''})")
+
+          archived = [d for d in days if d.get("status") == "archived"]
+          print(f"OK  active  : Day {day['day_number']} — {day['title']} ({day['date']}) [folder: {folder}]")
+          print(f"OK  archive : {len(archived)} past day(s) preserved")
+          print(f"OK  total   : {len(days)} day(s) in manifest")
+          EOF
+
+      - name: Validate travel bundle
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+
+          # The travel bundle deploys incrementally, so it is optional and has
+          # no "exactly 1 active" rule — validate only that what exists is sound.
+          mp = "travel/manifest.json"
+          if not os.path.exists(mp):
+              print("OK  travel : no bundle present (skipped)")
+              sys.exit(0)
+
+          with open(mp) as f:
+              try:
+                  m = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"ERROR: travel/manifest.json is not valid JSON — {e}")
+                  sys.exit(1)
+
+          if not os.path.exists("travel/index.html"):
+              print("ERROR: travel/index.html (the hub) is missing")
+              sys.exit(1)
+
+          stops = m.get("stops", [])
+          missing = []
+          for s in stops:
+              folder = s.get("folder", s.get("date", ""))
+              if not os.path.exists(f"travel/stops/{folder}/index.html"):
+                  missing.append(folder)
+          if missing:
+              for folder in missing:
+                  print(f"ERROR: travel stop HTML missing — travel/stops/{folder}/index.html")
+              sys.exit(1)
+
+          print(f"OK  travel : hub + {len(stops)} stop(s) in manifest")
+          EOF
+
+  # ── 2. Build Next.js and overlay the playground ─────────────────────────
   build:
+    needs: validate-playground
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,8 +155,10 @@ jobs:
         with:
           node-version: 20
 
-      # pnpm major must match the lockfile (lockfileVersion 9.0 = pnpm 9/10);
-      # pnpm 8 fails `--frozen-lockfile` on it and every deploy dies at install.
+      # pnpm major must match this branch's lockfile (lockfileVersion 9.0 =
+      # pnpm 9/10); pnpm 8 fails `--frozen-lockfile` on it. main still uses
+      # pnpm 8 with its older lockfile — that delta resolves when this branch
+      # launches and its lockfile becomes main's.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -77,12 +197,20 @@ jobs:
       - name: Build with Next.js
         run: pnpm build
 
+      - name: Overlay playground and travel
+        run: |
+          cp -r playground ./out/playground
+          [ -d travel ] && cp -r travel ./out/travel
+          cp CNAME ./out/CNAME
+          echo "out/ contents:"
+          find ./out -maxdepth 2 | sort
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./out
 
-  # Deployment job
+  # ── 3. Deploy ─────────────────────────────────────────────────────────────
   deploy:
     environment:
       name: github-pages
@@ -92,4 +220,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4 
+        uses: actions/deploy-pages@v4

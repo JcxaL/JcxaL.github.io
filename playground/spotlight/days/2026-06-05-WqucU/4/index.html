@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elastic Cursor Snake · Drop 4</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#060810;font-family:system-ui,-apple-system,sans-serif;user-select:none;cursor:none;touch-action:none}
+
+canvas{position:fixed;top:0;left:0;width:100%;height:100%}
+
+.label{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;z-index:1;
+}
+.label h2{
+  font-size:clamp(22px,6vw,52px);font-weight:800;
+  background:linear-gradient(135deg,#a78bfa,#60a5fa,#34d399);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;letter-spacing:-.03em;line-height:1;
+  opacity:.12;
+}
+.label p{color:rgba(255,255,255,.08);font-size:12px;margin-top:8px;letter-spacing:.06em;text-transform:uppercase}
+
+.controls{
+  position:fixed;top:16px;right:16px;z-index:2;
+  background:rgba(255,255,255,.05);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.08);border-radius:10px;
+  padding:12px 14px;display:flex;flex-direction:column;gap:10px;
+}
+.ctl-row{display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,255,255,.45)}
+.ctl-row label{min-width:62px}
+.ctl-row input[type=range]{-webkit-appearance:none;width:100px;height:3px;
+  background:rgba(255,255,255,.1);border-radius:2px;outline:none;cursor:pointer}
+.ctl-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;
+  width:11px;height:11px;background:#a78bfa;border-radius:50%}
+.ctl-row span{color:#a78bfa;font-weight:700;min-width:24px}
+
+.hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  font-size:10px;color:rgba(255,255,255,.2);text-align:center;letter-spacing:.08em;text-transform:uppercase;pointer-events:none}
+
+footer{position:fixed;bottom:8px;right:12px;font-size:9px;color:rgba(255,255,255,.08)}
+
+@media(max-width:480px){.controls{display:none}}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="label">
+  <h2>ELASTIC<br>SNAKE</h2>
+  <p>Move your cursor</p>
+</div>
+
+<div class="controls">
+  <div class="ctl-row">
+    <label>Segments</label>
+    <input type="range" id="segR" min="8" max="40" value="22">
+    <span id="segV">22</span>
+  </div>
+  <div class="ctl-row">
+    <label>Stiffness</label>
+    <input type="range" id="stiffR" min="2" max="25" value="12">
+    <span id="stiffV">12</span>
+  </div>
+  <div class="ctl-row">
+    <label>Damping</label>
+    <input type="range" id="dampR" min="60" max="98" value="84">
+    <span id="dampV">84</span>
+  </div>
+  <div class="ctl-row">
+    <label>Palette</label>
+    <input type="range" id="palR" min="0" max="3" step="1" value="0">
+    <span id="palV">Aurora</span>
+  </div>
+</div>
+
+<div class="hint">Move cursor or touch to animate</div>
+<footer>Canvas spring physics cursor trail · UI Spotlight Day 20 · Drop #4</footer>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const PALETTES = [
+  { name:'Aurora',   colors:['#a78bfa','#818cf8','#60a5fa','#34d399','#a78bfa'] },
+  { name:'Fire',     colors:['#f97316','#fb923c','#fbbf24','#ef4444','#f97316'] },
+  { name:'Ocean',    colors:['#06b6d4','#0ea5e9','#3b82f6','#8b5cf6','#06b6d4'] },
+  { name:'Neon',     colors:['#f472b6','#c084fc','#60a5fa','#34d399','#f472b6'] },
+];
+
+let NUM_SEGS = 22, STIFFNESS = 12, DAMPING = 0.84;
+let palIdx = 0;
+
+// Spring segments: each has position and velocity
+let segs = [];
+let mx = window.innerWidth / 2, my = window.innerHeight / 2;
+let pmx = mx, pmy = my;
+
+function initSegs() {
+  segs = Array.from({ length: NUM_SEGS }, (_, i) => ({
+    x: mx, y: my, vx: 0, vy: 0
+  }));
+}
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+function getColor(t) {
+  const pal = PALETTES[palIdx].colors;
+  const n = pal.length - 1;
+  const i = Math.floor(t * n);
+  const f = t * n - i;
+  const c1 = pal[Math.min(i, n)];
+  const c2 = pal[Math.min(i + 1, n)];
+  return lerpColor(c1, c2, f);
+}
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function lerpColor(a, b, t) {
+  const ca = hexToRgb(a), cb = hexToRgb(b);
+  return `rgb(${ca.map((v,i) => Math.round(v + (cb[i]-v)*t)).join(',')})`;
+}
+
+function frame(ts) {
+  requestAnimationFrame(frame);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Faint background trail
+  ctx.fillStyle = 'rgba(6,8,16,.18)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Update first segment: spring toward cursor
+  const s0 = segs[0];
+  const dx0 = mx - s0.x, dy0 = my - s0.y;
+  s0.vx += dx0 * (STIFFNESS * 0.1);
+  s0.vy += dy0 * (STIFFNESS * 0.1);
+  s0.vx *= DAMPING * 0.01 + 0.9;
+  s0.vy *= DAMPING * 0.01 + 0.9;
+  s0.x += s0.vx;
+  s0.y += s0.vy;
+
+  // Update remaining: spring toward previous
+  for (let i = 1; i < segs.length; i++) {
+    const s = segs[i], p = segs[i - 1];
+    const dx = p.x - s.x, dy = p.y - s.y;
+    const k = STIFFNESS * 0.06 * (1 - i / segs.length * 0.5);
+    s.vx += dx * k;
+    s.vy += dy * k;
+    const damp = DAMPING / 100;
+    s.vx *= damp;
+    s.vy *= damp;
+    s.x += s.vx;
+    s.y += s.vy;
+  }
+
+  // Draw snake path
+  if (segs.length < 2) return;
+
+  for (let i = 0; i < segs.length - 1; i++) {
+    const t = i / (segs.length - 1);
+    const tNext = (i + 1) / (segs.length - 1);
+    const radius = (1 - t) * 10 + 2;
+    const radiusNext = (1 - tNext) * 10 + 2;
+    const alpha = 1 - t * 0.7;
+
+    const s = segs[i], sn = segs[i + 1];
+
+    // Draw segment as line with varying width
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(sn.x, sn.y);
+    ctx.strokeStyle = getColor(t).replace('rgb', 'rgba').replace(')', `,${alpha})`);
+    ctx.lineWidth = radius * 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  // Head glow
+  const head = segs[0];
+  const hg = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, 18);
+  hg.addColorStop(0, getColor(0).replace('rgb', 'rgba').replace(')', ',.6)'));
+  hg.addColorStop(1, 'transparent');
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  ctx.arc(head.x, head.y, 18, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head dot
+  ctx.beginPath();
+  ctx.arc(head.x, head.y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+}
+
+// Cursor tracking
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+document.addEventListener('touchmove', e => {
+  e.preventDefault();
+  mx = e.touches[0].clientX; my = e.touches[0].clientY;
+}, { passive: false });
+document.addEventListener('touchstart', e => {
+  mx = e.touches[0].clientX; my = e.touches[0].clientY;
+});
+
+// Controls
+function bindSlider(id, valId, setter, fmt) {
+  const s = document.getElementById(id), v = document.getElementById(valId);
+  s.addEventListener('input', () => {
+    setter(+s.value);
+    v.textContent = fmt ? fmt(+s.value) : s.value;
+  });
+}
+
+bindSlider('segR', 'segV', val => { NUM_SEGS = val; initSegs(); });
+bindSlider('stiffR', 'stiffV', val => STIFFNESS = val);
+bindSlider('dampR', 'dampV', val => DAMPING = val);
+bindSlider('palR', 'palV', val => { palIdx = val; }, val => PALETTES[val].name);
+
+resize();
+window.addEventListener('resize', resize);
+initSegs();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

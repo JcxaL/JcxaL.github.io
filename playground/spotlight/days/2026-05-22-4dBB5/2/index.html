@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sticky Scroll Grid Reveal · UI Spotlight</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--accent:#7c3aed}
+body{font-family:system-ui,-apple-system,sans-serif;background:#09090f;color:#e2e8f0;overflow-x:hidden}
+.scroll-wrapper{height:420vh;position:relative}
+.sticky{position:sticky;top:0;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.grid-scene{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+  width:min(600px,90vw);
+  will-change:transform;
+}
+.col{display:flex;flex-direction:column;gap:8px;will-change:transform}
+.cell{
+  border-radius:12px;overflow:hidden;
+  aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  font-size:clamp(1.5rem,4vw,2.5rem);user-select:none;
+  position:relative;flex-shrink:0;
+}
+/* Column colors */
+.col-0 .cell:nth-child(1){background:linear-gradient(135deg,#1e1033,#4c1d95)}
+.col-0 .cell:nth-child(2){background:linear-gradient(135deg,#0f2620,#065f46)}
+.col-0 .cell:nth-child(3){background:linear-gradient(135deg,#1e1b4b,#312e81)}
+.col-1 .cell:nth-child(1){background:linear-gradient(135deg,#0f1a2e,#1e3a5f)}
+.col-1 .cell:nth-child(2){background:linear-gradient(135deg,#1a0f0f,#7c2d12)}
+.col-1 .cell:nth-child(3){background:linear-gradient(135deg,#0a1628,#1e4080)}
+.col-2 .cell:nth-child(1){background:linear-gradient(135deg,#0f2420,#064e3b)}
+.col-2 .cell:nth-child(2){background:linear-gradient(135deg,#1f0a3f,#6b21a8)}
+.col-2 .cell:nth-child(3){background:linear-gradient(135deg,#1a0d0d,#991b1b)}
+
+/* Title that fades in at end */
+.reveal-text{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none;
+  z-index:5;text-align:center;padding:2rem;
+}
+.reveal-title{
+  font-size:clamp(2rem,6vw,5rem);font-weight:900;letter-spacing:-.04em;
+  background:linear-gradient(135deg,#a78bfa,#60a5fa,#34d399);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  line-height:1;opacity:0;transform:translateY(40px);
+  transition:opacity .4s,transform .4s;
+  will-change:opacity,transform;
+}
+.reveal-sub{
+  margin-top:.75rem;font-size:clamp(.8rem,2vw,1.1rem);color:rgba(255,255,255,.5);
+  opacity:0;transform:translateY(20px);
+  transition:opacity .4s .1s,transform .4s .1s;
+  will-change:opacity,transform;
+}
+.reveal-text.show .reveal-title{opacity:1;transform:translateY(0)}
+.reveal-text.show .reveal-sub{opacity:1;transform:translateY(0)}
+
+/* Controls */
+.controls{
+  position:fixed;top:12px;right:12px;z-index:20;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+  border-radius:10px;padding:10px 14px;font-size:11px;color:#64748b;
+}
+.controls b{color:#a78bfa}
+.progress-bar{
+  position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:30;
+  transform-origin:left;width:0;transition:width .05s linear;
+}
+footer{position:fixed;bottom:0;left:0;right:0;text-align:center;font-size:.7rem;color:#334155;
+  padding:.4rem;background:rgba(9,9,15,.8);border-top:1px solid rgba(255,255,255,.06);z-index:20}
+</style>
+</head>
+<body>
+<div class="progress-bar" id="pb"></div>
+<div class="scroll-wrapper" id="wrap">
+  <div class="sticky" id="sticky">
+    <div class="grid-scene" id="grid">
+      <div class="col col-0" id="col0">
+        <div class="cell">🌌</div>
+        <div class="cell">🌿</div>
+        <div class="cell">🔮</div>
+      </div>
+      <div class="col col-1" id="col1">
+        <div class="cell">🌊</div>
+        <div class="cell">🔥</div>
+        <div class="cell">🌙</div>
+      </div>
+      <div class="col col-2" id="col2">
+        <div class="cell">🌺</div>
+        <div class="cell">⚡</div>
+        <div class="cell">🎯</div>
+      </div>
+    </div>
+    <div class="reveal-text" id="reveal">
+      <div class="reveal-title">Scroll<br>Reveal</div>
+      <div class="reveal-sub">Three phases · Sticky scroll · No frameworks</div>
+    </div>
+  </div>
+</div>
+<div class="controls">Scroll Progress: <b id="pct">0%</b></div>
+<footer>Inspired by Theo Plawinski / Codrops Sticky Grid Scroll (March 2026) · UI Spotlight Day 6 · Drop #2</footer>
+<script>
+const wrap = document.getElementById('wrap');
+const grid = document.getElementById('grid');
+const col0 = document.getElementById('col0');
+const col1 = document.getElementById('col1');
+const col2 = document.getElementById('col2');
+const reveal = document.getElementById('reveal');
+const pct = document.getElementById('pct');
+const pb = document.getElementById('pb');
+
+function ease(t) { return t * t * (3 - 2 * t); } // smoothstep
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function phaseT(progress, start, end) {
+  return Math.max(0, Math.min(1, (progress - start) / (end - start)));
+}
+
+let raf;
+function update() {
+  const scrollTop = window.scrollY;
+  const maxScroll = wrap.offsetHeight - window.innerHeight;
+  if (maxScroll <= 0) return;
+
+  const progress = Math.max(0, Math.min(1, scrollTop / maxScroll));
+  pct.textContent = Math.round(progress * 100) + '%';
+  pb.style.width = (progress * 100) + '%';
+
+  // Phase 1: column reveal (0 → 0.4)
+  const t1 = ease(phaseT(progress, 0, 0.4));
+  col0.style.transform = `translateY(${lerp(-80, 0, t1)}%)`;
+  col2.style.transform = `translateY(${lerp(80, 0, t1)}%)`;
+  col1.style.opacity = t1;
+
+  // Phase 2: zoom + spread (0.4 → 0.88)
+  const t2 = ease(phaseT(progress, 0.4, 0.88));
+  const scale = lerp(1, 2.2, t2);
+  const spreadX = lerp(0, 50, t2);
+  const spreadY = lerp(0, 25, t2);
+  grid.style.transform = `scale(${scale})`;
+  col0.style.transform += ` translateX(${-spreadX}%)`;
+  col2.style.transform += ` translateX(${spreadX}%)`;
+  col1.style.transform = `translateY(${-spreadY}%)`;
+
+  // Phase 3: reveal text (0.85 → 1.0)
+  const t3 = phaseT(progress, 0.85, 1.0);
+  if (t3 > 0.05) {
+    reveal.classList.add('show');
+  } else {
+    reveal.classList.remove('show');
+  }
+  // Grid fades as text shows
+  grid.style.opacity = 1 - t3 * 0.7;
+}
+
+window.addEventListener('scroll', () => {
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(update);
+}, { passive: true });
+
+update();
+</script>
+</body>
+</html>

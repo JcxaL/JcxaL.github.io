@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Metaball Lab</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#050508;overflow:hidden;width:100dvw;height:100dvh;font-family:system-ui,-apple-system,sans-serif;color:#e2e0f0;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#ui{position:fixed;top:16px;right:16px;background:rgba(5,4,18,.85);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px 14px;display:flex;flex-direction:column;gap:9px;min-width:182px;z-index:10;font-size:13px}
+h3{font-size:14px;font-weight:700;letter-spacing:.04em;color:#c9b8ff;margin-bottom:2px}
+.lbl{opacity:.55;font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.mb{border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:inherit;cursor:pointer;transition:.15s;width:100%;padding:6px 4px;font-size:11px;text-align:center}
+.mb.on,.mb:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.32)}
+.mb.on{color:#c9b8ff}
+.cb{border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:inherit;cursor:pointer;transition:.15s;width:100%;padding:7px;font-size:12px;text-align:center}
+.cb:hover{background:rgba(255,255,255,.12)}
+.cb.red{border-color:rgba(255,80,80,.2)}
+.cb.red:hover{background:rgba(255,50,50,.15);border-color:rgba(255,100,100,.4)}
+.cb.hi{border-color:rgba(139,92,246,.4)}
+.cb.hi:hover{background:rgba(139,92,246,.18);border-color:rgba(139,92,246,.6)}
+input[type=range]{width:100%;accent-color:#8b5cf6;cursor:pointer}
+.row{display:flex;align-items:center;gap:8px;font-size:12px}
+.tog{width:36px;height:20px;background:rgba(255,255,255,.1);border-radius:10px;position:relative;cursor:pointer;transition:.2s;flex-shrink:0}
+.tog.on{background:#7c3aed}
+.tog::after{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;top:3px;left:3px;transition:.2s}
+.tog.on::after{transform:translateX(16px)}
+#ct{font-size:11px;opacity:.4;text-align:center}
+#tip{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:7px 18px;font-size:12px;opacity:.85;pointer-events:none;white-space:nowrap;transition:opacity 1s}
+@media(max-width:520px){
+  #ui{top:auto;bottom:0;left:0;right:0;border-radius:18px 18px 0 0;flex-direction:row;flex-wrap:wrap;min-width:unset;padding:12px 10px;align-items:center;gap:7px}
+  h3,#ct,.lbl:first-of-type,.lbl:nth-of-type(2){display:none}
+  .modes{grid-template-columns:repeat(4,1fr)}
+  #tip{bottom:80px}
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h3>⬤ Metaball Lab</h3>
+  <div class="lbl">Render Mode</div>
+  <div class="modes">
+    <button class="mb" data-m="0">Neon</button>
+    <button class="mb" data-m="1">Heat</button>
+    <button class="mb" data-m="2">Plasma</button>
+    <button class="mb" data-m="3">Acid</button>
+  </div>
+  <div class="lbl">New Blob Size</div>
+  <input type="range" id="sz" min="30" max="190" value="70">
+  <div class="lbl">Surface Threshold</div>
+  <input type="range" id="th" min="0.3" max="3" step="0.05" value="1">
+  <div class="row"><div class="tog" id="anim"></div><span>Auto-Animate</span></div>
+  <button class="cb" id="add">＋ Add Random Blob</button>
+  <button class="cb red" id="clr">✕ Clear All</button>
+  <button class="cb hi" id="exp">↓ Export PNG</button>
+  <div id="ct">0 blobs</div>
+</div>
+<div id="tip">Click to add blob · Drag to move · Double-click to remove</div>
+<script>
+const cv=document.getElementById('c');
+const gl=cv.getContext('webgl',{preserveDrawingBuffer:true,antialias:false});
+if(!gl){document.body.innerHTML='<p style="padding:2rem;color:#fff;font-family:system-ui">WebGL is not supported in this browser.</p>';throw 0;}
+
+const VS=`attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
+const FS=`precision mediump float;
+uniform vec2 uB[16];
+uniform float uS[16];
+uniform float uC[16];
+uniform int uM;
+uniform float uT;
+uniform float uTh;
+
+vec3 hsl(float h,float s,float l){
+  float c=(1.-abs(2.*l-1.))*s;
+  float x=c*(1.-abs(mod(h*6.,2.)-1.));
+  float m=l-c*.5;
+  if(h<.167)return vec3(c,x,0.)+m;
+  if(h<.333)return vec3(x,c,0.)+m;
+  if(h<.5)return vec3(0.,c,x)+m;
+  if(h<.667)return vec3(0.,x,c)+m;
+  if(h<.833)return vec3(x,0.,c)+m;
+  return vec3(c,0.,x)+m;
+}
+
+void main(){
+  vec2 p=gl_FragCoord.xy;
+  float f=0.;
+  for(int i=0;i<16;i++){
+    vec2 d=p-uB[i];
+    f+=uC[i]*uS[i]*uS[i]/(dot(d,d)+1.);
+  }
+  float t=f/uTh;
+  float gw=smoothstep(0.,1.,t);
+  float ed=smoothstep(.82,1.,t)-smoothstep(1.,1.1,t);
+  float cr=smoothstep(.95,1.18,t);
+  vec3 col=vec3(.02,.01,.05);
+
+  if(uM==0){
+    col+=vec3(.28,.07,.95)*gw*.38;
+    col+=vec3(.08,.82,1.)*ed*2.0;
+    col+=vec3(1.,.95,1.)*cr;
+    col+=vec3(.45,.04,.88)*(smoothstep(.52,.68,t)-smoothstep(.68,.74,t))*.65;
+  } else if(uM==1){
+    float tt=clamp(t,0.,1.6)/1.6;
+    if(tt<.25)col=mix(vec3(.0,.02,.14),vec3(.65,0.,0.),tt/.25);
+    else if(tt<.55)col=mix(vec3(.65,0.,0.),vec3(1.,.38,.0),(tt-.25)/.3);
+    else if(tt<.82)col=mix(vec3(1.,.38,.0),vec3(1.,.92,.45),(tt-.55)/.27);
+    else col=mix(vec3(1.,.92,.45),vec3(1.,1.,1.),(tt-.82)/.18);
+  } else if(uM==2){
+    float pl=sin(f*2.4+uT)*sin(f*1.8-uT*.75)*.5+.5;
+    float h=mod(pl+uT*.06+f*.28,1.);
+    col=hsl(h,.92,.18+gw*.38);
+    col+=hsl(mod(h+.5,1.),1.,0.)*ed*.9;
+  } else {
+    float b1=sin(f*5.5+uT*.55)*.5+.5;
+    float b2=sin(f*11.)*.5+.5;
+    col=mix(vec3(.01),mix(vec3(.04,.88,.28),vec3(.88,.98,.08),b2),gw);
+    col+=vec3(.9,1.,.1)*b1*ed*1.6;
+    col+=vec3(.05,.3,.0)*(smoothstep(.2,.5,t)-smoothstep(.5,.55,t))*.4;
+  }
+  gl_FragColor=vec4(clamp(col,0.,1.),1.);
+}`;
+
+function mkS(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(s));return s;}
+const pr=gl.createProgram();
+gl.attachShader(pr,mkS(gl.VERTEX_SHADER,VS));
+gl.attachShader(pr,mkS(gl.FRAGMENT_SHADER,FS));
+gl.linkProgram(pr);
+if(!gl.getProgramParameter(pr,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(pr));}
+gl.useProgram(pr);
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const ap=gl.getAttribLocation(pr,'p');
+gl.enableVertexAttribArray(ap);
+gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
+const uBL=gl.getUniformLocation(pr,'uB');
+const uSL=gl.getUniformLocation(pr,'uS');
+const uCL=gl.getUniformLocation(pr,'uC');
+const uML=gl.getUniformLocation(pr,'uM');
+const uTL=gl.getUniformLocation(pr,'uT');
+const uThL=gl.getUniformLocation(pr,'uTh');
+
+// State
+let blobs=[],mode=0,doAnim=true,dragIdx=-1,dragOx=0,dragOy=0;
+let newSz=70,thresh=1.0,t0=performance.now();
+
+try{
+  const s=JSON.parse(localStorage.getItem('mbl_v2')||'null');
+  if(s&&Array.isArray(s.blobs)){blobs=s.blobs;mode=s.mode||0;thresh=s.thresh||1;}
+}catch(e){}
+
+if(!blobs.length){
+  for(let i=0;i<6;i++) blobs.push({
+    x:.12+Math.random()*.76,y:.12+Math.random()*.76,
+    r:50+Math.random()*65,ch:1,
+    vx:(Math.random()-.5)*.0022,vy:(Math.random()-.5)*.0022
+  });
+}
+
+function save(){try{localStorage.setItem('mbl_v2',JSON.stringify({blobs,mode,thresh}));}catch(e){}}
+
+function resize(){
+  const dpr=devicePixelRatio||1;
+  cv.width=Math.floor(innerWidth*dpr);
+  cv.height=Math.floor(innerHeight*dpr);
+  gl.viewport(0,0,cv.width,cv.height);
+}
+addEventListener('resize',resize);resize();
+
+// Init UI
+document.querySelectorAll('.mb').forEach(b=>b.classList.toggle('on',+b.dataset.m===mode));
+document.getElementById('th').value=thresh;
+document.getElementById('anim').classList.toggle('on',doAnim);
+
+// Render
+function render(ts){
+  requestAnimationFrame(render);
+  const W=cv.width,H=cv.height;
+  const elapsed=(ts-t0)/1000;
+  if(doAnim&&dragIdx<0){
+    for(const b of blobs){
+      b.x+=b.vx;b.y+=b.vy;
+      if(b.x<.01||b.x>.99)b.vx*=-1;
+      if(b.y<.01||b.y>.99)b.vy*=-1;
+    }
+  }
+  const bArr=new Float32Array(32);
+  const sArr=new Float32Array(16);
+  const cArr=new Float32Array(16);
+  const dpr=devicePixelRatio||1;
+  blobs.forEach((b,i)=>{
+    bArr[i*2]=b.x*W;
+    bArr[i*2+1]=b.y*H;
+    sArr[i]=b.r*dpr;
+    cArr[i]=b.ch;
+  });
+  gl.uniform2fv(uBL,bArr);
+  gl.uniform1fv(uSL,sArr);
+  gl.uniform1fv(uCL,cArr);
+  gl.uniform1i(uML,mode);
+  gl.uniform1f(uTL,elapsed);
+  gl.uniform1f(uThL,thresh);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  document.getElementById('ct').textContent=`${blobs.length} blob${blobs.length!==1?'s':''}`;
+}
+requestAnimationFrame(render);
+
+// Pointer helpers
+function norm(e){
+  const r=cv.getBoundingClientRect();
+  return{x:(e.clientX-r.left)/r.width,y:1-(e.clientY-r.top)/r.height};
+}
+function hitBlob(nx,ny){
+  const W=innerWidth,H=innerHeight;
+  for(let i=blobs.length-1;i>=0;i--){
+    const b=blobs[i];
+    const dx=(b.x-nx)*W,dy=(b.y-ny)*H;
+    if(dx*dx+dy*dy<b.r*b.r) return i;
+  }
+  return -1;
+}
+
+cv.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  const{x,y}=norm(e);
+  const idx=hitBlob(x,y);
+  if(idx>=0){
+    dragIdx=idx;dragOx=x-blobs[idx].x;dragOy=y-blobs[idx].y;
+    cv.setPointerCapture(e.pointerId);
+  } else if(blobs.length<16){
+    blobs.push({x,y,r:newSz,ch:1,vx:(Math.random()-.5)*.0022,vy:(Math.random()-.5)*.0022});
+    save();
+  }
+});
+cv.addEventListener('pointermove',e=>{
+  if(dragIdx<0)return;
+  e.preventDefault();
+  const{x,y}=norm(e);
+  blobs[dragIdx].x=x-dragOx;
+  blobs[dragIdx].y=y-dragOy;
+});
+cv.addEventListener('pointerup',e=>{
+  if(dragIdx>=0){save();dragIdx=-1;}
+});
+
+let lastClick=0;
+cv.addEventListener('click',e=>{
+  const now=Date.now();
+  if(now-lastClick<350){
+    const{x,y}=norm(e);
+    const idx=hitBlob(x,y);
+    if(idx>=0){blobs.splice(idx,1);save();}
+  }
+  lastClick=now;
+});
+cv.addEventListener('dblclick',e=>{
+  e.preventDefault();
+  const{x,y}=norm(e);
+  const idx=hitBlob(x,y);
+  if(idx>=0){blobs.splice(idx,1);save();}
+});
+
+document.querySelectorAll('.mb').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    mode=+btn.dataset.m;
+    document.querySelectorAll('.mb').forEach(b=>b.classList.toggle('on',b===btn));
+    save();
+  });
+});
+document.getElementById('sz').addEventListener('input',e=>newSz=+e.target.value);
+document.getElementById('th').addEventListener('input',e=>{thresh=+e.target.value;save();});
+document.getElementById('anim').addEventListener('click',function(){
+  doAnim=!doAnim;this.classList.toggle('on',doAnim);
+});
+document.getElementById('add').addEventListener('click',()=>{
+  if(blobs.length<16){
+    blobs.push({
+      x:.08+Math.random()*.84,y:.08+Math.random()*.84,
+      r:38+Math.random()*95,ch:Math.random()>.22?1:-0.55,
+      vx:(Math.random()-.5)*.003,vy:(Math.random()-.5)*.003
+    });
+    save();
+  }
+});
+document.getElementById('clr').addEventListener('click',()=>{blobs=[];save();});
+document.getElementById('exp').addEventListener('click',()=>{
+  const a=document.createElement('a');
+  a.href=cv.toDataURL('image/png');
+  a.download=`metaball-lab-${Date.now()}.png`;
+  a.click();
+});
+setTimeout(()=>{
+  const tip=document.getElementById('tip');
+  tip.style.opacity='0';
+  setTimeout(()=>tip.remove(),1200);
+},5000);
+</script>
+</body>
+</html>

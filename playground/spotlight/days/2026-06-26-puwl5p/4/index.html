@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rubber Band Snap</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#06060f;font-family:system-ui,sans-serif;
+  height:100vh;overflow:hidden;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:40px;
+  color:#e2e8f0;cursor:none;
+}
+h1{font-size:clamp(.9rem,2.5vw,1.1rem);font-weight:400;letter-spacing:.1em;text-transform:uppercase;color:#374151}
+
+.snap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;width:min(540px,90vw)}
+
+.snap-item{
+  aspect-ratio:1;border-radius:16px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;
+  border:1px solid #1e2040;background:#0e0f1e;
+  font-size:13px;font-weight:600;color:#9ca3af;
+  position:relative;will-change:transform;
+  transition:background .2s, border-color .2s;
+  user-select:none;
+}
+.snap-item .icon{font-size:28px;line-height:1;will-change:transform;transition:transform .05s}
+.snap-item.hover-state{background:#0f1030;border-color:#6366f140}
+.snap-item .label{font-size:11px;color:#6b7280}
+
+/* Custom cursor */
+#cursor{
+  pointer-events:none;position:fixed;top:0;left:0;z-index:100;
+  transform:translate(-50%,-50%);
+}
+#cursor-dot{
+  width:8px;height:8px;border-radius:50%;background:#a78bfa;
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  transition:transform .1s;
+}
+#cursor-ring{
+  width:32px;height:32px;border-radius:50%;
+  border:2px solid #a78bfa;opacity:.6;
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  transition:width .15s,height .15s,opacity .15s;
+}
+
+/* Rubber band lines drawn on canvas */
+#band-canvas{position:fixed;inset:0;pointer-events:none;z-index:50}
+
+.debug-panel{position:fixed;top:12px;right:12px;background:rgba(6,6,15,.9);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;font-size:11px;color:#9ca3af;backdrop-filter:blur(8px);z-index:200}
+.debug-panel label{display:flex;align-items:center;gap:8px;margin-bottom:4px;color:#e2e8f0}
+.debug-panel input[type=range]{width:80px;accent-color:#a78bfa}
+.debug-val{color:#a78bfa;min-width:28px;display:inline-block}
+
+footer{position:fixed;bottom:12px;left:0;right:0;text-align:center;font-size:11px;color:#374151;z-index:200}
+.hint{font-size:12px;color:#374151;text-align:center}
+@media(max-width:500px){body{cursor:default}#cursor{display:none}}
+</style>
+</head>
+<body>
+
+<h1>Elastic Rubber Band</h1>
+
+<canvas id="band-canvas"></canvas>
+<div id="cursor"><div id="cursor-ring"></div><div id="cursor-dot"></div></div>
+
+<div class="snap-grid" id="grid">
+  <div class="snap-item" data-label="Spring"><span class="icon">🌀</span><span>Spring</span><span class="label">drag me</span></div>
+  <div class="snap-item" data-label="Elastic"><span class="icon">💫</span><span>Elastic</span><span class="label">drag me</span></div>
+  <div class="snap-item" data-label="Bounce"><span class="icon">⚡</span><span>Bounce</span><span class="label">drag me</span></div>
+  <div class="snap-item" data-label="Stretch"><span class="icon">🎯</span><span>Stretch</span><span class="label">drag me</span></div>
+  <div class="snap-item" data-label="Snap"><span class="icon">🔮</span><span>Snap</span><span class="label">drag me</span></div>
+  <div class="snap-item" data-label="Pull"><span class="icon">✨</span><span>Pull</span><span class="label">drag me</span></div>
+</div>
+
+<div class="hint">Click + drag any card — release to snap back</div>
+
+<div class="debug-panel">
+  <label>Stiffness <input type="range" id="stiff" min="0.05" max="0.4" value="0.15" step="0.01"> <span class="debug-val" id="stiff-val">.15</span></label>
+  <label>Damping <input type="range" id="damp" min="0.5" max="0.98" value="0.75" step="0.01"> <span class="debug-val" id="damp-val">.75</span></label>
+  <label>Band Color <input type="color" id="band-color" value="#6366f1" style="width:40px;height:20px;border:none;border-radius:4px;cursor:pointer;background:none"></label>
+</div>
+
+<footer>Inspired by elastic spring drag pattern · UI Spotlight Day 41 · Drop #4</footer>
+
+<script>
+let stiffness = 0.15, damping = 0.75;
+let bandColor = '#6366f1';
+
+const canvas = document.getElementById('band-canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resizeCanvas(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+resizeCanvas();
+window.addEventListener('resize',resizeCanvas);
+
+// Cursor
+const cursorEl = document.getElementById('cursor');
+const cursorRing = document.getElementById('cursor-ring');
+const cursorDot = document.getElementById('cursor-dot');
+let mx=W/2,my=H/2,cx=W/2,cy=H/2;
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+(function cursorLoop(){
+  cx+=(mx-cx)*0.2; cy+=(my-cy)*0.2;
+  cursorEl.style.transform=`translate(${cx-0}px,${cy-0}px) translate(-50%,-50%)`;
+  requestAnimationFrame(cursorLoop);
+})();
+
+function setCursorHover(h){
+  cursorRing.style.width = h?'50px':'32px';
+  cursorRing.style.height = h?'50px':'32px';
+  cursorRing.style.opacity = h?'0.9':'0.6';
+}
+
+// Spring physics per card
+const items = [...document.querySelectorAll('.snap-item')];
+const springs = items.map(el=>{
+  const rect = el.getBoundingClientRect();
+  return {
+    el,
+    ox:0,oy:0,      // resting offsets (always 0 for snapping back)
+    x:0,y:0,        // current visual offset
+    vx:0,vy:0,      // velocity
+    dragging:false,
+    dragStartX:0,dragStartY:0,
+    mouseStartX:0,mouseStartY:0,
+  };
+});
+
+let activeSpr = null;
+
+// drag
+document.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;
+  const idx = items.findIndex(el=>el===e.target||el.contains(e.target));
+  if(idx<0)return;
+  const s = springs[idx];
+  s.dragging = true;
+  s.dragStartX = s.x;
+  s.dragStartY = s.y;
+  s.mouseStartX = e.clientX;
+  s.mouseStartY = e.clientY;
+  s.vx = 0; s.vy = 0;
+  activeSpr = s;
+  items[idx].classList.add('hover-state');
+  cursorDot.style.transform='translate(-50%,-50%) scale(1.5)';
+  setCursorHover(true);
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove',e=>{
+  if(!activeSpr||!activeSpr.dragging)return;
+  const dx = e.clientX - activeSpr.mouseStartX;
+  const dy = e.clientY - activeSpr.mouseStartY;
+  activeSpr.x = activeSpr.dragStartX + dx;
+  activeSpr.y = activeSpr.dragStartY + dy;
+});
+
+document.addEventListener('mouseup',e=>{
+  if(activeSpr){
+    activeSpr.dragging=false;
+    activeSpr.el.classList.remove('hover-state');
+    cursorDot.style.transform='translate(-50%,-50%) scale(1)';
+    setCursorHover(false);
+    activeSpr=null;
+  }
+});
+
+// Hover cursor change
+items.forEach((el,i)=>{
+  el.addEventListener('mouseenter',()=>{ if(!activeSpr) setCursorHover(true); });
+  el.addEventListener('mouseleave',()=>{ if(!activeSpr) setCursorHover(false); });
+});
+
+// Anchor points for band visualization
+function getCenter(el) {
+  const r = el.getBoundingClientRect();
+  return {x: r.left+r.width/2, y: r.top+r.height/2};
+}
+
+function drawBand(s){
+  if(!s.dragging && Math.abs(s.x)<2 && Math.abs(s.y)<2) return;
+  const anchor = getCenter(s.el);
+  // "rest" position = anchor - current offset
+  const restX = anchor.x - s.x;
+  const restY = anchor.y - s.y;
+  const dist = Math.hypot(s.x,s.y);
+  if(dist<4)return;
+
+  ctx.save();
+  ctx.strokeStyle = bandColor;
+  ctx.lineWidth = Math.max(1.5, 4 - dist*0.02);
+  ctx.globalAlpha = Math.min(0.8, dist*0.015);
+  ctx.lineCap='round';
+  ctx.setLineDash([]);
+
+  // draw band: bezier from rest to current
+  ctx.beginPath();
+  ctx.moveTo(restX, restY);
+  const cpx = restX + (anchor.x-restX)*0.2;
+  const cpy = restY + (anchor.y-restY)*0.2;
+  ctx.quadraticCurveTo(cpx,cpy,anchor.x,anchor.y);
+  ctx.stroke();
+
+  // glow
+  ctx.globalAlpha *= 0.3;
+  ctx.lineWidth *= 3;
+  ctx.filter = `blur(${Math.min(dist*0.05,6)}px)`;
+  ctx.beginPath();
+  ctx.moveTo(restX,restY);
+  ctx.quadraticCurveTo(cpx,cpy,anchor.x,anchor.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+let lastT = 0;
+(function physicsLoop(t){
+  const dt = Math.min((t-lastT)/16,3); lastT=t;
+  ctx.clearRect(0,0,W,H);
+
+  springs.forEach(s=>{
+    if(!s.dragging){
+      const ax = -s.x * stiffness;
+      const ay = -s.y * stiffness;
+      s.vx = (s.vx + ax)*damping;
+      s.vy = (s.vy + ay)*damping;
+      s.x += s.vx;
+      s.y += s.vy;
+      if(Math.abs(s.x)<0.05 && Math.abs(s.vx)<0.05) { s.x=0; s.vx=0; }
+      if(Math.abs(s.y)<0.05 && Math.abs(s.vy)<0.05) { s.y=0; s.vy=0; }
+    }
+    s.el.style.transform = `translate(${s.x.toFixed(2)}px,${s.y.toFixed(2)}px)`;
+    drawBand(s);
+  });
+
+  requestAnimationFrame(physicsLoop);
+})(0);
+
+// Debug
+document.getElementById('stiff').addEventListener('input',function(){
+  stiffness=+this.value;
+  document.getElementById('stiff-val').textContent=this.value;
+});
+document.getElementById('damp').addEventListener('input',function(){
+  damping=+this.value;
+  document.getElementById('damp-val').textContent=this.value;
+});
+document.getElementById('band-color').addEventListener('input',function(){
+  bandColor=this.value;
+});
+</script>
+</body>
+</html>

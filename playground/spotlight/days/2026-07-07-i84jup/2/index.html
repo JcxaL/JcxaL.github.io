@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Container Style Queries — UI Spotlight Drop 2</title>
+<style>
+  :root{ --accent:#34d399; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%; background:#0a0f0c; color:#e8f2ec; font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed; top:14px; left:14px; z-index:50; background:rgba(20,30,26,0.7); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); color:#e8f2ec; text-decoration:none; padding:8px 14px; border-radius:999px;
+    font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,0.4);}
+  .back-link:hover{background:rgba(30,42,36,0.85);}
+
+  main{max-width:1100px; margin:0 auto; padding:100px 24px 100px;}
+  h1{font-size:clamp(26px,5vw,42px); margin:0 0 10px; background:linear-gradient(90deg,#34d399,#38bdf8);
+    -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .intro{color:#9db3a8; max-width:640px; margin:0 0 42px; font-size:15px; line-height:1.55;}
+  .intro code{background:rgba(255,255,255,0.08); padding:1px 6px; border-radius:5px; font-size:13px;}
+
+  .panels{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:26px;}
+
+  .panel{
+    container-type: inline-size;
+    container-name: theme-zone;
+    border-radius:18px; padding:20px; border:1px solid rgba(255,255,255,0.09);
+    background:rgba(255,255,255,0.02);
+  }
+  .panel-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
+  .panel-head h2{font-size:14px; margin:0; color:#c9d8d0;}
+  .mode-switch{display:flex; gap:4px; background:rgba(255,255,255,0.06); border-radius:999px; padding:3px;}
+  .mode-switch button{border:none; background:transparent; color:#8fa89b; font-size:11px; padding:5px 10px;
+    border-radius:999px; cursor:pointer; font-family:inherit;}
+  .mode-switch button.active{background:var(--accent); color:#04140c; font-weight:700;}
+
+  .card-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .zone-card{
+    border-radius:12px; padding:14px; font-size:12.5px; transition:background .3s, color .3s, border-color .3s, transform .2s;
+    border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03); color:#c4d4cb;
+  }
+  .zone-card .tag{display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; opacity:0.7; margin-bottom:4px;}
+  .zone-card:hover{ transform:translateY(-2px); }
+
+  /* --- Container STYLE queries: descendants react to the container's custom property --- */
+  @container theme-zone style(--mode: vivid) {
+    .zone-card{ background:linear-gradient(135deg,#34d399,#38bdf8); color:#04140c; border-color:transparent; font-weight:600; }
+  }
+  @container theme-zone style(--mode: dark) {
+    .zone-card{ background:#04070a; color:#7ee3b4; border-color:rgba(52,211,153,0.35); }
+  }
+  @container theme-zone style(--mode: minimal) {
+    .zone-card{ background:transparent; color:#dfe9e4; border-color:rgba(255,255,255,0.16); border-style:dashed; }
+  }
+
+  /* also style the panel chrome itself based on its own custom property (style queries can target self via :root trick is not needed — chrome reacts via a wrapping ancestor container instead) */
+  .panel[data-mode="vivid"]{ box-shadow:0 0 0 1px rgba(52,211,153,0.4), 0 20px 60px rgba(52,211,153,0.12); }
+  .panel[data-mode="dark"]{ background:rgba(0,0,0,0.35); }
+
+  #hud{position:fixed; top:16px; right:16px; background:rgba(14,20,17,0.75); border:1px solid rgba(255,255,255,0.12);
+    border-radius:12px; padding:12px 14px; font-size:11px; backdrop-filter:blur(10px); z-index:40; max-width:210px; line-height:1.5;}
+  #hud h3{margin:0 0 6px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:#8fae9c;}
+  @media (max-width:700px){ #hud{display:none;} .card-grid{grid-template-columns:1fr 1fr;} }
+
+  footer{text-align:center; padding:30px 20px 80px; color:#6b8578; font-size:12px;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div id="hud">
+  <h3>How it works</h3>
+  Each panel below is its own <code>@container</code>. Flipping its switch only sets a <code>--mode</code> custom property on <em>that</em> container — the cards inside react via <code>@container style(--mode: …)</code>, with zero JavaScript re-render and zero leakage to sibling panels.
+</div>
+
+<main>
+  <h1>Container Style Queries</h1>
+  <p class="intro">A new kind of container query: instead of asking "how wide is my container?", <code>@container style()</code> asks "what custom property value does my container currently have?" — letting a theme cascade down to descendants without touching a single class on them.</p>
+
+  <div class="panels" id="panels"></div>
+</main>
+
+<footer>Inspired by MDN's container size &amp; style queries guide + Modern CSS Daily's container-style-queries article · UI Spotlight Day 52 · Drop #2</footer>
+
+<script>
+(function(){
+  'use strict';
+  const ZONES = [
+    {name:'Dashboard Widgets', cards:['Revenue','Active Users','Latency','Errors']},
+    {name:'Product Cards', cards:['Aurora Lamp','Field Jacket','Ceramic Mug','Desk Mat']},
+    {name:'Notification Feed', cards:['Deploy OK','New Comment','Build Failed','Invite Sent']}
+  ];
+  const MODES = ['vivid','dark','minimal'];
+
+  const panelsEl = document.getElementById('panels');
+  ZONES.forEach((zone, zi)=>{
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.dataset.mode = 'vivid';
+    panel.style.setProperty('--mode', 'vivid');
+
+    const head = document.createElement('div');
+    head.className = 'panel-head';
+    head.innerHTML = `<h2>${zone.name}</h2>`;
+    const switcher = document.createElement('div');
+    switcher.className = 'mode-switch';
+    MODES.forEach(mode=>{
+      const btn = document.createElement('button');
+      btn.textContent = mode;
+      btn.className = mode === 'vivid' ? 'active' : '';
+      btn.addEventListener('click', ()=>{
+        panel.dataset.mode = mode;
+        panel.style.setProperty('--mode', mode);
+        [...switcher.children].forEach(b=>b.classList.toggle('active', b===btn));
+      });
+      switcher.appendChild(btn);
+    });
+    head.appendChild(switcher);
+    panel.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    zone.cards.forEach(c=>{
+      const card = document.createElement('div');
+      card.className = 'zone-card';
+      card.innerHTML = `<span class="tag">Item ${zi+1}</span>${c}`;
+      grid.appendChild(card);
+    });
+    panel.appendChild(grid);
+    panelsEl.appendChild(panel);
+  });
+})();
+</script>
+</body>
+</html>

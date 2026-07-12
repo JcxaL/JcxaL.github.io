@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Peel Reveal — UI Spotlight Drop #4</title>
+<style>
+  :root{color-scheme:dark;}
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:#0a0b0f;color:#e8e8ee;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .app{display:flex;flex-direction:column;height:100%;}
+  header.topbar{display:flex;align-items:center;justify-content:space-between;
+    gap:12px;padding:12px 16px;flex-wrap:wrap;border-bottom:1px solid #1c1f27;}
+  header.topbar h1{font-size:15px;margin:0;font-weight:600;}
+  header.topbar h1 span{display:block;font-size:11px;font-weight:400;color:#8a8f9e;}
+  .pairs{display:flex;gap:8px;flex-wrap:wrap;}
+  .pair-btn{background:#161822;border:1px solid #2a2e3a;color:#c8ccdb;
+    padding:8px 12px;border-radius:8px;font-size:12px;cursor:pointer;transition:.15s;}
+  .pair-btn:hover{border-color:#4a5064;}
+  .pair-btn.active{background:#5b6bff;border-color:#5b6bff;color:#fff;}
+  .stage-wrap{position:relative;flex:1;margin:12px;border-radius:14px;overflow:hidden;
+    background:#000;min-height:200px;}
+  #stage{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;}
+  .panel{position:absolute;top:14px;right:14px;width:200px;padding:14px;border-radius:12px;
+    background:rgba(20,22,30,.55);backdrop-filter:blur(14px) saturate(150%);
+    border:1px solid rgba(255,255,255,.12);box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .panel h2{margin:0 0 10px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#aab0c2;}
+  .panel label{display:block;font-size:11px;color:#cfd2e0;margin-bottom:10px;}
+  .panel label span{float:right;color:#8f9bff;font-variant-numeric:tabular-nums;}
+  .panel input[type=range]{width:100%;margin-top:4px;accent-color:#5b6bff;}
+  footer{text-align:center;font-size:11px;color:#5c6070;padding:8px 0 12px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <h1>Peel Reveal <span>Canvas eraser-trail micro-interaction</span></h1>
+    <div class="pairs">
+      <button class="pair-btn active" data-pair="0">Plasma / Topo</button>
+      <button class="pair-btn" data-pair="1">Neon Grid / Ink</button>
+      <button class="pair-btn" data-pair="2">Sunset Mesh / Circuit</button>
+    </div>
+  </header>
+  <main class="stage-wrap" id="stageWrap">
+    <canvas id="stage"></canvas>
+    <div class="panel">
+      <h2>Debug</h2>
+      <label>Trail length <span id="trailVal">35</span>
+        <input id="trailLength" type="range" min="5" max="80" value="35">
+      </label>
+      <label>Brush radius <span id="radiusVal">70</span>
+        <input id="brushRadius" type="range" min="20" max="160" value="70">
+      </label>
+      <label>Heal speed <span id="healVal">4</span>
+        <input id="healSpeed" type="range" min="1" max="10" value="4">
+      </label>
+    </div>
+  </main>
+  <footer>Inspired by rajchaitanya03/BATMAN · UI Spotlight Day 51 · Drop #4</footer>
+</div>
+<script>
+(function(){
+  const stage = document.getElementById('stage');
+  const ctx = stage.getContext('2d');
+  const wrap = document.getElementById('stageWrap');
+  const off = document.createElement('canvas');
+  const offCtx = off.getContext('2d');
+  const bottomCanvas = document.createElement('canvas');
+  const bottomCtx = bottomCanvas.getContext('2d');
+  const topCanvas = document.createElement('canvas');
+  const topCtx = topCanvas.getContext('2d');
+
+  let dpr = Math.max(1, window.devicePixelRatio || 1);
+  let W = 2, H = 2;
+  let pairIndex = 0;
+  let trail = [];
+  let maxPoints = 35;
+  let brushRadius = 70;
+  let healSpeedVal = 4;
+  let maxAgeMs = mapHeal(healSpeedVal);
+
+  function mapHeal(v){ return 620 - (v - 1) * (540 / 9); } // higher v = faster heal = shorter memory
+
+  function hslToRgb(h, s, l){
+    let r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
+  }
+
+  function drawPlasma(tctx, w, h){
+    const sw = Math.max(1, Math.floor(w/5)), sh = Math.max(1, Math.floor(h/5));
+    const buf = document.createElement('canvas'); buf.width = sw; buf.height = sh;
+    const bctx = buf.getContext('2d');
+    const img = bctx.createImageData(sw, sh);
+    const data = img.data;
+    for (let y = 0; y < sh; y++) {
+      for (let x = 0; x < sw; x++) {
+        const idx = (y * sw + x) * 4;
+        const v = Math.sin(x*0.09) + Math.sin(y*0.11) + Math.sin((x+y)*0.07) + Math.sin(Math.sqrt(x*x+y*y)*0.09);
+        const hue = ((v*0.5+2)/4 + 0.55) % 1;
+        const [r,g,b] = hslToRgb(hue, 0.85, 0.55);
+        data[idx]=r; data[idx+1]=g; data[idx+2]=b; data[idx+3]=255;
+      }
+    }
+    bctx.putImageData(img, 0, 0);
+    tctx.clearRect(0,0,w,h);
+    tctx.imageSmoothingEnabled = true;
+    tctx.drawImage(buf, 0, 0, sw, sh, 0, 0, w, h);
+  }
+
+  function drawTopo(tctx, w, h){
+    tctx.fillStyle = '#0a0e16'; tctx.fillRect(0,0,w,h);
+    const lines = 42;
+    for (let i = 0; i < lines; i++) {
+      const baseY = (i/lines) * h * 1.2 - h * 0.1;
+      tctx.beginPath();
+      for (let x = 0; x <= w; x += Math.max(4, w/150)) {
+        const y = baseY + Math.sin(x*0.01+i*0.5)*30 + Math.sin(x*0.023+i)*15;
+        if (x === 0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
+      }
+      tctx.strokeStyle = `hsla(${(i*9+200)%360},70%,55%,0.4)`;
+      tctx.lineWidth = 2;
+      tctx.stroke();
+    }
+  }
+
+  function drawNeonGrid(tctx, w, h){
+    tctx.fillStyle = '#05010a'; tctx.fillRect(0,0,w,h);
+    const cell = Math.max(30, Math.min(w,h)/12);
+    for (let y = 0; y < h; y += cell) {
+      for (let x = 0; x < w; x += cell) {
+        const hue = ((x+y)*0.4) % 360;
+        tctx.beginPath();
+        tctx.arc(x+cell/2, y+cell/2, cell*0.28, 0, Math.PI*2);
+        tctx.fillStyle = `hsl(${hue},90%,60%)`;
+        tctx.shadowColor = `hsl(${hue},90%,60%)`;
+        tctx.shadowBlur = 16;
+        tctx.fill();
+      }
+    }
+    tctx.shadowBlur = 0;
+  }
+
+  function drawInk(tctx, w, h){
+    tctx.fillStyle = '#111318'; tctx.fillRect(0,0,w,h);
+    for (let i = 0; i < 260; i++) {
+      const x = Math.random()*w, y = Math.random()*h, r = 10 + Math.random()*60;
+      const g = tctx.createRadialGradient(x,y,0,x,y,r);
+      g.addColorStop(0,'rgba(18,18,26,0.6)');
+      g.addColorStop(1,'rgba(18,18,26,0)');
+      tctx.fillStyle = g;
+      tctx.beginPath(); tctx.arc(x,y,r,0,Math.PI*2); tctx.fill();
+    }
+  }
+
+  function drawSunset(tctx, w, h){
+    const g = tctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'#ff6b6b'); g.addColorStop(0.4,'#feca57');
+    g.addColorStop(0.7,'#ff9ff3'); g.addColorStop(1,'#5f27cd');
+    tctx.fillStyle = g; tctx.fillRect(0,0,w,h);
+    for (let i = 0; i < 8; i++) {
+      const x = Math.random()*w, y = Math.random()*h, r = Math.random()*w*0.3+80;
+      const hue = Math.random()*360;
+      const rg = tctx.createRadialGradient(x,y,0,x,y,r);
+      rg.addColorStop(0, `hsla(${hue},90%,65%,0.5)`);
+      rg.addColorStop(1, `hsla(${hue},90%,65%,0)`);
+      tctx.fillStyle = rg;
+      tctx.beginPath(); tctx.arc(x,y,r,0,Math.PI*2); tctx.fill();
+    }
+  }
+
+  function drawCircuit(tctx, w, h){
+    tctx.fillStyle = '#060a12'; tctx.fillRect(0,0,w,h);
+    tctx.strokeStyle = 'rgba(80,220,180,0.5)'; tctx.lineWidth = 2;
+    const step = Math.max(24, Math.min(w,h)/22);
+    for (let x = 0; x < w; x += step) {
+      let y = 0;
+      tctx.beginPath(); tctx.moveTo(x, 0);
+      while (y < h) {
+        y += step * (1 + Math.floor(Math.random()*2));
+        tctx.lineTo(x, Math.min(y,h));
+        if (Math.random() < 0.5) tctx.lineTo(x + (Math.random()<0.5?step:-step), Math.min(y,h));
+      }
+      tctx.stroke();
+    }
+    for (let i = 0; i < 60; i++) {
+      tctx.fillStyle = 'rgba(120,255,220,0.7)';
+      tctx.beginPath(); tctx.arc(Math.random()*w, Math.random()*h, 3, 0, Math.PI*2); tctx.fill();
+    }
+  }
+
+  const pairs = [
+    { bottom: drawPlasma, top: drawTopo },
+    { bottom: drawNeonGrid, top: drawInk },
+    { bottom: drawSunset, top: drawCircuit }
+  ];
+
+  function regenerateLayers(){
+    pairs[pairIndex].bottom(bottomCtx, W, H);
+    pairs[pairIndex].top(topCtx, W, H);
+  }
+
+  function resize(){
+    const rect = wrap.getBoundingClientRect();
+    dpr = Math.max(1, window.devicePixelRatio || 1);
+    W = Math.max(2, Math.floor(rect.width * dpr));
+    H = Math.max(2, Math.floor(rect.height * dpr));
+    [stage, off, bottomCanvas, topCanvas].forEach(c => { c.width = W; c.height = H; });
+    stage.style.width = rect.width + 'px';
+    stage.style.height = rect.height + 'px';
+    regenerateLayers();
+  }
+
+  new ResizeObserver(resize).observe(wrap);
+
+  function getPos(e){
+    const rect = stage.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) * dpr, y: (e.clientY - rect.top) * dpr, t: performance.now() };
+  }
+  function addPoint(e){
+    trail.push(getPos(e));
+    const hardCap = maxPoints * 3;
+    if (trail.length > hardCap) trail.splice(0, trail.length - hardCap);
+  }
+  stage.addEventListener('pointerdown', e => { stage.setPointerCapture(e.pointerId); addPoint(e); });
+  stage.addEventListener('pointermove', addPoint);
+
+  function updateTrail(){
+    const now = performance.now();
+    trail = trail.filter(p => now - p.t <= maxAgeMs);
+    if (trail.length > maxPoints) trail = trail.slice(trail.length - maxPoints);
+  }
+
+  function renderMask(){
+    offCtx.clearRect(0, 0, W, H);
+    const n = trail.length;
+    for (let i = 0; i < n; i++) {
+      const p = trail[i];
+      const t = n === 1 ? 1 : i / (n - 1);
+      const r = brushRadius * dpr * (0.15 + 0.85 * t);
+      const alpha = 0.15 + 0.85 * t;
+      const g = offCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      g.addColorStop(0, `rgba(255,255,255,${alpha})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      offCtx.fillStyle = g;
+      offCtx.beginPath(); offCtx.arc(p.x, p.y, r, 0, Math.PI*2); offCtx.fill();
+    }
+  }
+
+  function render(){
+    updateTrail();
+    renderMask();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(topCanvas, 0, 0);                 // top layer, fully opaque
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.drawImage(off, 0, 0);                        // punch a hole where the trail mask is opaque
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.drawImage(bottomCanvas, 0, 0);               // fill the punched hole with the bottom layer
+    ctx.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(render);
+  }
+
+  document.querySelectorAll('.pair-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.pair-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      pairIndex = parseInt(btn.dataset.pair, 10);
+      regenerateLayers();
+    });
+  });
+
+  const trailLength = document.getElementById('trailLength');
+  const trailVal = document.getElementById('trailVal');
+  trailLength.addEventListener('input', () => { maxPoints = parseInt(trailLength.value, 10); trailVal.textContent = maxPoints; });
+
+  const brushRadiusInput = document.getElementById('brushRadius');
+  const radiusVal = document.getElementById('radiusVal');
+  brushRadiusInput.addEventListener('input', () => { brushRadius = parseInt(brushRadiusInput.value, 10); radiusVal.textContent = brushRadius; });
+
+  const healSpeed = document.getElementById('healSpeed');
+  const healVal = document.getElementById('healVal');
+  healSpeed.addEventListener('input', () => { healSpeedVal = parseInt(healSpeed.value, 10); maxAgeMs = mapHeal(healSpeedVal); healVal.textContent = healSpeedVal; });
+
+  resize();
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

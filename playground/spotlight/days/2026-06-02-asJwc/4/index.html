@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Water Ripple — UI Spotlight</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;cursor:crosshair;touch-action:none}
+canvas{display:block}
+#info{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  background:rgba(0,20,40,.7);border:1px solid rgba(6,182,212,.2);
+  border-radius:20px;padding:6px 16px;font-size:11px;
+  color:rgba(150,220,255,.7);font-family:system-ui,sans-serif;
+  pointer-events:none;white-space:nowrap
+}
+footer{position:fixed;bottom:0;width:100%;text-align:center;
+  padding:6px;font-size:10px;color:rgba(100,120,180,.4);
+  font-family:system-ui,sans-serif;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="info">click or touch to create ripples · waves interfere</div>
+<footer>Inspired by Evan Wallace's WebGL water simulation · UI Spotlight Day 17 · Drop #4</footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+let W, H, SCALE = 2;
+let buf0, buf1; // float32 height buffers
+let imgBuf, imgData;
+
+function resize() {
+  W = Math.ceil(window.innerWidth  / SCALE);
+  H = Math.ceil(window.innerHeight / SCALE);
+  cv.width  = window.innerWidth;
+  cv.height = window.innerHeight;
+  buf0 = new Float32Array(W * H);
+  buf1 = new Float32Array(W * H);
+  imgData = ctx.createImageData(W, H);
+  imgBuf  = imgData.data;
+  // fill imgBuf alpha
+  for (let i = 3; i < imgBuf.length; i += 4) imgBuf[i] = 255;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Dampening factor (0.97 = light damp, 0.99 = almost no damp)
+const DAMP = 0.975;
+
+function addSplash(px, py, radius, amp) {
+  const cx = Math.round(px / SCALE);
+  const cy = Math.round(py / SCALE);
+  const r  = Math.round(radius / SCALE);
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const d2 = dx*dx + dy*dy;
+      if (d2 > r*r) continue;
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const d = Math.sqrt(d2);
+      buf0[y * W + x] += amp * Math.cos((d / r) * Math.PI * 0.5);
+    }
+  }
+}
+
+// Continuous drip
+let dripTimer = 0;
+function autoDrops(ts) {
+  if (ts - dripTimer > 1800) {
+    dripTimer = ts;
+    addSplash(
+      Math.random() * window.innerWidth,
+      Math.random() * window.innerHeight,
+      24 + Math.random() * 20,
+      0.5 + Math.random() * 0.5
+    );
+  }
+}
+
+// Simulation step (2D wave equation)
+function stepWave() {
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x;
+      const val = (buf0[i-1] + buf0[i+1] + buf0[(y-1)*W+x] + buf0[(y+1)*W+x]) * 0.5 - buf1[i];
+      buf1[i] = val * DAMP;
+    }
+  }
+  const tmp = buf0; buf0 = buf1; buf1 = tmp;
+}
+
+// Render wave heights to cyan/blue pixels
+function render() {
+  for (let i = 0; i < W * H; i++) {
+    const h = buf0[i];
+    // h in roughly [-1, 1]
+    const t = Math.max(0, Math.min(1, (h + 1) * 0.5));
+    // dark blue → bright cyan
+    const r = Math.round(t * 80);
+    const g = Math.round(t * 210);
+    const b = Math.round(60 + t * 195);
+    const base = i * 4;
+    imgBuf[base]   = r;
+    imgBuf[base+1] = g;
+    imgBuf[base+2] = b;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  // scale up
+  ctx.drawImage(cv, 0, 0, W, H, 0, 0, window.innerWidth, window.innerHeight);
+}
+
+// but we need a separate off-screen buffer for the low-res sim
+// Rethink: use an OffscreenCanvas for the sim and blit to main canvas scaled
+const offcv  = document.createElement('canvas');
+const offctx = offcv.getContext('2d');
+
+function resize2() {
+  W = Math.ceil(window.innerWidth  / SCALE);
+  H = Math.ceil(window.innerHeight / SCALE);
+  cv.width  = window.innerWidth;
+  cv.height = window.innerHeight;
+  offcv.width  = W;
+  offcv.height = H;
+  buf0 = new Float32Array(W * H);
+  buf1 = new Float32Array(W * H);
+  imgData = offctx.createImageData(W, H);
+  imgBuf  = imgData.data;
+  for (let i = 3; i < imgBuf.length; i += 4) imgBuf[i] = 255;
+}
+resize2();
+window.removeEventListener('resize', resize);
+window.addEventListener('resize', resize2);
+
+function render2() {
+  for (let i = 0; i < W * H; i++) {
+    const h = buf0[i];
+    const t = Math.max(0, Math.min(1, (h + 1) * 0.5));
+    const r = Math.round(t * 60);
+    const g = Math.round(t * 195);
+    const b = Math.round(40 + t * 200);
+    const base = i * 4;
+    imgBuf[base]   = r;
+    imgBuf[base+1] = g;
+    imgBuf[base+2] = b;
+  }
+  offctx.putImageData(imgData, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(offcv, 0, 0, W, H, 0, 0, cv.width, cv.height);
+}
+
+let lastTs = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  autoDrops(ts);
+  // run multiple steps per frame for speed
+  const steps = Math.round(Math.max(1, 60 / (1000/(ts-lastTs+0.001))));
+  for (let s = 0; s < Math.min(steps, 4); s++) stepWave();
+  lastTs = ts;
+  render2();
+}
+requestAnimationFrame(loop);
+
+// Input
+function splash(e) {
+  e.preventDefault();
+  const touches = e.touches || [{clientX:e.clientX, clientY:e.clientY}];
+  for (const t of touches) {
+    addSplash(t.clientX, t.clientY, 30 + Math.random()*20, 1.2 + Math.random()*0.8);
+  }
+}
+cv.addEventListener('pointerdown', splash);
+cv.addEventListener('touchstart', splash, {passive:false});
+
+// Drag creates continuous ripples
+let dragging = false;
+cv.addEventListener('pointermove', e => {
+  if (e.buttons === 0) return;
+  addSplash(e.clientX, e.clientY, 14, 0.6);
+});
+
+// Initial splashes
+setTimeout(() => addSplash(window.innerWidth*.5, window.innerHeight*.5, 60, 1.5), 200);
+setTimeout(() => addSplash(window.innerWidth*.3, window.innerHeight*.35, 40, 1.0), 600);
+setTimeout(() => addSplash(window.innerWidth*.7, window.innerHeight*.65, 50, 1.2), 1100);
+</script>
+</body>
+</html>

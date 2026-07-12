@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drop 5 — Scroll-Triggered Counters</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  width:100%;
+  background:#040410;font-family:system-ui,sans-serif;color:#e0e0ff;
+  overflow-x:hidden;
+}
+
+/* ── HERO ── */
+.hero{
+  height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  text-align:center;padding:20px;
+  position:relative;
+}
+.hero h1{font-size:clamp(28px,5vw,56px);font-weight:900;margin-bottom:12px;letter-spacing:-1px}
+.hero p{font-size:clamp(13px,2vw,18px);color:#4040a0;max-width:500px}
+.scroll-hint{
+  position:absolute;bottom:30px;
+  font-size:11px;color:#30308a;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  animation:bounce .6s ease-in-out infinite alternate;
+}
+@keyframes bounce{from{transform:translateY(0)}to{transform:translateY(6px)}}
+
+/* ── STATS SECTION ── */
+.stats{
+  padding:80px 20px;
+  max-width:900px;margin:0 auto;
+}
+.stats h2{
+  text-align:center;font-size:clamp(14px,2vw,18px);
+  font-weight:700;color:rgba(255,255,255,.4);
+  text-transform:uppercase;letter-spacing:2px;
+  margin-bottom:48px;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:20px;
+}
+
+/* ── STAT CARD ── */
+.stat{
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:16px;
+  padding:24px 20px;
+  text-align:center;
+  position:relative;
+  overflow:hidden;
+  transition:border-color .3s, background .3s;
+}
+.stat::before{
+  content:'';
+  position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 0%,var(--glow,rgba(100,80,255,.1)) 0%,transparent 70%);
+  opacity:0;transition:opacity .6s;
+}
+
+/* When animated (active class added by JS) */
+.stat.fired{border-color:rgba(255,255,255,.15);background:rgba(255,255,255,.05)}
+.stat.fired::before{opacity:1}
+
+.stat-icon{font-size:28px;margin-bottom:12px;display:block}
+.stat-num{
+  font-size:clamp(32px,5vw,52px);
+  font-weight:900;
+  color:#fff;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-1px;
+  line-height:1;
+  display:block;
+  margin-bottom:6px;
+  min-height:1.1em;
+}
+.stat-suffix{font-size:.7em;font-weight:700;opacity:.7}
+.stat-label{font-size:11px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:1px;font-weight:600}
+
+/* Progress bar under number */
+.stat-bar{
+  height:2px;background:rgba(255,255,255,.06);
+  border-radius:2px;margin-top:12px;overflow:hidden;
+}
+.stat-bar-fill{
+  height:100%;width:0%;
+  background:var(--bar-color,#7c6fff);
+  border-radius:2px;
+  transition:width 2s cubic-bezier(.16,1,.3,1);
+}
+.stat.fired .stat-bar-fill{width:var(--pct,80%)}
+
+/* ── SECOND STATS ROW ── */
+.feat{
+  padding:60px 20px 80px;
+  max-width:900px;margin:0 auto;
+}
+.feat h2{
+  text-align:center;font-size:clamp(14px,2vw,18px);
+  font-weight:700;color:rgba(255,255,255,.4);
+  text-transform:uppercase;letter-spacing:2px;
+  margin-bottom:48px;
+}
+.feat-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:16px;
+}
+.feat-card{
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;
+  padding:20px;
+  display:flex;gap:16px;align-items:center;
+}
+.feat-num{
+  font-size:clamp(28px,4vw,40px);font-weight:900;
+  color:#fff;font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  min-width:100px;
+  text-align:right;
+}
+.feat-info strong{font-size:13px;font-weight:700;display:block;margin-bottom:3px}
+.feat-info p{font-size:11px;color:rgba(255,255,255,.35);line-height:1.4}
+
+/* ── CONTROLS ── */
+.ctrl{
+  position:fixed;bottom:20px;right:16px;
+  background:rgba(0,0,0,.7);backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.1);border-radius:10px;
+  padding:10px 14px;font-size:11px;color:#8080c0;z-index:100;
+}
+.ctrl button{
+  display:block;width:100%;margin-top:6px;
+  background:rgba(100,80,255,.2);border:1px solid rgba(100,80,255,.3);
+  border-radius:6px;color:#b0a0ff;font-size:10px;padding:5px 8px;
+  cursor:pointer;transition:background .15s;
+}
+.ctrl button:hover{background:rgba(100,80,255,.35)}
+
+.credit{text-align:center;padding:20px;font-size:9px;color:rgba(255,255,255,.15)}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Numbers That Move</h1>
+  <p>Scroll down to see each stat animate into view — powered by IntersectionObserver + requestAnimationFrame</p>
+  <div class="scroll-hint">
+    <span style="font-size:18px">↓</span>
+    <span>Scroll to trigger</span>
+  </div>
+</div>
+
+<section class="stats">
+  <h2>By the numbers</h2>
+  <div class="grid">
+
+    <div class="stat" data-target="4200000" data-suffix="+" data-dur="2200"
+         style="--glow:rgba(120,100,255,.15);--bar-color:#7c6fff;--pct:84%">
+      <span class="stat-icon">🚀</span>
+      <span class="stat-num">0</span>
+      <span class="stat-label">Downloads</span>
+      <div class="stat-bar"><div class="stat-bar-fill"></div></div>
+    </div>
+
+    <div class="stat" data-target="99.97" data-suffix="%" data-decimals="2" data-dur="1800"
+         style="--glow:rgba(0,200,120,.15);--bar-color:#00cc78;--pct:99.97%">
+      <span class="stat-icon">⚡</span>
+      <span class="stat-num">0</span>
+      <span class="stat-label">Uptime SLA</span>
+      <div class="stat-bar"><div class="stat-bar-fill"></div></div>
+    </div>
+
+    <div class="stat" data-target="138" data-suffix="" data-dur="1600"
+         style="--glow:rgba(56,189,248,.15);--bar-color:#38bdf8;--pct:55%">
+      <span class="stat-icon">🌍</span>
+      <span class="stat-num">0</span>
+      <span class="stat-label">Countries served</span>
+      <div class="stat-bar"><div class="stat-bar-fill"></div></div>
+    </div>
+
+    <div class="stat" data-target="2.1" data-suffix="B" data-decimals="1" data-dur="2000"
+         style="--glow:rgba(251,146,60,.15);--bar-color:#fb923c;--pct:70%">
+      <span class="stat-icon">📡</span>
+      <span class="stat-num">0</span>
+      <span class="stat-label">API calls / year</span>
+      <div class="stat-bar"><div class="stat-bar-fill"></div></div>
+    </div>
+
+    <div class="stat" data-target="48" data-suffix="ms" data-dur="1400"
+         style="--glow:rgba(244,114,182,.15);--bar-color:#f472b6;--pct:90%">
+      <span class="stat-icon">⏱️</span>
+      <span class="stat-num">0</span>
+      <span class="stat-label">Median latency</span>
+      <div class="stat-bar"><div class="stat-bar-fill"></div></div>
+    </div>
+
+    <div class="stat" data-target="10000" data-suffix="+" data-dur="1900"
+         style="--glow:rgba(134,239,172,.15);--bar-color:#86efac;--pct:100%">
+      <span class="stat-icon">👩‍💻</span>
+      <span class="stat-num">0</span>
+      <span class="stat-label">Active developers</span>
+      <div class="stat-bar"><div class="stat-bar-fill"></div></div>
+    </div>
+
+  </div>
+</section>
+
+<section class="feat">
+  <h2>Milestones</h2>
+  <div class="feat-grid">
+
+    <div class="feat-card" data-target="365" data-suffix=" days" data-dur="1500">
+      <div class="feat-num">0</div>
+      <div class="feat-info">
+        <strong>Continuously shipped</strong>
+        <p>One year without a single missed deployment window</p>
+      </div>
+    </div>
+
+    <div class="feat-card" data-target="50000" data-suffix="+" data-dur="2000">
+      <div class="feat-num">0</div>
+      <div class="feat-info">
+        <strong>GitHub stars</strong>
+        <p>The open-source community has spoken loudly</p>
+      </div>
+    </div>
+
+    <div class="feat-card" data-target="4.9" data-decimals="1" data-suffix="/5" data-dur="1200">
+      <div class="feat-num">0</div>
+      <div class="feat-info">
+        <strong>Average rating</strong>
+        <p>Across 12,400 verified developer reviews</p>
+      </div>
+    </div>
+
+    <div class="feat-card" data-target="7" data-suffix=" awards" data-dur="900">
+      <div class="feat-num">0</div>
+      <div class="feat-info">
+        <strong>Industry awards</strong>
+        <p>Including Best DX Tool 2025 and Editor's Choice</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="credit">Inspired by getbutterfly.com counter-up · IntersectionObserver API · UI Spotlight Day 7 · Drop #5</div>
+
+<div class="ctrl">
+  <div>IntersectionObserver</div>
+  <button id="reset-btn">↺ Reset counters</button>
+</div>
+
+<script>
+// Easing: ease-out cubic
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+// Format a number nicely
+function fmt(val, decimals, suffix) {
+  let s;
+  if (decimals > 0) {
+    s = val.toFixed(decimals);
+  } else if (val >= 1e6) {
+    s = (val / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  } else if (val >= 1e3) {
+    s = Math.round(val).toLocaleString();
+  } else {
+    s = Math.round(val).toString();
+  }
+  return s + (suffix || '');
+}
+
+function animateCounter(el, target, decimals, suffix, duration) {
+  const start = performance.now();
+  const numEl = el.querySelector('.stat-num') || el.querySelector('.feat-num');
+  if (!numEl) return;
+
+  function step(now) {
+    const elapsed = now - start;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = easeOut(progress);
+    const current = target * eased;
+    numEl.textContent = fmt(current, decimals || 0, suffix || '');
+    if (progress < 1) requestAnimationFrame(step);
+    else numEl.textContent = fmt(target, decimals || 0, suffix || '');
+  }
+  requestAnimationFrame(step);
+}
+
+// Observe all counter elements
+const counters = document.querySelectorAll('[data-target]');
+const fired = new Set();
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting && !fired.has(entry.target)) {
+      const el = entry.target;
+      fired.add(el);
+      el.classList.add('fired');
+      const target   = parseFloat(el.dataset.target);
+      const decimals = parseInt(el.dataset.decimals || '0');
+      const suffix   = el.dataset.suffix || '';
+      const dur      = parseInt(el.dataset.dur || '2000');
+      animateCounter(el, target, decimals, suffix, dur);
+    }
+  });
+}, { threshold: 0.35 });
+
+counters.forEach(c => observer.observe(c));
+
+// Reset button
+document.getElementById('reset-btn').addEventListener('click', () => {
+  fired.clear();
+  counters.forEach(c => {
+    c.classList.remove('fired');
+    const numEl = c.querySelector('.stat-num') || c.querySelector('.feat-num');
+    if (numEl) numEl.textContent = '0';
+  });
+  // Scroll back to top then re-observe
+  window.scrollTo({top: 0, behavior: 'smooth'});
+});
+</script>
+</body>
+</html>

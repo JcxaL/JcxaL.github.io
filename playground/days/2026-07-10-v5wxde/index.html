@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>String Art Studio</title>
+<style>
+  :root{
+    --bg:#0b0b12;
+    --panel:rgba(20,20,32,0.72);
+    --panel-border:rgba(255,255,255,0.08);
+    --text:#e8e4f5;
+    --muted:#9a95b5;
+    --accent:#f2c14e;
+    --accent2:#e63946;
+    --accent3:#4ecdc4;
+    --accent4:#a78bfa;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;touch-action:none;}
+  #stageWrap{flex:1;position:relative;min-height:0;}
+  #stage{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+
+  #topbar{
+    position:absolute; top:12px; left:12px; right:12px; z-index:40;
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    pointer-events:none;
+  }
+  .glass{
+    background:var(--panel);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border:1px solid var(--panel-border);
+    border-radius:14px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.35);
+  }
+  #modeToggle{
+    display:flex; gap:2px; padding:3px; pointer-events:auto;
+  }
+  #modeToggle button{
+    border:none; background:transparent; color:var(--muted); font-size:13px; font-weight:600;
+    padding:8px 14px; border-radius:10px; cursor:pointer; transition:all .2s ease;
+  }
+  #modeToggle button.active{ background:rgba(255,255,255,0.1); color:var(--text); }
+  #title{
+    font-size:13px; font-weight:700; letter-spacing:0.02em; color:var(--text);
+    padding:9px 14px; pointer-events:auto; white-space:nowrap;
+  }
+  #panelBtn{
+    pointer-events:auto; border:none; width:38px;height:38px;border-radius:12px;
+    background:var(--panel); color:var(--text); font-size:18px; cursor:pointer;
+    backdrop-filter: blur(14px);
+  }
+
+  #panel{
+    position:absolute; top:0; right:0; bottom:0; width:320px; max-width:88vw; z-index:30;
+    padding:64px 16px 16px; overflow-y:auto; transform:translateX(100%);
+    transition:transform .28s cubic-bezier(.2,.8,.3,1);
+    border-radius:0;
+  }
+  #panel.open{ transform:translateX(0); }
+  #panelOverlay{
+    position:absolute; inset:0; z-index:25; background:rgba(0,0,0,0.35); opacity:0; pointer-events:none;
+    transition:opacity .25s ease;
+  }
+  #panelOverlay.show{ opacity:1; pointer-events:auto; }
+
+  .section{ margin-bottom:18px; }
+  .section h3{ margin:0 0 10px; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+  .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .row label{ font-size:12.5px; color:var(--text); flex:1; }
+  .row .val{ font-size:11.5px; color:var(--muted); min-width:34px; text-align:right; }
+  input[type=range]{ flex:1.4; accent-color:var(--accent); }
+  select, input[type=color], input[type=text]{
+    background:rgba(255,255,255,0.06); border:1px solid var(--panel-border); color:var(--text);
+    border-radius:8px; padding:6px 8px; font-size:12.5px;
+  }
+  select{ width:100%; }
+  input[type=color]{ width:40px; height:28px; padding:2px; cursor:pointer; }
+  .btn{
+    border:none; border-radius:10px; padding:10px 12px; font-size:12.5px; font-weight:600;
+    cursor:pointer; color:var(--text); background:rgba(255,255,255,0.08); width:100%; margin-bottom:8px;
+    transition:background .15s ease;
+  }
+  .btn:hover{ background:rgba(255,255,255,0.15); }
+  .btn.primary{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#1a1006; }
+  .btn-row{ display:flex; gap:8px; }
+  .btn-row .btn{ margin-bottom:8px; }
+  .presetGrid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+
+  #drawpadWrap{ text-align:center; margin-bottom:10px; }
+  #drawpad{ background:#fff; border-radius:10px; touch-action:none; width:100%; max-width:220px; aspect-ratio:1/1; }
+
+  #progressWrap{ height:6px; border-radius:3px; background:rgba(255,255,255,0.08); overflow:hidden; margin-bottom:8px; display:none; }
+  #progressFill{ height:100%; width:0%; background:linear-gradient(90deg,var(--accent3),var(--accent4)); transition:width .1s linear; }
+
+  #savesSelect{ margin-bottom:8px; }
+
+  #toast{
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    padding:10px 16px; border-radius:10px; font-size:12.5px; z-index:40; opacity:0; pointer-events:none;
+    transition:all .25s ease;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width:640px){
+    #title{ display:none; }
+    #panel{ width:100%; max-width:100%; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stageWrap">
+    <canvas id="stage"></canvas>
+  </div>
+
+  <div id="topbar">
+    <div id="modeToggle" class="glass">
+      <button id="modeGeo" class="active">Geometric</button>
+      <button id="modeImage">Image Trace</button>
+    </div>
+    <div id="title" class="glass">String Art Studio</div>
+    <button id="panelBtn" aria-label="Controls">&#9881;</button>
+  </div>
+
+  <div id="panelOverlay"></div>
+  <div id="panel" class="glass">
+
+    <div id="panelGeo">
+      <div class="section">
+        <h3>Pattern</h3>
+        <select id="patternSelect">
+          <option value="cardioid">Cardioid (mult. table)</option>
+          <option value="star">Star Polygon</option>
+          <option value="rose">Rose (layered)</option>
+          <option value="parabola">Parabola Envelope</option>
+        </select>
+      </div>
+      <div class="section">
+        <h3>Shape</h3>
+        <div class="row"><label for="pegCountGeo">Pegs</label><input type="range" id="pegCountGeo" min="12" max="260" step="2" value="180"><span class="val" id="pegCountGeoVal">180</span></div>
+        <div class="row" id="paramARow"><label id="paramALabel" for="paramA">Multiplier</label><input type="range" id="paramA" min="2" max="150" step="1" value="71"><span class="val" id="paramAVal">71</span></div>
+      </div>
+      <div class="section">
+        <h3>Thread</h3>
+        <div class="row"><label>Color</label><input type="color" id="threadColor" value="#f2c14e"></div>
+        <div class="row"><label>Background</label><input type="color" id="bgColor" value="#0b0b12"></div>
+        <div class="row"><label for="threadOpacity">Opacity</label><input type="range" id="threadOpacity" min="5" max="100" step="1" value="35"><span class="val" id="threadOpacityVal">35%</span></div>
+        <div class="row"><label for="showPegsGeo">Show pegs</label><input type="checkbox" id="showPegsGeo" checked></div>
+      </div>
+      <div class="section">
+        <button class="btn" id="weaveBtn">&#9889; Weave animation</button>
+        <button class="btn" id="randomizeBtn">&#127922; Randomize</button>
+      </div>
+    </div>
+
+    <div id="panelImage" style="display:none;">
+      <div class="section">
+        <h3>Source</h3>
+        <div id="drawpadWrap"><canvas id="drawpad" width="260" height="260"></canvas></div>
+        <div class="presetGrid">
+          <button class="btn" id="presetHeart">Heart</button>
+          <button class="btn" id="presetStar">Star</button>
+          <button class="btn" id="presetSmiley">Smiley</button>
+          <button class="btn" id="presetMountain">Mountain</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="clearDrawBtn">Clear</button>
+          <label class="btn" for="uploadInput" style="display:flex;align-items:center;justify-content:center;">Upload image</label>
+        </div>
+        <input type="file" id="uploadInput" accept="image/*" style="display:none;">
+      </div>
+      <div class="section">
+        <h3>Weave settings</h3>
+        <div class="row"><label for="pegCountImg">Pegs</label><input type="range" id="pegCountImg" min="60" max="240" step="2" value="140"><span class="val" id="pegCountImgVal">140</span></div>
+        <div class="row"><label for="maxLines">Max threads</label><input type="range" id="maxLines" min="150" max="1600" step="10" value="600"><span class="val" id="maxLinesVal">600</span></div>
+        <div class="row"><label for="lineWeight">Contrast</label><input type="range" id="lineWeight" min="5" max="60" step="1" value="18"><span class="val" id="lineWeightVal">18</span></div>
+        <div class="row"><label>Thread color</label><input type="color" id="imgThreadColor" value="#f2c14e"></div>
+        <div class="row"><label>Background</label><input type="color" id="imgBgColor" value="#0b0b12"></div>
+      </div>
+      <div id="progressWrap"><div id="progressFill"></div></div>
+      <button class="btn primary" id="generateBtn">Trace into thread art</button>
+    </div>
+
+    <div class="section">
+      <h3>Save / Share</h3>
+      <select id="savesSelect"><option value="">— saved patterns —</option></select>
+      <div class="btn-row">
+        <button class="btn" id="loadSaveBtn">Load</button>
+        <button class="btn" id="deleteSaveBtn">Delete</button>
+      </div>
+      <button class="btn" id="saveBtn">&#128190; Save pattern</button>
+      <button class="btn" id="shareBtn">&#128279; Copy share link</button>
+      <div class="btn-row">
+        <button class="btn" id="exportPngBtn">PNG</button>
+        <button class="btn" id="exportSvgBtn">SVG</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="glass"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- canvas / state ----------
+  const stage = document.getElementById('stage');
+  const ctx = stage.getContext('2d');
+  const drawpad = document.getElementById('drawpad');
+  const dctx = drawpad.getContext('2d');
+
+  let mode = 'geo'; // 'geo' | 'image'
+  let pegs = [];
+  let lines = [];      // array of [a,b] OR {a,b,layer} for rose
+  let layerColors = [];
+  let currentShape = 'circle';
+  let currentPegCount = 180;
+  let animId = null;
+  let revealCount = Infinity; // for weave animation
+
+  const STORAGE_STATE = 'stringArtStudio_v1_state';
+  const STORAGE_SAVES = 'stringArtStudio_v1_saves';
+
+  function el(id){ return document.getElementById(id); }
+
+  // ---------- peg geometry ----------
+  function getPegPositions(shape, count, w, h){
+    const cx = w/2, cy = h/2;
+    const pad = Math.min(w,h) * 0.06;
+    if(shape === 'circle'){
+      const r = Math.min(w,h)/2 - pad - 30;
+      const pts = [];
+      for(let i=0;i<count;i++){
+        const a = (i/count) * Math.PI*2 - Math.PI/2;
+        pts.push({x: cx + Math.cos(a)*r, y: cy + Math.sin(a)*r});
+      }
+      return pts;
+    } else {
+      // square perimeter, evenly spaced
+      const size = Math.min(w,h) - pad*2 - 60;
+      const x0 = cx - size/2, y0 = cy - size/2;
+      const perim = size*4;
+      const pts = [];
+      for(let i=0;i<count;i++){
+        let d = (i/count) * perim;
+        pts.push(pointOnSquare(x0,y0,size,d));
+      }
+      return pts;
+    }
+  }
+  function pointOnSquare(x0,y0,size,d){
+    if(d < size) return {x:x0+d, y:y0};
+    d -= size;
+    if(d < size) return {x:x0+size, y:y0+d};
+    d -= size;
+    if(d < size) return {x:x0+size-d, y:y0+size};
+    d -= size;
+    return {x:x0, y:y0+size-d};
+  }
+
+  // ---------- pattern generators ----------
+  function genCardioid(count, mult){
+    const out = [];
+    for(let i=0;i<count;i++) out.push([i, (i*mult)%count]);
+    return out;
+  }
+  function genStar(count, skip){
+    const out = []; let cur = 0;
+    for(let i=0;i<count;i++){
+      const next = (cur+skip)%count;
+      out.push([cur,next]);
+      cur = next;
+    }
+    return out;
+  }
+  function genRose(count, skips){
+    const out = [];
+    skips.forEach((skip, layer)=>{
+      let cur = 0;
+      for(let i=0;i<count;i++){
+        const next = (cur+skip)%count;
+        out.push({a:cur,b:next,layer});
+        cur = next;
+      }
+    });
+    return out;
+  }
+  function genParabola(count){
+    const per = Math.floor(count/4);
+    const out = [];
+    for(let corner=0; corner<4; corner++){
+      const sideEndIdx = ((corner*per) - 1 + count) % count;
+      const sideStartIdx = (corner*per) % count;
+      for(let k=0;k<per;k++){
+        const a = (sideEndIdx - k + count) % count;
+        const b = (sideStartIdx + k) % count;
+        out.push([a,b]);
+      }
+    }
+    return out;
+  }
+
+  function paramLabelFor(pattern){
+    if(pattern==='cardioid') return 'Multiplier';
+    if(pattern==='star') return 'Skip';
+    if(pattern==='rose') return 'Base skip';
+    return null;
+  }
+
+  function regenerateGeo(){
+    const pattern = el('patternSelect').value;
+    const count = parseInt(el('pegCountGeo').value,10);
+    const paramA = parseInt(el('paramA').value,10);
+    currentPegCount = count;
+    currentShape = pattern === 'parabola' ? 'square' : 'circle';
+    el('paramARow').style.display = pattern === 'parabola' ? 'none' : 'flex';
+    const lbl = paramLabelFor(pattern);
+    if(lbl) el('paramALabel').textContent = lbl;
+
+    if(pattern === 'cardioid') lines = genCardioid(count, paramA);
+    else if(pattern === 'star') lines = genStar(count, paramA);
+    else if(pattern === 'rose') lines = genRose(count, [paramA, Math.max(2,Math.floor(paramA*0.6)), Math.max(2,Math.floor(paramA*1.4)%count || 3)]);
+    else lines = genParabola(count);
+
+    layerColors = [el('threadColor').value, el('threadColor').value === '#f2c14e' ? '#4ecdc4' : el('threadColor').value, '#a78bfa'];
+    layoutAndDraw();
+    saveStateDebounced();
+  }
+
+  // ---------- image trace ----------
+  let densityCache = null;
+  function computeDensity(size){
+    const off = document.createElement('canvas');
+    off.width = size; off.height = size;
+    const octx = off.getContext('2d');
+    octx.fillStyle = '#fff';
+    octx.fillRect(0,0,size,size);
+    octx.drawImage(drawpad, 0, 0, size, size);
+    const data = octx.getImageData(0,0,size,size).data;
+    const density = new Float32Array(size*size);
+    for(let i=0;i<size*size;i++){
+      const r=data[i*4], g=data[i*4+1], b=data[i*4+2];
+      density[i] = 255 - (r+g+b)/3;
+    }
+    return density;
+  }
+
+  async function traceImage(){
+    const btn = el('generateBtn');
+    btn.disabled = true; btn.textContent = 'Weaving…';
+    el('progressWrap').style.display = 'block';
+    el('progressFill').style.width = '0%';
+
+    const count = parseInt(el('pegCountImg').value,10);
+    const maxLines = parseInt(el('maxLines').value,10);
+    const lineWeight = parseInt(el('lineWeight').value,10);
+    const workSize = 260;
+
+    currentPegCount = count;
+    currentShape = 'circle';
+    const workPegs = getPegPositions('circle', count, workSize, workSize);
+    const density = computeDensity(workSize);
+    const remaining = density.slice();
+
+    const result = [];
+    let current = 0;
+    const recentN = Math.max(5, Math.floor(count/8));
+    const recent = [];
+
+    for(let iter=0; iter<maxLines; iter++){
+      let bestScore = -1, bestIdx = -1;
+      for(let j=0;j<count;j++){
+        if(j===current || recent.includes(j)) continue;
+        const p0 = workPegs[current], p1 = workPegs[j];
+        const dist = Math.hypot(p1.x-p0.x, p1.y-p0.y);
+        const nSamp = Math.max(8, Math.round(dist/2));
+        let score = 0;
+        for(let s=0;s<nSamp;s++){
+          const t = s/(nSamp-1);
+          const x = Math.round(p0.x+(p1.x-p0.x)*t);
+          const y = Math.round(p0.y+(p1.y-p0.y)*t);
+          if(x<0||x>=workSize||y<0||y>=workSize) continue;
+          score += remaining[y*workSize+x];
+        }
+        score /= nSamp;
+        if(score > bestScore){ bestScore = score; bestIdx = j; }
+      }
+      if(bestIdx===-1 || bestScore < 4) break;
+
+      const p0 = workPegs[current], p1 = workPegs[bestIdx];
+      const dist = Math.hypot(p1.x-p0.x, p1.y-p0.y);
+      const nSamp = Math.max(8, Math.round(dist/2));
+      for(let s=0;s<nSamp;s++){
+        const t = s/(nSamp-1);
+        const x = Math.round(p0.x+(p1.x-p0.x)*t);
+        const y = Math.round(p0.y+(p1.y-p0.y)*t);
+        if(x<0||x>=workSize||y<0||y>=workSize) continue;
+        remaining[y*workSize+x] = Math.max(0, remaining[y*workSize+x]-lineWeight);
+      }
+      result.push([current, bestIdx]);
+      recent.push(bestIdx); if(recent.length>recentN) recent.shift();
+      current = bestIdx;
+
+      if(iter % 12 === 0){
+        el('progressFill').style.width = Math.round((iter/maxLines)*100) + '%';
+        await new Promise(r=>setTimeout(r,0));
+      }
+    }
+
+    lines = result;
+    layerColors = [el('imgThreadColor').value];
+    el('progressFill').style.width = '100%';
+    setTimeout(()=>{ el('progressWrap').style.display='none'; }, 400);
+    btn.disabled = false; btn.textContent = 'Trace into thread art';
+    layoutAndDraw();
+    saveStateDebounced();
+  }
+
+  // ---------- drawpad presets ----------
+  function clearDrawpad(){
+    dctx.fillStyle = '#fff';
+    dctx.fillRect(0,0,drawpad.width, drawpad.height);
+  }
+  function presetHeart(){
+    clearDrawpad();
+    dctx.fillStyle = '#000';
+    dctx.save();
+    dctx.translate(130,150);
+    dctx.beginPath();
+    const s = 5.4;
+    dctx.moveTo(0, 12*s);
+    dctx.bezierCurveTo(-16*s, -6*s, -13*s, -22*s, 0, -8*s);
+    dctx.bezierCurveTo(13*s, -22*s, 16*s, -6*s, 0, 12*s);
+    dctx.closePath();
+    dctx.fill();
+    dctx.restore();
+  }
+  function presetStar(){
+    clearDrawpad();
+    dctx.fillStyle = '#000';
+    dctx.beginPath();
+    const cx=130, cy=130, spikes=5, outerR=95, innerR=42;
+    let rot = Math.PI/2*3;
+    const step = Math.PI/spikes;
+    dctx.moveTo(cx, cy-outerR);
+    for(let i=0;i<spikes;i++){
+      dctx.lineTo(cx+Math.cos(rot)*outerR, cy+Math.sin(rot)*outerR); rot+=step;
+      dctx.lineTo(cx+Math.cos(rot)*innerR, cy+Math.sin(rot)*innerR); rot+=step;
+    }
+    dctx.closePath();
+    dctx.fill();
+  }
+  function presetSmiley(){
+    clearDrawpad();
+    dctx.fillStyle = '#000';
+    dctx.beginPath(); dctx.arc(130,130,95,0,Math.PI*2); dctx.fill();
+    dctx.fillStyle = '#fff';
+    dctx.beginPath(); dctx.arc(102,110,13,0,Math.PI*2); dctx.fill();
+    dctx.beginPath(); dctx.arc(158,110,13,0,Math.PI*2); dctx.fill();
+    dctx.beginPath(); dctx.arc(130,130,78,0.15*Math.PI,0.85*Math.PI); dctx.lineWidth=14; dctx.strokeStyle='#fff'; dctx.stroke();
+  }
+  function presetMountain(){
+    clearDrawpad();
+    dctx.fillStyle = '#000';
+    dctx.beginPath();
+    dctx.moveTo(10,220);
+    dctx.lineTo(80,90);
+    dctx.lineTo(130,160);
+    dctx.lineTo(180,60);
+    dctx.lineTo(250,220);
+    dctx.closePath();
+    dctx.fill();
+    dctx.beginPath(); dctx.arc(210,55,20,0,Math.PI*2); dctx.fill();
+  }
+
+  // drawpad pointer drawing
+  let drawing = false, lastPt = null;
+  function drawpadPointFromEvent(e){
+    const r = drawpad.getBoundingClientRect();
+    const scaleX = drawpad.width / r.width, scaleY = drawpad.height / r.height;
+    return { x:(e.clientX-r.left)*scaleX, y:(e.clientY-r.top)*scaleY };
+  }
+  drawpad.addEventListener('pointerdown', (e)=>{
+    drawing = true; lastPt = drawpadPointFromEvent(e);
+    drawpad.setPointerCapture(e.pointerId);
+  });
+  drawpad.addEventListener('pointermove', (e)=>{
+    if(!drawing) return;
+    const p = drawpadPointFromEvent(e);
+    dctx.strokeStyle = '#000'; dctx.lineWidth = 14; dctx.lineCap='round'; dctx.lineJoin='round';
+    dctx.beginPath(); dctx.moveTo(lastPt.x,lastPt.y); dctx.lineTo(p.x,p.y); dctx.stroke();
+    lastPt = p;
+  });
+  window.addEventListener('pointerup', ()=>{ drawing = false; });
+
+  // ---------- rendering ----------
+  function resizeStage(){
+    const wrap = document.getElementById('stageWrap');
+    const dpr = Math.min(window.devicePixelRatio||1, 2);
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    stage.width = w*dpr; stage.height = h*dpr;
+    stage.style.width = w+'px'; stage.style.height = h+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function layoutAndDraw(){
+    resizeStage();
+    const w = stage.width/(Math.min(window.devicePixelRatio||1,2));
+    const h = stage.height/(Math.min(window.devicePixelRatio||1,2));
+    pegs = getPegPositions(currentShape, currentPegCount, w, h);
+    draw(revealCount);
+  }
+
+  function draw(limit){
+    const w = stage.width/(Math.min(window.devicePixelRatio||1,2));
+    const h = stage.height/(Math.min(window.devicePixelRatio||1,2));
+    const bg = mode==='geo' ? el('bgColor').value : el('imgBgColor').value;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0,0,w,h);
+
+    const opacity = mode==='geo' ? parseInt(el('threadOpacity').value,10)/100 : parseFloat(el('imgOpacity') ? '0.5' : '0.5');
+    const n = Math.min(limit===undefined?lines.length:limit, lines.length);
+    ctx.lineWidth = mode==='geo' ? 0.9 : 0.85;
+    for(let i=0;i<n;i++){
+      const item = lines[i];
+      const a = item.a!==undefined ? item.a : item[0];
+      const b = item.b!==undefined ? item.b : item[1];
+      const layer = item.layer||0;
+      const color = layerColors[layer] || layerColors[0] || '#f2c14e';
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = mode==='geo' ? opacity : 0.16;
+      const p0 = pegs[a], p1 = pegs[b];
+      if(!p0 || !p1) continue;
+      ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    const showPegs = mode==='geo' ? el('showPegsGeo').checked : false;
+    if(showPegs){
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      for(const p of pegs){ ctx.beginPath(); ctx.arc(p.x,p.y,1.6,0,Math.PI*2); ctx.fill(); }
+    }
+  }
+
+  function weaveAnimate(){
+    if(animId) cancelAnimationFrame(animId);
+    const total = lines.length;
+    if(!total) return;
+    let shown = 0;
+    const perFrame = Math.max(1, Math.ceil(total/120));
+    function step(){
+      shown = Math.min(total, shown+perFrame);
+      draw(shown);
+      if(shown < total) animId = requestAnimationFrame(step);
+      else { revealCount = Infinity; animId = null; }
+    }
+    revealCount = shown;
+    animId = requestAnimationFrame(step);
+  }
+
+  // ---------- export ----------
+  function downloadBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  }
+  function exportPNG(){
+    stage.toBlob((blob)=>{
+      if(blob) downloadBlob(blob, 'string-art.png');
+    }, 'image/png');
+  }
+  function exportSVG(){
+    const w = stage.width/(Math.min(window.devicePixelRatio||1,2));
+    const h = stage.height/(Math.min(window.devicePixelRatio||1,2));
+    const bg = mode==='geo' ? el('bgColor').value : el('imgBgColor').value;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+    svg += `<rect width="${w}" height="${h}" fill="${bg}"/>`;
+    const opacity = mode==='geo' ? parseInt(el('threadOpacity').value,10)/100 : 0.16;
+    for(const item of lines){
+      const a = item.a!==undefined ? item.a : item[0];
+      const b = item.b!==undefined ? item.b : item[1];
+      const layer = item.layer||0;
+      const color = layerColors[layer] || layerColors[0] || '#f2c14e';
+      const p0 = pegs[a], p1 = pegs[b];
+      if(!p0||!p1) continue;
+      svg += `<line x1="${p0.x.toFixed(1)}" y1="${p0.y.toFixed(1)}" x2="${p1.x.toFixed(1)}" y2="${p1.y.toFixed(1)}" stroke="${color}" stroke-width="0.9" stroke-opacity="${opacity}"/>`;
+    }
+    svg += `</svg>`;
+    downloadBlob(new Blob([svg], {type:'image/svg+xml'}), 'string-art.svg');
+  }
+
+  // ---------- state encode / persistence ----------
+  function currentState(){
+    return {
+      v:1, mode, shape:currentShape, pegCount:currentPegCount,
+      lines: lines.map(item => item.a!==undefined ? [item.a,item.b,item.layer||0] : [item[0],item[1],0]),
+      layerColors, bg: mode==='geo' ? el('bgColor').value : el('imgBgColor').value,
+      opacity: mode==='geo' ? el('threadOpacity').value : 16,
+      showPegs: mode==='geo' ? el('showPegsGeo').checked : false
+    };
+  }
+  function applyState(state){
+    mode = state.mode || 'geo';
+    setModeUI(mode);
+    currentShape = state.shape || 'circle';
+    currentPegCount = state.pegCount || 180;
+    lines = (state.lines||[]).map(([a,b,layer])=>({a,b,layer:layer||0}));
+    layerColors = state.layerColors && state.layerColors.length ? state.layerColors : ['#f2c14e'];
+    if(mode==='geo'){ el('bgColor').value = state.bg||'#0b0b12'; el('threadOpacity').value = state.opacity||35; el('threadOpacityVal').textContent=(state.opacity||35)+'%'; el('showPegsGeo').checked = !!state.showPegs; }
+    else { el('imgBgColor').value = state.bg||'#0b0b12'; }
+    layoutAndDraw();
+  }
+  function encode(state){
+    const json = JSON.stringify(state);
+    return btoa(unescape(encodeURIComponent(json)));
+  }
+  function decode(str){
+    return JSON.parse(decodeURIComponent(escape(atob(str))));
+  }
+
+  let saveStateTimer = null;
+  function saveStateDebounced(){
+    clearTimeout(saveStateTimer);
+    saveStateTimer = setTimeout(()=>{
+      try{ localStorage.setItem(STORAGE_STATE, encode(currentState())); }catch(e){}
+    }, 250);
+  }
+
+  function getSaves(){
+    try{ return JSON.parse(localStorage.getItem(STORAGE_SAVES)||'[]'); }catch(e){ return []; }
+  }
+  function setSaves(list){
+    localStorage.setItem(STORAGE_SAVES, JSON.stringify(list));
+  }
+  function refreshSavesSelect(){
+    const sel = el('savesSelect');
+    const saves = getSaves();
+    sel.innerHTML = '<option value="">— saved patterns —</option>' +
+      saves.map((s,i)=>`<option value="${i}">${s.name}</option>`).join('');
+  }
+
+  function showToast(msg){
+    const t = el('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>t.classList.remove('show'), 1800);
+  }
+
+  // ---------- UI wiring ----------
+  function setModeUI(m){
+    mode = m;
+    el('modeGeo').classList.toggle('active', m==='geo');
+    el('modeImage').classList.toggle('active', m==='image');
+    el('panelGeo').style.display = m==='geo' ? 'block' : 'none';
+    el('panelImage').style.display = m==='image' ? 'block' : 'none';
+  }
+
+  el('modeGeo').addEventListener('click', ()=>{ setModeUI('geo'); regenerateGeo(); });
+  el('modeImage').addEventListener('click', ()=>{ setModeUI('image'); currentShape='circle'; layoutAndDraw(); });
+
+  el('panelBtn').addEventListener('click', ()=>{
+    el('panel').classList.toggle('open');
+    el('panelOverlay').classList.toggle('show');
+  });
+  el('panelOverlay').addEventListener('click', ()=>{
+    el('panel').classList.remove('open');
+    el('panelOverlay').classList.remove('show');
+  });
+
+  ['patternSelect','pegCountGeo','paramA'].forEach(id=>{
+    el(id).addEventListener('input', ()=>{
+      el('pegCountGeoVal').textContent = el('pegCountGeo').value;
+      el('paramAVal').textContent = el('paramA').value;
+      regenerateGeo();
+    });
+  });
+  ['threadColor','bgColor'].forEach(id=> el(id).addEventListener('input', regenerateGeo));
+  el('threadOpacity').addEventListener('input', ()=>{
+    el('threadOpacityVal').textContent = el('threadOpacity').value+'%';
+    draw(revealCount); saveStateDebounced();
+  });
+  el('showPegsGeo').addEventListener('change', ()=>{ draw(revealCount); saveStateDebounced(); });
+
+  el('weaveBtn').addEventListener('click', weaveAnimate);
+  el('randomizeBtn').addEventListener('click', ()=>{
+    const patterns = ['cardioid','star','rose','parabola'];
+    el('patternSelect').value = patterns[Math.floor(Math.random()*patterns.length)];
+    const count = 60 + Math.floor(Math.random()*180);
+    el('pegCountGeo').value = count - (count%2);
+    el('pegCountGeoVal').textContent = el('pegCountGeo').value;
+    const p = 2 + Math.floor(Math.random()*140);
+    el('paramA').value = p;
+    el('paramAVal').textContent = p;
+    const hues = ['#f2c14e','#e63946','#4ecdc4','#a78bfa','#ff6b6b','#4ade80','#38bdf8'];
+    el('threadColor').value = hues[Math.floor(Math.random()*hues.length)];
+    regenerateGeo();
+    weaveAnimate();
+  });
+
+  ['pegCountImg','maxLines','lineWeight'].forEach(id=>{
+    el(id).addEventListener('input', ()=>{
+      el(id+'Val').textContent = el(id).value + (id==='pegCountImg'?'':'');
+    });
+  });
+  el('generateBtn').addEventListener('click', traceImage);
+  el('clearDrawBtn').addEventListener('click', clearDrawpad);
+  el('presetHeart').addEventListener('click', presetHeart);
+  el('presetStar').addEventListener('click', presetStar);
+  el('presetSmiley').addEventListener('click', presetSmiley);
+  el('presetMountain').addEventListener('click', presetMountain);
+  el('uploadInput').addEventListener('change', (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        clearDrawpad();
+        const s = Math.min(drawpad.width/img.width, drawpad.height/img.height);
+        const dw = img.width*s, dh = img.height*s;
+        dctx.drawImage(img, (drawpad.width-dw)/2, (drawpad.height-dh)/2, dw, dh);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  el('exportPngBtn').addEventListener('click', exportPNG);
+  el('exportSvgBtn').addEventListener('click', exportSVG);
+  el('shareBtn').addEventListener('click', ()=>{
+    const encoded = encode(currentState());
+    const url = location.origin + location.pathname + '#s=' + encoded;
+    location.hash = 's=' + encoded;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(()=>showToast('Share link copied!')).catch(()=>showToast('Link updated in address bar'));
+    } else {
+      showToast('Link updated in address bar');
+    }
+  });
+  el('saveBtn').addEventListener('click', ()=>{
+    const name = prompt('Name this pattern:', new Date().toLocaleString());
+    if(!name) return;
+    const saves = getSaves();
+    saves.push({ name, ts: Date.now(), data: encode(currentState()) });
+    if(saves.length > 30) saves.shift();
+    setSaves(saves);
+    refreshSavesSelect();
+    showToast('Saved!');
+  });
+  el('loadSaveBtn').addEventListener('click', ()=>{
+    const idx = el('savesSelect').value;
+    if(idx==='') return;
+    const saves = getSaves();
+    const s = saves[parseInt(idx,10)];
+    if(!s) return;
+    applyState(decode(s.data));
+    showToast('Loaded "'+s.name+'"');
+  });
+  el('deleteSaveBtn').addEventListener('click', ()=>{
+    const idx = el('savesSelect').value;
+    if(idx==='') return;
+    const saves = getSaves();
+    saves.splice(parseInt(idx,10),1);
+    setSaves(saves);
+    refreshSavesSelect();
+  });
+
+  window.addEventListener('resize', ()=>{ layoutAndDraw(); });
+
+  // ---------- init ----------
+  function init(){
+    clearDrawpad(); presetHeart();
+    refreshSavesSelect();
+
+    let loaded = false;
+    if(location.hash && location.hash.startsWith('#s=')){
+      try{ applyState(decode(location.hash.slice(3))); loaded = true; }catch(e){}
+    }
+    if(!loaded){
+      try{
+        const raw = localStorage.getItem(STORAGE_STATE);
+        if(raw){ applyState(decode(raw)); loaded = true; }
+      }catch(e){}
+    }
+    if(!loaded){
+      setModeUI('geo');
+      regenerateGeo();
+    }
+    setTimeout(weaveAnimate, 60);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

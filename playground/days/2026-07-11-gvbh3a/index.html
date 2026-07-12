@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Poster Type Foundry — Day 57</title>
+<style>
+  :root{
+    --bg:#0a0910; --panel:rgba(255,255,255,0.06); --border:rgba(255,255,255,0.12);
+    --text:#f1eefc; --muted:rgba(255,255,255,0.55); --accent:#a78bfa;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;overflow:hidden;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+  header{
+    padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    border-bottom:1px solid var(--border); background:rgba(10,9,16,0.7); backdrop-filter:blur(10px); z-index:20;
+  }
+  header h1{font-size:14px; margin:0; font-weight:800; letter-spacing:-0.01em;}
+  header h1 span{color:var(--accent);}
+  header .sub{font-size:11px;color:var(--muted);}
+  header .actions{display:flex; gap:8px;}
+  .iconbtn{
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    border-radius:10px; padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer;
+  }
+  .iconbtn:active{transform:scale(0.96);}
+
+  main{flex:1; position:relative; min-height:0;}
+  #stage{position:absolute; inset:0; display:block; touch-action:manipulation;}
+  #hint{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    font-size:11px; color:var(--muted); background:rgba(10,9,16,0.55); backdrop-filter:blur(8px);
+    padding:6px 12px; border-radius:999px; pointer-events:none; white-space:nowrap; transition:opacity 400ms;
+  }
+
+  #panel{
+    position:absolute; top:12px; right:12px; width:250px; max-height:calc(100% - 24px); overflow-y:auto;
+    background:rgba(18,16,28,0.72); backdrop-filter:blur(16px); border:1px solid var(--border);
+    border-radius:16px; padding:14px; font-size:12px; z-index:15;
+  }
+  #panel h4{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent);}
+  #panel .field{margin-bottom:10px;}
+  #panel label{display:flex; justify-content:space-between; margin-bottom:4px; color:var(--muted); font-size:11px;}
+  #panel input[type=range]{width:100%; accent-color:var(--accent);}
+  #panel input[type=text]{
+    width:100%; background:rgba(255,255,255,0.06); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:8px 9px; font-size:13px;
+  }
+  #panel select{
+    width:100%; background:rgba(255,255,255,0.06); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:7px 9px; font-size:12px;
+  }
+  .modegrid{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px;}
+  .modegrid button{
+    background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--muted);
+    border-radius:8px; padding:8px 4px; font-size:11px; font-weight:700; cursor:pointer;
+  }
+  .modegrid button.active{background:rgba(167,139,250,0.22); border-color:var(--accent); color:#fff;}
+  .swatchrow{display:flex; gap:6px; margin-bottom:10px;}
+  .swatch{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer; flex:none;}
+  .swatch.active{border-color:#fff;}
+  #panel .row2{display:flex; gap:6px;}
+  #panel .row2 .iconbtn{flex:1; font-size:11px; padding:8px 6px;}
+
+  #presetPanel{
+    position:absolute; bottom:12px; left:12px; width:220px; max-height:50%; overflow-y:auto;
+    background:rgba(18,16,28,0.72); backdrop-filter:blur(16px); border:1px solid var(--border);
+    border-radius:16px; padding:12px; font-size:12px; z-index:15; display:none;
+  }
+  #presetPanel.open{display:block;}
+  #presetPanel h4{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent);}
+  #presetList .presetItem{
+    display:flex; justify-content:space-between; align-items:center; gap:6px;
+    padding:6px 8px; border-radius:8px; background:rgba(255,255,255,0.04); margin-bottom:6px; font-size:11.5px;
+  }
+  #presetList .presetItem button{
+    background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px; padding:2px 4px;
+  }
+  #presetList .empty{color:var(--muted); font-size:11px; padding:4px 0;}
+
+  @media (max-width:640px){
+    #panel{ width:200px; font-size:11px; }
+    #presetPanel{ width:180px; }
+  }
+
+  .toast{
+    position:fixed; top:70px; left:50%; transform:translateX(-50%) translateY(-10px);
+    background:rgba(20,18,32,0.92); border:1px solid var(--border); color:#fff; font-size:12px; font-weight:600;
+    padding:9px 16px; border-radius:999px; opacity:0; pointer-events:none; transition:opacity 250ms, transform 250ms; z-index:60;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <h1>Poster <span>Type</span> Foundry</h1>
+      <div class="sub">generative typographic poster machine</div>
+    </div>
+    <div class="actions">
+      <button class="iconbtn" id="btnPresets">Presets</button>
+      <button class="iconbtn" id="btnShare">Share</button>
+      <button class="iconbtn" id="btnExport">Export PNG</button>
+    </div>
+  </header>
+  <main>
+    <canvas id="stage"></canvas>
+    <div id="hint">tap the canvas to reshuffle jitter</div>
+
+    <div id="panel">
+      <h4>Layout mode</h4>
+      <div class="modegrid" id="modeGrid">
+        <button data-mode="arc">Arc</button>
+        <button data-mode="spiral">Spiral</button>
+        <button data-mode="cascade">Cascade</button>
+        <button data-mode="grid">Grid Warp</button>
+        <button data-mode="waterfall">Waterfall</button>
+        <button id="btnRandomize" style="grid-column:span 1;">🎲 Random</button>
+      </div>
+
+      <h4>Text</h4>
+      <div class="field"><input type="text" id="textInput" maxlength="40" value="TYPE FOUNDRY"></div>
+
+      <h4>Palette</h4>
+      <div class="swatchrow" id="swatchRow"></div>
+
+      <h4>Parameters</h4>
+      <div class="field">
+        <label><span>Size</span><span id="vSize">64</span></label>
+        <input type="range" id="pSize" min="18" max="140" value="64">
+      </div>
+      <div class="field">
+        <label><span>Spacing / spread</span><span id="vSpacing">50</span></label>
+        <input type="range" id="pSpacing" min="0" max="100" value="50">
+      </div>
+      <div class="field">
+        <label><span>Jitter</span><span id="vJitter">30</span></label>
+        <input type="range" id="pJitter" min="0" max="100" value="30">
+      </div>
+      <div class="field">
+        <label><span>Weight</span><span id="vWeight">700</span></label>
+        <input type="range" id="pWeight" min="300" max="900" step="100" value="700">
+      </div>
+      <div class="field">
+        <label>Case</label>
+        <select id="pCase">
+          <option value="none">As typed</option>
+          <option value="upper">UPPERCASE</option>
+          <option value="lower">lowercase</option>
+          <option value="alt">AlTeRnAtInG</option>
+        </select>
+      </div>
+      <div class="row2">
+        <button class="iconbtn" id="btnReset">Reset</button>
+        <button class="iconbtn" id="btnSavePreset">Save preset</button>
+      </div>
+    </div>
+
+    <div id="presetPanel">
+      <h4>Saved presets</h4>
+      <div id="presetList"></div>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var canvas = document.getElementById('stage');
+  var ctx = canvas.getContext('2d');
+  var textInput = document.getElementById('textInput');
+  var pSize = document.getElementById('pSize');
+  var pSpacing = document.getElementById('pSpacing');
+  var pJitter = document.getElementById('pJitter');
+  var pWeight = document.getElementById('pWeight');
+  var pCase = document.getElementById('pCase');
+  var vSize = document.getElementById('vSize');
+  var vSpacing = document.getElementById('vSpacing');
+  var vJitter = document.getElementById('vJitter');
+  var vWeight = document.getElementById('vWeight');
+  var modeGrid = document.getElementById('modeGrid');
+  var swatchRow = document.getElementById('swatchRow');
+  var hint = document.getElementById('hint');
+  var toastEl = document.getElementById('toast');
+  var presetPanel = document.getElementById('presetPanel');
+  var presetList = document.getElementById('presetList');
+
+  var PALETTES = [
+    ['#a78bfa','#38bdf8','#f472b6','#34d399','#fbbf24'],
+    ['#ff5470','#00d9c0','#ffd23f','#6c5ce7','#0aefff'],
+    ['#f2c14e','#e63946','#4ecdc4','#a78bfa','#f4ede0'],
+    ['#22c55e','#0ea5e9','#eab308','#ef4444','#a855f7'],
+    ['#f1eefc','#c084fc','#7dd3fc','#f9a8d4','#86efac'],
+    ['#ff6b35','#7c3aed','#22d3ee','#f4e04d','#ffffff']
+  ];
+
+  var STORE_KEY = 'ptf_presets_v1';
+  var LAST_KEY = 'ptf_last_v1';
+
+  var state = {
+    text: 'TYPE FOUNDRY',
+    mode: 'arc',
+    size: 64,
+    spacing: 50,
+    jitter: 30,
+    weight: 700,
+    caseMode: 'none',
+    palette: 0,
+    seed: 1234
+  };
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+  // Mulberry32 seeded PRNG for reproducible jitter
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function applyCase(str, mode){
+    if(mode === 'upper') return str.toUpperCase();
+    if(mode === 'lower') return str.toLowerCase();
+    if(mode === 'alt'){
+      var out = '';
+      var up = true;
+      for(var i=0;i<str.length;i++){
+        var ch = str[i];
+        if(/[a-zA-Z]/.test(ch)){ out += up ? ch.toUpperCase() : ch.toLowerCase(); up = !up; }
+        else out += ch;
+      }
+      return out;
+    }
+    return str;
+  }
+
+  function resize(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    draw();
+  }
+
+  function layoutPositions(chars, mode, W, H, spacingPct, jitterPct, seed){
+    var N = Math.max(chars.length, 1);
+    var rng = mulberry32(seed);
+    var spacing = spacingPct/100;
+    var out = [];
+    var cx = W/2, cy = H/2;
+
+    if(mode === 'arc'){
+      var radius = Math.min(W,H) * (0.28 + spacing*0.14);
+      var angleStep = 0.14 + spacing*0.22;
+      var total = angleStep * (N-1);
+      for(var i=0;i<N;i++){
+        var ang = -total/2 + i*angleStep;
+        out.push({
+          x: cx + radius*Math.sin(ang),
+          y: cy - radius*Math.cos(ang) + H*0.06,
+          rot: ang,
+          scale: 1
+        });
+      }
+    } else if(mode === 'spiral'){
+      var a = Math.min(W,H)*0.03;
+      var b = 6 + spacing*14;
+      var thetaStep = 0.55;
+      for(var i2=0;i2<N;i2++){
+        var theta = i2*thetaStep;
+        var r = a + b*theta*0.35;
+        out.push({
+          x: cx + r*Math.cos(theta),
+          y: cy + r*Math.sin(theta),
+          rot: theta + Math.PI/2,
+          scale: 1
+        });
+      }
+    } else if(mode === 'cascade'){
+      var dxStep = (W*0.55/Math.max(N-1,1)) * (0.4+spacing*0.6);
+      var dyStep = (H*0.4/Math.max(N-1,1)) * (0.4+spacing*0.6);
+      var startX = W*0.5 - (dxStep*(N-1))/2;
+      var startY = H*0.5 - (dyStep*(N-1))/2;
+      for(var i3=0;i3<N;i3++){
+        out.push({
+          x: startX + i3*dxStep,
+          y: startY + i3*dyStep,
+          rot: (i3/N)*0.5 - 0.25,
+          scale: 1 - i3*0.015
+        });
+      }
+    } else if(mode === 'grid'){
+      var cols = Math.max(1, Math.ceil(Math.sqrt(N * W/H)));
+      var rows = Math.ceil(N/cols);
+      var cellW = W/(cols+1);
+      var cellH = H/(rows+1);
+      var warpAmount = 6 + spacing*46;
+      for(var i4=0;i4<N;i4++){
+        var col = i4 % cols;
+        var row = Math.floor(i4/cols);
+        var bx = (col+1)*cellW;
+        var by = (row+1)*cellH;
+        out.push({
+          x: bx + Math.cos(row*0.8+seed*0.001)*warpAmount*0.6,
+          y: by + Math.sin((col+row)*0.6+seed*0.001)*warpAmount,
+          rot: Math.sin(col*0.5+row*0.3)*0.12,
+          scale: 1
+        });
+      }
+    } else { // waterfall
+      var numCols = clamp(Math.round(Math.sqrt(N)+1), 2, 8);
+      var rowsW = Math.ceil(N/numCols);
+      var colW = W/(numCols+1);
+      var rowH = (H*0.8)/(rowsW+1);
+      for(var i5=0;i5<N;i5++){
+        var c = i5 % numCols;
+        var r5 = Math.floor(i5/numCols);
+        var stagger = (c % 2 === 0) ? 0 : rowH*0.5*(0.3+spacing*0.7);
+        out.push({
+          x: (c+1)*colW,
+          y: H*0.08 + r5*rowH + stagger,
+          rot: 0,
+          scale: 1 - r5*0.02
+        });
+      }
+    }
+
+    // jitter pass
+    var jitterRot = (jitterPct/100) * 0.5;
+    var jitterScale = (jitterPct/100) * 0.35;
+    for(var k=0;k<out.length;k++){
+      out[k].rot += (rng()*2-1)*jitterRot;
+      out[k].scale *= 1 + (rng()*2-1)*jitterScale;
+    }
+    return out;
+  }
+
+  function draw(){
+    var W = canvas.clientWidth, H = canvas.clientHeight;
+    if(W===0||H===0) return;
+    ctx.clearRect(0,0,W,H);
+
+    // background
+    var grad = ctx.createRadialGradient(W/2,H*0.4,10, W/2,H*0.5, Math.max(W,H)*0.75);
+    grad.addColorStop(0, '#141024');
+    grad.addColorStop(1, '#08070d');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+
+    var text = applyCase(state.text || ' ', state.caseMode);
+    var chars = text.split('');
+    if(chars.length === 0) chars = [' '];
+
+    var positions = layoutPositions(chars, state.mode, W, H, state.spacing, state.jitter, state.seed);
+    var palette = PALETTES[state.palette % PALETTES.length];
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = state.weight + ' ' + state.size + 'px system-ui, -apple-system, sans-serif';
+
+    for(var i=0;i<chars.length;i++){
+      var ch = chars[i];
+      if(ch === ' ') continue;
+      var p = positions[i];
+      if(!p) continue;
+      var color = palette[i % palette.length];
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.scale(p.scale, p.scale);
+      ctx.font = state.weight + ' ' + Math.round(state.size) + 'px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = state.size*0.18;
+      ctx.fillText(ch, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function saveLast(){
+    try{ localStorage.setItem(LAST_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  function loadLast(){
+    try{
+      var raw = localStorage.getItem(LAST_KEY);
+      if(raw){ Object.assign(state, JSON.parse(raw)); }
+    }catch(e){}
+  }
+
+  function syncControlsFromState(){
+    textInput.value = state.text;
+    pSize.value = state.size; vSize.textContent = state.size;
+    pSpacing.value = state.spacing; vSpacing.textContent = state.spacing;
+    pJitter.value = state.jitter; vJitter.textContent = state.jitter;
+    pWeight.value = state.weight; vWeight.textContent = state.weight;
+    pCase.value = state.caseMode;
+    Array.prototype.forEach.call(modeGrid.querySelectorAll('[data-mode]'), function(b){
+      b.classList.toggle('active', b.dataset.mode === state.mode);
+    });
+    Array.prototype.forEach.call(swatchRow.querySelectorAll('.swatch'), function(s,idx){
+      s.classList.toggle('active', idx === state.palette);
+    });
+  }
+
+  function buildSwatches(){
+    swatchRow.innerHTML = '';
+    PALETTES.forEach(function(pal, idx){
+      var el = document.createElement('div');
+      el.className = 'swatch';
+      el.style.background = 'linear-gradient(135deg,' + pal[0] + ',' + pal[2] + ',' + pal[4] + ')';
+      el.addEventListener('click', function(){
+        state.palette = idx;
+        syncControlsFromState(); draw(); saveLast();
+      });
+      swatchRow.appendChild(el);
+    });
+  }
+
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 1600);
+  }
+
+  // ---- controls wiring ----
+  textInput.addEventListener('input', function(){
+    state.text = textInput.value.slice(0,40);
+    draw(); saveLast();
+  });
+  pSize.addEventListener('input', function(){
+    state.size = parseInt(pSize.value,10); vSize.textContent = state.size;
+    draw(); saveLast();
+  });
+  pSpacing.addEventListener('input', function(){
+    state.spacing = parseInt(pSpacing.value,10); vSpacing.textContent = state.spacing;
+    draw(); saveLast();
+  });
+  pJitter.addEventListener('input', function(){
+    state.jitter = parseInt(pJitter.value,10); vJitter.textContent = state.jitter;
+    draw(); saveLast();
+  });
+  pWeight.addEventListener('input', function(){
+    state.weight = parseInt(pWeight.value,10); vWeight.textContent = state.weight;
+    draw(); saveLast();
+  });
+  pCase.addEventListener('change', function(){
+    state.caseMode = pCase.value;
+    draw(); saveLast();
+  });
+  modeGrid.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-mode]');
+    if(!btn) return;
+    state.mode = btn.dataset.mode;
+    syncControlsFromState(); draw(); saveLast();
+  });
+
+  document.getElementById('btnRandomize').addEventListener('click', function(){
+    var modes = ['arc','spiral','cascade','grid','waterfall'];
+    state.mode = modes[Math.floor(Math.random()*modes.length)];
+    state.size = 30 + Math.floor(Math.random()*80);
+    state.spacing = Math.floor(Math.random()*100);
+    state.jitter = Math.floor(Math.random()*80);
+    state.weight = [300,400,700,900][Math.floor(Math.random()*4)];
+    state.palette = Math.floor(Math.random()*PALETTES.length);
+    state.seed = Math.floor(Math.random()*100000);
+    syncControlsFromState(); draw(); saveLast();
+    showToast('Randomized ✨');
+  });
+
+  document.getElementById('btnReset').addEventListener('click', function(){
+    Object.assign(state, {
+      text:'TYPE FOUNDRY', mode:'arc', size:64, spacing:50, jitter:30, weight:700,
+      caseMode:'none', palette:0, seed:1234
+    });
+    syncControlsFromState(); draw(); saveLast();
+    showToast('Reset to default');
+  });
+
+  canvas.addEventListener('pointerdown', function(){
+    state.seed = Math.floor(Math.random()*100000);
+    draw(); saveLast();
+    hint.style.opacity = '0';
+  });
+
+  // ---- export PNG ----
+  document.getElementById('btnExport').addEventListener('click', function(){
+    var dpr = 2;
+    var W = canvas.clientWidth, H = canvas.clientHeight;
+    var off = document.createElement('canvas');
+    off.width = W*dpr; off.height = H*dpr;
+    var octx = off.getContext('2d');
+    octx.setTransform(dpr,0,0,dpr,0,0);
+
+    var grad = octx.createRadialGradient(W/2,H*0.4,10, W/2,H*0.5, Math.max(W,H)*0.75);
+    grad.addColorStop(0, '#141024'); grad.addColorStop(1, '#08070d');
+    octx.fillStyle = grad; octx.fillRect(0,0,W,H);
+
+    var text = applyCase(state.text || ' ', state.caseMode);
+    var chars = text.split('');
+    if(chars.length===0) chars=[' '];
+    var positions = layoutPositions(chars, state.mode, W, H, state.spacing, state.jitter, state.seed);
+    var palette = PALETTES[state.palette % PALETTES.length];
+    octx.textAlign='center'; octx.textBaseline='middle';
+
+    for(var i=0;i<chars.length;i++){
+      var ch = chars[i];
+      if(ch===' ') continue;
+      var p = positions[i];
+      if(!p) continue;
+      octx.save();
+      octx.translate(p.x,p.y);
+      octx.rotate(p.rot);
+      octx.scale(p.scale,p.scale);
+      octx.font = state.weight+' '+Math.round(state.size)+'px system-ui, -apple-system, sans-serif';
+      var color = palette[i % palette.length];
+      octx.fillStyle = color;
+      octx.shadowColor = color;
+      octx.shadowBlur = state.size*0.18;
+      octx.fillText(ch,0,0);
+      octx.restore();
+    }
+
+    off.toBlob(function(blob){
+      if(!blob){ showToast('Export failed'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'poster-type-foundry.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      showToast('PNG exported (' + Math.round(blob.size/1024) + ' KB)');
+    }, 'image/png');
+  });
+
+  // ---- share via URL hash ----
+  function encodeState(s){
+    try{
+      return btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+    }catch(e){ return ''; }
+  }
+  function decodeState(str){
+    try{
+      return JSON.parse(decodeURIComponent(escape(atob(str))));
+    }catch(e){ return null; }
+  }
+
+  document.getElementById('btnShare').addEventListener('click', function(){
+    var enc = encodeState(state);
+    var url = location.origin + location.pathname + '#p=' + enc;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){
+        showToast('Share link copied!');
+      }).catch(function(){
+        prompt('Copy this link:', url);
+      });
+    } else {
+      prompt('Copy this link:', url);
+    }
+    history.replaceState(null, '', '#p=' + enc);
+  });
+
+  // ---- presets ----
+  function getPresets(){
+    try{ return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }catch(e){ return []; }
+  }
+  function setPresets(list){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(list)); }catch(e){}
+  }
+  function renderPresets(){
+    var list = getPresets();
+    presetList.innerHTML = '';
+    if(list.length === 0){
+      presetList.innerHTML = '<div class="empty">No presets saved yet.</div>';
+      return;
+    }
+    list.forEach(function(p, idx){
+      var row = document.createElement('div');
+      row.className = 'presetItem';
+      var span = document.createElement('span');
+      span.textContent = p.name;
+      var btnLoad = document.createElement('button');
+      btnLoad.textContent = '↺';
+      btnLoad.title = 'Load';
+      btnLoad.addEventListener('click', function(){
+        Object.assign(state, p.state);
+        syncControlsFromState(); draw(); saveLast();
+        showToast('Loaded "' + p.name + '"');
+      });
+      var btnDel = document.createElement('button');
+      btnDel.textContent = '✕';
+      btnDel.title = 'Delete';
+      btnDel.addEventListener('click', function(){
+        var l = getPresets();
+        l.splice(idx,1);
+        setPresets(l);
+        renderPresets();
+      });
+      row.appendChild(span);
+      var grp = document.createElement('span');
+      grp.appendChild(btnLoad); grp.appendChild(btnDel);
+      row.appendChild(grp);
+      presetList.appendChild(row);
+    });
+  }
+
+  document.getElementById('btnSavePreset').addEventListener('click', function(){
+    var name = prompt('Preset name:', state.text.slice(0,16) || 'Untitled');
+    if(!name) return;
+    var list = getPresets();
+    list.push({ name: name, state: Object.assign({}, state) });
+    if(list.length > 20) list = list.slice(list.length-20);
+    setPresets(list);
+    renderPresets();
+    showToast('Preset saved');
+  });
+
+  document.getElementById('btnPresets').addEventListener('click', function(){
+    presetPanel.classList.toggle('open');
+    renderPresets();
+  });
+
+  // ---- init ----
+  function init(){
+    buildSwatches();
+
+    var hash = location.hash;
+    var loadedFromShare = false;
+    if(hash && hash.indexOf('#p=') === 0){
+      var decoded = decodeState(hash.slice(3));
+      if(decoded){ Object.assign(state, decoded); loadedFromShare = true; }
+    }
+    if(!loadedFromShare) loadLast();
+
+    syncControlsFromState();
+    resize();
+    window.addEventListener('resize', resize);
+
+    setTimeout(function(){ hint.style.opacity = '0'; }, 4000);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

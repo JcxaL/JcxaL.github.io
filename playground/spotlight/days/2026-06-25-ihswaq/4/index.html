@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drop 4 — Gravity Mouse Trail</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;background:#05050a;color:#eee;
+  font-family:system-ui,sans-serif;
+  overflow:hidden;cursor:none;
+}
+
+/* Instructions overlay */
+.instructions{
+  position:fixed;inset:0;z-index:10;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;
+  transition:opacity .5s;
+}
+.instructions h1{
+  font-size:clamp(28px,6vw,60px);font-weight:900;letter-spacing:4px;
+  color:rgba(255,255,255,.15);margin-bottom:10px;text-align:center;
+}
+.instructions p{font-size:14px;color:rgba(255,255,255,.2);text-align:center}
+
+/* Custom cursor */
+#cursor{
+  position:fixed;pointer-events:none;z-index:999;
+  width:12px;height:12px;border-radius:50%;
+  background:#fff;transform:translate(-50%,-50%);
+  mix-blend-mode:difference;
+  transition:transform .1s;
+}
+
+/* Trail items */
+.trail-item{
+  position:fixed;pointer-events:none;z-index:100;
+  border-radius:8px;
+  transform:translate(-50%,-50%);
+  animation:fadeTrail 1.4s ease forwards;
+  font-size:11px;font-weight:700;color:rgba(255,255,255,.9);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+@keyframes fadeTrail{
+  0%{opacity:1}
+  60%{opacity:.8}
+  100%{opacity:0}
+}
+
+/* Ground flash effect */
+.ground-flash{
+  position:fixed;left:0;right:0;bottom:0;height:3px;
+  pointer-events:none;z-index:50;
+  opacity:0;
+  animation:groundFlash .3s ease-out forwards;
+}
+@keyframes groundFlash{
+  0%{opacity:.8}
+  100%{opacity:0}
+}
+
+/* Controls */
+.controls{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);
+  z-index:20;display:flex;gap:6px;
+}
+.ctrl{
+  padding:5px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.15);
+  background:rgba(0,0,0,.5);color:rgba(255,255,255,.7);font-size:11px;
+  cursor:pointer;backdrop-filter:blur(8px);font-weight:600;transition:all .2s;
+}
+.ctrl.active,.ctrl:hover{background:rgba(255,255,255,.15);color:#fff}
+
+/* Panel */
+.panel{
+  position:fixed;top:12px;right:12px;
+  background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.1);
+  border-radius:10px;padding:10px 14px;font-size:11px;color:rgba(255,255,255,.4);
+  backdrop-filter:blur(8px);max-width:190px;
+}
+.panel strong{color:rgba(255,255,255,.6);display:block;margin-bottom:4px}
+code{color:#f97316;font-size:10px}
+
+footer{position:fixed;bottom:8px;left:0;right:0;text-align:center;
+  font-size:10px;color:rgba(255,255,255,.15);}
+
+/* Ground line */
+.ground{
+  position:fixed;bottom:60px;left:0;right:0;height:1px;
+  background:rgba(255,255,255,.06);
+}
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<div class="ground"></div>
+
+<div class="instructions" id="instructions">
+  <h1>MOVE YOUR MOUSE</h1>
+  <p>← fast → to spawn more items</p>
+</div>
+
+<div class="controls">
+  <button class="ctrl active" data-shape="rect">Cards</button>
+  <button class="ctrl" data-shape="circle">Circles</button>
+  <button class="ctrl" data-shape="emoji">Emoji</button>
+  <button class="ctrl active-grav" data-grav="1">Gravity ▼</button>
+</div>
+
+<div class="panel">
+  <strong>The Technique</strong>
+  Track cursor distance. When threshold is exceeded, spawn an element at cursor pos. Apply <code>vy += gravity</code> each frame. Bounce on floor with damping.
+</div>
+
+<footer>Inspired by Michael Garcia / Made With GSAP × Codrops · May 20 2026 · UI Spotlight Day 40 · Drop #4</footer>
+
+<script>
+const cursor = document.getElementById('cursor');
+const instructions = document.getElementById('instructions');
+const GROUND_Y = window.innerHeight - 60;
+
+let mx=0, my=0, lastX=0, lastY=0, totalDist=0;
+let shape = 'rect', gravDir = 1;
+let moved = false;
+
+const COLORS = [
+  ['#ef4444','#7f1d1d'],['#f97316','#7c2d12'],['#eab308','#713f12'],
+  ['#22c55e','#14532d'],['#06b6d4','#164e63'],['#8b5cf6','#3b0764'],
+  ['#ec4899','#831843'],['#14b8a6','#134e4a'],['#a855f7','#4a1d96'],
+];
+const EMOJIS = ['🎨','🚀','⚡','🎯','💎','🌀','🔥','✨','🎲','🎸','🎺','🥁'];
+let colorIdx = 0, emojiIdx = 0;
+
+const THRESHOLD = 90;
+
+document.addEventListener('mousemove', e=>{
+  mx = e.clientX; my = e.clientY;
+  cursor.style.left = mx+'px';
+  cursor.style.top = my+'px';
+
+  if(!moved){
+    moved = true;
+    instructions.style.opacity = '0';
+    setTimeout(()=>instructions.style.display='none',500);
+  }
+
+  const dx = mx-lastX, dy = my-lastY;
+  const d = Math.hypot(dx,dy);
+  totalDist += d;
+  lastX=mx; lastY=my;
+
+  if(totalDist >= THRESHOLD){
+    totalDist = 0;
+    spawnItem(mx, my, d);
+  }
+});
+
+document.addEventListener('touchmove', e=>{
+  const t = e.touches[0];
+  mx=t.clientX; my=t.clientY;
+  if(!moved){ moved=true; instructions.style.opacity='0'; }
+  const dx=mx-lastX, dy=my-lastY;
+  totalDist+=Math.hypot(dx,dy);
+  lastX=mx; lastY=my;
+  if(totalDist>=THRESHOLD){ totalDist=0; spawnItem(mx,my,8); }
+  e.preventDefault();
+},{passive:false});
+
+function spawnItem(x, y, speed){
+  const el = document.createElement('div');
+  el.className = 'trail-item';
+
+  const [fg,bg] = COLORS[colorIdx++ % COLORS.length];
+
+  if(shape === 'rect'){
+    const w = 60 + Math.random()*40;
+    const h = 40 + Math.random()*30;
+    el.style.cssText=`width:${w}px;height:${h}px;background:${bg};border:2px solid ${fg};color:${fg}`;
+    el.textContent = ['CSS','HTML','JS','UI','UX','WEB'][Math.floor(Math.random()*6)];
+  } else if(shape === 'circle'){
+    const r = 20 + Math.random()*40;
+    el.style.cssText=`width:${r}px;height:${r}px;border-radius:50%;background:${fg}66;border:2px solid ${fg}`;
+  } else {
+    el.style.cssText=`font-size:${28+Math.random()*24}px;background:transparent;`;
+    el.textContent = EMOJIS[emojiIdx++ % EMOJIS.length];
+  }
+
+  el.style.left = x+'px';
+  el.style.top = y+'px';
+  document.body.appendChild(el);
+
+  // Physics
+  let posX=x, posY=y;
+  let vx=(Math.random()-.5)*3, vy = -2 - speed*0.05;
+  const gravity = 0.45 * gravDir;
+  const groundY = gravDir === 1 ? GROUND_Y : 60;
+  let bounces = 0;
+  let startTime = performance.now();
+
+  function tick(){
+    vy += gravity;
+    posX += vx;
+    posY += vy;
+
+    if(gravDir===1 && posY >= groundY && bounces < 2){
+      posY = groundY;
+      vy *= -0.4;
+      vx *= 0.85;
+      bounces++;
+      flashGround(fg);
+    } else if(gravDir===-1 && posY <= groundY && bounces < 2){
+      posY = groundY;
+      vy *= -0.4;
+      vx *= 0.85;
+      bounces++;
+    }
+
+    el.style.left = posX+'px';
+    el.style.top = posY+'px';
+
+    const age = performance.now()-startTime;
+    if(age < 1400 && el.parentNode) requestAnimationFrame(tick);
+    else el.remove();
+  }
+  requestAnimationFrame(tick);
+}
+
+function flashGround(color){
+  const f = document.createElement('div');
+  f.className='ground-flash';
+  f.style.background=color;
+  document.body.appendChild(f);
+  setTimeout(()=>f.remove(), 350);
+}
+
+// Controls
+document.querySelector('.controls').addEventListener('click',e=>{
+  const btn = e.target.closest('[data-shape],[data-grav]');
+  if(!btn) return;
+  if(btn.dataset.shape){
+    document.querySelectorAll('[data-shape]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    shape = btn.dataset.shape;
+  }
+  if(btn.dataset.grav){
+    gravDir *= -1;
+    btn.textContent = gravDir===1 ? 'Gravity ▼' : 'Gravity ▲';
+  }
+});
+
+// Auto-demo on mobile/idle
+const demoItems = ['🎨','🚀','⚡','🎯','💎','🌀'];
+let demoT = 0;
+function autoDemo(){
+  if(!moved){
+    demoT++;
+    const x = 100 + Math.sin(demoT*0.3)*100 + window.innerWidth/2;
+    const y = window.innerHeight/3;
+    mx=x; my=y;
+    cursor.style.left=x+'px'; cursor.style.top=y+'px';
+    totalDist+=THRESHOLD+1;
+    if(totalDist>=THRESHOLD){ totalDist=0; spawnItem(x,y,5); }
+  }
+}
+setInterval(autoDemo,300);
+</script>
+</body>
+</html>

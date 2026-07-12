@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Adaptive Directional Easing · UI Spotlight</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg0:#0b0d14; --bg1:#12151f; --card:#161a26; --card2:#1c2130;
+    --line:rgba(255,255,255,.08); --text:#e8eaf2; --sub:#8b92a8;
+    --accent:#7c9fff; --accent2:#ff9d7c; --good:#7cffb2;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; padding:0; overflow-x:hidden;}
+  body{
+    background:radial-gradient(1200px 700px at 80% -10%, #1c2138 0%, var(--bg0) 55%), var(--bg0);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    min-height:100vh; -webkit-tap-highlight-color:transparent;
+  }
+  .page{max-width:1000px; margin:0 auto; padding:28px 20px 90px;}
+  header{margin-bottom:22px;}
+  header h1{font-size:clamp(20px,3.4vw,28px); margin:0 0 6px;}
+  header p{color:var(--sub); margin:0; font-size:14px; max-width:640px; line-height:1.5;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:16px;}
+  .demo-card{
+    background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--line); border-radius:16px; padding:18px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .demo-card h2{font-size:15px; margin:0; color:var(--text);}
+  .demo-card .hint{font-size:12px; color:var(--sub); margin:-8px 0 0;}
+  .stage{position:relative; height:170px; border-radius:12px; background:#0e1119; border:1px solid var(--line); overflow:hidden;}
+  button{font:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;}
+  .trigger{
+    align-self:flex-start; min-height:36px; padding:0 16px; border-radius:9px; border:1px solid var(--line);
+    background:#232838; color:var(--text); font-size:13px; font-weight:600;
+  }
+  .trigger:active{transform:translateY(1px);}
+  /* drawer */
+  .drawer-panel, .drawer-ghost{
+    position:absolute; top:0; left:0; width:150px; height:100%;
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;
+    border-radius:0 12px 12px 0; will-change:transform;
+  }
+  .drawer-panel{background:linear-gradient(135deg,var(--accent),#5a6fe0); color:#0b0d14;}
+  .drawer-ghost{background:transparent; border:2px dashed var(--accent2); color:var(--accent2); opacity:0; z-index:2;}
+  /* modal */
+  .modal-card, .modal-ghost{
+    position:absolute; top:50%; left:50%; width:120px; height:76px; margin:-38px 0 0 -60px;
+    border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;
+    will-change:transform, opacity;
+  }
+  .modal-card{background:linear-gradient(135deg,var(--good),#2fbf82); color:#04150c;}
+  .modal-ghost{background:transparent; border:2px dashed var(--accent2); color:var(--accent2); opacity:0;}
+  /* switch */
+  .switch-row{display:flex; align-items:center; gap:12px;}
+  .switch-track{
+    position:relative; width:64px; height:30px; border-radius:999px; background:#2a2f42;
+    border:1px solid var(--line); flex:none; touch-action:manipulation;
+  }
+  .switch-track.on{background:#33406b;}
+  .switch-knob, .switch-ghost{
+    position:absolute; top:2px; left:0; width:26px; height:26px; border-radius:50%; will-change:transform;
+  }
+  .switch-knob{background:linear-gradient(135deg,#fff,#c9d2f0);}
+  .switch-ghost{background:transparent; border:2px dashed var(--accent2); opacity:0; box-sizing:border-box;}
+  .switch-label{font-size:12px; color:var(--sub);}
+  body.show-naive .drawer-ghost, body.show-naive .modal-ghost, body.show-naive .switch-ghost{opacity:.85;}
+  /* debug panel */
+  #debugPanel{
+    position:fixed; top:12px; right:12px; width:min(240px, calc(100vw - 24px)); z-index:50;
+    background:rgba(20,23,34,.72); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.1); border-radius:14px; font-size:11.5px; color:var(--text);
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  .debug-header{display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-bottom:1px solid var(--line);}
+  .debug-header span{font-weight:700; letter-spacing:.03em; text-transform:uppercase; font-size:10.5px; color:var(--sub);}
+  #debugToggleBtn{width:26px; height:26px; border-radius:7px; border:1px solid var(--line); background:#232838; color:var(--text); line-height:1;}
+  .debug-body{display:flex; flex-direction:column; gap:10px; padding:10px;}
+  .debug-row{display:flex; flex-direction:column; gap:4px;}
+  .debug-row label{color:var(--sub); font-size:10.5px;}
+  .debug-row select{
+    width:100%; min-height:30px; background:#1a1e2b; color:var(--text); border:1px solid var(--line);
+    border-radius:7px; padding:2px 6px; font-size:11.5px;
+  }
+  .debug-check{display:flex; align-items:center; gap:8px; min-height:36px;}
+  .debug-check input{width:16px; height:16px;}
+  .debug-count{display:flex; align-items:center; justify-content:space-between; background:#1a1e2b; border-radius:8px; padding:6px 8px;}
+  .debug-count b{color:var(--accent); font-size:14px;}
+  footer{
+    position:fixed; left:0; right:0; bottom:0; text-align:center; padding:8px 10px;
+    font-size:11px; color:rgba(255,255,255,.28); pointer-events:none; background:linear-gradient(0deg,rgba(11,13,20,.7),transparent);
+  }
+  @media (max-width:640px){ #debugPanel{width:min(200px, calc(100vw - 20px));} }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Adaptive Directional Easing</h1>
+    <p>A from-scratch reimplementation of GSAP 3.15's <code>easeReverse</code>: interrupting an animation mid-flight re-bases progress onto a different easing curve instead of snapping. Click any control rapidly.</p>
+  </header>
+  <main class="grid">
+    <section class="demo-card" id="drawerDemo">
+      <h2>1 · Slide Drawer</h2>
+      <p class="hint">Bouncy open, sharp close — spam-click, it never jumps.</p>
+      <div class="stage" id="drawerStage">
+        <div class="drawer-ghost" id="drawerGhost">naive</div>
+        <div class="drawer-panel" id="drawerPanel">panel</div>
+      </div>
+      <button class="trigger" id="drawerBtn">Toggle drawer</button>
+    </section>
+    <section class="demo-card" id="modalDemo">
+      <h2>2 · Scale Modal</h2>
+      <p class="hint">Elastic entrance, exponential exit.</p>
+      <div class="stage" id="modalStage">
+        <div class="modal-ghost" id="modalGhost">naive</div>
+        <div class="modal-card" id="modalCard">modal</div>
+      </div>
+      <button class="trigger" id="modalBtn">Toggle modal</button>
+    </section>
+    <section class="demo-card" id="switchDemo">
+      <h2>3 · Toggle Switch</h2>
+      <p class="hint">Dashed ghost = naive <code>.reverse()</code> replay.</p>
+      <div class="switch-row">
+        <div class="switch-track" id="switchTrack">
+          <div class="switch-ghost" id="switchGhost"></div>
+          <div class="switch-knob" id="switchKnob"></div>
+        </div>
+        <span class="switch-label" id="switchLabel">off</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="debugPanel">
+  <div class="debug-header">
+    <span>Debug</span>
+    <button id="debugToggleBtn" aria-label="Toggle debug panel">–</button>
+  </div>
+  <div class="debug-body" id="debugBody">
+    <div class="debug-row">
+      <label for="drawerForwardSelect">Drawer · forward ease</label>
+      <select id="drawerForwardSelect"></select>
+    </div>
+    <div class="debug-row">
+      <label for="drawerReverseSelect">Drawer · reverse ease</label>
+      <select id="drawerReverseSelect"></select>
+    </div>
+    <div class="debug-row">
+      <label for="modalForwardSelect">Modal · forward ease</label>
+      <select id="modalForwardSelect"></select>
+    </div>
+    <div class="debug-row">
+      <label for="modalReverseSelect">Modal · reverse ease</label>
+      <select id="modalReverseSelect"></select>
+    </div>
+    <label class="debug-check"><input type="checkbox" id="naiveToggle"> Show naive-reverse ghosts</label>
+    <div class="debug-count"><span>Interrupts caught</span><b id="interruptCount">0</b></div>
+  </div>
+</div>
+
+<footer>Inspired by GSAP 3.15 "easeReverse" · UI Spotlight Day 51 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- easing functions, implemented from scratch ----
+  const easeLib = {
+    "linear": t => t,
+    "sine.in": t => 1 - Math.cos((t * Math.PI) / 2),
+    "sine.out": t => Math.sin((t * Math.PI) / 2),
+    "expo.in": t => (t === 0 ? 0 : Math.pow(2, 10 * (t - 1))),
+    "expo.out": t => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t)),
+    "back.out": t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
+    "elastic.out": t => { const c4 = (2 * Math.PI) / 3; return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1; }
+  };
+  const easeNames = Object.keys(easeLib);
+
+  function clamp01(v){ return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+  // numeric search: find t in [0,1] whose ease(t) best matches targetFrac
+  function solveForT(ease, targetFrac){
+    const steps = 40;
+    let bestT = 0, bestDiff = Infinity;
+    for (let i = 0; i <= steps; i++){
+      const t = i / steps;
+      const diff = Math.abs(ease(t) - targetFrac);
+      if (diff < bestDiff){ bestDiff = diff; bestT = t; }
+    }
+    let lo = Math.max(0, bestT - 1 / steps), hi = Math.min(1, bestT + 1 / steps);
+    const signLo = Math.sign(ease(lo) - targetFrac);
+    for (let i = 0; i < 16; i++){
+      const mid = (lo + hi) / 2;
+      const diffMid = ease(mid) - targetFrac;
+      if (Math.sign(diffMid) === signLo || signLo === 0) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  // ---- the interruptible directional-easing engine ----
+  class Tween{
+    constructor(opts){
+      this.from = opts.from; this.to = opts.to; this.duration = opts.duration;
+      this.easeForward = opts.easeForward; this.easeReverse = opts.easeReverse;
+      this.naive = !!opts.naive;
+      this.onUpdate = opts.onUpdate; this.onInterrupt = opts.onInterrupt || function(){};
+      this.value = this.from; this.isOpen = false; this.running = false;
+      this.direction = null; this.rawT = 0; this.raf = null;
+    }
+    goTo(open){
+      const newDirection = open ? "forward" : "reverse";
+      if (this.isOpen === open && !this.running) return;
+      if (this.running && this.direction === newDirection) return;
+      const rangeStart = open ? this.from : this.to;
+      const rangeEnd = open ? this.to : this.from;
+      const ease = this.naive ? this.easeForward : (open ? this.easeForward : this.easeReverse);
+      let t0 = 0;
+      if (this.running && this.direction !== newDirection){
+        this.onInterrupt();
+        if (this.naive){
+          t0 = 1 - this.rawT; // naive .reverse(): just mirror t, same curve -> visible snap
+        } else {
+          const frac = clamp01((this.value - rangeStart) / (rangeEnd - rangeStart));
+          t0 = solveForT(ease, frac); // re-base onto the NEW curve at the current position
+        }
+      }
+      this.isOpen = open; this.direction = newDirection; this.ease = ease;
+      this.rangeStart = rangeStart; this.rangeEnd = rangeEnd;
+      this.startTs = performance.now(); this.startRawT = t0; this.running = true;
+      if (this.raf) cancelAnimationFrame(this.raf);
+      this._tick();
+    }
+    _tick(){
+      const elapsed = (performance.now() - this.startTs) / 1000;
+      const t = Math.min(this.startRawT + elapsed / this.duration, 1);
+      this.rawT = t;
+      const eased = this.ease(t);
+      this.value = this.rangeStart + (this.rangeEnd - this.rangeStart) * eased;
+      this.onUpdate(this.value);
+      if (t < 1){ this.raf = requestAnimationFrame(() => this._tick()); }
+      else { this.running = false; this.value = this.rangeEnd; this.onUpdate(this.value); }
+    }
+  }
+
+  // ---- shared debug wiring ----
+  const interruptCountEl = document.getElementById("interruptCount");
+  let interruptTotal = 0;
+  function bumpInterruptCount(){ interruptCountEl.textContent = ++interruptTotal; }
+
+  function fillSelect(sel, value){
+    easeNames.forEach(name => {
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name;
+      if (name === value) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  // ---- demo 1: drawer ----
+  const drawerPanel = document.getElementById("drawerPanel");
+  const drawerGhost = document.getElementById("drawerGhost");
+  const drawerBtn = document.getElementById("drawerBtn");
+  const drawerForwardSelect = document.getElementById("drawerForwardSelect");
+  const drawerReverseSelect = document.getElementById("drawerReverseSelect");
+  fillSelect(drawerForwardSelect, "back.out");
+  fillSelect(drawerReverseSelect, "sine.in");
+
+  const drawerTween = new Tween({
+    from: -170, to: 0, duration: 0.7,
+    easeForward: easeLib["back.out"], easeReverse: easeLib["sine.in"],
+    onUpdate: v => { drawerPanel.style.transform = `translateX(${v}px)`; },
+    onInterrupt: bumpInterruptCount
+  });
+  const drawerGhostTween = new Tween({
+    from: -170, to: 0, duration: 0.7, naive: true,
+    easeForward: easeLib["back.out"], easeReverse: easeLib["sine.in"],
+    onUpdate: v => { drawerGhost.style.transform = `translateX(${v}px)`; }
+  });
+  drawerBtn.addEventListener("pointerdown", () => {
+    const next = !drawerTween.isOpen;
+    drawerTween.goTo(next); drawerGhostTween.goTo(next);
+  });
+  drawerForwardSelect.addEventListener("change", e => {
+    const ease = easeLib[e.target.value];
+    drawerTween.easeForward = ease; drawerGhostTween.easeForward = ease;
+  });
+  drawerReverseSelect.addEventListener("change", e => {
+    drawerTween.easeReverse = easeLib[e.target.value];
+  });
+
+  // ---- demo 2: modal ----
+  const modalCard = document.getElementById("modalCard");
+  const modalGhost = document.getElementById("modalGhost");
+  const modalBtn = document.getElementById("modalBtn");
+  const modalForwardSelect = document.getElementById("modalForwardSelect");
+  const modalReverseSelect = document.getElementById("modalReverseSelect");
+  fillSelect(modalForwardSelect, "elastic.out");
+  fillSelect(modalReverseSelect, "expo.in");
+
+  function applyModal(el, v){
+    el.style.transform = `translate(-50%,-50%) scale(${v})`;
+    el.style.opacity = String(clamp01((v - 0.3) / 0.7));
+  }
+  const modalTween = new Tween({
+    from: 0.3, to: 1, duration: 0.8,
+    easeForward: easeLib["elastic.out"], easeReverse: easeLib["expo.in"],
+    onUpdate: v => applyModal(modalCard, v),
+    onInterrupt: bumpInterruptCount
+  });
+  const modalGhostTween = new Tween({
+    from: 0.3, to: 1, duration: 0.8, naive: true,
+    easeForward: easeLib["elastic.out"], easeReverse: easeLib["expo.in"],
+    onUpdate: v => applyModal(modalGhost, v)
+  });
+  modalBtn.addEventListener("pointerdown", () => {
+    const next = !modalTween.isOpen;
+    modalTween.goTo(next); modalGhostTween.goTo(next);
+  });
+  modalForwardSelect.addEventListener("change", e => {
+    const ease = easeLib[e.target.value];
+    modalTween.easeForward = ease; modalGhostTween.easeForward = ease;
+  });
+  modalReverseSelect.addEventListener("change", e => {
+    modalTween.easeReverse = easeLib[e.target.value];
+  });
+
+  // ---- demo 3: switch ----
+  const switchTrack = document.getElementById("switchTrack");
+  const switchKnob = document.getElementById("switchKnob");
+  const switchGhost = document.getElementById("switchGhost");
+  const switchLabel = document.getElementById("switchLabel");
+  const switchTween = new Tween({
+    from: 2, to: 36, duration: 0.55,
+    easeForward: easeLib["elastic.out"], easeReverse: easeLib["sine.in"],
+    onUpdate: v => { switchKnob.style.transform = `translateX(${v}px)`; },
+    onInterrupt: bumpInterruptCount
+  });
+  const switchGhostTween = new Tween({
+    from: 2, to: 36, duration: 0.55, naive: true,
+    easeForward: easeLib["elastic.out"], easeReverse: easeLib["sine.in"],
+    onUpdate: v => { switchGhost.style.transform = `translateX(${v}px)`; }
+  });
+  switchTrack.addEventListener("pointerdown", () => {
+    const next = !switchTween.isOpen;
+    switchTrack.classList.toggle("on", next);
+    switchLabel.textContent = next ? "on" : "off";
+    switchTween.goTo(next); switchGhostTween.goTo(next);
+  });
+
+  // ---- naive comparison mode ----
+  document.getElementById("naiveToggle").addEventListener("change", e => {
+    document.body.classList.toggle("show-naive", e.target.checked);
+  });
+
+  // ---- debug panel collapse (mobile-friendly) ----
+  const debugToggleBtn = document.getElementById("debugToggleBtn");
+  const debugBody = document.getElementById("debugBody");
+  function setCollapsed(collapsed){
+    debugBody.style.display = collapsed ? "none" : "flex";
+    debugToggleBtn.textContent = collapsed ? "+" : "–";
+  }
+  debugToggleBtn.addEventListener("pointerdown", () => setCollapsed(debugBody.style.display !== "none"));
+  if (window.innerWidth < 640) setCollapsed(true);
+})();
+</script>
+</body>
+</html>

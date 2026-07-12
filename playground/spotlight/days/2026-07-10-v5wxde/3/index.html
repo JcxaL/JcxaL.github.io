@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cursor-Proximity Variable Weight — UI Spotlight</title>
+<style>
+  :root{ --accent:#f87171; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#0d0708;color:#fff0ef;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;}
+
+  .back-link{
+    position:fixed; top:16px; left:16px; z-index:50;
+    background:rgba(30,14,16,0.6); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.12);
+    color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:9px 14px; border-radius:999px;
+  }
+  #debug{
+    position:fixed; top:16px; right:16px; z-index:50; width:210px;
+    background:rgba(30,14,16,0.7); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.12);
+    border-radius:14px; padding:14px; font-size:12px;
+  }
+  #debug h4{margin:0 0 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#fbb;}
+  #debug .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+  #debug input[type=range]{flex:1;accent-color:var(--accent);}
+  #debug select{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:6px;font-size:11px;}
+  @media (max-width:640px){ #debug{ display:none; } }
+
+  main{
+    height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+    padding:0 20px; text-align:center;
+  }
+  .line{
+    font-size:clamp(2.2rem, 8vw, 5.5rem);
+    letter-spacing:-0.01em;
+    line-height:1.05;
+    white-space:nowrap;
+  }
+  .line .ch{
+    display:inline-block;
+    font-weight:400;
+    transition:font-weight 90ms linear, transform 90ms linear, color 90ms linear;
+    will-change:font-weight, transform;
+  }
+  .line.l1 .ch{ color:#f87171; }
+  .line.l2 .ch{ color:#fca5a5; }
+  .line.l3 .ch{ color:#fff0ef; }
+  p.hint{ color:rgba(255,255,255,0.4); font-size:13px; margin-top:20px; }
+
+  footer{
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:50;
+    font-size:11px; color:rgba(255,255,255,0.4); background:rgba(20,10,10,0.5); backdrop-filter:blur(8px);
+    padding:6px 12px; border-radius:999px; white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">&larr; All 5 drops</a>
+
+<div id="debug">
+  <h4>Proximity Debug</h4>
+  <div class="row"><span>Radius</span><input type="range" id="radius" min="40" max="260" value="130"></div>
+  <div class="row"><span>Falloff</span>
+    <select id="falloff">
+      <option value="linear">Linear</option>
+      <option value="quad" selected>Quadratic</option>
+      <option value="gauss">Gaussian</option>
+    </select>
+  </div>
+  <div class="row"><span>Max weight</span><input type="range" id="maxWeight" min="500" max="900" value="900"></div>
+</div>
+
+<main>
+  <div class="line l1" id="line1">MOVE YOUR</div>
+  <div class="line l2" id="line2">CURSOR NEAR</div>
+  <div class="line l3" id="line3">THESE LETTERS</div>
+  <p class="hint">Weight and scale inflate as your pointer approaches each glyph</p>
+</main>
+
+<footer>Inspired by Fancy Components &middot; UI Spotlight Day 55 &middot; Drop #3</footer>
+
+<script>
+(function(){
+  "use strict";
+  const lines = [document.getElementById('line1'), document.getElementById('line2'), document.getElementById('line3')];
+  const radiusEl = document.getElementById('radius');
+  const falloffEl = document.getElementById('falloff');
+  const maxWeightEl = document.getElementById('maxWeight');
+
+  const letters = [];
+
+  function splitIntoLetters(el){
+    const text = el.textContent;
+    el.textContent = '';
+    Array.from(text).forEach(ch => {
+      const span = document.createElement('span');
+      span.className = 'ch';
+      span.textContent = ch === ' ' ? ' ' : ch;
+      el.appendChild(span);
+      letters.push(span);
+    });
+  }
+  lines.forEach(splitIntoLetters);
+
+  let rects = [];
+  function cacheRects(){
+    rects = letters.map(l => l.getBoundingClientRect());
+  }
+  cacheRects();
+  window.addEventListener('resize', cacheRects);
+
+  let pointer = { x: -9999, y: -9999 };
+  let rafPending = false;
+
+  function falloff(t){
+    const mode = falloffEl.value;
+    if(mode === 'linear') return t;
+    if(mode === 'gauss') return Math.exp(-Math.pow((1-t)*2.2, 2));
+    return t*t; // quad
+  }
+
+  function update(){
+    rafPending = false;
+    const radius = parseInt(radiusEl.value, 10);
+    const maxWeight = parseInt(maxWeightEl.value, 10);
+    for(let i=0;i<letters.length;i++){
+      const r = rects[i];
+      const cx = r.left + r.width/2, cy = r.top + r.height/2;
+      const d = Math.hypot(pointer.x - cx, pointer.y - cy);
+      const t = Math.max(0, 1 - d/radius);
+      const eased = falloff(t);
+      const weight = Math.round(400 + eased * (maxWeight-400));
+      const scale = 1 + eased*0.16;
+      letters[i].style.fontWeight = weight;
+      letters[i].style.transform = `scale(${scale.toFixed(3)})`;
+    }
+  }
+
+  function onMove(x,y){
+    pointer.x = x; pointer.y = y;
+    if(!rafPending){ rafPending = true; requestAnimationFrame(update); }
+  }
+
+  window.addEventListener('pointermove', (e) => onMove(e.clientX, e.clientY));
+  window.addEventListener('pointerleave', () => onMove(-9999,-9999));
+  window.addEventListener('touchmove', (e) => {
+    if(e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive:true });
+
+  [radiusEl, falloffEl, maxWeightEl].forEach(el => el.addEventListener('input', update));
+  update();
+})();
+</script>
+</body>
+</html>

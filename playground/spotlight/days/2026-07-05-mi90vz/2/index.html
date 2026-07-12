@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Split-Pane Workspace — UI Spotlight</title>
+<style>
+  :root{ --bg:#0b0d12; --panel:#12151d; --panel2:#171b25; --line:#262c39; --accent:#7dd3fc; --text:#e8ecf2; --muted:#8a93a6; }
+  *{box-sizing:border-box;}
+  html,body{height:100%; margin:0;}
+  body{background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif; overflow:hidden; user-select:none;}
+  .bar{
+    height:42px; display:flex; align-items:center; justify-content:space-between; padding:0 12px;
+    border-bottom:1px solid var(--line); background:var(--panel); font-size:12.5px;
+  }
+  .bar b{font-weight:700;}
+  .bar .hint{color:var(--muted); font-size:11px;}
+  .bar button{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text); font-size:11px; font-weight:600;
+    padding:5px 10px; border-radius:7px; cursor:pointer;
+  }
+  .workspace{ display:flex; height:calc(100% - 42px - 30px); }
+  .pane{ background:var(--panel); overflow:auto; padding:14px; font-size:12px; color:var(--muted); min-width:0; }
+  .pane h3{color:var(--text); font-size:12.5px; margin:0 0 8px; display:flex; align-items:center; gap:6px;}
+  .pane h3 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);}
+  .pane .row{ background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:6px; }
+  .divider{
+    width:6px; flex:0 0 auto; background:var(--line); cursor:col-resize; position:relative; z-index:2;
+  }
+  .divider:hover, .divider.active{ background:var(--accent); }
+  .divider::after{
+    content:''; position:absolute; top:0; bottom:0; left:-5px; right:-5px;
+  }
+  .divider.vdrag::before{
+    content:'⋮'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#000; font-size:10px;
+  }
+  #sidebar{ flex:0 0 220px; }
+  #main{ flex:1 1 auto; }
+  #inspector{ flex:0 0 240px; }
+  .toast{
+    height:30px; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--muted);
+    background:var(--panel); border-top:1px solid var(--line);
+  }
+  .toast a{color:var(--accent); text-decoration:none;}
+  @media (max-width:640px){
+    #sidebar{ flex-basis:150px !important; }
+    #inspector{ flex-basis:150px !important; }
+    .pane{ padding:10px; font-size:11px; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>Split-Pane Workspace</b>
+  <span class="hint">Drag the dividers · Double-click a divider to reset</span>
+  <button id="resetAll">Reset Layout</button>
+</div>
+<div class="workspace" id="ws">
+  <div class="pane" id="sidebar">
+    <h3><span class="dot"></span>Explorer</h3>
+    <div class="row">📁 src/components</div>
+    <div class="row">📁 src/hooks</div>
+    <div class="row">📄 App.tsx</div>
+    <div class="row">📄 index.css</div>
+    <div class="row">📄 package.json</div>
+    <div class="row">📁 public</div>
+    <div class="row">📄 README.md</div>
+  </div>
+  <div class="divider" id="dvL"></div>
+  <div class="pane" id="main">
+    <h3><span class="dot"></span>Editor</h3>
+    <div class="row">Resize me by dragging either divider left or right. Widths persist to localStorage and clamp between sensible min/max bounds so no pane can be crushed to zero.</div>
+    <div class="row">Each divider also supports double-click to reset that side back to its default split, matching the ergonomics of editor workspaces like VS Code's panel resize handles.</div>
+    <div class="row">Try narrowing your browser — panes reflow and the min-widths keep everything usable down to small screens.</div>
+  </div>
+  <div class="divider" id="dvR"></div>
+  <div class="pane" id="inspector">
+    <h3><span class="dot"></span>Inspector</h3>
+    <div class="row">width: <span id="wSidebar">220</span>px</div>
+    <div class="row">width: <span id="wInspector">240</span>px</div>
+    <div class="row">Layout saved automatically to <code>localStorage</code>.</div>
+  </div>
+</div>
+<div class="toast">Drop 2 of 5 · Layout · Inspired by split.js / react-resizable-panels · UI Spotlight Day 50</div>
+
+<script>
+(function(){
+  'use strict';
+  var ws = document.getElementById('ws');
+  var sidebar = document.getElementById('sidebar');
+  var inspector = document.getElementById('inspector');
+  var dvL = document.getElementById('dvL');
+  var dvR = document.getElementById('dvR');
+  var wSidebarLabel = document.getElementById('wSidebar');
+  var wInspectorLabel = document.getElementById('wInspector');
+
+  var DEFAULTS = { sidebar:220, inspector:240 };
+  var MIN = 130, MAX_RATIO = 0.55;
+  var LS_KEY = 'spotlight_splitpane_v1';
+
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+  function applyWidths(sw, iw){
+    var total = ws.clientWidth;
+    var maxEach = total*MAX_RATIO;
+    sw = clamp(sw, MIN, maxEach);
+    iw = clamp(iw, MIN, maxEach);
+    sidebar.style.flexBasis = sw+'px';
+    inspector.style.flexBasis = iw+'px';
+    wSidebarLabel.textContent = Math.round(sw);
+    wInspectorLabel.textContent = Math.round(iw);
+    try{ localStorage.setItem(LS_KEY, JSON.stringify({sw:sw, iw:iw})); }catch(e){}
+  }
+
+  function loadWidths(){
+    try{
+      var raw = localStorage.getItem(LS_KEY);
+      if(raw){
+        var d = JSON.parse(raw);
+        if(typeof d.sw==='number' && typeof d.iw==='number') return d;
+      }
+    }catch(e){}
+    return { sw:DEFAULTS.sidebar, iw:DEFAULTS.inspector };
+  }
+
+  var saved = loadWidths();
+  applyWidths(saved.sw, saved.iw);
+
+  function makeDragger(divider, getWidth, setWidth, resetWidth, sign){
+    var dragging = false, startX = 0, startW = 0;
+    function down(e){
+      dragging = true;
+      divider.classList.add('active');
+      startX = e.touches ? e.touches[0].clientX : e.clientX;
+      startW = getWidth();
+      e.preventDefault();
+    }
+    function move(e){
+      if(!dragging) return;
+      var x = e.touches ? e.touches[0].clientX : e.clientX;
+      var dx = (x-startX) * sign;
+      setWidth(startW + dx);
+    }
+    function up(){
+      if(!dragging) return;
+      dragging = false;
+      divider.classList.remove('active');
+    }
+    divider.addEventListener('pointerdown', down);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    divider.addEventListener('dblclick', function(){ resetWidth(); });
+  }
+
+  makeDragger(dvL,
+    function(){ return sidebar.getBoundingClientRect().width; },
+    function(w){ applyWidths(w, inspector.getBoundingClientRect().width); },
+    function(){ applyWidths(DEFAULTS.sidebar, inspector.getBoundingClientRect().width); },
+    1
+  );
+  makeDragger(dvR,
+    function(){ return inspector.getBoundingClientRect().width; },
+    function(w){ applyWidths(sidebar.getBoundingClientRect().width, w); },
+    function(){ applyWidths(sidebar.getBoundingClientRect().width, DEFAULTS.inspector); },
+    -1
+  );
+
+  document.getElementById('resetAll').addEventListener('click', function(){
+    applyWidths(DEFAULTS.sidebar, DEFAULTS.inspector);
+  });
+
+  window.addEventListener('resize', function(){
+    var d = loadWidths();
+    applyWidths(d.sw, d.iw);
+  });
+})();
+</script>
+</body>
+</html>

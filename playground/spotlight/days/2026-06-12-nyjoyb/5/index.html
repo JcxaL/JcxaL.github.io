@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D Gradient Carousel · UI Spotlight</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#08090f;--accent:#a855f7;--accent2:#22d3ee}
+body{
+  background:var(--bg);
+  font-family:system-ui,-apple-system,sans-serif;
+  color:#e2e8f0;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  overflow-x:hidden;
+}
+
+/* Reactive ambient background canvas */
+#bgCanvas{
+  position:fixed;
+  inset:0;
+  z-index:0;
+  opacity:0.7;
+  pointer-events:none;
+}
+
+header{
+  padding:36px 24px 8px;
+  text-align:center;
+  position:relative;
+  z-index:2;
+}
+header h1{
+  font-size:clamp(1.5rem,4vw,2.6rem);
+  font-weight:900;
+  letter-spacing:-.03em;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:8px;
+}
+header p{color:#475569;font-size:13px;max-width:480px;margin:0 auto}
+
+/* Carousel stage */
+.carousel-stage{
+  position:relative;
+  z-index:2;
+  width:100%;
+  max-width:900px;
+  height:380px;
+  margin:32px 0 16px;
+  perspective:1200px;
+  overflow:visible;
+  cursor:grab;
+  user-select:none;
+  touch-action:pan-y;
+}
+.carousel-stage:active{cursor:grabbing}
+
+.carousel-track{
+  position:absolute;
+  inset:0;
+  transform-style:preserve-3d;
+}
+
+.carousel-item{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:220px;
+  height:300px;
+  margin:-150px -110px;
+  border-radius:20px;
+  overflow:hidden;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+  transition:box-shadow .3s;
+  will-change:transform;
+}
+.carousel-item:hover{box-shadow:0 20px 60px rgba(0,0,0,0.6)}
+
+.card-inner{
+  width:100%;
+  height:100%;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,0.12);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-end;
+  padding:20px;
+  position:relative;
+  overflow:hidden;
+}
+.card-bg{
+  position:absolute;
+  inset:0;
+  border-radius:20px;
+}
+.card-emoji{
+  font-size:56px;
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-60%);
+  filter:drop-shadow(0 8px 24px rgba(0,0,0,0.5));
+}
+.card-title{
+  position:relative;
+  font-size:17px;
+  font-weight:800;
+  text-align:center;
+  letter-spacing:-.02em;
+  text-shadow:0 2px 8px rgba(0,0,0,0.8);
+}
+.card-sub{
+  position:relative;
+  font-size:11px;
+  color:rgba(255,255,255,0.6);
+  text-align:center;
+  margin-top:4px;
+  letter-spacing:.04em;
+}
+
+/* Dots navigation */
+.dots{
+  display:flex;gap:8px;position:relative;z-index:2;margin-bottom:16px;
+}
+.dot{
+  width:8px;height:8px;border-radius:50%;
+  background:rgba(255,255,255,0.2);
+  cursor:pointer;transition:all .2s;
+  border:none;
+}
+.dot.active{background:var(--accent);transform:scale(1.3)}
+
+/* Nav arrows */
+.nav{
+  display:flex;gap:12px;position:relative;z-index:2;margin-bottom:8px;
+}
+.nbtn{
+  width:44px;height:44px;border-radius:50%;
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.1);
+  color:#94a3b8;font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;
+}
+.nbtn:hover{background:rgba(168,85,247,0.2);border-color:#a855f7;color:#c084fc}
+
+/* Info */
+.card-info{
+  position:relative;z-index:2;
+  text-align:center;
+  margin-bottom:24px;
+  min-height:60px;
+  padding:0 24px;
+}
+.card-info h2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px;transition:opacity .3s}
+.card-info p{font-size:13px;color:#64748b;transition:opacity .3s}
+
+/* Debug panel */
+#dbg{position:fixed;top:12px;right:12px;background:rgba(8,9,15,0.95);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-size:11px;color:#94a3b8;z-index:99;min-width:170px}
+#dbg strong{display:block;font-size:10px;color:#a855f7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.dr{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
+.dr label{color:#475569}
+
+footer{text-align:center;padding:24px 20px;font-size:11px;color:#334155;border-top:1px solid rgba(255,255,255,0.05);margin-top:16px;position:relative;z-index:2;width:100%}
+@media(max-width:480px){#dbg{display:none}.carousel-stage{height:300px}.carousel-item{width:180px;height:240px;margin:-120px -90px}}
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+<header>
+  <h1>3D Gradient Carousel</h1>
+  <p>Cards recede in 3D perspective as they move off-center. The ambient background reacts to the active card's color palette.</p>
+</header>
+
+<div class="carousel-stage" id="stage">
+  <div class="carousel-track" id="track"></div>
+</div>
+
+<div class="dots" id="dots"></div>
+<div class="nav">
+  <button class="nbtn" id="prev">←</button>
+  <button class="nbtn" id="next">→</button>
+</div>
+
+<div class="card-info">
+  <h2 id="ciTitle"></h2>
+  <p id="ciSub"></p>
+</div>
+
+<div id="dbg">
+  <strong>3D Carousel</strong>
+  <div class="dr"><label>Active</label><span id="dbgIdx">0</span></div>
+  <div class="dr"><label>Offset</label><span id="dbgOff">0</span></div>
+  <div class="dr"><label>Cards</label><span id="dbgN">0</span></div>
+  <div class="dr"><label>BG color</label><span id="dbgCol">—</span></div>
+</div>
+
+<footer>Inspired by Clément Grellier / Codrops 3D Gradient Carousel (Nov 2025) · UI Spotlight Day 27 · Drop #5</footer>
+
+<script>
+const CARDS=[
+  {emoji:'🌊',title:'Wave Motion',sub:'Fluid dynamics & physics',bg1:'#051530',bg2:'#0a3060',accent:'#38bdf8',c:[5,40,120]},
+  {emoji:'🌋',title:'Volcanic',sub:'Heat & energy systems',bg1:'#200800',bg2:'#501800',accent:'#f97316',c:[120,40,5]},
+  {emoji:'🌿',title:'Biosphere',sub:'Organic growth patterns',bg1:'#051508',bg2:'#0a3012',accent:'#22c55e',c:[10,80,20]},
+  {emoji:'🌌',title:'Cosmos',sub:'Dark matter & starfields',bg1:'#0a0520',bg2:'#180a40',accent:'#a855f7',c:[60,15,120]},
+  {emoji:'⚡',title:'Volt',sub:'Energy & electromagnetism',bg1:'#101505',bg2:'#253010',accent:'#eab308',c:[100,90,5]},
+  {emoji:'❄️',title:'Arctic',sub:'Ice crystal structures',bg1:'#050f1a',bg2:'#0a2040',accent:'#bae6fd',c:[30,80,130]},
+  {emoji:'🔥',title:'Inferno',sub:'Combustion & chaos',bg1:'#1a0303',bg2:'#3a0808',accent:'#ef4444',c:[140,10,10]},
+];
+
+const track=document.getElementById('track');
+const dotsEl=document.getElementById('dots');
+const bgCanvas=document.getElementById('bgCanvas');
+const bgCtx=bgCanvas.getContext('2d');
+const ciTitle=document.getElementById('ciTitle');
+const ciSub=document.getElementById('ciSub');
+const dbgIdx=document.getElementById('dbgIdx');
+const dbgOff=document.getElementById('dbgOff');
+const dbgN=document.getElementById('dbgN');
+const dbgCol=document.getElementById('dbgCol');
+
+let active=0;
+let offset=0; // fractional current position
+let targetOffset=0;
+let bgColor=[40,15,120]; // current ambient color (interpolated)
+const N=CARDS.length;
+dbgN.textContent=N;
+
+// Build cards
+CARDS.forEach((c,i)=>{
+  const div=document.createElement('div');
+  div.className='carousel-item';
+  div.innerHTML=`
+    <div class="card-inner">
+      <div class="card-bg" style="background:linear-gradient(135deg,${c.bg1},${c.bg2})"></div>
+      <div class="card-emoji">${c.emoji}</div>
+      <div class="card-title">${c.title}</div>
+      <div class="card-sub">${c.sub}</div>
+    </div>`;
+  track.appendChild(div);
+
+  // Dot
+  const dot=document.createElement('button');
+  dot.className='dot'+(i===0?' active':'');
+  dot.addEventListener('click',()=>goTo(i));
+  dotsEl.appendChild(dot);
+});
+
+function goTo(i){
+  active=((i%N)+N)%N;
+  targetOffset=active;
+  updateDots();
+  updateInfo();
+  dbgIdx.textContent=active;
+}
+
+function updateDots(){
+  document.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===active));
+}
+function updateInfo(){
+  const c=CARDS[active];
+  ciTitle.textContent=c.title;
+  ciSub.textContent=c.sub;
+}
+
+document.getElementById('prev').addEventListener('click',()=>goTo(active-1));
+document.getElementById('next').addEventListener('click',()=>goTo(active+1));
+
+// Keyboard
+window.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft')goTo(active-1);
+  if(e.key==='ArrowRight')goTo(active+1);
+});
+
+// Drag to swipe
+const stage=document.getElementById('stage');
+let dragStart=null,dragX=0;
+stage.addEventListener('mousedown',e=>{dragStart=e.clientX;dragX=e.clientX;});
+window.addEventListener('mousemove',e=>{
+  if(dragStart===null)return;
+  dragX=e.clientX;
+});
+window.addEventListener('mouseup',e=>{
+  if(dragStart===null)return;
+  const diff=dragStart-e.clientX;
+  if(Math.abs(diff)>40)goTo(active+(diff>0?1:-1));
+  dragStart=null;
+});
+stage.addEventListener('touchstart',e=>{dragStart=e.touches[0].clientX;},{passive:true});
+stage.addEventListener('touchend',e=>{
+  if(dragStart===null)return;
+  const diff=dragStart-e.changedTouches[0].clientX;
+  if(Math.abs(diff)>40)goTo(active+(diff>0?1:-1));
+  dragStart=null;
+},{passive:true});
+
+// Resize canvas
+function resizeBg(){
+  bgCanvas.width=window.innerWidth;
+  bgCanvas.height=window.innerHeight;
+}
+window.addEventListener('resize',resizeBg);
+resizeBg();
+
+// Background gradient — interpolates toward active card color
+function drawBg(){
+  const w=bgCanvas.width,h=bgCanvas.height;
+  bgCtx.clearRect(0,0,w,h);
+  bgCtx.fillStyle=`rgb(8,9,15)`;
+  bgCtx.fillRect(0,0,w,h);
+  // Ambient blobs
+  const r=bgColor;
+  const grad1=bgCtx.createRadialGradient(w*0.3,h*0.3,0,w*0.3,h*0.3,Math.max(w,h)*0.6);
+  grad1.addColorStop(0,`rgba(${r[0]},${r[1]},${r[2]},0.35)`);
+  grad1.addColorStop(1,'rgba(0,0,0,0)');
+  bgCtx.fillStyle=grad1;
+  bgCtx.fillRect(0,0,w,h);
+  const grad2=bgCtx.createRadialGradient(w*0.7,h*0.7,0,w*0.7,h*0.7,Math.max(w,h)*0.5);
+  grad2.addColorStop(0,`rgba(${Math.floor(r[2]*0.6)},${Math.floor(r[0]*0.4)},${r[2]},0.2)`);
+  grad2.addColorStop(1,'rgba(0,0,0,0)');
+  bgCtx.fillStyle=grad2;
+  bgCtx.fillRect(0,0,w,h);
+}
+
+// Position cards in 3D
+function layoutCards(){
+  const items=track.querySelectorAll('.carousel-item');
+  const total=items.length;
+  const W=window.innerWidth<600?180:220;
+  const spread=W*1.15;
+
+  items.forEach((item,i)=>{
+    let delta=i-offset;
+    // Wrap around
+    while(delta>total/2)delta-=total;
+    while(delta<-total/2)delta+=total;
+
+    const x=delta*spread;
+    const absD=Math.abs(delta);
+    const z=-absD*120;
+    const rotY=delta*-12;
+    const scale=Math.max(0.6,1-absD*0.12);
+    const opacity=Math.max(0.2,1-absD*0.3);
+
+    item.style.transform=`translate3d(${x}px,0,${z}px) rotateY(${rotY}deg) scale(${scale})`;
+    item.style.opacity=opacity;
+    item.style.zIndex=Math.round(100-absD*10);
+    item.style.pointerEvents=absD<0.5?'auto':'none';
+  });
+}
+
+let lastTs=0;
+function frame(ts){
+  requestAnimationFrame(frame);
+  const dt=Math.min((ts-lastTs)/1000,0.05);
+  lastTs=ts;
+
+  // Lerp offset toward target
+  offset+=(targetOffset-offset)*0.1;
+
+  // Interpolate bg color toward active card color
+  const targetC=CARDS[active].c;
+  bgColor=bgColor.map((v,i)=>v+(targetC[i]-v)*0.04);
+  dbgCol.textContent=bgColor.map(v=>Math.round(v)).join(',');
+
+  layoutCards();
+  drawBg();
+  dbgOff.textContent=offset.toFixed(2);
+}
+
+goTo(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cursor Torch — UI Spotlight</title>
+<style>
+:root{
+  --x:50%;--y:50%;
+  --r:120px;
+  --purple:#7c3aed;--cyan:#06b6d4;--pink:#f472b6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+
+body{
+  background:#000;
+  font-family:system-ui,sans-serif;
+  cursor:none;
+  position:relative;
+  overflow:hidden;
+}
+
+/* ── Hidden content layer ── */
+.content{
+  position:absolute;inset:0;
+  padding:60px 40px;
+  overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:32px;
+  z-index:1;
+}
+.content h1{
+  font-size:clamp(2.5rem,8vw,6rem);font-weight:900;text-align:center;
+  line-height:.95;letter-spacing:-.03em;
+  background:linear-gradient(135deg,#fff,var(--cyan),var(--purple));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.content p{
+  font-size:clamp(.9rem,2vw,1.2rem);color:rgba(255,255,255,.7);
+  text-align:center;max-width:560px;line-height:1.6;
+}
+.hints{
+  display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:8px;
+}
+.hint-chip{
+  border:1px solid rgba(255,255,255,.15);border-radius:20px;
+  padding:6px 16px;font-size:.85rem;color:rgba(255,255,255,.5);
+  background:rgba(255,255,255,.04);
+}
+.quote-block{
+  max-width:480px;border-left:3px solid var(--cyan);
+  padding:16px 20px;background:rgba(6,182,212,.06);border-radius:0 10px 10px 0;
+}
+.quote-block p{font-size:1rem;color:rgba(255,255,255,.8);line-height:1.7;font-style:italic}
+.quote-block cite{font-size:.8rem;color:var(--cyan);display:block;margin-top:8px;font-style:normal}
+
+/* ── Darkness overlay ── */
+.darkness{
+  position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:radial-gradient(
+    circle var(--r) at var(--x) var(--y),
+    transparent 0%,
+    rgba(0,0,0,.04) 30%,
+    rgba(0,0,0,.97) 100%
+  );
+  transition:--r .3s ease;
+}
+
+/* ── Inner torch glow ── */
+.torch-glow{
+  position:absolute;z-index:3;pointer-events:none;
+  width:calc(var(--r) * 2);height:calc(var(--r) * 2);
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+  left:var(--x);top:var(--y);
+  background:radial-gradient(
+    circle at 50% 50%,
+    rgba(255,255,255,.06) 0%,
+    rgba(255,200,100,.03) 40%,
+    transparent 70%
+  );
+  mix-blend-mode:screen;
+}
+
+/* ── Cursor dot ── */
+.cursor{
+  position:fixed;z-index:10;pointer-events:none;
+  width:12px;height:12px;
+  border-radius:50%;
+  background:rgba(255,255,255,.9);
+  transform:translate(-50%,-50%);
+  left:var(--x);top:var(--y);
+  box-shadow:0 0 6px rgba(255,255,255,.6),0 0 20px rgba(255,255,255,.3);
+  mix-blend-mode:difference;
+}
+
+/* ── Mode panel ── */
+.panel{
+  position:fixed;top:16px;right:16px;z-index:20;
+  background:rgba(8,8,20,.85);border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;padding:14px;
+  backdrop-filter:blur(12px);
+  display:flex;flex-direction:column;gap:8px;
+  min-width:160px;
+}
+.panel-title{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.3);font-weight:700}
+.mode-btn{
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;padding:7px 12px;cursor:pointer;
+  font-size:.8rem;color:rgba(255,255,255,.6);
+  text-align:left;font-family:inherit;
+  transition:all .15s;display:flex;align-items:center;gap:8px;
+}
+.mode-btn.on{background:rgba(124,58,237,.25);border-color:var(--purple);color:#c4b5fd}
+.mode-btn:hover:not(.on){border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.9)}
+.mode-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* Size slider */
+.size-row{display:flex;align-items:center;gap:8px;margin-top:4px}
+.size-row label{font-size:.72rem;color:rgba(255,255,255,.3);white-space:nowrap}
+.size-row input{
+  flex:1;appearance:none;-webkit-appearance:none;
+  height:3px;border-radius:2px;background:rgba(255,255,255,.1);
+}
+.size-row input::-webkit-slider-thumb{
+  -webkit-appearance:none;width:12px;height:12px;
+  border-radius:50%;background:var(--purple);
+}
+
+/* ── Mobile touch hint ── */
+.touch-hint{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  font-size:.8rem;color:rgba(255,255,255,.3);text-align:center;
+  z-index:20;pointer-events:none;
+}
+
+/* ── Scan mode ── */
+@keyframes scan{
+  0%{--x:20%;--y:50%}
+  25%{--x:80%;--y:30%}
+  50%{--x:60%;--y:70%}
+  75%{--x:30%;--y:60%}
+  100%{--x:20%;--y:50%}
+}
+body.scanning .darkness,
+body.scanning .torch-glow,
+body.scanning .cursor{
+  animation:scanMove 4s ease-in-out infinite;
+}
+@keyframes scanMove{
+  0%{left:20%;top:50%}
+  25%{left:80%;top:30%}
+  50%{left:60%;top:70%}
+  75%{left:30%;top:60%}
+  100%{left:20%;top:50%}
+}
+
+/* Rainbow torch */
+body.rainbow .darkness{
+  background:radial-gradient(
+    circle var(--r) at var(--x) var(--y),
+    rgba(124,58,237,.15) 0%,
+    transparent 40%,
+    rgba(0,0,0,.97) 100%
+  );
+}
+body.rainbow .torch-glow{
+  background:conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(244,114,182,.2),
+    rgba(124,58,237,.2),
+    rgba(6,182,212,.2),
+    rgba(251,191,36,.2),
+    rgba(244,114,182,.2)
+  );
+  animation:spin 4s linear infinite;
+}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+
+footer{
+  position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+  font-size:.72rem;color:rgba(255,255,255,.15);z-index:20;
+  white-space:nowrap;pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<!-- Content revealed by torch -->
+<div class="content">
+  <h1>Light reveals<br>what darkness hides</h1>
+  <p>Move your cursor across this page. The torch illuminates content hidden in the dark — a pure CSS + 2 lines of JavaScript technique using radial gradients and CSS custom properties.</p>
+  <div class="hints">
+    <span class="hint-chip">⬡ Radial gradient overlay</span>
+    <span class="hint-chip">⬡ CSS custom properties</span>
+    <span class="hint-chip">⬡ pointer events</span>
+    <span class="hint-chip">⬡ backdrop-filter</span>
+    <span class="hint-chip">⬡ mix-blend-mode</span>
+  </div>
+  <div class="quote-block">
+    <p>"The simplest interaction can become the most surprising: light a torch and watch the page come alive. Two CSS properties and one mouse event handler."</p>
+    <cite>— CSS Custom Properties + Radial Gradients</cite>
+  </div>
+</div>
+
+<!-- Darkness overlay -->
+<div class="darkness" id="dark"></div>
+
+<!-- Inner glow -->
+<div class="torch-glow" id="glow"></div>
+
+<!-- Cursor dot -->
+<div class="cursor" id="cursor"></div>
+
+<!-- Mode panel -->
+<div class="panel">
+  <div class="panel-title">Torch Mode</div>
+  <button class="mode-btn on" data-mode="flashlight">
+    <span class="mode-dot"></span> Flashlight
+  </button>
+  <button class="mode-btn" data-mode="spotlight">
+    <span class="mode-dot"></span> Spotlight
+  </button>
+  <button class="mode-btn" data-mode="rainbow">
+    <span class="mode-dot"></span> Rainbow
+  </button>
+  <button class="mode-btn" data-mode="scan">
+    <span class="mode-dot"></span> Auto Scan
+  </button>
+  <div class="size-row">
+    <label>size</label>
+    <input type="range" id="sizeSlider" min="60" max="300" value="120">
+  </div>
+</div>
+
+<div class="touch-hint">Touch and drag to illuminate</div>
+
+<footer>
+  Inspired by radial-gradient cursor torch technique · CSS-Tricks · UI Spotlight Day 2 · Drop #4
+</footer>
+
+<script>
+const dark = document.getElementById('dark');
+const glow = document.getElementById('glow');
+const cur = document.getElementById('cursor');
+const body = document.body;
+let currentMode = 'flashlight';
+
+function setPos(x, y) {
+  const xp = x + 'px', yp = y + 'px';
+  dark.style.setProperty('--x', xp);
+  dark.style.setProperty('--y', yp);
+  glow.style.left = xp;
+  glow.style.top = yp;
+  cur.style.left = xp;
+  cur.style.top = yp;
+}
+
+function setRadius(r) {
+  dark.style.setProperty('--r', r + 'px');
+  glow.style.width = r * 2 + 'px';
+  glow.style.height = r * 2 + 'px';
+}
+
+// Mouse
+document.addEventListener('mousemove', e => {
+  if (currentMode === 'scan') return;
+  setPos(e.clientX, e.clientY);
+}, {passive: true});
+
+// Touch
+document.addEventListener('touchmove', e => {
+  if (currentMode === 'scan') return;
+  e.preventDefault();
+  const t = e.touches[0];
+  setPos(t.clientX, t.clientY);
+}, {passive: false});
+document.addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  setPos(t.clientX, t.clientY);
+}, {passive: true});
+
+// Mode buttons
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    const mode = btn.dataset.mode;
+    currentMode = mode;
+    body.classList.remove('rainbow', 'scanning');
+
+    if (mode === 'rainbow') {
+      body.classList.add('rainbow');
+      setRadius(180);
+    } else if (mode === 'scan') {
+      body.classList.add('scanning');
+      // Animate position manually
+      startScan();
+    } else if (mode === 'spotlight') {
+      setRadius(220);
+    } else {
+      setRadius(+document.getElementById('sizeSlider').value);
+    }
+  });
+});
+
+// Size slider
+document.getElementById('sizeSlider').addEventListener('input', e => {
+  if (currentMode !== 'scan') setRadius(+e.target.value);
+});
+
+// Auto scan animation
+let scanRaf;
+function startScan() {
+  const pts = [{x:.2,y:.5},{x:.8,y:.3},{x:.65,y:.7},{x:.35,y:.6}];
+  let i = 0, t = 0;
+  function lerp(a,b,f){return a+(b-a)*f}
+  function ease(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2}
+
+  function frame() {
+    if (currentMode !== 'scan') return;
+    t += .004;
+    if (t >= 1) { t = 0; i = (i+1)%pts.length; }
+    const a = pts[i], b = pts[(i+1)%pts.length];
+    const et = ease(t);
+    setPos(lerp(a.x,b.x,et)*window.innerWidth, lerp(a.y,b.y,et)*window.innerHeight);
+    setRadius(160 + Math.sin(Date.now()*.001)*40);
+    scanRaf = requestAnimationFrame(frame);
+  }
+  cancelAnimationFrame(scanRaf);
+  frame();
+}
+
+// Init
+setPos(window.innerWidth/2, window.innerHeight/2);
+setRadius(120);
+</script>
+</body>
+</html>

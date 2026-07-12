@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Polyrhythm Studio</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#030308;--surface:#0c0c1a;--border:rgba(255,255,255,0.09);
+  --text:#d8dcf0;--dim:#50508a;--accent:#7c3aed;
+}
+html,body{
+  height:100%;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,sans-serif;
+  overflow:hidden;display:flex;flex-direction:column;
+  -webkit-tap-highlight-color:transparent;user-select:none;
+}
+#hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 14px 5px;flex-shrink:0;border-bottom:1px solid var(--border);
+}
+#hdr h1{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+#hdr .hint{font-size:9px;color:var(--dim);opacity:.7}
+#cvwrap{flex:1 1 0;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+canvas{display:block;touch-action:none;cursor:crosshair}
+#ctrl{
+  flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);
+  padding:8px 12px 10px;
+}
+#transport{display:flex;align-items:center;gap:7px;margin-bottom:7px;flex-wrap:nowrap}
+#btnPlay{
+  width:40px;height:40px;border-radius:50%;background:var(--accent);
+  border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;
+  justify-content:center;color:#fff;flex-shrink:0;
+  transition:background .15s,transform .1s;
+}
+#btnPlay:active{transform:scale(.92)}
+#btnPlay.playing{background:#059669}
+.bwrap{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
+.blbl{font-size:10px;color:var(--dim);flex-shrink:0;font-weight:500}
+.bslider{
+  flex:1;min-width:0;-webkit-appearance:none;appearance:none;
+  height:3px;border-radius:2px;background:rgba(255,255,255,0.1);outline:none;cursor:pointer;
+}
+.bslider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;
+  border-radius:50%;background:var(--accent);cursor:pointer;
+}
+#bpmVal{font-size:11px;font-weight:700;width:26px;text-align:right;flex-shrink:0;color:var(--text)}
+.xbtn{
+  padding:5px 8px;border-radius:5px;border:1px solid var(--border);
+  background:transparent;color:var(--text);cursor:pointer;font-size:10px;
+  white-space:nowrap;transition:background .12s;flex-shrink:0;
+}
+.xbtn:hover{background:rgba(255,255,255,.07)}
+.xbtn:disabled{opacity:.3;cursor:default}
+#btnRec.armed{background:#dc2626;border-color:#dc2626;color:#fff}
+
+#tracks{display:flex;flex-direction:column;gap:3px}
+.trow{display:flex;align-items:center;gap:5px;height:28px}
+.tswatch{width:7px;height:24px;border-radius:3px;flex-shrink:0;transition:opacity .2s}
+.tname{font-size:9px;width:34px;color:var(--dim);flex-shrink:0;letter-spacing:.04em;text-transform:uppercase}
+.divbtns{display:flex;gap:2px;flex:1;min-width:0;overflow:hidden}
+.db{
+  min-width:0;flex:1;height:20px;border-radius:3px;border:1px solid var(--border);
+  background:transparent;color:var(--dim);cursor:pointer;font-size:9px;
+  transition:background .1s,color .1s,border-color .1s;
+}
+.db:hover{background:rgba(255,255,255,.05)}
+.db.on{color:#fff;border-color:transparent;font-weight:700}
+.vslider{
+  width:42px;-webkit-appearance:none;appearance:none;height:3px;
+  border-radius:2px;background:rgba(255,255,255,0.1);outline:none;cursor:pointer;flex-shrink:0;
+}
+.vslider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:10px;height:10px;
+  border-radius:50%;background:var(--dim);cursor:pointer;
+}
+.mbtn{
+  width:24px;height:20px;border-radius:3px;border:1px solid var(--border);
+  background:transparent;color:var(--dim);cursor:pointer;font-size:8px;flex-shrink:0;
+  transition:all .12s;letter-spacing:.03em;font-weight:600;
+}
+.mbtn.muted{background:rgba(239,68,68,.12);color:#f87171;border-color:rgba(239,68,68,.35)}
+
+#toast{
+  position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  background:rgba(15,15,30,.95);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.12);padding:6px 14px;border-radius:16px;
+  font-size:11px;opacity:0;transition:opacity .2s;pointer-events:none;
+  white-space:nowrap;z-index:99;
+}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="hdr">
+  <h1>⬡ Polyrhythm Studio</h1>
+  <span class="hint">Tap rings to toggle beats · Space to play</span>
+</div>
+<div id="cvwrap"><canvas id="c"></canvas></div>
+<div id="ctrl">
+  <div id="transport">
+    <button id="btnPlay">▶</button>
+    <div class="bwrap">
+      <span class="blbl">BPM</span>
+      <input type="range" id="bpmSlider" class="bslider" min="40" max="240" value="120">
+      <span id="bpmVal">120</span>
+    </div>
+    <button class="xbtn" id="btnRec">● Rec</button>
+    <button class="xbtn" id="btnWAV">↓ WAV</button>
+    <button class="xbtn" id="btnShare">⇪ Link</button>
+  </div>
+  <div id="tracks"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════
+const COLORS  = ['#ff4060','#3b82f6','#10d9a0','#a855f7','#f59e0b'];
+const NAMES   = ['Kick','Snare','Hat','Bell','Sub'];
+const DIV_OPTS= [2,3,4,5,6,7,8];
+const RADII_B = [56, 96, 136, 176, 216]; // base pixel radii at scale=1
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let tracks = [
+  {div:4, beats:new Set([0,2]),      vol:.9, mute:false},
+  {div:3, beats:new Set([0,1]),      vol:.8, mute:false},
+  {div:8, beats:new Set([0,2,4,6]), vol:.55, mute:false},
+  {div:5, beats:new Set([0,2,3]),    vol:.7, mute:false},
+  {div:6, beats:new Set([0,3]),      vol:.9, mute:false},
+];
+let bpm = 120;
+let playing = false;
+
+// ═══════════════════════════════════════════════════════════
+//  AUDIO ENGINE
+// ═══════════════════════════════════════════════════════════
+let AC = null, master = null;
+let startTime = 0;
+const AHEAD   = 0.08;   // schedule lookahead seconds
+const SCHED_T = 28;     // ms between scheduler ticks
+const scheduled = new Set();
+let schedTimer  = null;
+let cleanTick   = 0;
+
+function initAC() {
+  if (AC) return;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain();
+  master.gain.value = 0.8;
+  master.connect(AC.destination);
+}
+
+function cycleLen() { return 4 * 60 / bpm; }
+
+// ── voices ─────────────────────────────────────────────────
+function voiceKick(ac, dst, t, v) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.frequency.setValueAtTime(180, t);
+  o.frequency.exponentialRampToValueAtTime(38, t + .18);
+  g.gain.setValueAtTime(v * 1.7, t);
+  g.gain.exponentialRampToValueAtTime(.001, t + .5);
+  o.connect(g); g.connect(dst);
+  o.start(t); o.stop(t + .52);
+}
+
+function voiceSnare(ac, dst, t, v) {
+  const sz = Math.round(ac.sampleRate * .18);
+  const buf = ac.createBuffer(1, sz, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < sz; i++) d[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass';
+  bp.frequency.value = 1100; bp.Q.value = .5;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(v * .9, t);
+  g.gain.exponentialRampToValueAtTime(.001, t + .17);
+  src.connect(bp); bp.connect(g); g.connect(dst);
+  src.start(t); src.stop(t + .2);
+  const o = ac.createOscillator(), og = ac.createGain();
+  o.frequency.value = 220;
+  og.gain.setValueAtTime(v * .3, t);
+  og.gain.exponentialRampToValueAtTime(.001, t + .11);
+  o.connect(og); og.connect(dst); o.start(t); o.stop(t + .12);
+}
+
+function voiceHihat(ac, dst, t, v) {
+  const sz = Math.round(ac.sampleRate * .06);
+  const buf = ac.createBuffer(1, sz, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < sz; i++) d[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 8500;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(v * .45, t);
+  g.gain.exponentialRampToValueAtTime(.001, t + .055);
+  src.connect(hp); hp.connect(g); g.connect(dst);
+  src.start(t); src.stop(t + .07);
+}
+
+function voiceBell(ac, dst, t, v) {
+  [[880, 1], [880*2.756, .55], [880*5.404, .25]].forEach(([f, a], i) => {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    const dec = [1.5, .7, .35][i];
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(v * .35 * a, t + .01);
+    g.gain.exponentialRampToValueAtTime(.001, t + dec);
+    o.connect(g); g.connect(dst); o.start(t); o.stop(t + dec + .05);
+  });
+}
+
+function voiceSub(ac, dst, t, v) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = 'sine'; o.frequency.value = 50;
+  g.gain.setValueAtTime(v * 1.4, t);
+  g.gain.exponentialRampToValueAtTime(.001, t + .55);
+  o.connect(g); g.connect(dst); o.start(t); o.stop(t + .58);
+}
+
+const VOICES = [voiceKick, voiceSnare, voiceHihat, voiceBell, voiceSub];
+
+// ── scheduler ──────────────────────────────────────────────
+function sched() {
+  if (!playing || !AC) return;
+  const now = AC.currentTime;
+  const cl  = cycleLen();
+  const elapsed = now - startTime;
+  const curCyc  = Math.floor(elapsed / cl);
+
+  for (let ti = 0; ti < 5; ti++) {
+    const t = tracks[ti];
+    if (t.mute) continue;
+    for (const bi of t.beats) {
+      for (let c = Math.max(0, curCyc - 1); c <= curCyc + 2; c++) {
+        const bt  = startTime + c * cl + (bi / t.div) * cl;
+        const key = `${c}.${ti}.${bi}`;
+        if (bt > now - .01 && bt < now + AHEAD && !scheduled.has(key)) {
+          scheduled.add(key);
+          const fireAt = Math.max(now, bt);
+          VOICES[ti](AC, master, fireAt, t.vol);
+          const delay = Math.max(0, (bt - now) * 1000);
+          setTimeout(() => burst(ti, bi), delay);
+        }
+      }
+    }
+  }
+
+  // periodic cleanup of old scheduled keys
+  cleanTick++;
+  if (cleanTick % 40 === 0) {
+    const cutoff = curCyc - 5;
+    for (const k of scheduled) {
+      if (parseInt(k) < cutoff) scheduled.delete(k);
+    }
+  }
+}
+
+function startPlay() {
+  if (!AC) initAC();
+  if (AC.state === 'suspended') AC.resume();
+  startTime = AC.currentTime;
+  scheduled.clear();
+  sched();
+  schedTimer = setInterval(sched, SCHED_T);
+}
+
+function stopPlay() {
+  clearInterval(schedTimer);
+  schedTimer = null;
+  scheduled.clear();
+}
+
+// ── WAV export via OfflineAudioContext ─────────────────────
+async function exportWAV(bars = 4) {
+  if (!AC) initAC();
+  const SR  = 44100;
+  const cl  = cycleLen();
+  const dur = cl * bars;
+  const oc  = new OfflineAudioContext(1, Math.ceil(dur * SR), SR);
+  const dst = oc.createGain(); dst.gain.value = .75; dst.connect(oc.destination);
+
+  for (let ti = 0; ti < 5; ti++) {
+    const t = tracks[ti];
+    if (t.mute) continue;
+    for (let b = 0; b < bars; b++) {
+      for (const bi of t.beats) {
+        VOICES[ti](oc, dst, b * cl + (bi / t.div) * cl, t.vol);
+      }
+    }
+  }
+
+  const rendered = await oc.startRendering();
+  const pcm = rendered.getChannelData(0);
+  const wav = encodeWAV(pcm, SR);
+  const blob = new Blob([wav], { type: 'audio/wav' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `polyrhythm-${bpm}bpm.wav`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  showToast('Exported 4 bars ✓');
+}
+
+function encodeWAV(pcm, sr) {
+  const n  = pcm.length;
+  const ab = new ArrayBuffer(44 + n * 2);
+  const v  = new DataView(ab);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4, 36 + n * 2, true);
+  ws(8,'WAVE'); ws(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true);  v.setUint16(34,16,true);
+  ws(36,'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 32768 : s * 32767, true);
+  }
+  return ab;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS RENDERER
+// ═══════════════════════════════════════════════════════════
+const CV  = document.getElementById('c');
+const GX  = CV.getContext('2d');
+const BURSTS = [];
+let animID = null;
+
+function burst(ti, bi) {
+  BURSTS.push({ ti, bi, age: 0, maxAge: 28 });
+}
+
+function rgba(hex, a) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function resize() {
+  const wrap = CV.parentElement;
+  const sz = Math.min(wrap.clientWidth, wrap.clientHeight) * .95;
+  CV.width = CV.height = Math.round(sz);
+}
+
+function drawFrame() {
+  const W = CV.width, H = CV.height;
+  if (!W || !H) { animID = requestAnimationFrame(drawFrame); return; }
+  const cx = W/2, cy = H/2;
+  const sc = W / 560;
+
+  // Background
+  const bg = GX.createRadialGradient(cx,cy,0,cx,cy,W*.65);
+  bg.addColorStop(0,'#0d0d20'); bg.addColorStop(1,'#030308');
+  GX.fillStyle = bg;
+  GX.fillRect(0,0,W,H);
+
+  // Playhead angle
+  let ph = -Math.PI / 2;
+  if (playing && AC) {
+    const elapsed = AC.currentTime - startTime;
+    const cl = cycleLen();
+    ph = ((elapsed % cl) / cl) * Math.PI * 2 - Math.PI / 2;
+  }
+
+  // Draw track rings & beats
+  for (let ti = 0; ti < 5; ti++) {
+    const t   = tracks[ti];
+    const r   = RADII_B[ti] * sc;
+    const col = COLORS[ti];
+    const dim = t.mute ? .08 : .18;
+
+    // Ring background
+    GX.beginPath();
+    GX.arc(cx, cy, r, 0, Math.PI*2);
+    GX.strokeStyle = rgba(col, dim);
+    GX.lineWidth = 1 * sc;
+    GX.stroke();
+
+    // Track label (top of ring)
+    GX.fillStyle = rgba(col, t.mute ? .18 : .55);
+    GX.font = `${Math.max(9, 10*sc)}px system-ui`;
+    GX.textAlign = 'center';
+    GX.fillText(NAMES[ti], cx, cy - r - 9*sc);
+
+    // Beat dots
+    for (let i = 0; i < t.div; i++) {
+      const ang = (i / t.div) * Math.PI * 2 - Math.PI / 2;
+      const bx  = cx + Math.cos(ang) * r;
+      const by  = cy + Math.sin(ang) * r;
+      const on  = t.beats.has(i);
+
+      // Proximity to playhead
+      let dph = Math.abs(ang - ph) % (Math.PI * 2);
+      if (dph > Math.PI) dph = Math.PI * 2 - dph;
+      const nearPH = playing && dph < .12;
+
+      const dr = (on ? 5.5 : 2.8) * sc + (nearPH && on ? 3 * sc : 0);
+      GX.beginPath();
+      GX.arc(bx, by, dr, 0, Math.PI * 2);
+      if (on && !t.mute) {
+        GX.fillStyle = col;
+        GX.shadowColor = col;
+        GX.shadowBlur  = nearPH ? 18 * sc : 9 * sc;
+      } else {
+        GX.fillStyle = on ? rgba(col, .25) : 'rgba(255,255,255,0.1)';
+        GX.shadowBlur = 0;
+      }
+      GX.fill();
+      GX.shadowBlur = 0;
+    }
+  }
+
+  // Burst rings
+  for (let i = BURSTS.length - 1; i >= 0; i--) {
+    const b  = BURSTS[i];
+    const t  = tracks[b.ti];
+    const r  = RADII_B[b.ti] * sc;
+    const ang = (b.bi / t.div) * Math.PI * 2 - Math.PI / 2;
+    const bx  = cx + Math.cos(ang) * r;
+    const by  = cy + Math.sin(ang) * r;
+    const p   = 1 - b.age / b.maxAge;
+    const br  = (5 + b.age * 1.2) * sc;
+
+    GX.beginPath();
+    GX.arc(bx, by, br, 0, Math.PI * 2);
+    GX.strokeStyle = rgba(COLORS[b.ti], p * .9);
+    GX.lineWidth   = (1.5 + p) * sc;
+    GX.shadowColor = COLORS[b.ti];
+    GX.shadowBlur  = 14 * sc * p;
+    GX.stroke();
+    GX.shadowBlur = 0;
+
+    b.age++;
+    if (b.age >= b.maxAge) BURSTS.splice(i, 1);
+  }
+
+  // Playhead line
+  if (playing) {
+    const maxR = RADII_B[4] * sc * 1.1;
+    GX.beginPath();
+    GX.moveTo(cx, cy);
+    GX.lineTo(cx + Math.cos(ph) * maxR, cy + Math.sin(ph) * maxR);
+    GX.strokeStyle = 'rgba(255,255,255,0.5)';
+    GX.lineWidth   = 1.5 * sc;
+    GX.shadowColor = 'rgba(220,220,255,0.7)';
+    GX.shadowBlur  = 8 * sc;
+    GX.stroke();
+    GX.shadowBlur = 0;
+  }
+
+  // Center dot
+  GX.beginPath();
+  GX.arc(cx, cy, 4.5 * sc, 0, Math.PI * 2);
+  const cg = GX.createRadialGradient(cx,cy,0,cx,cy,4.5*sc);
+  cg.addColorStop(0,'rgba(255,255,255,0.7)');
+  cg.addColorStop(1,'rgba(255,255,255,0.1)');
+  GX.fillStyle = cg;
+  GX.fill();
+
+  animID = requestAnimationFrame(drawFrame);
+}
+
+// ── Canvas hit detection ───────────────────────────────────
+function hitTest(px, py) {
+  const W = CV.width, cx = W/2, cy = W/2;
+  const sc = W / 560;
+  const dx = px - cx, dy = py - cy;
+  const dist = Math.hypot(dx, dy);
+
+  for (let ti = 0; ti < 5; ti++) {
+    const r = RADII_B[ti] * sc;
+    if (Math.abs(dist - r) < 18 * sc) {
+      const t = tracks[ti];
+      let ang = Math.atan2(dy, dx) + Math.PI / 2;
+      ang = ((ang % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      for (let i = 0; i < t.div; i++) {
+        const ba  = (i / t.div) * Math.PI * 2;
+        let da    = Math.abs(ang - ba);
+        if (da > Math.PI) da = Math.PI * 2 - da;
+        if (da < Math.PI / t.div * .72) return { ti, bi: i };
+      }
+      return { ti, bi: -1 };
+    }
+  }
+  return null;
+}
+
+CV.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  initAC();
+  if (AC.state === 'suspended') AC.resume();
+  const rect = CV.getBoundingClientRect();
+  const sx   = CV.width  / rect.width;
+  const sy   = CV.height / rect.height;
+  const px   = (e.clientX - rect.left) * sx;
+  const py   = (e.clientY - rect.top)  * sy;
+  const hit  = hitTest(px, py);
+  if (!hit || hit.bi < 0) return;
+  const { ti, bi } = hit;
+  const t = tracks[ti];
+  if (t.beats.has(bi)) { t.beats.delete(bi); }
+  else { t.beats.add(bi); if (playing) burst(ti, bi); }
+  saveState();
+  renderUI();
+});
+
+// ═══════════════════════════════════════════════════════════
+//  TRACK UI
+// ═══════════════════════════════════════════════════════════
+function renderUI() {
+  const container = document.getElementById('tracks');
+  container.innerHTML = '';
+
+  tracks.forEach((t, ti) => {
+    const row = document.createElement('div');
+    row.className = 'trow';
+
+    const sw = document.createElement('div');
+    sw.className = 'tswatch';
+    sw.style.cssText = `background:${COLORS[ti]};opacity:${t.mute?.25:1}`;
+    row.appendChild(sw);
+
+    const nm = document.createElement('div');
+    nm.className = 'tname';
+    nm.textContent = NAMES[ti];
+    row.appendChild(nm);
+
+    const dbs = document.createElement('div');
+    dbs.className = 'divbtns';
+    DIV_OPTS.forEach(d => {
+      const btn = document.createElement('button');
+      btn.className = 'db' + (t.div === d ? ' on' : '');
+      if (t.div === d) btn.style.background = COLORS[ti] + '55';
+      btn.textContent = d;
+      btn.addEventListener('click', () => {
+        t.div = d; t.beats.clear();
+        saveState(); renderUI();
+      });
+      dbs.appendChild(btn);
+    });
+    row.appendChild(dbs);
+
+    const vs = document.createElement('input');
+    vs.type = 'range'; vs.className = 'vslider';
+    vs.min = 0; vs.max = 1; vs.step = .05; vs.value = t.vol;
+    vs.addEventListener('input', () => { t.vol = parseFloat(vs.value); saveState(); });
+    row.appendChild(vs);
+
+    const mb = document.createElement('button');
+    mb.className = 'mbtn' + (t.mute ? ' muted' : '');
+    mb.textContent = 'M';
+    mb.title = t.mute ? 'Unmute' : 'Mute';
+    mb.addEventListener('click', () => { t.mute = !t.mute; saveState(); renderUI(); });
+    row.appendChild(mb);
+
+    container.appendChild(row);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TRANSPORT CONTROLS
+// ═══════════════════════════════════════════════════════════
+function togglePlay() {
+  initAC();
+  if (AC.state === 'suspended') AC.resume();
+  playing = !playing;
+  const btn = document.getElementById('btnPlay');
+  if (playing) {
+    startPlay();
+    btn.textContent = '⏹';
+    btn.classList.add('playing');
+  } else {
+    stopPlay();
+    btn.textContent = '▶';
+    btn.classList.remove('playing');
+  }
+}
+
+document.getElementById('btnPlay').addEventListener('click', togglePlay);
+
+document.getElementById('bpmSlider').addEventListener('input', function() {
+  bpm = parseInt(this.value);
+  document.getElementById('bpmVal').textContent = bpm;
+  if (playing) { stopPlay(); startTime = AC.currentTime; startPlay(); }
+  saveState();
+});
+
+document.getElementById('btnRec').addEventListener('click', async function() {
+  initAC();
+  if (AC.state === 'suspended') AC.resume();
+  this.textContent = '⏳';
+  this.classList.add('armed');
+  showToast('Rendering 4 bars…', 3000);
+  await exportWAV(4);
+  this.textContent = '● Rec';
+  this.classList.remove('armed');
+});
+
+document.getElementById('btnWAV').addEventListener('click', async function() {
+  initAC();
+  if (AC.state === 'suspended') AC.resume();
+  showToast('Rendering 4 bars…', 3000);
+  await exportWAV(4);
+});
+
+document.getElementById('btnShare').addEventListener('click', () => {
+  const hash = encodeState();
+  history.replaceState(null, '', '#' + hash);
+  navigator.clipboard.writeText(location.href).catch(() => {});
+  showToast('Link copied ✓');
+});
+
+// ═══════════════════════════════════════════════════════════
+//  STATE PERSISTENCE
+// ═══════════════════════════════════════════════════════════
+const LS_KEY = 'polyrhythm_v2';
+
+function encodeState() {
+  return btoa(JSON.stringify({
+    bpm,
+    t: tracks.map(t => ({ d: t.div, b: [...t.beats], v: t.vol, m: t.mute }))
+  }));
+}
+
+function decodeState(s) {
+  try {
+    const o = JSON.parse(atob(s));
+    bpm = o.bpm || 120;
+    document.getElementById('bpmSlider').value = bpm;
+    document.getElementById('bpmVal').textContent = bpm;
+    o.t.forEach((ts, i) => {
+      tracks[i].div   = ts.d;
+      tracks[i].beats = new Set(ts.b);
+      tracks[i].vol   = ts.v;
+      tracks[i].mute  = !!ts.m;
+    });
+    return true;
+  } catch (_) { return false; }
+}
+
+function saveState() { localStorage.setItem(LS_KEY, encodeState()); }
+
+function loadState() {
+  const hash = location.hash.slice(1);
+  if (hash && decodeState(hash)) return;
+  const saved = localStorage.getItem(LS_KEY);
+  if (saved) decodeState(saved);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg, dur = 2400) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('resize', () => { resize(); });
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+});
+
+loadState();
+resize();
+renderUI();
+drawFrame();
+</script>
+</body>
+</html>

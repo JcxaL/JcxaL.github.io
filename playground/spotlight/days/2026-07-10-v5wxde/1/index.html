@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seamless Snap-Loop Scroll — UI Spotlight</title>
+<style>
+  :root{ --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:#050810;color:#fff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;}
+
+  .back-link{
+    position:fixed; top:16px; left:16px; z-index:50;
+    background:rgba(20,24,36,0.6); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.12);
+    color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:9px 14px; border-radius:999px;
+  }
+
+  #debug{
+    position:fixed; top:16px; right:16px; z-index:50; width:200px;
+    background:rgba(20,24,36,0.68); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.12);
+    border-radius:14px; padding:14px; font-size:12px;
+  }
+  #debug h4{margin:0 0 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ab;}
+  #debug .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+  #debug input[type=range]{flex:1;accent-color:var(--accent);}
+  #debug .stat{color:var(--accent);font-weight:700;}
+  @media (max-width:640px){ #debug{ display:none; } }
+
+  #scroller{
+    height:100vh; overflow-y:scroll; scroll-snap-type:y mandatory;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  #scroller::-webkit-scrollbar{ display:none; }
+
+  .panel{
+    height:100svh; height:100vh; scroll-snap-align:start; scroll-snap-stop:always;
+    position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;
+  }
+  .panel .blob{
+    position:absolute; width:70vmin; height:70vmin; border-radius:50%;
+    filter:blur(60px); opacity:0.55; will-change:transform;
+  }
+  .panel .label{
+    position:relative; z-index:2; text-align:center;
+  }
+  .panel .label .num{ font-size:13px; letter-spacing:0.3em; color:rgba(255,255,255,0.5); margin-bottom:8px; }
+  .panel .label h2{ font-size:clamp(2.4rem,8vw,6rem); margin:0; font-weight:800; letter-spacing:-0.02em; }
+  .panel .label p{ margin:10px 0 0; color:rgba(255,255,255,0.6); font-size:14px; }
+
+  .p0{ background:linear-gradient(180deg,#081018,#0a1a2e); } .p0 .blob{ background:#38bdf8; }
+  .p1{ background:linear-gradient(180deg,#0a0818,#160a2e); } .p1 .blob{ background:#a78bfa; }
+  .p2{ background:linear-gradient(180deg,#08140e,#0a2e1e); } .p2 .blob{ background:#34d399; }
+  .p3{ background:linear-gradient(180deg,#180a0a,#2e0a18); } .p3 .blob{ background:#f87171; }
+
+  footer{
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:50;
+    font-size:11px; color:rgba(255,255,255,0.45); background:rgba(10,12,20,0.5); backdrop-filter:blur(8px);
+    padding:6px 12px; border-radius:999px; white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">&larr; All 5 drops</a>
+
+<div id="debug">
+  <h4>Parallax Debug</h4>
+  <div class="row"><span>Strength</span><input type="range" id="strength" min="0" max="100" value="45"></div>
+  <div class="row"><span>Loop seams crossed</span><span class="stat" id="seamCount">0</span></div>
+  <div class="row"><span>Current section</span><span class="stat" id="curSection">1/4</span></div>
+</div>
+
+<div id="scroller">
+  <section class="panel p0" data-i="0"><div class="blob"></div><div class="label"><div class="num">01 &mdash; AURORA</div><h2>Never-Ending</h2><p>Scroll down past the last section</p></div></section>
+  <section class="panel p1" data-i="1"><div class="blob"></div><div class="label"><div class="num">02 &mdash; NEBULA</div><h2>Snap Scroll</h2><p>Each panel snaps into place</p></div></section>
+  <section class="panel p2" data-i="2"><div class="blob"></div><div class="label"><div class="num">03 &mdash; REEF</div><h2>Parallax Depth</h2><p>The glow drifts at its own pace</p></div></section>
+  <section class="panel p3" data-i="3"><div class="blob"></div><div class="label"><div class="num">04 &mdash; CANYON</div><h2>Watch The Seam</h2><p>The loop below rejoins section 01</p></div></section>
+</div>
+
+<footer>Inspired by Codrops &middot; UI Spotlight Day 55 &middot; Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+  const scroller = document.getElementById('scroller');
+  const panels = Array.from(scroller.querySelectorAll('.panel'));
+  const strengthEl = document.getElementById('strength');
+  const seamCountEl = document.getElementById('seamCount');
+  const curSectionEl = document.getElementById('curSection');
+  let seamCount = 0;
+
+  // Clone the first panel and append it, marked hidden from a11y tree.
+  const clone = panels[0].cloneNode(true);
+  clone.setAttribute('aria-hidden', 'true');
+  clone.setAttribute('tabindex', '-1');
+  clone.dataset.clone = 'true';
+  scroller.appendChild(clone);
+
+  function parallax(){
+    const strength = parseInt(strengthEl.value, 10) / 100;
+    const vh = window.innerHeight;
+    panels.concat([clone]).forEach(panel => {
+      const rect = panel.getBoundingClientRect();
+      const progress = (rect.top) / vh; // -1 (above) .. 0 (centered) .. 1 (below)
+      const blob = panel.querySelector('.blob');
+      if(blob) blob.style.transform = `translateY(${progress * -120 * strength}px)`;
+    });
+    requestAnimationFrame(parallax);
+  }
+  requestAnimationFrame(parallax);
+
+  // Track current visible section for the debug readout
+  const sectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if(entry.isIntersecting && entry.intersectionRatio > 0.6 && !entry.target.dataset.clone){
+        const i = parseInt(entry.target.dataset.i, 10);
+        curSectionEl.textContent = (i+1) + '/4';
+      }
+    });
+  }, { threshold: [0.6] });
+  panels.forEach(p => sectionObserver.observe(p));
+
+  // The seamless loop: when the clone becomes mostly visible, jump back to real section 1.
+  const loopObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if(entry.isIntersecting && entry.intersectionRatio > 0.5){
+        scroller.scrollTop = 0;
+        seamCount++;
+        seamCountEl.textContent = seamCount;
+      }
+    });
+  }, { threshold: [0.5] });
+  loopObserver.observe(clone);
+})();
+</script>
+</body>
+</html>

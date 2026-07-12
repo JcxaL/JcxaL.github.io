@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Ripple Text — UI Spotlight</title>
+<style>
+  :root{ --bg:#08090e; --panel:rgba(14,17,24,.72); --line:rgba(255,255,255,.08); --accent:#f472b6; }
+  *{box-sizing:border-box;}
+  html,body{height:100%; margin:0; background:var(--bg); overflow:hidden;}
+  body{font-family:system-ui,-apple-system,sans-serif; color:#e8ecf2; display:flex; flex-direction:column;}
+  .hud{ padding:12px 14px 0; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;}
+  .title{font-size:13px; font-weight:700;}
+  .title small{display:block; font-weight:400; color:#9aa4b5; font-size:10.5px; margin-top:2px;}
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:7px 10px; font-size:11px; display:flex; gap:12px; }
+  .panel label{display:flex; flex-direction:column; gap:2px; color:#9aa4b5;}
+  .panel input[type=range]{accent-color:var(--accent); width:80px;}
+  .stage{flex:1; position:relative; display:flex; align-items:center; justify-content:center;}
+  canvas{ touch-action:none; }
+  .credit{
+    text-align:center; font-size:10px; color:#5b6478; padding:8px; border-top:1px solid var(--line);
+    background:var(--panel);
+  }
+  .credit a{color:var(--accent); text-decoration:none;}
+</style>
+</head>
+<body>
+<div class="hud">
+  <div class="title">Ripple Text<small>Drag across the headline to make it ripple like water</small></div>
+  <div class="panel">
+    <label>Amplitude <input type="range" id="amp" min="4" max="40" value="20"></label>
+    <label>Decay <input type="range" id="decay" min="2" max="20" value="8"></label>
+  </div>
+</div>
+<div class="stage" id="stage">
+  <canvas id="cv"></canvas>
+</div>
+<div class="credit">Drop 3 of 5 · Typography · Inspired by comrx's "liquid distortion text hover" (CodePen) · UI Spotlight Day 50</div>
+
+<script>
+(function(){
+  'use strict';
+  var stage = document.getElementById('stage');
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+
+  var TEXT = "LIQUID";
+  var W=0,H=0;
+  var buffer = null; // offscreen canvas with rendered text pixels
+  var bctx = null;
+  var params = { amp: 20, decay: 8 };
+
+  document.getElementById('amp').addEventListener('input', function(e){ params.amp = +e.target.value; });
+  document.getElementById('decay').addEventListener('input', function(e){ params.decay = +e.target.value; });
+
+  var ripples = []; // {x,y,t0}
+
+  function layout(){
+    W = Math.min(stage.clientWidth, 900);
+    H = Math.min(stage.clientHeight, 340);
+    cv.style.width = W+'px'; cv.style.height = H+'px';
+    cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+
+    buffer = document.createElement('canvas');
+    buffer.width = Math.round(W*DPR);
+    buffer.height = Math.round(H*DPR);
+    bctx = buffer.getContext('2d');
+    bctx.setTransform(DPR,0,0,DPR,0,0);
+    bctx.clearRect(0,0,W,H);
+    var fontSize = Math.min(W/6.4, H*0.55);
+    bctx.font = '800 '+fontSize+'px system-ui, sans-serif';
+    bctx.textAlign = 'center';
+    bctx.textBaseline = 'middle';
+    var grad = bctx.createLinearGradient(0,0,W,0);
+    grad.addColorStop(0,'#f472b6'); grad.addColorStop(0.5,'#a78bfa'); grad.addColorStop(1,'#38bdf8');
+    bctx.fillStyle = grad;
+    bctx.fillText(TEXT, W/2, H/2);
+  }
+  window.addEventListener('resize', layout);
+  layout();
+
+  function frame(ts){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#08090e';
+    ctx.fillRect(0,0,W,H);
+
+    var now = performance.now();
+    ripples = ripples.filter(function(r){ return now-r.t0 < 1600; });
+
+    var rowH = 2; // process in horizontal strips for perf, offset per strip
+    for(var y=0; y<H; y+=rowH){
+      var totalOffsetX = 0;
+      for(var i=0;i<ripples.length;i++){
+        var r = ripples[i];
+        var age = (now-r.t0)/1000;
+        var dy = y-r.y;
+        var dist = Math.sqrt(dy*dy + Math.pow(0,2)); // vertical distance component baseline
+        var wave = Math.sin(dy*0.12 - age*10) * params.amp * Math.exp(-age*params.decay*0.12) * Math.exp(-Math.abs(dy)/140);
+        totalOffsetX += wave;
+      }
+      if(Math.abs(totalOffsetX) < 0.05){
+        ctx.drawImage(buffer, 0, y, W, rowH, 0, y, W, rowH);
+      } else {
+        ctx.drawImage(buffer, 0, y, W, rowH, totalOffsetX, y, W, rowH);
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  var lastPointer = null;
+  function addRipple(clientX, clientY){
+    var rect = cv.getBoundingClientRect();
+    var y = clientY - rect.top;
+    ripples.push({ x: clientX-rect.left, y:y, t0: performance.now() });
+    if(ripples.length>24) ripples.shift();
+  }
+  var dragging = false;
+  cv.addEventListener('pointerdown', function(e){ dragging=true; addRipple(e.clientX,e.clientY); });
+  window.addEventListener('pointerup', function(){ dragging=false; });
+  cv.addEventListener('pointermove', function(e){
+    if(!dragging) return;
+    var now = performance.now();
+    if(lastPointer && now-lastPointer < 40) return;
+    lastPointer = now;
+    addRipple(e.clientX, e.clientY);
+  });
+  cv.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+})();
+</script>
+</body>
+</html>

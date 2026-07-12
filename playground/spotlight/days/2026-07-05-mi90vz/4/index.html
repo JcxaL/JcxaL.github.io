@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Hover Dissolve — UI Spotlight</title>
+<style>
+  :root{ --bg:#0a0b10; --panel:#12151d; --line:#242a37; --accent:#4ade80; --text:#e8ecf2; --muted:#8a93a6; }
+  *{box-sizing:border-box;}
+  html,body{height:100%; margin:0; background:var(--bg); overflow:auto;}
+  body{font-family:system-ui,-apple-system,sans-serif; color:var(--text); display:flex; flex-direction:column; min-height:100%;}
+  header{ padding:14px 16px 6px; }
+  h1{font-size:14px; margin:0 0 3px;}
+  p.sub{margin:0; font-size:11.5px; color:var(--muted);}
+  .grid{
+    flex:1; display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; padding:14px 16px;
+    align-content:start;
+  }
+  .card{
+    position:relative; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:#000;
+    aspect-ratio:4/3; cursor:pointer;
+  }
+  .card canvas{display:block; width:100%; height:100%;}
+  .card .label{
+    position:absolute; bottom:8px; left:8px; font-size:11px; font-weight:700; background:rgba(0,0,0,.5);
+    padding:4px 9px; border-radius:7px; backdrop-filter:blur(4px);
+  }
+  footer{ padding:10px 16px 16px; text-align:center; font-size:10px; color:#5b6478; }
+  footer a{ color:var(--accent); text-decoration:none; }
+  @media (max-width:420px){ .grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hover Dissolve</h1>
+  <p class="sub">Hover (or tap) each scene — it dissolves into ASCII, pixel blocks, or a glitch scan in real time.</p>
+</header>
+<div class="grid">
+  <div class="card" data-mode="ascii">
+    <canvas></canvas>
+    <div class="label">ASCII</div>
+  </div>
+  <div class="card" data-mode="pixel">
+    <canvas></canvas>
+    <div class="label">Pixelate</div>
+  </div>
+  <div class="card" data-mode="glitch">
+    <canvas></canvas>
+    <div class="label">Glitch</div>
+  </div>
+</div>
+<footer>Drop 4 of 5 · Micro-interaction · Inspired by ofershap/hover-effects · UI Spotlight Day 50</footer>
+
+<script>
+(function(){
+  'use strict';
+  var RAMP = " .:-=+*#%@";
+  var DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+
+  function makeScene(w,h,seed){
+    var oc = document.createElement('canvas');
+    oc.width = w; oc.height = h;
+    var octx = oc.getContext('2d');
+    var g = octx.createLinearGradient(0,0,w,h);
+    var palettes = [
+      ['#4ade80','#0ea5e9','#0a0b10'],
+      ['#f472b6','#a78bfa','#0a0b10'],
+      ['#f59e0b','#ef4444','#0a0b10']
+    ];
+    var pal = palettes[seed%palettes.length];
+    g.addColorStop(0,pal[0]); g.addColorStop(0.55,pal[1]); g.addColorStop(1,pal[2]);
+    octx.fillStyle = g;
+    octx.fillRect(0,0,w,h);
+    var rnd = seed*9301+49297;
+    function rand(){ rnd = (rnd*9301+49297)%233280; return rnd/233280; }
+    for(var i=0;i<10;i++){
+      octx.beginPath();
+      var cx = rand()*w, cy = rand()*h, r = 18+rand()*60;
+      octx.fillStyle = 'rgba(255,255,255,'+(0.05+rand()*0.12).toFixed(2)+')';
+      octx.arc(cx,cy,r,0,Math.PI*2);
+      octx.fill();
+    }
+    return oc;
+  }
+
+  function initCard(card, idx){
+    var canvas = card.querySelector('canvas');
+    var ctx = canvas.getContext('2d');
+    var mode = card.getAttribute('data-mode');
+    var w=0,h=0, scene=null, sceneCtx=null;
+    var hovering = false;
+    var glitchSeed = 0;
+
+    function resize(){
+      var rect = card.getBoundingClientRect();
+      w = Math.max(60, Math.round(rect.width));
+      h = Math.max(45, Math.round(rect.height));
+      canvas.width = Math.round(w*DPR);
+      canvas.height = Math.round(h*DPR);
+      canvas.style.width = w+'px';
+      canvas.style.height = h+'px';
+      scene = makeScene(w,h,idx+1);
+      sceneCtx = document.createElement('canvas');
+      sceneCtx.width = w; sceneCtx.height = h;
+      sceneCtx.getContext('2d').drawImage(scene,0,0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function drawBase(){
+      var c = canvas.getContext('2d');
+      c.setTransform(DPR,0,0,DPR,0,0);
+      c.clearRect(0,0,w,h);
+      c.drawImage(scene,0,0,w,h);
+    }
+
+    function drawAscii(){
+      var c = canvas.getContext('2d');
+      c.setTransform(DPR,0,0,DPR,0,0);
+      c.fillStyle = '#000'; c.fillRect(0,0,w,h);
+      var cell = 8;
+      var sctx = scene.getContext('2d');
+      var img = sctx.getImageData(0,0,w,h).data;
+      c.font = (cell+1)+'px ui-monospace, Menlo, monospace';
+      c.textBaseline = 'top';
+      for(var y=0; y<h; y+=cell){
+        for(var x=0; x<w; x+=cell){
+          var i = (y*w+x)*4;
+          var lum = (img[i]*0.299+img[i+1]*0.587+img[i+2]*0.114)/255;
+          var ch = RAMP[Math.floor(lum*(RAMP.length-1))];
+          c.fillStyle = 'rgb('+img[i]+','+img[i+1]+','+img[i+2]+')';
+          c.fillText(ch, x, y);
+        }
+      }
+    }
+
+    function drawPixelate(t){
+      var c = canvas.getContext('2d');
+      c.setTransform(DPR,0,0,DPR,0,0);
+      var factor = 10 + Math.sin(t*0.002)*4;
+      var lw = Math.max(4, Math.round(w/factor));
+      var lh = Math.max(3, Math.round(h/factor));
+      var tmp = document.createElement('canvas');
+      tmp.width = lw; tmp.height = lh;
+      var tctx = tmp.getContext('2d');
+      tctx.imageSmoothingEnabled = true;
+      tctx.drawImage(scene, 0,0,w,h, 0,0,lw,lh);
+      c.imageSmoothingEnabled = false;
+      c.clearRect(0,0,w,h);
+      c.drawImage(tmp, 0,0,lw,lh, 0,0,w,h);
+    }
+
+    function drawGlitch(t){
+      var c = canvas.getContext('2d');
+      c.setTransform(DPR,0,0,DPR,0,0);
+      c.clearRect(0,0,w,h);
+      var bandH = 6;
+      var rnd = glitchSeed;
+      function rand(){ rnd = (rnd*9301+49297)%233280; return rnd/233280; }
+      glitchSeed = rnd + t*0.001;
+      for(var y=0; y<h; y+=bandH){
+        var jitter = (rand()-0.5) * 22;
+        var chanShift = Math.floor((rand()-0.5)*10);
+        c.drawImage(scene, 0,y,w,bandH, jitter,y,w,bandH);
+        if(Math.abs(chanShift)>3){
+          c.globalCompositeOperation = 'lighter';
+          c.globalAlpha = 0.35;
+          c.drawImage(scene, 0,y,w,bandH, jitter+chanShift,y,w,bandH);
+          c.globalAlpha = 1;
+          c.globalCompositeOperation = 'source-over';
+        }
+      }
+    }
+
+    function loop(t){
+      if(hovering){
+        if(mode==='ascii') drawAscii();
+        else if(mode==='pixel') drawPixelate(t);
+        else if(mode==='glitch') drawGlitch(t);
+      } else {
+        drawBase();
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    card.addEventListener('pointerenter', function(){ hovering = true; });
+    card.addEventListener('pointerleave', function(){ hovering = false; });
+    card.addEventListener('pointerdown', function(){ hovering = !hovering; });
+  }
+
+  document.querySelectorAll('.card').forEach(function(card, i){ initCard(card, i); });
+})();
+</script>
+</body>
+</html>

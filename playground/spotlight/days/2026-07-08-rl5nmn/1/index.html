@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Orbit Flythrough — UI Spotlight #1</title>
+<style>
+  :root{ --accent:#38bdf8; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%; background:#05070d; color:#eaf3ff; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; overflow-x:hidden;}
+  .scrollpad{ height:500vh; position:relative; }
+  canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:5;
+    background:rgba(10,14,22,0.55); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); border-radius:999px;
+    padding:8px 14px; font-size:12px; color:#fff; text-decoration:none;
+  }
+  .hud{
+    position:fixed; top:14px; right:14px; z-index:5; text-align:right;
+    background:rgba(10,14,22,0.55); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); border-radius:14px; padding:10px 14px;
+    font-size:11px; color:#a9c2e0; max-width:200px;
+  }
+  .hud h3{margin:0 0 6px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--accent);}
+  .hud label{display:flex; justify-content:space-between; gap:8px; margin:6px 0 2px;}
+  .hud input[type=range]{width:100%;}
+  @media (max-width:560px){ .hud{display:none;} }
+
+  .progressWrap{
+    position:fixed; left:0; right:0; bottom:0; height:4px; z-index:5;
+    background:rgba(255,255,255,0.08);
+  }
+  .progressBar{ height:100%; width:0%; background:linear-gradient(90deg,#38bdf8,#a78bfa); }
+
+  .intro{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:4;
+    font-size:12px; color:#9fb3cc; text-align:center; pointer-events:none;
+    background:rgba(10,14,22,0.5); padding:8px 16px; border-radius:999px;
+    border:1px solid rgba(255,255,255,0.1);
+  }
+  footer.credit{
+    position:fixed; left:14px; bottom:14px; z-index:5; font-size:10px; color:#6c7d95;
+    max-width:70vw;
+  }
+</style>
+</head>
+<body>
+<a class="back-link" href="../" >← All 5 drops</a>
+<div class="hud">
+  <h3>Flight Controls</h3>
+  <label>Orbit radius <span id="rV">7.0</span></label>
+  <input type="range" id="radius" min="4" max="11" step="0.1" value="7">
+  <label>Helix bob <span id="bV">1.6</span></label>
+  <input type="range" id="bob" min="0" max="4" step="0.1" value="1.6">
+  <label>Loops <span id="lV">2.0</span></label>
+  <input type="range" id="loops" min="1" max="4" step="0.1" value="2">
+  <label>Field of view <span id="fV">62</span></label>
+  <input type="range" id="fov" min="40" max="95" step="1" value="62">
+</div>
+<div class="intro">Scroll (or swipe) to fly the camera around the gallery ring</div>
+<div class="progressWrap"><div class="progressBar" id="bar"></div></div>
+<footer class="credit">Inspired by Gaspard Hedde · Codrops "Scroll-Driven 3D Gallery" (Jul 2026) · UI Spotlight Day 53 · Drop #1</footer>
+
+<div class="scrollpad"></div>
+<canvas id="gl"></canvas>
+
+<script>
+(function(){
+"use strict";
+var canvas = document.getElementById("gl");
+var glOpts = { preserveDrawingBuffer: true };
+var gl = canvas.getContext("webgl", glOpts) || canvas.getContext("experimental-webgl", glOpts);
+if (!gl){ document.body.innerHTML = "<p style='padding:40px;color:#fff'>WebGL not supported on this device.</p>"; return; }
+
+function resize(){
+  var dpr = Math.min(2, window.devicePixelRatio||1);
+  canvas.width = innerWidth*dpr; canvas.height = innerHeight*dpr;
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+addEventListener("resize", resize); resize();
+
+var vsSrc =
+ "attribute vec3 aPos; attribute vec3 aNormal; attribute vec3 aColor;" +
+ "uniform mat4 uMVP; uniform mat4 uModel;" +
+ "varying vec3 vColor; varying vec3 vNormal;" +
+ "void main(){ vColor=aColor; vNormal=mat3(uModel)*aNormal; gl_Position=uMVP*vec4(aPos,1.0); }";
+var fsSrc =
+ "precision mediump float; varying vec3 vColor; varying vec3 vNormal;" +
+ "void main(){ vec3 light=normalize(vec3(0.4,0.8,0.5)); float d=max(dot(normalize(vNormal),light),0.15);" +
+ "gl_FragColor=vec4(vColor*d + vec3(0.06,0.05,0.09), 1.0); }";
+
+function compile(type, src){
+  var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+var prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+var aPos = gl.getAttribLocation(prog,"aPos");
+var aNormal = gl.getAttribLocation(prog,"aNormal");
+var aColor = gl.getAttribLocation(prog,"aColor");
+var uMVP = gl.getUniformLocation(prog,"uMVP");
+var uModel = gl.getUniformLocation(prog,"uModel");
+
+// ---- build a ring of panels ----
+var PANEL_COUNT = 9;
+var positions = [], normals = [], colors = [], indices = [];
+var hues = [200,260,320,20,160,280,40,190,340];
+
+function pushQuad(cx,cy,cz, rightX,rightY,rightZ, upX,upY,upZ, nX,nY,nZ, r,g,b){
+  var base = positions.length/3;
+  var w=1.15,h=1.6;
+  var corners = [
+    [cx-rightX*w-upX*h, cy-rightY*w-upY*h, cz-rightZ*w-upZ*h],
+    [cx+rightX*w-upX*h, cy+rightY*w-upY*h, cz+rightZ*w-upZ*h],
+    [cx+rightX*w+upX*h, cy+rightY*w+upY*h, cz+rightZ*w+upZ*h],
+    [cx-rightX*w+upX*h, cy-rightY*w+upY*h, cz-rightZ*w+upZ*h]
+  ];
+  for (var i=0;i<4;i++){
+    positions.push(corners[i][0],corners[i][1],corners[i][2]);
+    normals.push(nX,nY,nZ);
+    colors.push(r,g,b);
+  }
+  indices.push(base,base+1,base+2, base,base+2,base+3);
+}
+
+function hsl2rgb(h,s,l){
+  h/=360;
+  function f(n){ var k=(n+h*12)%12; var a=s*Math.min(l,1-l); return l - a*Math.max(-1,Math.min(k-3,9-k,1)); }
+  return [f(0),f(8),f(4)];
+}
+
+var ringR = 3.4;
+for (var i=0;i<PANEL_COUNT;i++){
+  var a = (i/PANEL_COUNT)*Math.PI*2;
+  var cx = Math.cos(a)*ringR, cz = Math.sin(a)*ringR, cy = Math.sin(a*3)*0.6;
+  var rightX = -Math.sin(a), rightZ = Math.cos(a), rightY = 0;
+  var nX = -Math.cos(a), nZ = -Math.sin(a), nY = 0; // faces inward toward camera path
+  var col = hsl2rgb(hues[i], 0.62, 0.55);
+  pushQuad(cx,cy,cz, rightX,rightY,rightZ, 0,1,0, nX,nY,nZ, col[0],col[1],col[2]);
+}
+
+var posBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.STATIC_DRAW);
+var normBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,normBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(normals),gl.STATIC_DRAW);
+var colBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,colBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(colors),gl.STATIC_DRAW);
+var idxBuf = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,idxBuf); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
+
+// ---- matrix helpers (hand-rolled, no deps) ----
+function mat4Identity(){ return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; }
+function mat4Mul(a,b){
+  var o=new Array(16);
+  for (var r=0;r<4;r++) for (var c=0;c<4;c++){
+    o[c*4+r]=0;
+    for (var k=0;k<4;k++) o[c*4+r]+=a[k*4+r]*b[c*4+k];
+  }
+  return o;
+}
+function mat4Perspective(fovy,aspect,near,far){
+  var f=1/Math.tan(fovy/2), nf=1/(near-far);
+  return [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0];
+}
+function vSub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function vCross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];}
+function vNorm(a){var l=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/l,a[1]/l,a[2]/l];}
+function vDot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+function mat4LookAt(eye,center,up){
+  var z=vNorm(vSub(eye,center)), x=vNorm(vCross(up,z)), y=vCross(z,x);
+  return [x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
+    -vDot(x,eye),-vDot(y,eye),-vDot(z,eye),1];
+}
+
+var params = { radius:7, bob:1.6, loops:2, fov:62 };
+["radius","bob","loops","fov"].forEach(function(id){
+  var el = document.getElementById(id), out = document.getElementById(id[0]+"V");
+  el.addEventListener("input", function(){
+    params[id] = parseFloat(el.value);
+    out.textContent = params[id].toFixed(id==="fov"?0:1);
+  });
+});
+
+var scrollFrac = 0;
+function updateScroll(){
+  var doc = document.documentElement;
+  var max = doc.scrollHeight - innerHeight;
+  scrollFrac = max>0 ? Math.min(1, Math.max(0, scrollY/max)) : 0;
+  document.getElementById("bar").style.width = (scrollFrac*100)+"%";
+}
+addEventListener("scroll", updateScroll, {passive:true});
+updateScroll();
+
+function render(){
+  requestAnimationFrame(render);
+  gl.enable(gl.DEPTH_TEST);
+  gl.clearColor(0.02,0.03,0.05,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+
+  var theta = scrollFrac * Math.PI*2*params.loops;
+  var orbitR = params.radius;
+  var eye = [Math.cos(theta)*orbitR, Math.sin(theta*2.3)*params.bob, Math.sin(theta)*orbitR];
+  var center = [Math.cos(theta)*orbitR*0.15, 0, Math.sin(theta)*orbitR*0.15];
+  var view = mat4LookAt(eye, center, [0,1,0]);
+  var proj = mat4Perspective(params.fov*Math.PI/180, canvas.width/canvas.height, 0.1, 100);
+  var model = mat4Identity();
+  var mvp = mat4Mul(proj, mat4Mul(view, model));
+
+  gl.uniformMatrix4fv(uMVP, false, mvp);
+  gl.uniformMatrix4fv(uModel, false, model);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,normBuf); gl.enableVertexAttribArray(aNormal); gl.vertexAttribPointer(aNormal,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,colBuf); gl.enableVertexAttribArray(aColor); gl.vertexAttribPointer(aColor,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,idxBuf);
+  gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+}
+render();
+})();
+</script>
+</body>
+</html>

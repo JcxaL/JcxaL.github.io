@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gravity Particle Cursor Trail</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#04040c;--text:#e0ddf8;--muted:#5050a0}
+html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;
+  font-family:system-ui,sans-serif;color:var(--text);user-select:none}
+
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+
+/* Center prompt */
+.prompt{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;transition:opacity .5s}
+.prompt h2{font-size:clamp(22px,4vw,48px);font-weight:900;letter-spacing:-1px;
+  margin-bottom:8px}
+.prompt p{font-size:14px;color:var(--muted)}
+.prompt.hide{opacity:0}
+
+/* Stats */
+.stats{position:fixed;bottom:16px;left:16px;font-size:11px;color:var(--muted);
+  font-family:monospace;line-height:1.8}
+
+/* Controls */
+.ctrl{position:fixed;top:16px;right:16px;background:rgba(4,4,12,.85);
+  border:1px solid #151530;border-radius:12px;padding:14px 16px;
+  font-size:11px;color:var(--muted);min-width:200px;z-index:10}
+.ctrl strong{color:var(--text);display:block;margin-bottom:12px;font-size:12px}
+.crow{margin-bottom:10px}
+.crow label{display:flex;justify-content:space-between;margin-bottom:3px}
+.crow label span{color:#a0a0c0;font-weight:700}
+.crow input[type=range]{width:100%;accent-color:#7c3aed}
+
+@media(max-width:600px){.ctrl{display:none}}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="prompt" id="prompt">
+  <h2>Move your cursor</h2>
+  <p>Particles spawn, drift, and fall with gravity</p>
+</div>
+
+<div class="stats" id="stats">particles: 0</div>
+
+<div class="ctrl">
+  <strong>Parameters</strong>
+  <div class="crow">
+    <label>Gravity <span id="gval">0.25</span></label>
+    <input type="range" id="sl-grav" min="0.05" max="1" step="0.01" value="0.25">
+  </div>
+  <div class="crow">
+    <label>Spawn rate <span id="sval">4</span></label>
+    <input type="range" id="sl-spawn" min="1" max="12" step="1" value="4">
+  </div>
+  <div class="crow">
+    <label>Size <span id="szval">12</span></label>
+    <input type="range" id="sl-size" min="4" max="30" step="1" value="12">
+  </div>
+  <div class="crow">
+    <label>Lifetime (s) <span id="ltval">2.0</span></label>
+    <input type="range" id="sl-lt" min="0.5" max="5" step="0.1" value="2.0">
+  </div>
+  <div class="crow">
+    <label>Wind <span id="wval">0.0</span></label>
+    <input type="range" id="sl-wind" min="-0.5" max="0.5" step="0.01" value="0">
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const prompt = document.getElementById('prompt');
+const statsEl = document.getElementById('stats');
+
+// Parameters
+let GRAVITY = 0.25;
+let SPAWN_N = 4;
+let BASE_SIZE = 12;
+let LIFETIME = 2.0;
+let WIND = 0;
+
+// Sliders
+document.getElementById('sl-grav').addEventListener('input',e=>{GRAVITY=parseFloat(e.target.value);document.getElementById('gval').textContent=GRAVITY.toFixed(2);});
+document.getElementById('sl-spawn').addEventListener('input',e=>{SPAWN_N=parseInt(e.target.value);document.getElementById('sval').textContent=SPAWN_N;});
+document.getElementById('sl-size').addEventListener('input',e=>{BASE_SIZE=parseInt(e.target.value);document.getElementById('szval').textContent=BASE_SIZE;});
+document.getElementById('sl-lt').addEventListener('input',e=>{LIFETIME=parseFloat(e.target.value);document.getElementById('ltval').textContent=LIFETIME.toFixed(1);});
+document.getElementById('sl-wind').addEventListener('input',e=>{WIND=parseFloat(e.target.value);document.getElementById('wval').textContent=WIND.toFixed(2);});
+
+// Resize
+function resize(){
+  canvas.width=window.innerWidth*Math.min(devicePixelRatio,2);
+  canvas.height=window.innerHeight*Math.min(devicePixelRatio,2);
+  canvas.style.width=window.innerWidth+'px';
+  canvas.style.height=window.innerHeight+'px';
+  ctx.scale(Math.min(devicePixelRatio,2),Math.min(devicePixelRatio,2));
+}
+resize();
+window.addEventListener('resize',resize);
+
+// Particle pool
+const particles = [];
+let mx=0,my=0,prevMx=0,prevMy=0,active=false;
+let lastSpawn=0,moved=false;
+
+const SHAPES=['circle','square','star','triangle','ring'];
+const PALETTES=[
+  ['#a78bfa','#7c3aed','#c4b5fd'],
+  ['#06b6d4','#0ea5e9','#67e8f9'],
+  ['#f59e0b','#fbbf24','#fde68a'],
+  ['#ec4899','#f43f5e','#fda4af'],
+  ['#34d399','#10b981','#6ee7b7'],
+];
+let paletteIdx=0;
+
+class Particle {
+  constructor(x,y,vx,vy,speed){
+    this.x=x;this.y=y;this.vx=vx;this.vy=vy;
+    const p=PALETTES[Math.floor(Math.random()*PALETTES.length)];
+    this.color=p[Math.floor(Math.random()*p.length)];
+    this.size=BASE_SIZE*(0.4+Math.random()*0.8)*(0.5+speed*0.5);
+    this.maxSize=this.size;
+    this.lifetime=LIFETIME*(0.7+Math.random()*0.6);
+    this.age=0;
+    this.shape=SHAPES[Math.floor(Math.random()*SHAPES.length)];
+    this.rot=Math.random()*Math.PI*2;
+    this.rotV=(Math.random()-.5)*.15;
+    this.spin=Math.random()>.5;
+  }
+  update(dt){
+    this.age+=dt;
+    this.vx+=WIND;
+    this.vy+=GRAVITY;
+    this.x+=this.vx*dt*60;
+    this.y+=this.vy*dt*60;
+    this.rot+=this.rotV;
+    this.vx*=0.99;
+  }
+  get life(){return 1-this.age/this.lifetime;}
+  draw(ctx){
+    const l=this.life;
+    const s=this.size*Math.min(1,this.age*8)*l;
+    if(s<0.5)return;
+    ctx.save();
+    ctx.globalAlpha=l*l*0.9;
+    ctx.fillStyle=this.color;
+    ctx.strokeStyle=this.color;
+    ctx.translate(this.x,this.y);
+    ctx.rotate(this.rot);
+    ctx.beginPath();
+    if(this.shape==='circle'){
+      ctx.arc(0,0,s*.5,0,Math.PI*2);ctx.fill();
+    }else if(this.shape==='square'){
+      ctx.fillRect(-s*.4,-s*.4,s*.8,s*.8);
+    }else if(this.shape==='star'){
+      for(let i=0;i<5;i++){
+        const a=i/5*Math.PI*2-Math.PI/2;
+        const b=a+Math.PI/5;
+        i===0?ctx.moveTo(Math.cos(a)*s*.5,Math.sin(a)*s*.5):ctx.lineTo(Math.cos(a)*s*.5,Math.sin(a)*s*.5);
+        ctx.lineTo(Math.cos(b)*s*.22,Math.sin(b)*s*.22);
+      }
+      ctx.closePath();ctx.fill();
+    }else if(this.shape==='triangle'){
+      ctx.moveTo(0,-s*.5);ctx.lineTo(s*.43,s*.25);ctx.lineTo(-s*.43,s*.25);
+      ctx.closePath();ctx.fill();
+    }else if(this.shape==='ring'){
+      ctx.arc(0,0,s*.45,0,Math.PI*2);ctx.lineWidth=s*.12;ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function spawnAt(x,y,speed){
+  for(let i=0;i<SPAWN_N;i++){
+    const angle=(Math.random()-0.5)*Math.PI;
+    const vx=(Math.random()-0.5)*3*speed;
+    const vy=-Math.random()*3*speed-.5;
+    particles.push(new Particle(x,y,vx,vy,speed));
+  }
+  if(particles.length>600){particles.splice(0,particles.length-600);}
+}
+
+let last=0;
+function frame(ts){
+  const dt=Math.min((ts-last)/1000,.05);last=ts;
+  const W=window.innerWidth,H=window.innerHeight;
+
+  // Clear with faint trail
+  ctx.fillStyle='rgba(4,4,12,0.18)';
+  ctx.fillRect(0,0,W,H);
+
+  // Spawn along cursor path
+  if(active){
+    const dx=mx-prevMx,dy=my-prevMy;
+    const speed=Math.sqrt(dx*dx+dy*dy)/30;
+    if(speed>0.3&&ts-lastSpawn>16){
+      spawnAt(mx,my,Math.min(speed,3));
+      lastSpawn=ts;
+      if(!moved){moved=true;prompt.classList.add('hide');}
+    }
+    prevMx=mx;prevMy=my;
+  }
+
+  // Update & draw
+  for(let i=particles.length-1;i>=0;i--){
+    particles[i].update(dt);
+    if(particles[i].life<=0)particles.splice(i,1);
+    else particles[i].draw(ctx);
+  }
+
+  statsEl.textContent=`particles: ${particles.length}`;
+  requestAnimationFrame(frame);
+}
+
+// Mouse
+window.addEventListener('mousemove',e=>{
+  active=true;
+  mx=e.clientX;my=e.clientY;
+  if(!moved){prevMx=mx;prevMy=my;}
+});
+window.addEventListener('mouseleave',()=>active=false);
+
+// Touch
+window.addEventListener('touchstart',e=>{active=true;mx=e.touches[0].clientX;my=e.touches[0].clientY;prevMx=mx;prevMy=my;},{passive:true});
+window.addEventListener('touchmove',e=>{
+  mx=e.touches[0].clientX;my=e.touches[0].clientY;
+},{passive:true});
+window.addEventListener('touchend',()=>active=false);
+
+// Click for burst
+window.addEventListener('click',e=>{
+  for(let i=0;i<SPAWN_N*4;i++){
+    const angle=Math.random()*Math.PI*2;
+    const spd=Math.random()*4+1;
+    particles.push(new Particle(e.clientX,e.clientY,Math.cos(angle)*spd,-Math.sin(angle)*spd-1,3));
+  }
+  if(!moved){moved=true;prompt.classList.add('hide');}
+});
+
+requestAnimationFrame(frame);
+</script>
+
+<footer style="position:fixed;bottom:4px;right:12px;font-size:10px;color:#201e40">
+  Inspired by Codrops "Gravity-Based Mouse Trail" · UI Spotlight Day 8 · Drop #4
+</footer>
+</body>
+</html>

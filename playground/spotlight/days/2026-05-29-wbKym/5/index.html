@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drop 5 — Ghost Autocomplete Input</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;background:#07060f;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font:14px system-ui;
+  padding:32px 20px;gap:28px;color:#ddd8f8
+}
+
+h1{font-size:clamp(1.2rem,3.5vw,1.9rem);font-weight:800;text-align:center;
+  background:linear-gradient(135deg,#50dd90,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+p{color:#7878b0;font-size:13px;text-align:center;max-width:460px}
+
+.editor{
+  width:min(640px,92vw);border-radius:14px;overflow:hidden;
+  background:#0d0b1e;border:1px solid rgba(140,80,255,.22);
+  box-shadow:0 24px 60px rgba(0,0,0,.5)
+}
+.editor-bar{
+  background:#100e22;padding:10px 14px;display:flex;align-items:center;gap:8px;
+  border-bottom:1px solid rgba(140,80,255,.15)
+}
+.dot{width:10px;height:10px;border-radius:50%}
+.dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+.editor-title{font-size:12px;color:#5050a0;margin-left:6px}
+
+.lines{padding:14px 0}
+.line{
+  display:flex;align-items:center;padding:3px 14px;gap:0;min-height:28px;
+  position:relative
+}
+.line:focus-within{background:rgba(140,80,255,.05)}
+.ln{
+  font-size:12px;color:#3a3870;font-family:monospace;
+  min-width:32px;text-align:right;padding-right:14px;user-select:none
+}
+.input-wrap{position:relative;flex:1;display:flex}
+.ghost-text{
+  position:absolute;left:0;top:0;right:0;bottom:0;
+  font:inherit;font-size:14px;font-family:monospace;color:#3a3870;
+  white-space:pre;overflow:hidden;pointer-events:none;
+  padding:0;border:none;background:transparent;letter-spacing:normal
+}
+.code-input{
+  font-size:14px;font-family:monospace;color:#c0b8f0;
+  background:transparent;border:none;outline:none;width:100%;
+  caret-color:#c084fc;letter-spacing:normal;
+  position:relative;z-index:1
+}
+.code-input::selection{background:rgba(140,80,255,.35)}
+
+/* syntax coloring — we just use different line classes for flavor */
+.kw{color:#c084fc}
+.str{color:#50dd90}
+.fn{color:#60a5fa}
+.cm{color:#4a4880}
+
+.kbd-hint{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center
+}
+.key{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:34px;height:22px;padding:0 7px;
+  background:rgba(120,80,200,.18);border:1px solid rgba(160,100,255,.28);
+  border-radius:5px;border-bottom-width:2px;
+  font-size:11px;color:#a080d0;font-family:monospace
+}
+.key-label{font-size:12px;color:#7070b0}
+
+.deck{display:flex;flex-direction:column;gap:8px;width:min(640px,92vw)}
+.deck-label{font-size:11px;color:#5050a0;text-transform:uppercase;letter-spacing:.1em}
+.deck-row{display:flex;gap:8px;flex-wrap:wrap}
+.suggestion-chip{
+  padding:4px 12px;border-radius:20px;font-size:12px;font-family:monospace;
+  border:1px solid rgba(180,120,255,.2);background:rgba(90,50,190,.12);color:#9070d0;
+  cursor:pointer;transition:all .15s
+}
+.suggestion-chip:hover{background:rgba(90,50,190,.3);color:#c084fc}
+
+footer{font-size:11px;color:#5050a0;text-align:center}
+footer a{color:#7070b8;text-decoration:none}
+</style>
+</head>
+<body>
+
+<h1>Ghost Autocomplete Input</h1>
+<p>An input with animated ghost-text suggestions — press <kbd style="background:rgba(100,60,180,.3);border:1px solid rgba(180,120,255,.3);border-radius:4px;padding:1px 6px;font-size:12px">Tab</kbd> to accept, <kbd style="background:rgba(100,60,180,.3);border:1px solid rgba(180,120,255,.3);border-radius:4px;padding:1px 6px;font-size:12px">Esc</kbd> to dismiss. Popularised by GitHub Copilot and AI-native IDEs.</p>
+
+<div class="editor">
+  <div class="editor-bar">
+    <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    <span class="editor-title">main.js — ghost autocomplete demo</span>
+  </div>
+  <div class="lines" id="lines">
+    <!-- injected by JS -->
+  </div>
+</div>
+
+<div class="kbd-hint">
+  <span class="key">Tab</span><span class="key-label">accept suggestion</span>
+  <span style="color:#3a3870">·</span>
+  <span class="key">Esc</span><span class="key-label">dismiss</span>
+  <span style="color:#3a3870">·</span>
+  <span class="key">↑↓</span><span class="key-label">cycle suggestions</span>
+</div>
+
+<div class="deck">
+  <div class="deck-label">Try typing:</div>
+  <div class="deck-row" id="chips"></div>
+</div>
+
+<footer>
+  Inspired by <a href="https://github.com/features/copilot" target="_blank">GitHub Copilot inline completion UX</a> &amp;
+  <a href="https://code.visualstudio.com/docs/editor/intellisense" target="_blank">VS Code IntelliSense</a>
+  &nbsp;·&nbsp; UI Spotlight Day 13 &nbsp;·&nbsp; Drop #5
+</footer>
+
+<script>
+'use strict';
+
+// ── suggestion database ───────────────────────────────────────────
+const DB = [
+  { prefix: 'const ',         suggest: 'const myVariable = ' },
+  { prefix: 'let ',           suggest: 'let result = null' },
+  { prefix: 'function ',      suggest: 'function handleEvent(event) {' },
+  { prefix: 'async function ', suggest: 'async function fetchData(url) {' },
+  { prefix: 'const use',      suggest: 'const useDebounce = (fn, delay) => {' },
+  { prefix: 'import ',        suggest: 'import { useState, useEffect } from "react"' },
+  { prefix: 'export ',        suggest: 'export default function Component() {' },
+  { prefix: 'class ',         suggest: 'class EventEmitter extends BaseClass {' },
+  { prefix: 'return ',        suggest: 'return { data, loading, error }' },
+  { prefix: 'if (',           suggest: 'if (condition && otherCondition) {' },
+  { prefix: 'for ',           suggest: 'for (const item of items) {' },
+  { prefix: 'console.',       suggest: 'console.log("debug:", value)' },
+  { prefix: 'document.',      suggest: 'document.addEventListener("DOMContentLoaded", () => {' },
+  { prefix: 'fetch(',         suggest: 'fetch("/api/data", { method: "POST", headers: { "Content-Type": "application/json" } })' },
+  { prefix: 'arr',            suggest: 'array.map(item => ({ ...item, active: true }))' },
+  { prefix: 'obj',            suggest: 'Object.entries(data).map(([key, value]) => value)' },
+  { prefix: 'try ',           suggest: 'try {\n  // attempt\n} catch (error) {\n  console.error(error);\n}' },
+  { prefix: 'const res',      suggest: 'const response = await fetch(endpoint)' },
+  { prefix: 'type ',          suggest: 'type Props = { children: React.ReactNode; className?: string }' },
+  { prefix: 'interface ',     suggest: 'interface UserConfig { id: string; name: string; email: string }' },
+];
+
+// ── multi-line template ────────────────────────────────────────────
+const TEMPLATE_LINES = [
+  { fixed: 'import React, { useState } from "react"', editable: false },
+  { fixed: '', editable: false },
+  { fixed: 'export default function App() {', editable: false },
+  { fixed: '  ', editable: true, placeholder: 'const ' },
+  { fixed: '  ', editable: true, placeholder: 'return ' },
+  { fixed: '}', editable: false },
+  { fixed: '', editable: false },
+  { fixed: '// Try typing above ↑', editable: false },
+];
+
+// ── state per editable line ────────────────────────────────────────
+const editableLines = [];
+
+function buildEditor() {
+  const container = document.getElementById('lines');
+  TEMPLATE_LINES.forEach((line, i) => {
+    const div = document.createElement('div');
+    div.className = 'line';
+
+    const ln = document.createElement('span');
+    ln.className = 'ln';
+    ln.textContent = i + 1;
+    div.appendChild(ln);
+
+    if (!line.editable) {
+      // static line
+      const sp = document.createElement('span');
+      sp.style.fontFamily = 'monospace';
+      sp.style.fontSize = '14px';
+      sp.style.color = '#706898';
+      sp.textContent = line.fixed;
+      div.appendChild(sp);
+    } else {
+      // editable line
+      const wrap = document.createElement('div');
+      wrap.className = 'input-wrap';
+
+      const prefix = document.createElement('span');
+      prefix.style.cssText = 'font-family:monospace;font-size:14px;color:#9070c8;white-space:pre';
+      prefix.textContent = line.fixed;
+      wrap.appendChild(prefix);
+
+      const subwrap = document.createElement('div');
+      subwrap.style.cssText = 'position:relative;flex:1';
+
+      const ghost = document.createElement('div');
+      ghost.className = 'ghost-text';
+
+      const input = document.createElement('input');
+      input.className = 'code-input';
+      input.type = 'text';
+      input.spellcheck = false;
+      input.autocomplete = 'off';
+      input.placeholder = line.placeholder || '';
+
+      subwrap.appendChild(ghost);
+      subwrap.appendChild(input);
+      wrap.appendChild(subwrap);
+      div.appendChild(wrap);
+
+      const state = {
+        input, ghost,
+        matches: [],
+        matchIdx: 0,
+      };
+      editableLines.push(state);
+
+      // input handler
+      input.addEventListener('input', () => updateGhost(state));
+      input.addEventListener('keydown', e => handleKey(e, state));
+      input.addEventListener('blur',   () => { ghost.textContent = ''; });
+      input.addEventListener('focus',  () => updateGhost(state));
+    }
+
+    container.appendChild(div);
+  });
+}
+
+// ── ghost update ──────────────────────────────────────────────────
+function updateGhost(state) {
+  const val = state.input.value;
+  state.matches = DB.filter(entry =>
+    val.length > 0 && entry.suggest.startsWith(val) && entry.suggest !== val
+  );
+  // also match prefix-based
+  const prefixMatch = DB.find(entry => val.endsWith(entry.prefix) || entry.suggest.startsWith(val));
+  if (!state.matches.length && prefixMatch && prefixMatch.suggest.startsWith(val)) {
+    state.matches = [prefixMatch];
+  }
+
+  state.matchIdx = 0;
+  showMatch(state);
+}
+
+function showMatch(state) {
+  const val = state.input.value;
+  if (!state.matches.length) {
+    state.ghost.textContent = '';
+    return;
+  }
+  const match = state.matches[state.matchIdx];
+  if (match.suggest.startsWith(val)) {
+    state.ghost.textContent = match.suggest;
+  } else {
+    state.ghost.textContent = '';
+  }
+}
+
+// ── key handler ───────────────────────────────────────────────────
+function handleKey(e, state) {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (state.ghost.textContent) {
+      state.input.value = state.ghost.textContent.split('\n')[0];
+      state.ghost.textContent = '';
+      state.matches = [];
+    }
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    state.ghost.textContent = '';
+    state.matches = [];
+    return;
+  }
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && state.matches.length > 1) {
+    e.preventDefault();
+    state.matchIdx = (state.matchIdx + (e.key === 'ArrowDown' ? 1 : -1) + state.matches.length) % state.matches.length;
+    showMatch(state);
+    return;
+  }
+}
+
+// ── chips ─────────────────────────────────────────────────────────
+const CHIPS = ['const ', 'import ', 'function ', 'async function ', 'fetch(', 'type ', 'class '];
+function buildChips() {
+  const row = document.getElementById('chips');
+  CHIPS.forEach(c => {
+    const chip = document.createElement('button');
+    chip.className = 'suggestion-chip';
+    chip.textContent = c.trim();
+    chip.addEventListener('click', () => {
+      const first = editableLines[0];
+      if (first) {
+        first.input.value = c;
+        first.input.focus();
+        updateGhost(first);
+      }
+    });
+    row.appendChild(chip);
+  });
+}
+
+buildEditor();
+buildChips();
+</script>
+</body>
+</html>

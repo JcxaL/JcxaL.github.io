@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paint Worklet Reactive UI — UI Spotlight #4</title>
+<style>
+  :root{ --accent:#fbbf24; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; min-height:100vh; background:#120d05; color:#fff3dc;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    padding:70px 18px 40px;
+  }
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:5;
+    background:rgba(18,13,5,0.7); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); border-radius:999px;
+    padding:8px 14px; font-size:12px; color:#fff; text-decoration:none;
+  }
+  main{max-width:760px; margin:0 auto;}
+  h1{font-size:clamp(22px,5vw,30px); margin:6px 0 6px; color:var(--accent);}
+  p.sub{color:#e0c48e; font-size:13px; max-width:62ch; line-height:1.5;}
+
+  .hud{
+    display:flex; gap:14px; flex-wrap:wrap; align-items:center;
+    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1);
+    border-radius:14px; padding:12px 14px; margin:16px 0 22px;
+  }
+  .hud label{ font-size:12px; color:#e0c48e; display:flex; flex-direction:column; gap:4px; }
+  .hud input[type=range]{ width:150px; }
+
+  .grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  @media (max-width:520px){ .grid{ grid-template-columns:1fr; } }
+
+  .card{
+    position:relative; height:150px; border-radius:18px; overflow:hidden;
+    border:1px solid rgba(255,255,255,0.14);
+    display:flex; align-items:flex-end; padding:16px;
+    color:#fff; font-weight:700; font-size:15px;
+    background: paint(grainPainter);
+    --grain-density:0.35; --grain-hue:38; --mx:0.5; --my:0.5;
+    touch-action:none; cursor:pointer;
+  }
+  .card.aurora{ background: paint(auroraPainter); --a-hue:280; }
+  .fallback .card{ background:linear-gradient(135deg,#3a2a10,#1c1305); }
+
+  .badge{
+    position:absolute; top:10px; right:12px; font-size:10px; padding:4px 8px;
+    border-radius:999px; background:rgba(0,0,0,0.35); color:#ffdf9e;
+  }
+  .warn{
+    display:none; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14);
+    border-radius:12px; padding:10px 14px; font-size:12px; color:#ffdf9e; margin-bottom:16px;
+  }
+  .fallback .warn{ display:block; }
+
+  footer.credit{ max-width:760px; margin:26px auto 0; font-size:10px; color:#7a6440; }
+</style>
+</head>
+<body>
+<a class="back-link" href="../">← All 5 drops</a>
+<main>
+  <h1>Paint Worklet Reactive UI</h1>
+  <p class="sub">These backgrounds aren't images or CSS gradients — they're drawn live by a <b>CSS Houdini Paint Worklet</b>, a JS function running off the main thread that paints straight into <code>background: paint(name)</code>. Move your pointer over each card; the grain drifts and the aurora blob chases you.</p>
+
+  <div class="warn" id="warnBox">Your browser doesn't support the CSS Painting API — showing a static gradient fallback instead. Try latest Chrome or Edge.</div>
+
+  <div class="hud">
+    <label>Grain density <span id="gdV">0.35</span>
+      <input type="range" id="grainDensity" min="0.05" max="0.9" step="0.01" value="0.35">
+    </label>
+    <label>Aurora hue <span id="ahV">280</span>
+      <input type="range" id="auroraHue" min="0" max="360" step="1" value="280">
+    </label>
+  </div>
+
+  <div class="grid" id="grid">
+    <div class="card" data-hue="38"><span class="badge">grainPainter</span>Grain Button A</div>
+    <div class="card" data-hue="200"><span class="badge">grainPainter</span>Grain Button B</div>
+    <div class="card aurora"><span class="badge">auroraPainter</span>Aurora Card A</div>
+    <div class="card aurora"><span class="badge">auroraPainter</span>Aurora Card B</div>
+  </div>
+</main>
+<footer class="credit">Inspired by the CSS Painting API (Houdini) · MDN &amp; web.dev "Cross-browser paint worklets" · UI Spotlight Day 53 · Drop #4</footer>
+
+<script>
+(function(){
+"use strict";
+
+var grainSrc = [
+  "registerPaint('grainPainter', class {",
+  "  static get inputProperties(){ return ['--grain-density','--grain-hue','--mx','--my']; }",
+  "  paint(ctx, size, props){",
+  "    var density = parseFloat(props.get('--grain-density')) || 0.3;",
+  "    var hue = parseFloat(props.get('--grain-hue')) || 40;",
+  "    var mx = parseFloat(props.get('--mx')) || 0.5;",
+  "    var my = parseFloat(props.get('--my')) || 0.5;",
+  "    var w = size.width, h = size.height;",
+  "    var grd = ctx.createRadialGradient(w*mx,h*my,0, w*mx,h*my, Math.max(w,h)*0.9);",
+  "    grd.addColorStop(0, 'hsl('+hue+',75%,28%)');",
+  "    grd.addColorStop(1, 'hsl('+(hue+30)+',60%,8%)');",
+  "    ctx.fillStyle = grd; ctx.fillRect(0,0,w,h);",
+  "    var count = Math.floor(density * w * h / 40);",
+  "    for (var i=0;i<count;i++){",
+  "      var x = Math.random()*w, y = Math.random()*h;",
+  "      var d = Math.hypot(x-w*mx, y-h*my) / Math.max(w,h);",
+  "      var a = Math.max(0, 0.5 - d);",
+  "      ctx.fillStyle = 'hsla('+ (hue+Math.random()*30) +',90%,80%,'+(a*Math.random()).toFixed(3)+')';",
+  "      ctx.fillRect(x,y,1.4,1.4);",
+  "    }",
+  "  }",
+  "});"
+].join("\n");
+
+var auroraSrc = [
+  "registerPaint('auroraPainter', class {",
+  "  static get inputProperties(){ return ['--a-hue','--mx','--my']; }",
+  "  paint(ctx, size, props){",
+  "    var hue = parseFloat(props.get('--a-hue')) || 280;",
+  "    var mx = parseFloat(props.get('--mx')) || 0.5;",
+  "    var my = parseFloat(props.get('--my')) || 0.5;",
+  "    var w = size.width, h = size.height;",
+  "    ctx.fillStyle = 'hsl('+hue+',40%,6%)'; ctx.fillRect(0,0,w,h);",
+  "    var blobs = [",
+  "      {x:mx, y:my, hue:hue, r:0.55},",
+  "      {x:1-mx, y:1-my, hue:hue+50, r:0.4},",
+  "      {x:(mx+0.5)%1, y:0.3, hue:hue-40, r:0.35}",
+  "    ];",
+  "    ctx.globalCompositeOperation = 'lighter';",
+  "    blobs.forEach(function(b){",
+  "      var grd = ctx.createRadialGradient(b.x*w,b.y*h,0, b.x*w,b.y*h, Math.max(w,h)*b.r);",
+  "      grd.addColorStop(0, 'hsla('+b.hue+',85%,60%,0.55)');",
+  "      grd.addColorStop(1, 'hsla('+b.hue+',85%,60%,0)');",
+  "      ctx.fillStyle = grd; ctx.fillRect(0,0,w,h);",
+  "    });",
+  "  }",
+  "});"
+].join("\n");
+
+function loadWorklet(src){
+  var blob = new Blob([src], { type: "text/javascript" });
+  return CSS.paintWorklet.addModule(URL.createObjectURL(blob));
+}
+
+var grid = document.getElementById("grid");
+
+if (window.CSS && CSS.paintWorklet){
+  Promise.all([loadWorklet(grainSrc), loadWorklet(auroraSrc)]).catch(function(err){
+    grid.parentElement.classList.add("fallback");
+    console.warn("paint worklet failed to load", err);
+  });
+} else {
+  document.getElementById("grid").parentElement.classList.add("fallback");
+}
+
+Array.prototype.forEach.call(document.querySelectorAll(".card"), function(card){
+  card.addEventListener("pointermove", function(e){
+    var r = card.getBoundingClientRect();
+    var mx = (e.clientX - r.left) / r.width;
+    var my = (e.clientY - r.top) / r.height;
+    card.style.setProperty("--mx", mx.toFixed(3));
+    card.style.setProperty("--my", my.toFixed(3));
+  });
+  card.addEventListener("pointerleave", function(){
+    card.style.setProperty("--mx", 0.5);
+    card.style.setProperty("--my", 0.5);
+  });
+});
+
+var grainDensity = document.getElementById("grainDensity");
+var gdV = document.getElementById("gdV");
+grainDensity.addEventListener("input", function(){
+  gdV.textContent = grainDensity.value;
+  Array.prototype.forEach.call(document.querySelectorAll(".card:not(.aurora)"), function(card){
+    card.style.setProperty("--grain-density", grainDensity.value);
+  });
+});
+
+var auroraHue = document.getElementById("auroraHue");
+var ahV = document.getElementById("ahV");
+auroraHue.addEventListener("input", function(){
+  ahV.textContent = auroraHue.value;
+  Array.prototype.forEach.call(document.querySelectorAll(".card.aurora"), function(card){
+    card.style.setProperty("--a-hue", auroraHue.value);
+  });
+});
+
+Array.prototype.forEach.call(document.querySelectorAll(".card:not(.aurora)"), function(card){
+  card.style.setProperty("--grain-hue", card.dataset.hue);
+});
+})();
+</script>
+</body>
+</html>

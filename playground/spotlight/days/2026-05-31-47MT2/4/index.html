@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gravity Particle Cursor · UI Spotlight</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#040408;--border:rgba(255,255,255,.07);--dim:#555}
+html,body{height:100%;overflow:hidden;background:var(--bg);
+  font-family:system-ui,-apple-system,sans-serif}
+canvas{display:block;cursor:none}
+
+/* ── Center hint ── */
+#hint{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;
+  transition:opacity .8s;
+}
+#hint h1{font-size:clamp(18px,3vw,28px);font-weight:700;color:rgba(255,255,255,.18);letter-spacing:.1em;text-transform:uppercase}
+#hint p{font-size:12px;color:rgba(255,255,255,.1);margin-top:8px;letter-spacing:.06em}
+#hint.hide{opacity:0}
+
+/* ── Custom cursor ── */
+#cursor{
+  position:fixed;width:12px;height:12px;border-radius:50%;
+  background:#fff;pointer-events:none;z-index:100;
+  transform:translate(-50%,-50%);
+  mix-blend-mode:difference;
+  transition:transform .08s ease,width .15s ease,height .15s ease;
+}
+body.clicking #cursor{width:6px;height:6px}
+
+/* ── Debug panel ── */
+#dbg{
+  position:fixed;top:12px;right:12px;z-index:20;
+  background:rgba(4,4,8,.9);backdrop-filter:blur(12px);
+  border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;font-size:11px;width:175px;
+  display:flex;flex-direction:column;gap:8px;color:#ccc;
+}
+#dbg label{color:var(--dim);font-size:10px;letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:2px}
+input[type=range]{width:100%;cursor:pointer;accent-color:#f97316}
+.val{color:#aaa;font-size:10px}
+select{width:100%;background:#0a0a10;border:1px solid rgba(255,255,255,.1);
+  color:#ccc;border-radius:5px;padding:3px 6px;font-size:11px;font-family:inherit;cursor:pointer}
+
+/* ── Stats ── */
+#stats{
+  position:fixed;bottom:44px;left:12px;
+  font-size:10px;color:var(--dim);letter-spacing:.05em;
+}
+
+/* ── Footer ── */
+#footer{position:fixed;bottom:0;left:0;right:0;padding:7px 16px;
+  background:rgba(4,4,8,.9);border-top:1px solid var(--border);
+  font-size:10px;color:var(--dim);text-align:center;z-index:10}
+#footer a{color:var(--dim);text-decoration:none}
+#footer a:hover{color:#aaa}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div id="cursor"></div>
+<div id="hint">
+  <h1>Gravity Particle Cursor</h1>
+  <p>move to spawn · click to burst</p>
+</div>
+<div id="stats">particles: <span id="p-count">0</span></div>
+
+<div id="dbg">
+  <div>
+    <label>Gravity</label>
+    <input type="range" id="sl-grav" min="1" max="20" value="6">
+    <span class="val" id="v-grav">0.6</span>
+  </div>
+  <div>
+    <label>Bounce</label>
+    <input type="range" id="sl-bounce" min="0" max="90" value="55">
+    <span class="val" id="v-bounce">0.55</span>
+  </div>
+  <div>
+    <label>Spawn Rate</label>
+    <input type="range" id="sl-spawn" min="1" max="8" value="3">
+    <span class="val" id="v-spawn">3</span>
+  </div>
+  <div>
+    <label>Color Theme</label>
+    <select id="theme">
+      <option value="fire">Fire</option>
+      <option value="ocean">Ocean</option>
+      <option value="candy">Candy</option>
+      <option value="neon">Neon</option>
+      <option value="gold">Gold</option>
+    </select>
+  </div>
+  <div style="padding-top:4px">
+    <button id="clear-btn" style="width:100%;background:#111;border:1px solid rgba(255,255,255,.1);color:#aaa;border-radius:5px;padding:4px;font-size:11px;cursor:pointer;font-family:inherit">Clear Canvas</button>
+  </div>
+</div>
+
+<div id="footer">
+  Inspired by Joe Ben Taylor · Codrops May 2026 ·
+  <a href="https://tympanus.net/codrops/2026/05/20/made-with-gsap-building-a-fun-gravity-based-mouse-trail/" target="_blank">source</a>
+   · UI Spotlight Day 1 · Drop #4
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const cursor = document.getElementById('cursor');
+const hint = document.getElementById('hint');
+const pCountEl = document.getElementById('p-count');
+
+const THEMES = {
+  fire:  ['#ef4444','#f97316','#fbbf24','#dc2626','#f43f5e'],
+  ocean: ['#38bdf8','#0ea5e9','#818cf8','#06b6d4','#22d3ee'],
+  candy: ['#ec4899','#a855f7','#f472b6','#fb7185','#c084fc'],
+  neon:  ['#4ade80','#22d3ee','#a78bfa','#f472b6','#fb923c'],
+  gold:  ['#fbbf24','#f59e0b','#d97706','#fde68a','#f97316'],
+};
+
+let GRAVITY = 0.6, BOUNCE = 0.55, SPAWN_RATE = 3;
+let theme = THEMES.fire;
+let particles = [];
+let mouseX = -1, mouseY = -1;
+let lastSpawnX = -1, lastSpawnY = -1;
+let hinted = false;
+
+// ── Particle ──
+class Particle {
+  constructor(x, y, burst) {
+    this.x = x; this.y = y;
+    const spd = burst ? (4 + Math.random() * 12) : (1.5 + Math.random() * 5);
+    const ang = burst ? (Math.random() * Math.PI * 2) : ((-Math.PI/2) + (Math.random()-.5) * Math.PI * 1.2);
+    this.vx = Math.cos(ang) * spd * (Math.random()>.5?1:-1);
+    this.vy = Math.sin(ang) * spd;
+    this.r = 3 + Math.random() * 6;
+    this.color = theme[Math.floor(Math.random() * theme.length)];
+    this.life = 1; this.decay = 0.006 + Math.random() * 0.012;
+    this.bounces = 0; this.maxBounces = 3;
+    this.trail = [];
+  }
+  update() {
+    this.vy += GRAVITY;
+    this.vx *= 0.998;
+    this.x += this.vx; this.y += this.vy;
+
+    // Floor bounce
+    const floor = canvas.height - this.r - 2;
+    if (this.y >= floor && this.bounces < this.maxBounces) {
+      this.y = floor;
+      this.vy = -Math.abs(this.vy) * BOUNCE;
+      this.vx *= 0.85;
+      if (Math.abs(this.vy) < 1) { this.vy = 0; this.vx *= 0.9; }
+      this.bounces++;
+    }
+    // Left/right walls
+    if (this.x < this.r) { this.x = this.r; this.vx = Math.abs(this.vx) * 0.7; }
+    if (this.x > canvas.width - this.r) { this.x = canvas.width - this.r; this.vx = -Math.abs(this.vx) * 0.7; }
+
+    // Trail
+    this.trail.push({x:this.x, y:this.y});
+    if (this.trail.length > 6) this.trail.shift();
+
+    this.life -= this.decay;
+    return this.life > 0;
+  }
+  draw() {
+    // Trail
+    if (this.trail.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(this.trail[0].x, this.trail[0].y);
+      for (let i=1;i<this.trail.length;i++) ctx.lineTo(this.trail[i].x, this.trail[i].y);
+      ctx.strokeStyle = this.color + Math.floor(this.life * 60).toString(16).padStart(2,'0');
+      ctx.lineWidth = this.r * 0.4;
+      ctx.lineCap = 'round'; ctx.stroke();
+    }
+    // Circle
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI*2);
+    ctx.fillStyle = this.color + Math.floor(this.life * 220).toString(16).padStart(2,'0');
+    ctx.fill();
+    // Glow
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r * 1.8, 0, Math.PI*2);
+    ctx.fillStyle = this.color + '18';
+    ctx.fill();
+  }
+}
+
+function spawn(x, y, burst, count) {
+  const n = burst ? 20 : count;
+  for (let i = 0; i < n; i++) particles.push(new Particle(x, y, burst));
+}
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+let animId;
+function loop() {
+  animId = requestAnimationFrame(loop);
+  ctx.fillStyle = 'rgba(4,4,8,0.18)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  particles = particles.filter(p => { const alive = p.update(); if (alive) p.draw(); return alive; });
+  pCountEl.textContent = particles.length;
+
+  // Spawn on move
+  if (mouseX > 0) {
+    const dx = mouseX - lastSpawnX, dy = mouseY - lastSpawnY;
+    if (Math.hypot(dx, dy) > 12) {
+      spawn(mouseX, mouseY, false, SPAWN_RATE);
+      lastSpawnX = mouseX; lastSpawnY = mouseY;
+    }
+  }
+}
+
+// ── Events ──
+window.addEventListener('resize', resize);
+
+window.addEventListener('mousemove', e => {
+  mouseX = e.clientX; mouseY = e.clientY;
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top  = e.clientY + 'px';
+  if (!hinted) { hint.classList.add('hide'); hinted = true; }
+});
+
+window.addEventListener('click', e => {
+  spawn(e.clientX, e.clientY, true, 0);
+  document.body.classList.add('clicking');
+  setTimeout(() => document.body.classList.remove('clicking'), 120);
+});
+
+window.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  mouseX = t.clientX; mouseY = t.clientY;
+  if (!hinted) { hint.classList.add('hide'); hinted = true; }
+}, { passive: false });
+
+window.addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  spawn(t.clientX, t.clientY, true, 0);
+});
+
+document.getElementById('clear-btn').onclick = () => { particles = []; ctx.clearRect(0,0,canvas.width,canvas.height); };
+
+// ── Sliders ──
+function bindSlider(id, valId, scale, setter) {
+  const sl = document.getElementById(id);
+  const vl = document.getElementById(valId);
+  sl.addEventListener('input', () => { const v = +sl.value / scale; vl.textContent = v.toFixed(2); setter(v); });
+}
+bindSlider('sl-grav',   'v-grav',   10, v => GRAVITY = v);
+bindSlider('sl-bounce', 'v-bounce', 100, v => BOUNCE = v);
+document.getElementById('sl-spawn').addEventListener('input', function() {
+  SPAWN_RATE = +this.value; document.getElementById('v-spawn').textContent = this.value;
+});
+
+document.getElementById('theme').addEventListener('change', function() { theme = THEMES[this.value]; });
+
+resize();
+loop();
+</script>
+</body>
+</html>

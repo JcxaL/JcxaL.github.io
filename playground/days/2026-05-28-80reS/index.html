@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Gravity Sandbox</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#020612;color:#e0e8ff;font-family:system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+#cv{position:absolute;inset:0;touch-action:none}
+#toolbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:rgba(4,10,30,.88);backdrop-filter:blur(12px);border:1px solid rgba(80,130,255,.2);border-radius:12px;padding:5px 8px;z-index:10;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 16px)}
+.tb{background:none;border:1px solid rgba(80,130,255,.3);color:#90a8d8;border-radius:7px;padding:4px 9px;font-size:11px;cursor:pointer;transition:.15s;white-space:nowrap}
+.tb:hover{border-color:rgba(100,180,255,.7);color:#d0e8ff}
+.tb.on{background:rgba(50,110,255,.22);border-color:#4a8aff;color:#80bfff}
+.sep{width:1px;height:20px;background:rgba(80,130,255,.2);flex-shrink:0}
+#bottom{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:rgba(4,10,30,.88);backdrop-filter:blur(12px);border:1px solid rgba(80,130,255,.2);border-radius:12px;padding:5px 10px;z-index:10;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 16px)}
+.pb{background:none;border:1px solid rgba(80,130,255,.25);color:#90a8d8;border-radius:7px;padding:3px 8px;font-size:11px;cursor:pointer;transition:.15s}
+.pb:hover{border-color:rgba(100,200,255,.6);color:#d0f0ff}
+label{font-size:10px;color:#5070a0}
+input[type=range]{width:65px;accent-color:#4a8aff;cursor:pointer}
+#info{position:absolute;top:60px;right:12px;background:rgba(4,10,30,.85);backdrop-filter:blur(10px);border:1px solid rgba(80,130,255,.18);border-radius:9px;padding:8px 12px;font-size:11px;color:#5070a0;z-index:10;min-width:120px;line-height:1.7}
+#info b{color:#90c0ff}
+#toast{position:absolute;bottom:68px;left:50%;transform:translateX(-50%) translateY(8px);background:rgba(15,35,90,.92);border:1px solid rgba(80,140,255,.4);color:#90c0ff;padding:5px 14px;border-radius:20px;font-size:11px;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;z-index:20}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#hint{position:absolute;top:13px;left:12px;font-size:10px;color:rgba(80,120,180,.55);pointer-events:none;line-height:1.5}
+#mass-preview{position:absolute;top:50px;left:12px;font-size:10px;color:rgba(80,180,255,.6);pointer-events:none;display:none}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="toolbar">
+  <button class="tb on" id="t-place" onclick="setTool('place')">✦ Place</button>
+  <button class="tb" id="t-select" onclick="setTool('select')">⊙ Select</button>
+  <button class="tb" id="t-delete" onclick="setTool('delete')">✕ Delete</button>
+  <div class="sep"></div>
+  <button class="tb" id="t-pause" onclick="togglePause()">⏸ Pause</button>
+  <button class="tb" onclick="clearAll()">⟳ Clear</button>
+  <button class="tb" onclick="exportPNG()">↓ PNG</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="saveState()">💾 Save</button>
+  <button class="tb" onclick="loadState()">📂 Load</button>
+</div>
+
+<div id="bottom">
+  <button class="pb" onclick="loadPreset('solar')">☀ Solar</button>
+  <button class="pb" onclick="loadPreset('binary')">⭐ Binary</button>
+  <button class="pb" onclick="loadPreset('figure8')">∞ Figure-8</button>
+  <button class="pb" onclick="loadPreset('trojan')">⬡ Trojan</button>
+  <button class="pb" onclick="loadPreset('chaos')">💫 Chaos</button>
+  <div class="sep"></div>
+  <label>Speed</label>
+  <input type="range" id="sl-speed" min="0.1" max="6" step="0.1" value="1" oninput="tScale=+this.value">
+  <div class="sep"></div>
+  <label>G</label>
+  <input type="range" id="sl-g" min="0.2" max="12" step="0.2" value="3" oninput="G=+this.value">
+  <div class="sep"></div>
+  <label>Trails</label>
+  <input type="range" id="sl-trail" min="0" max="500" step="25" value="200" oninput="maxTrail=+this.value">
+</div>
+
+<div id="info">
+  <b id="i-bodies">0</b> bodies<br>
+  <b id="i-time">0.0</b>s<br>
+  <b id="i-fps">60</b>fps<br>
+  <span id="i-sel"></span>
+</div>
+<div id="toast"></div>
+<div id="hint">Click: place · Drag: add velocity<br>Scroll: zoom · Shift-drag: pan</div>
+<div id="mass-preview"></div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W = cv.width = innerWidth, H = cv.height = innerHeight;
+window.addEventListener('resize', () => { W = cv.width = innerWidth; H = cv.height = innerHeight; });
+
+let bodies = [], G = 3, tScale = 1, maxTrail = 200, paused = false, simTime = 0;
+let tool = 'place', selected = null, colorIdx = 0;
+let panX = 0, panY = 0, zoom = 1;
+let fps = 60, frameCount = 0, lastFpsT = performance.now();
+
+const COLORS = ['#ffd060','#ff8040','#ff4868','#e040ff','#6080ff','#40c8ff','#40ffdc','#80ff60','#ffff40','#ff6890'];
+const nextColor = () => COLORS[colorIdx++ % COLORS.length];
+const massToR = m => Math.max(2.5, Math.cbrt(m) * 2.4);
+const toWorld = (cx,cy) => ({ x:(cx - W/2 - panX)/zoom, y:(cy - H/2 - panY)/zoom });
+const toScreen = (wx,wy) => ({ x:wx*zoom + W/2 + panX, y:wy*zoom + H/2 + panY });
+
+function addBody(x,y,vx,vy,mass,color){
+  bodies.push({ x,y,vx,vy,mass, radius:massToR(mass), color:color||nextColor(), trail:[], ax:0,ay:0, id:Math.random() });
+}
+
+// Physics
+function stepPhysics(dt){
+  const n = bodies.length;
+  if(n===0) return;
+  for(let i=0;i<n;i++){ bodies[i].ax=0; bodies[i].ay=0; }
+  for(let i=0;i<n;i++){
+    for(let j=i+1;j<n;j++){
+      const a=bodies[i], b=bodies[j];
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const distSq=dx*dx+dy*dy;
+      const dist=Math.sqrt(distSq)+0.01;
+      const soft=distSq+80;
+      const F=G*a.mass*b.mass/soft;
+      const fx=F*dx/dist, fy=F*dy/dist;
+      a.ax+=fx/a.mass; a.ay+=fy/a.mass;
+      b.ax-=fx/b.mass; b.ay-=fy/b.mass;
+    }
+  }
+  for(let i=0;i<n;i++){
+    const b=bodies[i];
+    b.vx+=b.ax*dt; b.vy+=b.ay*dt;
+    b.x+=b.vx*dt; b.y+=b.vy*dt;
+    if(maxTrail>0){ b.trail.push({x:b.x,y:b.y}); if(b.trail.length>maxTrail) b.trail.shift(); }
+    else b.trail=[];
+  }
+  // Merging
+  const dead = new Set();
+  for(let i=0;i<n;i++){
+    if(dead.has(i)) continue;
+    for(let j=i+1;j<n;j++){
+      if(dead.has(j)) continue;
+      const a=bodies[i], b=bodies[j];
+      const dx=b.x-a.x, dy=b.y-a.y;
+      if(Math.sqrt(dx*dx+dy*dy) < a.radius+b.radius){
+        const tot=a.mass+b.mass;
+        const bi=a.mass>=b.mass?i:j, si=a.mass>=b.mass?j:i;
+        const bB=bodies[bi], bS=bodies[si];
+        bB.vx=(bB.vx*bB.mass+bS.vx*bS.mass)/tot;
+        bB.vy=(bB.vy*bB.mass+bS.vy*bS.mass)/tot;
+        bB.x=(bB.x*bB.mass+bS.x*bS.mass)/tot;
+        bB.y=(bB.y*bB.mass+bS.y*bS.mass)/tot;
+        bB.mass=tot; bB.radius=massToR(tot);
+        if(selected===bodies[si]) selected=bB;
+        dead.add(si);
+      }
+    }
+  }
+  if(dead.size) bodies=bodies.filter((_,i)=>!dead.has(i));
+}
+
+// Drawing
+function drawStars(){
+  ctx.fillStyle='rgba(255,255,255,.4)';
+  let s=1234567;
+  for(let i=0;i<180;i++){
+    s=(s*1664525+1013904223)&0xffffffff; const sx=((s>>>0)/4294967296)*W;
+    s=(s*1664525+1013904223)&0xffffffff; const sy=((s>>>0)/4294967296)*H;
+    s=(s*1664525+1013904223)&0xffffffff; const sr=((s>>>0)/4294967296)*1.1+0.2;
+    ctx.beginPath(); ctx.arc(sx,sy,sr,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawTrail(b){
+  if(b.trail.length<2) return;
+  ctx.beginPath();
+  const p0=toScreen(b.trail[0].x,b.trail[0].y);
+  ctx.moveTo(p0.x,p0.y);
+  for(let i=1;i<b.trail.length;i++){
+    const p=toScreen(b.trail[i].x,b.trail[i].y);
+    ctx.lineTo(p.x,p.y);
+  }
+  ctx.strokeStyle=b.color; ctx.globalAlpha=0.3; ctx.lineWidth=1; ctx.stroke(); ctx.globalAlpha=1;
+}
+
+function drawBody(b){
+  const s=toScreen(b.x,b.y);
+  const r=Math.max(2,b.radius*zoom);
+  const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,r*2.8);
+  g.addColorStop(0,b.color+'cc'); g.addColorStop(1,b.color+'00');
+  ctx.beginPath(); ctx.arc(s.x,s.y,r*2.8,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+  ctx.beginPath(); ctx.arc(s.x,s.y,r,0,Math.PI*2); ctx.fillStyle=b.color; ctx.fill();
+  if(b===selected){
+    ctx.beginPath(); ctx.arc(s.x,s.y,r+5,0,Math.PI*2);
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+// Drag placement
+let drag={active:false,sx:0,sy:0,cx:0,cy:0,mass:8};
+function drawDragPreview(){
+  if(!drag.active||tool!=='place') return;
+  ctx.beginPath(); ctx.moveTo(drag.sx,drag.sy); ctx.lineTo(drag.cx,drag.cy);
+  ctx.strokeStyle='rgba(80,200,255,.65)'; ctx.lineWidth=1.5; ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]);
+  const ang=Math.atan2(drag.cy-drag.sy,drag.cx-drag.sx), al=11;
+  ctx.beginPath();
+  ctx.moveTo(drag.cx,drag.cy);
+  ctx.lineTo(drag.cx-al*Math.cos(ang-.4),drag.cy-al*Math.sin(ang-.4));
+  ctx.lineTo(drag.cx-al*Math.cos(ang+.4),drag.cy-al*Math.sin(ang+.4));
+  ctx.closePath(); ctx.fillStyle='rgba(80,200,255,.65)'; ctx.fill();
+  const r=massToR(drag.mass);
+  ctx.beginPath(); ctx.arc(drag.sx,drag.sy,r,0,Math.PI*2);
+  ctx.fillStyle=COLORS[colorIdx%COLORS.length]; ctx.globalAlpha=.55; ctx.fill(); ctx.globalAlpha=1;
+  ctx.fillStyle='rgba(80,200,255,.75)'; ctx.font='10px system-ui';
+  ctx.fillText(`m=${drag.mass.toFixed(0)}  v=${(Math.hypot(drag.cx-drag.sx,drag.cy-drag.sy)/zoom*.1).toFixed(1)}`,drag.cx+8,drag.cy-7);
+}
+
+// Info
+function updateInfo(){
+  document.getElementById('i-bodies').textContent=bodies.length;
+  document.getElementById('i-time').textContent=simTime.toFixed(1);
+  document.getElementById('i-fps').textContent=Math.round(fps);
+  if(selected){
+    const sp=Math.hypot(selected.vx,selected.vy).toFixed(2);
+    document.getElementById('i-sel').innerHTML=`<br><b style="color:#ffd060">Selected</b><br>m=${selected.mass.toFixed(1)}<br>v=${sp}`;
+  } else {
+    document.getElementById('i-sel').textContent='';
+  }
+}
+
+// Main loop
+let lastT=0;
+function frame(ts){
+  const rawDt=Math.min((ts-lastT)/1000,.033); lastT=ts;
+  const dt=rawDt*tScale;
+  frameCount++;
+  if(ts-lastFpsT>600){ fps=frameCount/((ts-lastFpsT)/1000); frameCount=0; lastFpsT=ts; }
+  ctx.fillStyle='#020612'; ctx.fillRect(0,0,W,H);
+  drawStars();
+  if(!paused){ const sub=4, sdt=dt/sub; for(let i=0;i<sub;i++) stepPhysics(sdt); simTime+=dt; }
+  for(const b of bodies) drawTrail(b);
+  for(const b of bodies) drawBody(b);
+  drawDragPreview();
+  updateInfo();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// Controls
+function setTool(t){
+  tool=t;
+  document.querySelectorAll('.tb[id^=t-]').forEach(b=>b.classList.remove('on'));
+  document.getElementById('t-'+t)?.classList.add('on');
+  cv.style.cursor=t==='delete'?'not-allowed':t==='select'?'pointer':'crosshair';
+}
+function togglePause(){ paused=!paused; document.getElementById('t-pause').textContent=paused?'▶ Play':'⏸ Pause'; }
+function clearAll(){ bodies=[]; selected=null; simTime=0; }
+function exportPNG(){
+  const link=document.createElement('a');
+  link.download=`gravity-${Date.now()}.png`; link.href=cv.toDataURL(); link.click(); toast('PNG saved!');
+}
+function saveState(){
+  localStorage.setItem('gsandbox_v1',JSON.stringify(bodies.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,mass:b.mass,color:b.color}))));
+  toast('Saved to browser!');
+}
+function loadState(){
+  const r=localStorage.getItem('gsandbox_v1');
+  if(!r){toast('Nothing saved.');return;}
+  bodies=[]; selected=null;
+  JSON.parse(r).forEach(b=>addBody(b.x,b.y,b.vx,b.vy,b.mass,b.color));
+  toast('Loaded!');
+}
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2100); }
+
+// Presets
+function loadPreset(name){
+  bodies=[]; selected=null; simTime=0; colorIdx=0;
+  const vOrbit=(m,r)=>Math.sqrt(G*m/r);
+  if(name==='solar'){
+    addBody(0,0,0,0,200,'#ffd060');
+    addBody(80,0,0,-vOrbit(200,80)*.97,1,'#aaaaaa');
+    addBody(130,0,0,-vOrbit(200,130)*.97,2,'#e8a060');
+    addBody(180,0,0,-vOrbit(200,180)*.97,3,'#4060ff');
+    addBody(220,0,0,-vOrbit(200,220)*.97,.5,'#ff4040');
+    addBody(340,0,0,-vOrbit(200,340)*.97,18,'#d08030');
+    addBody(470,0,0,-vOrbit(200,470)*.97,10,'#d0a050');
+  } else if(name==='binary'){
+    const M=70,d=110;
+    const v=Math.sqrt(G*M/(4*d));
+    addBody(-d,0,0,v,M,'#ffd060'); addBody(d,0,0,-v,M,'#60c0ff');
+    addBody(0,-300,v*.5,0,.4,'#ff80ff');
+    addBody(0,300,-v*.5,0,.4,'#80ff80');
+  } else if(name==='figure8'){
+    // Canonical figure-8: G=1, m=1, scale=90 → v scaled by 1/sqrt(90)
+    const S=90,V=1/Math.sqrt(S)*Math.sqrt(1/G);
+    const px=0.97000436*S, py=-0.24308753*S;
+    const vx1=0.93240737/2*V, vy1=0.86473146/2*V;
+    addBody(px,py,vx1,vy1,1/G,'#ffd060');
+    addBody(-px,-py,vx1,vy1,1/G,'#60c0ff');
+    addBody(0,0,-2*vx1,-2*vy1,1/G,'#ff80c0');
+  } else if(name==='trojan'){
+    const MS=140,MJ=12,d=200;
+    addBody(0,0,0,0,MS,'#ffd060');
+    addBody(d,0,0,-vOrbit(MS,d)*.97,MJ,'#c08030');
+    const a=Math.PI/3;
+    addBody(d*Math.cos(a),d*Math.sin(a),-vOrbit(MS,d)*.97*Math.sin(a),-vOrbit(MS,d)*.97*Math.cos(a),.5,'#40ffcc');
+    addBody(d*Math.cos(-a),d*Math.sin(-a),-vOrbit(MS,d)*.97*Math.sin(-a),-vOrbit(MS,d)*.97*Math.cos(-a),.5,'#80ffaa');
+  } else if(name==='chaos'){
+    for(let i=0;i<9;i++){
+      const ang=(i/9)*Math.PI*2, r=120+Math.random()*100;
+      const m=4+Math.random()*18;
+      const v=vOrbit(40,r)*(0.75+Math.random()*.5);
+      addBody(Math.cos(ang)*r,Math.sin(ang)*r,-Math.sin(ang)*v*(0.7+Math.random()*.6),Math.cos(ang)*v*(0.7+Math.random()*.6),m);
+    }
+  }
+  toast(`Loaded: ${name}`);
+}
+
+// Pointer events
+function getPos(e){ const r=cv.getBoundingClientRect(), t=e.touches?e.touches[0]:e; return {x:t.clientX-r.left,y:t.clientY-r.top}; }
+function bodyAt(cx,cy){
+  for(let i=bodies.length-1;i>=0;i--){
+    const b=bodies[i], s=toScreen(b.x,b.y);
+    const r=Math.max(14,b.radius*zoom+6);
+    if((cx-s.x)**2+(cy-s.y)**2<r*r) return bodies[i];
+  }
+  return null;
+}
+
+let shiftDown=false, panDrag={active:false,sx:0,sy:0,px:0,py:0};
+window.addEventListener('keydown',e=>{ if(e.key==='Shift') shiftDown=true; });
+window.addEventListener('keyup',e=>{ if(e.key==='Shift') shiftDown=false; });
+
+cv.addEventListener('pointerdown',e=>{
+  const pos=getPos(e);
+  if(shiftDown){ panDrag={active:true,sx:pos.x,sy:pos.y,px:panX,py:panY}; return; }
+  if(tool==='select'){ selected=bodyAt(pos.x,pos.y)||null; return; }
+  if(tool==='delete'){ const h=bodyAt(pos.x,pos.y); if(h){bodies=bodies.filter(b=>b!==h); if(selected===h)selected=null;} return; }
+  if(tool==='place'){ drag={active:true,sx:pos.x,sy:pos.y,cx:pos.x,cy:pos.y,mass:8}; }
+});
+
+cv.addEventListener('pointermove',e=>{
+  const pos=getPos(e);
+  if(panDrag.active){ panX=panDrag.px+(pos.x-panDrag.sx); panY=panDrag.py+(pos.y-panDrag.sy); return; }
+  if(drag.active&&tool==='place'){
+    drag.cx=pos.x; drag.cy=pos.y;
+    drag.mass=Math.max(1,Math.min(500,8+(drag.sy-pos.y)*.3));
+    const mp=document.getElementById('mass-preview');
+    mp.style.display='block'; mp.textContent=`mass: ${drag.mass.toFixed(0)}  (drag up = heavier)`;
+  }
+});
+
+cv.addEventListener('pointerup',e=>{
+  panDrag.active=false;
+  if(drag.active&&tool==='place'){
+    const w=toWorld(drag.sx,drag.sy);
+    const dvx=(drag.cx-drag.sx)/zoom*.1, dvy=(drag.cy-drag.sy)/zoom*.1;
+    addBody(w.x,w.y,dvx,dvy,drag.mass);
+    drag.active=false;
+    document.getElementById('mass-preview').style.display='none';
+  }
+});
+
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  zoom=Math.max(.08,Math.min(6,zoom*(e.deltaY<0?1.12:.89)));
+},{passive:false});
+
+// Touch pinch-zoom
+let ptrs={};
+cv.addEventListener('touchstart',e=>{
+  for(const t of e.touches) ptrs[t.identifier]={x:t.clientX,y:t.clientY};
+},{passive:true});
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===2){
+    const [a,b]=e.touches;
+    const prevA=ptrs[a.identifier]||{x:a.clientX,y:a.clientY};
+    const prevB=ptrs[b.identifier]||{x:b.clientX,y:b.clientY};
+    const prevDist=Math.hypot(prevA.x-prevB.x,prevA.y-prevB.y);
+    const newDist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+    if(prevDist>0) zoom=Math.max(.08,Math.min(6,zoom*newDist/prevDist));
+  }
+  for(const t of e.touches) ptrs[t.identifier]={x:t.clientX,y:t.clientY};
+},{passive:false});
+
+// Load default
+loadPreset('solar');
+</script>
+</body>
+</html>

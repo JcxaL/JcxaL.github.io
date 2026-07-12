@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Character-Lock Scramble — UI Spotlight #3</title>
+<style>
+  :root{ --accent:#f87171; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; min-height:100vh; background:#140808; color:#ffeaea;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    padding:70px 18px 40px;
+  }
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20;
+    background:rgba(20,8,8,0.7); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.14); border-radius:999px;
+    padding:8px 14px; font-size:12px; color:#fff; text-decoration:none;
+  }
+  main{max-width:760px; margin:0 auto;}
+  h1{font-size:clamp(22px,5vw,30px); margin:6px 0 6px; color:var(--accent);}
+  p.sub{color:#e0a3a3; font-size:13px; max-width:60ch; line-height:1.5;}
+
+  .debug{
+    position:fixed; top:14px; right:14px; z-index:20; width:190px;
+    background:rgba(24,10,10,0.75); backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:12px;
+    font-size:11px;
+  }
+  .debug h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:#c98a8a;}
+  .debug .row{display:flex; justify-content:space-between; margin-bottom:6px;}
+  .debug input[type=range]{width:100%; accent-color:var(--accent);}
+  .debug button{
+    width:100%; margin-top:6px; border:1px solid rgba(255,255,255,0.16); background:rgba(255,255,255,0.06);
+    color:#ffeaea; border-radius:8px; padding:7px; font-size:11px; cursor:pointer;
+  }
+  @media (max-width:640px){ .debug{ display:none; } }
+
+  .scramble-list{ margin-top:26px; display:flex; flex-direction:column; gap:22px; }
+  .scramble{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    letter-spacing:0.01em; white-space:pre-wrap; word-break:break-word;
+  }
+  .scramble.title{ font-size:clamp(22px,4.5vw,32px); font-weight:800; color:#fff; }
+  .scramble.body{ font-size:15px; color:#f0b8b8; line-height:1.6; }
+  .scramble.mono{ font-size:14px; color:var(--accent); }
+  .char.locked{ color:inherit; }
+  .char.scrambling{ opacity:0.55; }
+
+  footer.credit{ max-width:760px; margin:30px auto 0; font-size:10px; color:#8a5a5a; }
+</style>
+</head>
+<body>
+<a class="back-link" href="../">← All 5 drops</a>
+<main>
+  <h1>Character-Lock Scramble Reveal</h1>
+  <p class="sub">Each string reveals left→right: unresolved characters cycle through random glyphs on a fast interval while a per-character timer decides when that position locks to its true value — a decode effect, not a fade.</p>
+
+  <div class="scramble-list">
+    <div class="scramble title" id="s1" data-text="SIGNAL ACQUIRED"></div>
+    <div class="scramble body" id="s2" data-text="Every character in this sentence scrambles independently before locking into place, sweeping from the first letter to the last."></div>
+    <div class="scramble mono" id="s3" data-text="user@shell:~$ decrypting payload... access granted"></div>
+  </div>
+</main>
+
+<div class="debug">
+  <h3>Tuning</h3>
+  <div class="row"><span>Char speed</span><output id="charVal">28ms</output></div>
+  <input type="range" id="charTime" min="8" max="80" step="2" value="28">
+  <div class="row" style="margin-top:8px;"><span>Symbol flicker</span><output id="symVal">45ms</output></div>
+  <input type="range" id="symTime" min="15" max="120" step="5" value="45">
+  <button id="replay">↺ Replay all</button>
+</div>
+
+<footer class="credit">Inspired by twistezo/text-scramble · UI Spotlight Day 54 · Drop #3</footer>
+
+<script>
+(function(){
+  var SYMBOLS = '!<>-_\\/[]{}—=+*^?#________';
+  var charTimePerChar = 28;   // ms each char takes to lock, staggered
+  var symbolChangeTime = 45;  // ms between random symbol swaps for unresolved chars
+
+  function Scrambler(el){
+    this.el = el;
+    this.text = el.getAttribute('data-text');
+    this.frame = null;
+    this.spans = [];
+  }
+  Scrambler.prototype.start = function(){
+    var self = this;
+    if(this.frame) cancelAnimationFrame(this.frame);
+    this.el.innerHTML = '';
+    this.spans = [];
+    for(var i=0;i<this.text.length;i++){
+      var span = document.createElement('span');
+      span.className = 'char scrambling';
+      span.textContent = this.text[i] === ' ' ? ' ' : randomSymbol();
+      this.el.appendChild(span);
+      this.spans.push(span);
+    }
+    this.startTime = performance.now();
+    this.lastSymbolTick = 0;
+    tick();
+    function tick(now){
+      now = now || performance.now();
+      var elapsed = now - self.startTime;
+      var allLocked = true;
+      var doSymbolTick = (now - self.lastSymbolTick) > symbolChangeTime;
+      if(doSymbolTick) self.lastSymbolTick = now;
+
+      for(var i=0;i<self.spans.length;i++){
+        var lockAt = i * charTimePerChar;
+        var ch = self.text[i];
+        var span = self.spans[i];
+        if(elapsed >= lockAt || ch === ' '){
+          if(!span.classList.contains('locked')){
+            span.textContent = ch;
+            span.className = 'char locked';
+          }
+        } else {
+          allLocked = false;
+          if(doSymbolTick){ span.textContent = randomSymbol(); }
+        }
+      }
+      if(!allLocked){ self.frame = requestAnimationFrame(tick); }
+    }
+  };
+  function randomSymbol(){ return SYMBOLS[Math.floor(Math.random()*SYMBOLS.length)]; }
+
+  var scramblers = Array.prototype.map.call(document.querySelectorAll('.scramble'), function(el){
+    return new Scrambler(el);
+  });
+
+  function playAll(){
+    scramblers.forEach(function(s, i){
+      setTimeout(function(){ s.start(); }, i * 220);
+    });
+  }
+  playAll();
+
+  document.getElementById('replay').addEventListener('click', playAll);
+  document.getElementById('charTime').addEventListener('input', function(e){
+    charTimePerChar = parseFloat(e.target.value);
+    document.getElementById('charVal').textContent = charTimePerChar + 'ms';
+  });
+  document.getElementById('symTime').addEventListener('input', function(e){
+    symbolChangeTime = parseFloat(e.target.value);
+    document.getElementById('symVal').textContent = symbolChangeTime + 'ms';
+  });
+})();
+</script>
+</body>
+</html>

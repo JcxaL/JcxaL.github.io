@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Rope Rig — Physics Playground</title>
+<style>
+  :root{
+    --bg-top:#0d0f1a;
+    --bg-bot:#1a2440;
+    --panel:rgba(18,22,38,0.72);
+    --panel-border:rgba(255,255,255,0.09);
+    --accent:#38bdf8;
+    --accent2:#a78bfa;
+    --ok:#4ade80;
+    --danger:#f87171;
+    --text:#e8ecf4;
+    --dim:#8b93a8;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:var(--bg-top); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);}
+  #app{position:fixed; inset:0;}
+  canvas{display:block; width:100%; height:100%; touch-action:none; cursor:crosshair;}
+
+  .topbar{
+    position:fixed; top:0; left:0; right:0; z-index:20;
+    display:flex; align-items:center; gap:8px;
+    padding:10px 12px; padding-top:max(10px, env(safe-area-inset-top));
+    background:linear-gradient(to bottom, rgba(10,12,22,0.85), rgba(10,12,22,0));
+    pointer-events:none;
+  }
+  .topbar > *{pointer-events:auto;}
+  .brand{font-weight:700; font-size:14px; letter-spacing:0.02em; color:var(--text); opacity:0.9; margin-right:4px; white-space:nowrap;}
+  .modes{
+    display:flex; gap:4px; background:var(--panel); border:1px solid var(--panel-border);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border-radius:14px; padding:4px; overflow-x:auto; max-width:100%;
+  }
+  .mode-btn{
+    appearance:none; border:none; background:transparent; color:var(--dim);
+    font-size:12px; font-weight:600; padding:8px 10px; border-radius:10px; cursor:pointer;
+    white-space:nowrap; display:flex; align-items:center; gap:5px; transition:background .15s, color .15s;
+  }
+  .mode-btn.active{background:var(--accent); color:#04141f;}
+  .mode-btn:not(.active):hover{background:rgba(255,255,255,0.06); color:var(--text);}
+
+  .panel{
+    position:fixed; top:64px; right:12px; z-index:20;
+    background:var(--panel); border:1px solid var(--panel-border);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border-radius:16px; padding:12px; width:200px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.35);
+  }
+  .panel h3{margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); font-weight:700;}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; font-size:12px;}
+  .row label{color:var(--dim);}
+  .row output{color:var(--text); font-variant-numeric:tabular-nums;}
+  input[type=range]{width:100%; accent-color:var(--accent);}
+  .toggle-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .switch{position:relative; width:36px; height:20px; flex:none;}
+  .switch input{opacity:0; width:100%; height:100%; position:absolute; margin:0; cursor:pointer;}
+  .switch .track{position:absolute; inset:0; background:rgba(255,255,255,0.15); border-radius:20px; transition:.15s;}
+  .switch .thumb{position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.15s;}
+  .switch input:checked + .track{background:var(--accent);}
+  .switch input:checked + .track .thumb{transform:translateX(16px);}
+  .actions{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:4px;}
+  .actions button{
+    appearance:none; border:1px solid var(--panel-border); background:rgba(255,255,255,0.05); color:var(--text);
+    font-size:11px; font-weight:600; padding:7px 4px; border-radius:9px; cursor:pointer;
+  }
+  .actions button:hover{background:rgba(255,255,255,0.12);}
+  .actions button.full{grid-column:1 / -1;}
+  .stats{font-size:10px; color:var(--dim); margin-top:8px; display:flex; justify-content:space-between;}
+
+  .hint{
+    position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:20;
+    background:var(--panel); border:1px solid var(--panel-border); backdrop-filter:blur(14px);
+    padding:8px 14px; border-radius:12px; font-size:12px; color:var(--dim);
+    max-width:92vw; text-align:center; pointer-events:none; transition:opacity .3s;
+  }
+
+  .toast{
+    position:fixed; left:50%; top:64px; transform:translateX(-50%) translateY(-10px); z-index:30;
+    background:rgba(20,24,40,0.92); border:1px solid var(--panel-border); color:var(--text);
+    padding:9px 16px; border-radius:11px; font-size:12.5px; font-weight:600;
+    opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  @media (max-width:640px){
+    .panel{width:168px; right:8px; top:60px; padding:10px;}
+    .brand{display:none;}
+  }
+  @media (max-height:520px){
+    .panel{top:56px;}
+  }
+  #fileImport{display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <div class="topbar">
+    <span class="brand">Rope Rig</span>
+    <div class="modes" id="modes">
+      <button class="mode-btn" data-mode="drag">✋ Move</button>
+      <button class="mode-btn" data-mode="rope">〰️ Rope</button>
+      <button class="mode-btn" data-mode="ragdoll">🧍 Ragdoll</button>
+      <button class="mode-btn" data-mode="bridge">🌉 Bridge</button>
+      <button class="mode-btn" data-mode="weight">⚫ Weight</button>
+      <button class="mode-btn" data-mode="pin">📌 Pin</button>
+      <button class="mode-btn" data-mode="cut">✂️ Cut</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Physics</h3>
+    <div class="row"><label for="gravity">Gravity</label><output id="gravityVal">0.45</output></div>
+    <input type="range" id="gravity" min="0" max="1.2" step="0.01" value="0.45">
+    <div class="toggle-row">
+      <label style="font-size:12px; color:var(--dim);">Wind</label>
+      <label class="switch"><input type="checkbox" id="windToggle"><span class="track"><span class="thumb"></span></span></label>
+    </div>
+    <div class="row"><label for="windPow">Wind gust</label><output id="windPowVal">0.12</output></div>
+    <input type="range" id="windPow" min="0" max="0.4" step="0.01" value="0.12">
+
+    <h3 style="margin-top:12px;">Scene</h3>
+    <div class="actions">
+      <button id="btnClear" class="full">🗑️ Clear scene</button>
+      <button id="btnPng">🖼️ PNG</button>
+      <button id="btnLink">🔗 Link</button>
+      <button id="btnExport">⬇️ Save</button>
+      <button id="btnImport">⬆️ Load</button>
+    </div>
+    <input type="file" id="fileImport" accept="application/json">
+    <div class="stats">
+      <span id="statPts">0 pts</span>
+      <span id="statCons">0 links</span>
+      <span id="statSnap">0 snapped</span>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">Drag from a pillar top to draw a rope · tap a ragdoll to drop one · everything is physical</div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+  var W = 0, H = 0;
+
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- physics state ----------
+  var points = [];      // {x,y,px,py,pinned,r,mass,color}
+  var constraints = []; // {a,b,rest,type('rope'|'stick'|'plank'),breakAt(mult or 0=unbreakable),alive}
+  var snappedCount = 0;
+
+  var GRAVITY = 0.45;
+  var WIND_ON = false;
+  var WIND_POW = 0.12;
+  var t = 0;
+  var GROUND_Y = 0;
+  function computeGround(){ GROUND_Y = H - 34; }
+
+  var ITER = 6;
+  var FRICTION = 0.995; // verlet velocity damping
+  var GROUND_FRICTION = 0.82;
+
+  function addPoint(x,y,pinned,r,mass){
+    points.push({x:x,y:y,px:x,py:y,pinned:!!pinned,r:r||3,mass:mass||1});
+    return points.length-1;
+  }
+  function addConstraint(a,b,type,breakAt){
+    var rest = dist(points[a],points[b]);
+    constraints.push({a:a,b:b,rest:rest,type:type||'rope',breakAt:breakAt===undefined?2.1:breakAt,alive:true});
+  }
+  function dist(p1,p2){ var dx=p2.x-p1.x, dy=p2.y-p1.y; return Math.sqrt(dx*dx+dy*dy) || 0.0001; }
+
+  // ---------- scene builders ----------
+  function buildDemoScene(){
+    points.length = 0; constraints.length = 0; snappedCount = 0;
+    computeGround();
+    var leftX = W*0.16, rightX = W*0.62, topY = GROUND_Y - Math.min(220, H*0.42);
+    buildBridge(leftX, topY, rightX, topY);
+    buildRagdoll(W*0.5, topY - 140);
+    // a decorative hanging rope from a random ceiling point
+    buildRope(W*0.86, 20, W*0.86, topY+40, true);
+  }
+
+  function buildRope(x1,y1,x2,y2,pinBoth){
+    var segLen = 14;
+    var n = Math.max(4, Math.round(dist({x:x1,y:y1},{x:x2,y:y2}) / segLen));
+    var start = points.length;
+    for(var i=0;i<=n;i++){
+      var f = i/n;
+      var x = x1 + (x2-x1)*f;
+      var y = y1 + (y2-y1)*f;
+      addPoint(x,y, i===0 || (pinBoth && i===n), 3.4, 1);
+    }
+    for(var i=0;i<n;i++){
+      addConstraint(start+i, start+i+1, 'rope', 1.9);
+    }
+    return start;
+  }
+
+  function buildBridge(x1,y,x2,y2){
+    var gap = dist({x:x1,y:y},{x:x2,y:y2});
+    var n = Math.max(6, Math.round(gap/26));
+    var start = points.length;
+    for(var i=0;i<=n;i++){
+      var f = i/n;
+      addPoint(x1+(x2-x1)*f, y+(y2-y)*f, i===0||i===n, 4, 1.4);
+    }
+    for(var i=0;i<n;i++){
+      addConstraint(start+i, start+i+1, 'plank', 1.5);
+    }
+    return start;
+  }
+
+  function buildRagdoll(cx,cy){
+    // proportions
+    var s = points.length;
+    var head   = addPoint(cx, cy, false, 11, 1.1);
+    var neck   = addPoint(cx, cy+16, false, 3, 0.6);
+    var shoul  = addPoint(cx, cy+30, false, 3, 0.9);
+    var hip    = addPoint(cx, cy+72, false, 3.5, 1.2);
+    var elbowL = addPoint(cx-24, cy+42, false, 3, 0.6);
+    var handL  = addPoint(cx-40, cy+64, false, 3.2, 0.6);
+    var elbowR = addPoint(cx+24, cy+42, false, 3, 0.6);
+    var handR  = addPoint(cx+40, cy+64, false, 3.2, 0.6);
+    var kneeL  = addPoint(cx-10, cy+106, false, 3.4, 0.8);
+    var footL  = addPoint(cx-14, cy+140, false, 3.6, 0.8);
+    var kneeR  = addPoint(cx+10, cy+106, false, 3.4, 0.8);
+    var footR  = addPoint(cx+14, cy+140, false, 3.6, 0.8);
+
+    function stick(a,b){ addConstraint(a,b,'stick',0); }
+    stick(head,neck); stick(neck,shoul); stick(shoul,hip);
+    stick(shoul,elbowL); stick(elbowL,handL);
+    stick(shoul,elbowR); stick(elbowR,handR);
+    stick(hip,kneeL); stick(kneeL,footL);
+    stick(hip,kneeR); stick(kneeR,footR);
+    // stabilizing braces
+    stick(neck,hip);
+    return {head:head,neck:neck,shoul:shoul,hip:hip,elbowL:elbowL,handL:handL,elbowR:elbowR,handR:handR,kneeL:kneeL,footL:footL,kneeR:kneeR,footR:footR,parts:points.length-s};
+  }
+
+  // ---------- weight balls ----------
+  var balls = []; // {x,y,px,py,r,mass}
+  function addBall(x,y,r){
+    balls.push({x:x,y:y,px:x,py:y-2,r:r||16,mass:6});
+  }
+
+  // ---------- input / modes ----------
+  var mode = 'drag';
+  var modesEl = document.getElementById('modes');
+  modesEl.addEventListener('click', function(e){
+    var btn = e.target.closest('.mode-btn');
+    if(!btn) return;
+    setMode(btn.getAttribute('data-mode'));
+  });
+  function setMode(m){
+    mode = m;
+    Array.prototype.forEach.call(modesEl.querySelectorAll('.mode-btn'), function(b){
+      b.classList.toggle('active', b.getAttribute('data-mode')===m);
+    });
+    var hints = {
+      drag:'Drag any point or ragdoll to fling it around',
+      rope:'Drag from a fixed point to draw a hanging rope',
+      ragdoll:'Tap anywhere to drop a fresh ragdoll',
+      bridge:'Tap one side, then the other, to span a plank bridge',
+      weight:'Tap to drop a heavy weight ball',
+      pin:'Tap a point to pin it in place, tap again to release',
+      cut:'Drag across any rope or plank to sever it'
+    };
+    document.getElementById('hint').textContent = hints[m] || '';
+  }
+  setMode('drag');
+
+  function getPos(e){
+    var t = (e.touches && e.touches[0]) || e;
+    var rect = canvas.getBoundingClientRect();
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  var pointerDown = false;
+  var startPos = null;
+  var dragPoint = null;
+  var bridgeFirst = null;
+  var cutPath = [];
+
+  function nearestPoint(pos, maxR){
+    var best = -1, bestD = maxR;
+    for(var i=0;i<points.length;i++){
+      var p = points[i];
+      var d = Math.hypot(p.x-pos.x, p.y-pos.y);
+      if(d < bestD){ bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  function segSegIntersect(p1,p2,p3,p4){
+    function ccw(a,b,c){ return (c.y-a.y)*(b.x-a.x) > (b.y-a.y)*(c.x-a.x); }
+    return (ccw(p1,p3,p4) !== ccw(p2,p3,p4)) && (ccw(p1,p2,p3) !== ccw(p1,p2,p4));
+  }
+
+  canvas.addEventListener('pointerdown', function(e){
+    canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+    pointerDown = true;
+    var pos = getPos(e);
+    startPos = pos;
+
+    if(mode === 'drag'){
+      var idx = nearestPoint(pos, 26);
+      dragPoint = idx;
+    } else if(mode === 'ragdoll'){
+      buildRagdoll(pos.x, pos.y - 60);
+      markDirty();
+    } else if(mode === 'weight'){
+      addBall(pos.x, pos.y, 14 + Math.random()*10);
+      markDirty();
+    } else if(mode === 'pin'){
+      var idx2 = nearestPoint(pos, 22);
+      if(idx2 >= 0){ points[idx2].pinned = !points[idx2].pinned; markDirty(); }
+    } else if(mode === 'bridge'){
+      if(bridgeFirst == null){
+        bridgeFirst = pos;
+        showToast('Now tap the other side');
+      } else {
+        buildBridge(bridgeFirst.x, bridgeFirst.y, pos.x, pos.y);
+        bridgeFirst = null;
+        markDirty();
+      }
+    } else if(mode === 'cut'){
+      cutPath = [pos];
+    } else if(mode === 'rope'){
+      // begin drawing; handled on move/up
+    }
+  }, {passive:true});
+
+  canvas.addEventListener('pointermove', function(e){
+    if(!pointerDown) return;
+    var pos = getPos(e);
+    if(mode === 'drag' && dragPoint >= 0){
+      var p = points[dragPoint];
+      p.px = p.x; p.py = p.y;
+      p.x = pos.x; p.y = pos.y;
+    } else if(mode === 'cut'){
+      cutPath.push(pos);
+      if(cutPath.length > 40) cutPath.shift();
+    }
+  }, {passive:true});
+
+  canvas.addEventListener('pointerup', function(e){
+    var pos = getPos(e);
+    if(mode === 'rope' && startPos){
+      var d = Math.hypot(pos.x-startPos.x, pos.y-startPos.y);
+      if(d > 20){
+        var pinEnd = pos.y < 60;
+        buildRope(startPos.x, startPos.y, pos.x, pos.y, pinEnd);
+        markDirty();
+      }
+    } else if(mode === 'cut' && cutPath.length > 1){
+      var cut = 0;
+      for(var i=0;i<constraints.length;i++){
+        var c = constraints[i];
+        if(!c.alive) continue;
+        var a = points[c.a], b = points[c.b];
+        for(var k=0;k<cutPath.length-1;k++){
+          if(segSegIntersect(cutPath[k],cutPath[k+1],a,b)){ c.alive=false; cut++; break; }
+        }
+      }
+      if(cut){ snappedCount += cut; showToast('Cut ' + cut + (cut===1?' link':' links')); markDirty(); }
+      cutPath = [];
+    }
+    pointerDown = false;
+    dragPoint = -1;
+    startPos = null;
+  }, {passive:true});
+  canvas.addEventListener('pointercancel', function(){ pointerDown=false; dragPoint=-1; cutPath=[]; });
+
+  // ---------- simulation ----------
+  function step(){
+    t += 1;
+    var g = GRAVITY;
+    var wind = WIND_ON ? Math.sin(t*0.045)*WIND_POW + Math.sin(t*0.011)*WIND_POW*0.4 : 0;
+
+    for(var i=0;i<points.length;i++){
+      var p = points[i];
+      if(p.pinned) continue;
+      if(mode==='drag' && i===dragPoint) continue;
+      var vx = (p.x - p.px) * FRICTION;
+      var vy = (p.y - p.py) * FRICTION;
+      p.px = p.x; p.py = p.y;
+      p.x += vx + wind/p.mass;
+      p.y += vy + g/p.mass;
+    }
+
+    for(var b=0;b<balls.length;b++){
+      var ball = balls[b];
+      var bvx = (ball.x-ball.px)*0.996, bvy=(ball.y-ball.py)*0.996;
+      ball.px = ball.x; ball.py = ball.y;
+      ball.x += bvx; ball.y += bvy + g*1.3;
+    }
+
+    for(var iter=0; iter<ITER; iter++){
+      for(var i=0;i<constraints.length;i++){
+        var c = constraints[i];
+        if(!c.alive) continue;
+        var a = points[c.a], bb = points[c.b];
+        var dx = bb.x-a.x, dy = bb.y-a.y;
+        var d = Math.sqrt(dx*dx+dy*dy) || 0.0001;
+        var diff = (d - c.rest)/d;
+        var stiff = c.type==='stick' ? 1 : (c.type==='plank' ? 0.9 : 0.55);
+        var aMass = a.pinned?0:1, bMass = bb.pinned?0:1;
+        var total = aMass+bMass;
+        if(total===0) continue;
+        var moveA = (aMass/total) * diff * stiff;
+        var moveB = (bMass/total) * diff * stiff;
+        if(!a.pinned){ a.x += dx*moveA; a.y += dy*moveA; }
+        if(!bb.pinned){ bb.x -= dx*moveB; bb.y -= dy*moveB; }
+
+        if(c.breakAt && d > c.rest * c.breakAt){
+          c.alive = false;
+          snappedCount++;
+        }
+      }
+      // ground + bounds
+      for(var i=0;i<points.length;i++){
+        var p = points[i];
+        if(p.y > GROUND_Y - p.r){
+          p.y = GROUND_Y - p.r;
+          p.x += (p.x-p.px) * (GROUND_FRICTION-1);
+        }
+        if(p.x < p.r) p.x = p.r;
+        if(p.x > W-p.r) p.x = W-p.r;
+      }
+    }
+
+    // ball vs ground + walls + points (push points, mild reaction on ball)
+    for(var b=0;b<balls.length;b++){
+      var ball = balls[b];
+      if(ball.y > GROUND_Y - ball.r){ ball.y = GROUND_Y - ball.r; ball.x += (ball.x-ball.px)*-0.3; }
+      if(ball.x < ball.r) ball.x = ball.r;
+      if(ball.x > W-ball.r) ball.x = W-ball.r;
+      for(var i=0;i<points.length;i++){
+        var p = points[i];
+        var dx = p.x-ball.x, dy = p.y-ball.y;
+        var d = Math.sqrt(dx*dx+dy*dy) || 0.0001;
+        var minD = ball.r + p.r;
+        if(d < minD){
+          var push = (minD-d)/d;
+          if(!p.pinned){ p.x += dx*push*0.9; p.y += dy*push*0.9; }
+          ball.x -= dx*push*0.06; ball.y -= dy*push*0.06;
+        }
+      }
+    }
+
+    computeGround();
+  }
+
+  // ---------- render ----------
+  function tensionColor(strain){
+    // strain 0..1+ where 1 = at break threshold
+    var g = Math.max(0, Math.min(1, 1 - strain*1.05));
+    var r = Math.max(0, Math.min(1, strain*1.15));
+    var R = Math.round(74 + (248-74)*r);
+    var G = Math.round(222 + (113-222)*r);
+    var B = 129 + (r*0);
+    return 'rgb('+R+','+G+','+B+')';
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    var grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#0d0f1a'); grad.addColorStop(1,'#1a2440');
+    ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+
+    // stars
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    for(var i=0;i<40;i++){
+      var sx=(i*97.13)%W, sy=(i*53.7)%(H*0.5);
+      ctx.fillRect(sx, sy, 1.4, 1.4);
+    }
+
+    // ground
+    ctx.fillStyle = '#141a2c';
+    ctx.fillRect(0, GROUND_Y, W, H-GROUND_Y);
+    ctx.strokeStyle = 'rgba(56,189,248,0.35)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0,GROUND_Y); ctx.lineTo(W,GROUND_Y); ctx.stroke();
+
+    // constraints
+    for(var i=0;i<constraints.length;i++){
+      var c = constraints[i];
+      if(!c.alive) continue;
+      var a = points[c.a], b = points[c.b];
+      var d = dist(a,b);
+      var strain = c.breakAt ? (d/c.rest - 1) / (c.breakAt - 1) : 0;
+      if(c.type==='plank'){
+        var dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
+        var nx=-dy/len*7, ny=dx/len*7;
+        ctx.beginPath();
+        ctx.moveTo(a.x+nx,a.y+ny); ctx.lineTo(b.x+nx,b.y+ny);
+        ctx.lineTo(b.x-nx,b.y-ny); ctx.lineTo(a.x-nx,a.y-ny); ctx.closePath();
+        ctx.fillStyle = tensionColor(strain);
+        ctx.fill();
+        ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=1; ctx.stroke();
+      } else if(c.type==='stick'){
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle = '#e8ecf4'; ctx.lineWidth = 5; ctx.lineCap='round'; ctx.stroke();
+        ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2.4; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle = tensionColor(strain);
+        ctx.lineWidth = 3; ctx.lineCap='round'; ctx.stroke();
+      }
+    }
+
+    // pinned anchors
+    for(var i=0;i<points.length;i++){
+      var p = points[i];
+      if(p.pinned){
+        ctx.beginPath(); ctx.arc(p.x,p.y,6,0,7); ctx.fillStyle='#fbbf24'; ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x,p.y,6,0,7); ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1.5; ctx.stroke();
+      }
+    }
+    // ragdoll heads (draw all r>8 points as heads)
+    for(var i=0;i<points.length;i++){
+      var p = points[i];
+      if(p.r > 8){
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7);
+        ctx.fillStyle = '#f0d9b5'; ctx.fill();
+        ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=1.5; ctx.stroke();
+      }
+    }
+    // balls
+    for(var b=0;b<balls.length;b++){
+      var ball = balls[b];
+      var bg = ctx.createRadialGradient(ball.x-ball.r*0.3, ball.y-ball.r*0.3, 1, ball.x, ball.y, ball.r);
+      bg.addColorStop(0,'#94a3b8'); bg.addColorStop(1,'#334155');
+      ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,7);
+      ctx.fillStyle = bg; ctx.fill();
+    }
+
+    if(mode==='cut' && cutPath.length>1){
+      ctx.beginPath();
+      ctx.moveTo(cutPath[0].x, cutPath[0].y);
+      for(var i=1;i<cutPath.length;i++) ctx.lineTo(cutPath[i].x, cutPath[i].y);
+      ctx.strokeStyle='rgba(248,113,113,0.85)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if(mode==='bridge' && bridgeFirst){
+      ctx.beginPath(); ctx.arc(bridgeFirst.x,bridgeFirst.y,8,0,7);
+      ctx.strokeStyle='#38bdf8'; ctx.lineWidth=2; ctx.stroke();
+    }
+
+    document.getElementById('statPts').textContent = points.length + ' pts';
+    document.getElementById('statCons').textContent = constraints.filter(function(c){return c.alive;}).length + ' links';
+    document.getElementById('statSnap').textContent = snappedCount + ' snapped';
+  }
+
+  function loop(){
+    step();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- controls ----------
+  var gravityEl = document.getElementById('gravity');
+  var gravityVal = document.getElementById('gravityVal');
+  gravityEl.addEventListener('input', function(){ GRAVITY = parseFloat(gravityEl.value); gravityVal.textContent = GRAVITY.toFixed(2); markDirty(); });
+
+  var windToggle = document.getElementById('windToggle');
+  windToggle.addEventListener('change', function(){ WIND_ON = windToggle.checked; markDirty(); });
+  var windPow = document.getElementById('windPow');
+  var windPowVal = document.getElementById('windPowVal');
+  windPow.addEventListener('input', function(){ WIND_POW = parseFloat(windPow.value); windPowVal.textContent = WIND_POW.toFixed(2); markDirty(); });
+
+  document.getElementById('btnClear').addEventListener('click', function(){
+    points.length = 0; constraints.length = 0; balls.length = 0; snappedCount = 0;
+    markDirty();
+    showToast('Scene cleared');
+  });
+
+  document.getElementById('btnPng').addEventListener('click', function(){
+    canvas.toBlob(function(blob){
+      if(!blob){ showToast('Export failed'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'rope-rig-' + Date.now() + '.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      showToast('PNG saved');
+    }, 'image/png');
+  });
+
+  function serializeScene(){
+    return {
+      g: GRAVITY, wind: WIND_ON, windPow: WIND_POW,
+      pts: points.map(function(p){ return [Math.round(p.x*10)/10, Math.round(p.y*10)/10, p.pinned?1:0, p.r, p.mass]; }),
+      cons: constraints.filter(function(c){return c.alive;}).map(function(c){
+        return [c.a, c.b, Math.round(c.rest*10)/10, c.type, c.breakAt];
+      }),
+      balls: balls.map(function(b){ return [Math.round(b.x*10)/10, Math.round(b.y*10)/10, b.r]; })
+    };
+  }
+  function loadScene(s){
+    points.length = 0; constraints.length = 0; balls.length = 0; snappedCount = 0;
+    GRAVITY = s.g!==undefined?s.g:0.45; WIND_ON = !!s.wind; WIND_POW = s.windPow!==undefined?s.windPow:0.12;
+    gravityEl.value = GRAVITY; gravityVal.textContent = GRAVITY.toFixed(2);
+    windToggle.checked = WIND_ON; windPow.value = WIND_POW; windPowVal.textContent = WIND_POW.toFixed(2);
+    (s.pts||[]).forEach(function(p){ points.push({x:p[0],y:p[1],px:p[0],py:p[1],pinned:!!p[2],r:p[3]||3,mass:p[4]||1}); });
+    (s.cons||[]).forEach(function(c){ constraints.push({a:c[0],b:c[1],rest:c[2],type:c[3],breakAt:c[4],alive:true}); });
+    (s.balls||[]).forEach(function(b){ balls.push({x:b[0],y:b[1],px:b[0],py:b[1]-1,r:b[2],mass:6}); });
+  }
+
+  var STORAGE_KEY = 'ropeRigSceneV1';
+  var dirtyTimer = null;
+  function markDirty(){
+    if(dirtyTimer) clearTimeout(dirtyTimer);
+    dirtyTimer = setTimeout(function(){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeScene())); }catch(e){}
+    }, 500);
+  }
+
+  document.getElementById('btnExport').addEventListener('click', function(){
+    var blob = new Blob([JSON.stringify(serializeScene(), null, 2)], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'rope-rig-scene.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    showToast('Scene saved as JSON');
+  });
+
+  var fileImport = document.getElementById('fileImport');
+  document.getElementById('btnImport').addEventListener('click', function(){ fileImport.click(); });
+  fileImport.addEventListener('change', function(){
+    var file = fileImport.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var s = JSON.parse(reader.result);
+        loadScene(s);
+        markDirty();
+        showToast('Scene loaded');
+      }catch(e){ showToast('Invalid file'); }
+    };
+    reader.readAsText(file);
+    fileImport.value = '';
+  });
+
+  document.getElementById('btnLink').addEventListener('click', function(){
+    try{
+      var json = JSON.stringify(serializeScene());
+      var b64 = btoa(unescape(encodeURIComponent(json)));
+      var url = location.origin + location.pathname + '#s=' + b64;
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(function(){ showToast('Link copied to clipboard'); }, function(){ promptFallback(url); });
+      } else { promptFallback(url); }
+      history.replaceState(null,'', '#s=' + b64);
+    }catch(e){ showToast('Could not create link'); }
+  });
+  function promptFallback(url){
+    window.prompt('Copy this link:', url);
+  }
+
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 1800);
+  }
+
+  // ---------- boot ----------
+  function boot(){
+    computeGround();
+    var hash = location.hash;
+    if(hash && hash.indexOf('#s=') === 0){
+      try{
+        var json = decodeURIComponent(escape(atob(hash.slice(3))));
+        loadScene(JSON.parse(json));
+      }catch(e){ buildDemoScene(); }
+    } else {
+      var saved = null;
+      try{ saved = localStorage.getItem(STORAGE_KEY); }catch(e){}
+      if(saved){
+        try{ loadScene(JSON.parse(saved)); }catch(e){ buildDemoScene(); }
+      } else {
+        buildDemoScene();
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', function(){ computeGround(); });
+  boot();
+})();
+</script>
+</body>
+</html>

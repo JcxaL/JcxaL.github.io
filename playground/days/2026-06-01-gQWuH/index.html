@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Voxel World Builder</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;color:#e0e0f0;font-family:system-ui,sans-serif;overflow:hidden;height:100dvh;display:flex;flex-direction:column}
+#topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#12121e;border-bottom:1px solid #2a2a40;flex-shrink:0;flex-wrap:wrap}
+#topbar h1{font-size:14px;font-weight:700;color:#a78bfa;letter-spacing:0.05em;white-space:nowrap}
+.sep{width:1px;height:20px;background:#2a2a40}
+.tool-btn{padding:5px 10px;border-radius:6px;border:1px solid #3a3a60;background:#1a1a2e;color:#c0c0e0;font-size:11px;cursor:pointer;transition:all 0.15s}
+.tool-btn:hover,.tool-btn.active{background:#7c3aed;border-color:#9d5eff;color:#fff}
+.tool-btn.danger{border-color:#5a1a1a}
+.tool-btn.danger:hover{background:#9b1c1c;border-color:#ef4444}
+#canvas-wrap{flex:1;position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+#sidebar{position:absolute;top:10px;left:10px;background:#12121e;border:1px solid #2a2a40;border-radius:10px;padding:10px;width:130px;display:flex;flex-direction:column;gap:6px}
+#sidebar label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.08em}
+.block-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}
+.block-btn{width:26px;height:26px;border-radius:4px;border:2px solid transparent;cursor:pointer;transition:all 0.12s;position:relative}
+.block-btn.active{border-color:#fff;transform:scale(1.15)}
+.block-btn:hover{transform:scale(1.1)}
+#mode-btns{display:flex;gap:3px;flex-wrap:wrap}
+.mode-btn{padding:4px 8px;border-radius:5px;border:1px solid #3a3a60;background:#1a1a2e;color:#c0c0e0;font-size:10px;cursor:pointer;transition:all 0.12s}
+.mode-btn.active{background:#7c3aed;border-color:#9d5eff;color:#fff}
+#hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:#12121e;border:1px solid #2a2a40;border-radius:20px;padding:5px 14px;font-size:10px;color:#666;white-space:nowrap;pointer-events:none}
+#undo-count{font-size:10px;color:#666;min-width:30px}
+#grid-slider{width:70px;accent-color:#7c3aed}
+@media(max-width:500px){
+  #sidebar{width:110px;top:6px;left:6px;padding:8px}
+  .block-btn{width:22px;height:22px}
+}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <h1>Voxel World</h1>
+  <div class="sep"></div>
+  <div id="mode-btns">
+    <button class="mode-btn active" data-mode="place">Place</button>
+    <button class="mode-btn" data-mode="erase">Erase</button>
+    <button class="mode-btn" data-mode="paint">Paint</button>
+  </div>
+  <div class="sep"></div>
+  <button class="tool-btn" id="undoBtn">↩ Undo</button>
+  <span id="undo-count"></span>
+  <div class="sep"></div>
+  <label style="font-size:10px;color:#888">Grid</label>
+  <input type="range" id="grid-slider" min="8" max="24" value="16" step="4">
+  <div class="sep"></div>
+  <button class="tool-btn" id="exportBtn">⬇ PNG</button>
+  <button class="tool-btn danger" id="clearBtn">Clear</button>
+</div>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="sidebar">
+    <label>Block</label>
+    <div class="block-grid" id="blockGrid"></div>
+    <label style="margin-top:4px">View</label>
+    <div style="display:flex;gap:3px;flex-wrap:wrap">
+      <button class="mode-btn" id="rotLBtn">◁</button>
+      <button class="mode-btn" id="rotRBtn">▷</button>
+      <button class="mode-btn" id="resetView">⌂</button>
+    </div>
+  </div>
+  <div id="hint">Drag to rotate · Scroll to zoom · Click to place</div>
+</div>
+<script>
+const BLOCKS = [
+  null,
+  {name:'Stone',  top:'#909090',l:'#686868',r:'#505050'},
+  {name:'Grass',  top:'#5cb85c',l:'#3d8b3d',r:'#2d6a2d'},
+  {name:'Wood',   top:'#c49a3c',l:'#8b6914',r:'#6b4e10'},
+  {name:'Sand',   top:'#e8d870',l:'#c8b848',r:'#a89030'},
+  {name:'Metal',  top:'#8899aa',l:'#607080',r:'#405060'},
+  {name:'Lava',   top:'#ff7020',l:'#cc4010',r:'#aa2800'},
+  {name:'Ice',    top:'#b8e4ff',l:'#88c4ee',r:'#5898cc'},
+  {name:'Glass',  top:'#88b8ff',l:'#5588cc',r:'#3366aa',alpha:0.7},
+];
+
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+let W, H;
+let GRID = 16;
+let voxels = new Uint8Array(GRID * GRID * GRID);
+let undoStack = [];
+const MAX_UNDO = 40;
+
+let camYaw = 0.6, camPitch = 0.52;
+let zoom = 1;
+let offsetX = 0, offsetY = 0;
+let mode = 'place';
+let selBlock = 1;
+let isDragging = false, dragStartX, dragStartY, dragYawStart, dragPitchStart;
+let isPinching = false, pinchDist0;
+let hoverVoxel = null;
+
+function vIdx(x,y,z){return y*GRID*GRID + z*GRID + x;}
+function getV(x,y,z){
+  if(x<0||x>=GRID||y<0||y>=GRID||z<0||z>=GRID)return 0;
+  return voxels[vIdx(x,y,z)];
+}
+function setV(x,y,z,v){
+  if(x<0||x>=GRID||y<0||y>=GRID||z<0||z>=GRID)return;
+  voxels[vIdx(x,y,z)]=v;
+}
+
+function resize(){
+  W=cvs.offsetWidth; H=cvs.offsetHeight;
+  cvs.width=W*devicePixelRatio; cvs.height=H*devicePixelRatio;
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  render();
+}
+
+const project = (wx,wy,wz) => {
+  const cosY=Math.cos(camYaw), sinY=Math.sin(camYaw);
+  const rx = wx*cosY + wz*sinY;
+  const rz = -wx*sinY + wz*cosY;
+  const cosP=Math.cos(camPitch), sinP=Math.sin(camPitch);
+  const ry2 = wy*cosP - rz*sinP;
+  const rz2 = wy*sinP + rz*cosP;
+  const tileSize = (W < 500 ? 28 : 36) * zoom;
+  const sx = W/2 + offsetX + rx * tileSize;
+  const sy = H/2 + offsetY - ry2 * tileSize;
+  return {sx, sy, depth: rz2};
+};
+
+function drawFace(pts, fillColor, alpha=1) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].sx, pts[0].sy);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+  ctx.closePath();
+  if(alpha<1){ctx.globalAlpha=alpha;}
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  if(alpha<1){ctx.globalAlpha=1;}
+}
+
+function render() {
+  ctx.clearRect(0,0,W,H);
+  // dark gradient bg
+  const grd = ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,'#0a0a18'); grd.addColorStop(1,'#0f0f20');
+  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+
+  // Determine which faces are visible based on camera yaw
+  const cosY=Math.cos(camYaw), sinY=Math.sin(camYaw);
+  const showPosX = sinY > 0;
+  const showPosZ = cosY > 0;
+
+  // Collect all face draw calls
+  const faces = [];
+
+  for(let y=0;y<GRID;y++){
+    for(let z=0;z<GRID;z++){
+      for(let x=0;x<GRID;x++){
+        const t = getV(x,y,z);
+        if(!t) continue;
+        const B = BLOCKS[t];
+        const alpha = B.alpha||1;
+
+        // Top face (y+1 side) - show if no voxel above
+        if(!getV(x,y+1,z)){
+          const p00=project(x,y+1,z), p10=project(x+1,y+1,z);
+          const p11=project(x+1,y+1,z+1), p01=project(x,y+1,z+1);
+          const depth=(p00.depth+p10.depth+p11.depth+p01.depth)/4;
+          faces.push({depth, color:B.top, alpha, pts:[p00,p10,p11,p01]});
+        }
+        // +X face (right side)
+        if(showPosX && !getV(x+1,y,z)){
+          const p00=project(x+1,y,z), p10=project(x+1,y,z+1);
+          const p11=project(x+1,y+1,z+1), p01=project(x+1,y+1,z);
+          const depth=(p00.depth+p10.depth+p11.depth+p01.depth)/4;
+          faces.push({depth, color:B.r, alpha, pts:[p00,p10,p11,p01]});
+        }
+        // -X face (left side)
+        if(!showPosX && !getV(x-1,y,z)){
+          const p00=project(x,y,z), p10=project(x,y,z+1);
+          const p11=project(x,y+1,z+1), p01=project(x,y+1,z);
+          const depth=(p00.depth+p10.depth+p11.depth+p01.depth)/4;
+          faces.push({depth, color:B.r, alpha, pts:[p00,p10,p11,p01]});
+        }
+        // +Z face (front)
+        if(showPosZ && !getV(x,y,z+1)){
+          const p00=project(x,y,z+1), p10=project(x+1,y,z+1);
+          const p11=project(x+1,y+1,z+1), p01=project(x,y+1,z+1);
+          const depth=(p00.depth+p10.depth+p11.depth+p01.depth)/4;
+          faces.push({depth, color:B.l, alpha, pts:[p00,p10,p11,p01]});
+        }
+        // -Z face (back front)
+        if(!showPosZ && !getV(x,y,z-1)){
+          const p00=project(x,y,z), p10=project(x+1,y,z);
+          const p11=project(x+1,y+1,z), p01=project(x,y+1,z);
+          const depth=(p00.depth+p10.depth+p11.depth+p01.depth)/4;
+          faces.push({depth, color:B.l, alpha, pts:[p00,p10,p11,p01]});
+        }
+      }
+    }
+  }
+
+  // Draw ground grid
+  const gridColor = 'rgba(80,80,160,0.25)';
+  ctx.strokeStyle = gridColor; ctx.lineWidth = 0.5;
+  for(let x=0;x<=GRID;x++){
+    const a=project(x,0,0), b=project(x,0,GRID);
+    ctx.beginPath(); ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); ctx.stroke();
+  }
+  for(let z=0;z<=GRID;z++){
+    const a=project(0,0,z), b=project(GRID,0,z);
+    ctx.beginPath(); ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); ctx.stroke();
+  }
+
+  // Sort and draw faces
+  faces.sort((a,b)=>a.depth-b.depth);
+  for(const f of faces) drawFace(f.pts, f.color, f.alpha);
+
+  // Hover ghost
+  if(hoverVoxel && mode==='place'){
+    const {x,y,z}=hoverVoxel;
+    const B=BLOCKS[selBlock];
+    ctx.globalAlpha=0.45;
+    const p00=project(x,y+1,z),p10=project(x+1,y+1,z);
+    const p11=project(x+1,y+1,z+1),p01=project(x,y+1,z+1);
+    drawFace([p00,p10,p11,p01],B.top);
+    ctx.globalAlpha=1;
+  }
+}
+
+// --- Ray picking ---
+function pickVoxelFromScreen(sx, sy) {
+  // Sweep a ray along the ground plane (y levels 0..GRID-1)
+  // Find voxel closest to click using grid-based search
+  let bestDist = Infinity, bestResult = null;
+  const tileSize = (W < 500 ? 28 : 36) * zoom;
+
+  for(let y=0;y<GRID;y++){
+    for(let z=0;z<GRID;z++){
+      for(let x=0;x<GRID;x++){
+        const t=getV(x,y,z);
+        if(t===0 && mode!=='place') continue;
+        // Check top face hit
+        const p0=project(x,y+1,z), p1=project(x+1,y+1,z);
+        const p2=project(x+1,y+1,z+1), p3=project(x,y+1,z+1);
+        if(pointInQuad(sx,sy,p0,p1,p2,p3)){
+          const dist = -p0.depth;
+          if(dist<bestDist){
+            bestDist=dist;
+            if(mode==='place') bestResult={x,y:y+1,z};
+            else bestResult={x,y,z};
+          }
+        }
+        if(t===0) continue;
+        // Check visible side faces
+        const cosY=Math.cos(camYaw), sinY=Math.sin(camYaw);
+        if(sinY>0){
+          const pA=project(x+1,y,z),pB=project(x+1,y,z+1);
+          const pC=project(x+1,y+1,z+1),pD=project(x+1,y+1,z);
+          if(pointInQuad(sx,sy,pA,pB,pC,pD)){
+            const dist=-pA.depth;
+            if(dist<bestDist){
+              bestDist=dist;
+              bestResult=mode==='place'?{x:x+1,y,z}:{x,y,z};
+            }
+          }
+        } else {
+          const pA=project(x,y,z),pB=project(x,y,z+1);
+          const pC=project(x,y+1,z+1),pD=project(x,y+1,z);
+          if(pointInQuad(sx,sy,pA,pB,pC,pD)){
+            const dist=-pA.depth;
+            if(dist<bestDist){
+              bestDist=dist;
+              bestResult=mode==='place'?{x:x-1,y,z}:{x,y,z};
+            }
+          }
+        }
+        if(cosY>0){
+          const pA=project(x,y,z+1),pB=project(x+1,y,z+1);
+          const pC=project(x+1,y+1,z+1),pD=project(x,y+1,z+1);
+          if(pointInQuad(sx,sy,pA,pB,pC,pD)){
+            const dist=-pA.depth;
+            if(dist<bestDist){
+              bestDist=dist;
+              bestResult=mode==='place'?{x,y,z:z+1}:{x,y,z};
+            }
+          }
+        } else {
+          const pA=project(x,y,z),pB=project(x+1,y,z);
+          const pC=project(x+1,y+1,z),pD=project(x,y+1,z);
+          if(pointInQuad(sx,sy,pA,pB,pC,pD)){
+            const dist=-pA.depth;
+            if(dist<bestDist){
+              bestDist=dist;
+              bestResult=mode==='place'?{x,y,z:z-1}:{x,y,z};
+            }
+          }
+        }
+      }
+    }
+  }
+  return bestResult;
+}
+
+function pointInQuad(px,py,a,b,c,d){
+  return pointInTri(px,py,a,b,c)||pointInTri(px,py,a,c,d);
+}
+function pointInTri(px,py,a,b,c){
+  const d1=sign(px,py,a,b), d2=sign(px,py,b,c), d3=sign(px,py,c,a);
+  const hasNeg=(d1<0)||(d2<0)||(d3<0);
+  const hasPos=(d1>0)||(d2>0)||(d3>0);
+  return !(hasNeg&&hasPos);
+}
+function sign(px,py,a,b){return (px-b.sx)*(a.sy-b.sy)-(a.sx-b.sx)*(py-b.sy);}
+
+// --- Interactions ---
+let lastPointer = null;
+
+cvs.addEventListener('pointerdown', e => {
+  if(e.isPrimary){
+    if(e.pointerType==='mouse' && e.button===2){
+      // right click = erase
+      const v=pickVoxelFromScreen(e.offsetX,e.offsetY);
+      if(v) actionAt(v.x,v.y,v.z,'erase');
+      return;
+    }
+    lastPointer={x:e.offsetX,y:e.offsetY};
+    isDragging=false;
+    dragStartX=e.offsetX; dragStartY=e.offsetY;
+    dragYawStart=camYaw; dragPitchStart=camPitch;
+  }
+  cvs.setPointerCapture(e.pointerId);
+});
+
+cvs.addEventListener('pointermove', e => {
+  if(!e.isPrimary) return;
+  if(lastPointer){
+    const dx=e.offsetX-dragStartX, dy=e.offsetY-dragStartY;
+    if(Math.abs(dx)>4||Math.abs(dy)>4) isDragging=true;
+    if(isDragging){
+      camYaw = dragYawStart + dx * 0.008;
+      camPitch = Math.max(0.15, Math.min(1.2, dragPitchStart + dy * 0.005));
+      hoverVoxel=null;
+      render();
+      return;
+    }
+  }
+  hoverVoxel = pickVoxelFromScreen(e.offsetX, e.offsetY);
+  render();
+});
+
+cvs.addEventListener('pointerup', e => {
+  if(!e.isPrimary) return;
+  if(!isDragging){
+    const v=pickVoxelFromScreen(e.offsetX,e.offsetY);
+    if(v) actionAt(v.x,v.y,v.z,mode);
+  }
+  isDragging=false; lastPointer=null;
+  render();
+});
+
+cvs.addEventListener('contextmenu', e=>e.preventDefault());
+
+cvs.addEventListener('wheel', e=>{
+  e.preventDefault();
+  zoom = Math.max(0.3, Math.min(3, zoom * (e.deltaY>0?0.9:1.1)));
+  render();
+},{passive:false});
+
+// Touch pinch
+const touches = {};
+cvs.addEventListener('touchstart', e=>{
+  for(const t of e.changedTouches) touches[t.identifier]={x:t.clientX,y:t.clientY};
+  if(Object.keys(touches).length===2){
+    const ids=Object.keys(touches);
+    const a=touches[ids[0]],b=touches[ids[1]];
+    pinchDist0=Math.hypot(a.x-b.x,a.y-b.y);
+    isPinching=true;
+  }
+},{passive:true});
+cvs.addEventListener('touchmove', e=>{
+  for(const t of e.changedTouches) touches[t.identifier]={x:t.clientX,y:t.clientY};
+  if(isPinching && Object.keys(touches).length===2){
+    const ids=Object.keys(touches);
+    const a=touches[ids[0]],b=touches[ids[1]];
+    const d=Math.hypot(a.x-b.x,a.y-b.y);
+    zoom=Math.max(0.3,Math.min(3,zoom*(d/pinchDist0)));
+    pinchDist0=d;
+    render();
+  }
+},{passive:true});
+cvs.addEventListener('touchend', e=>{
+  for(const t of e.changedTouches) delete touches[t.identifier];
+  if(Object.keys(touches).length<2) isPinching=false;
+},{passive:true});
+
+function actionAt(x,y,z,m){
+  if(x<0||x>=GRID||y<0||y>=GRID||z<0||z>=GRID) return;
+  pushUndo();
+  if(m==='place') setV(x,y,z,selBlock);
+  else if(m==='erase') setV(x,y,z,0);
+  else if(m==='paint') { if(getV(x,y,z)) setV(x,y,z,selBlock); else return popUndo(); }
+  save();
+  render();
+}
+
+function pushUndo(){
+  undoStack.push(voxels.slice());
+  if(undoStack.length>MAX_UNDO) undoStack.shift();
+  updateUndoUI();
+}
+function popUndo(){undoStack.pop();updateUndoUI();}
+function undo(){
+  if(!undoStack.length) return;
+  voxels=undoStack.pop();
+  updateUndoUI(); save(); render();
+}
+function updateUndoUI(){document.getElementById('undo-count').textContent=undoStack.length?`(${undoStack.length})`:''; }
+
+document.getElementById('undoBtn').onclick=undo;
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();}
+});
+
+// Mode buttons
+document.querySelectorAll('.mode-btn[data-mode]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    mode=btn.dataset.mode;
+    document.querySelectorAll('.mode-btn[data-mode]').forEach(b=>b.classList.toggle('active',b===btn));
+    cvs.style.cursor=mode==='erase'?'not-allowed':mode==='paint'?'cell':'crosshair';
+  });
+});
+
+// Block palette
+const blockGrid = document.getElementById('blockGrid');
+BLOCKS.forEach((b,i)=>{
+  if(!b) return;
+  const btn=document.createElement('button');
+  btn.className='block-btn'+(i===selBlock?' active':'');
+  btn.style.background=b.top;
+  btn.title=b.name;
+  btn.onclick=()=>{
+    selBlock=i;
+    document.querySelectorAll('.block-btn').forEach((el,j)=>{
+      el.classList.toggle('active', parseInt(el.dataset.idx||j+1)===i);
+    });
+    btn.classList.add('active');
+  };
+  btn.dataset.idx=i;
+  blockGrid.appendChild(btn);
+});
+// fix active state on first render — block 1 is selected
+document.querySelectorAll('.block-btn').forEach(btn => {
+  btn.classList.toggle('active', parseInt(btn.dataset.idx) === selBlock);
+});
+
+// Rotation buttons
+document.getElementById('rotLBtn').onclick=()=>{camYaw-=Math.PI/4;render();};
+document.getElementById('rotRBtn').onclick=()=>{camYaw+=Math.PI/4;render();};
+document.getElementById('resetView').onclick=()=>{camYaw=0.6;camPitch=0.52;zoom=1;offsetX=0;offsetY=0;render();};
+
+// Grid slider
+document.getElementById('grid-slider').addEventListener('input', e=>{
+  const ng=parseInt(e.target.value);
+  const nv=new Uint8Array(ng*ng*ng);
+  const copy=Math.min(ng,GRID);
+  for(let y=0;y<copy;y++) for(let z=0;z<copy;z++) for(let x=0;x<copy;x++){
+    nv[y*ng*ng+z*ng+x]=getV(x,y,z);
+  }
+  GRID=ng; voxels=nv; undoStack=[];
+  updateUndoUI(); render();
+});
+
+// Export
+document.getElementById('exportBtn').onclick=()=>{
+  const link=document.createElement('a');
+  const tmpCvs=document.createElement('canvas');
+  tmpCvs.width=cvs.width; tmpCvs.height=cvs.height;
+  tmpCvs.getContext('2d').drawImage(cvs,0,0);
+  link.download='voxel-world.png';
+  link.href=tmpCvs.toDataURL('image/png');
+  link.click();
+};
+
+document.getElementById('clearBtn').onclick=()=>{
+  if(!confirm('Clear all voxels?')) return;
+  pushUndo();
+  voxels=new Uint8Array(GRID*GRID*GRID);
+  save(); render();
+};
+
+// Save / Load
+function save(){
+  try{localStorage.setItem('voxel_v2_'+GRID, JSON.stringify({g:GRID,v:Array.from(voxels)}));}catch(e){}
+}
+function load(){
+  try{
+    const raw=localStorage.getItem('voxel_v2_'+GRID);
+    if(raw){const d=JSON.parse(raw); voxels=new Uint8Array(d.v);}
+    else seedDefault();
+  }catch(e){seedDefault();}
+}
+function seedDefault(){
+  // Flat grass floor + small house
+  for(let x=2;x<GRID-2;x++) for(let z=2;z<GRID-2;z++) setV(x,0,z,2);
+  // stone foundation
+  for(let x=4;x<8;x++) for(let z=4;z<8;z++) setV(x,0,z,1);
+  // walls
+  for(let y=1;y<=3;y++){
+    for(let x=4;x<8;x++){setV(x,y,4,3);setV(x,y,7,3);}
+    for(let z=4;z<8;z++){setV(4,y,z,3);setV(7,y,z,3);}
+  }
+  // roof
+  for(let x=3;x<9;x++) for(let z=3;z<9;z++) setV(x,4,z,4);
+  // door gap
+  setV(5,1,4,0); setV(5,2,4,0);
+  // window
+  setV(6,2,4,8);
+}
+
+load(); render();
+window.addEventListener('resize', resize);
+resize();
+</script>
+</body>
+</html>

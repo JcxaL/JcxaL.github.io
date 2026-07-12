@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ASCII Blob — UI Spotlight</title>
+<style>
+  :root{ --bg:#07080d; --fg:#7dd3fc; --fg2:#f2c14e; --panel:rgba(14,17,24,.72); --line:rgba(255,255,255,.08); }
+  *{box-sizing:border-box;}
+  html,body{height:100%; margin:0; overflow:hidden; background:var(--bg);}
+  body{font-family:ui-monospace,Menlo,Consolas,monospace; color:#e8ecf2;}
+  canvas{display:block; width:100vw; height:100vh; touch-action:none;}
+  .hud{
+    position:fixed; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; align-items:flex-start;
+    pointer-events:none; font-family:system-ui,sans-serif;
+  }
+  .title{font-size:13px; font-weight:700; background:var(--panel); padding:6px 10px; border-radius:8px; border:1px solid var(--line); backdrop-filter:blur(6px);}
+  .title small{display:block; font-weight:400; color:#9aa4b5; font-size:10.5px; margin-top:2px;}
+  .panel{
+    pointer-events:auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 10px;
+    backdrop-filter:blur(8px); font-size:11px; width:150px;
+  }
+  .panel label{display:flex; justify-content:space-between; color:#9aa4b5; margin-top:6px;}
+  .panel label:first-child{margin-top:0;}
+  .panel input[type=range]{width:100%; accent-color:var(--fg2);}
+  .hint{
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%); font-size:11px; color:#9aa4b5;
+    background:var(--panel); padding:5px 12px; border-radius:999px; border:1px solid var(--line); backdrop-filter:blur(6px);
+    font-family:system-ui,sans-serif;
+  }
+  .credit{
+    position:fixed; bottom:10px; right:10px; font-size:10px; color:#5b6478; font-family:system-ui,sans-serif;
+    background:var(--panel); padding:4px 9px; border-radius:8px; border:1px solid var(--line);
+  }
+  .credit a{color:#7dd3fc; text-decoration:none;}
+  @media (max-width:560px){ .panel{display:none;} }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="hud">
+  <div class="title">ASCII Blob<small>Move to disturb the field · Click to burst</small></div>
+  <div class="panel">
+    <label>Density <span id="vDensity">14</span><input type="range" id="density" min="8" max="22" value="14"></label>
+    <label>Ripple <span id="vRipple">1.0</span><input type="range" id="ripple" min="0" max="20" value="10"></label>
+    <label>Speed <span id="vSpeed">1.0</span><input type="range" id="speed" min="0" max="20" value="10"></label>
+  </div>
+</div>
+<div class="hint">Drop 1 of 5 · Animation</div>
+<div class="credit">Inspired by Migrim/Ascii-Blob · UI Spotlight Day 50 · Drop #1</div>
+
+<script>
+(function(){
+  'use strict';
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+  var W=0,H=0;
+  var RAMP = " .:-=+*#%@";
+  var mouse = {x:-9999,y:-9999,active:false};
+  var burst = null; // {x,y,t0}
+  var t0 = null;
+
+  var params = { density:14, ripple:1.0, speed:1.0 };
+
+  function bindSlider(id, key, scale){
+    var el = document.getElementById(id);
+    var lbl = document.getElementById('v'+id.charAt(0).toUpperCase()+id.slice(1));
+    el.addEventListener('input', function(){
+      params[key] = (+el.value) * scale;
+      if(lbl) lbl.textContent = params[key].toFixed(1);
+    });
+  }
+  bindSlider('density','density',1);
+  bindSlider('ripple','ripple',0.1);
+  bindSlider('speed','speed',0.1);
+  document.getElementById('vDensity').textContent = 14;
+
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function noise(x,y,t){
+    return (
+      Math.sin(x*0.09 + t*0.6) * Math.cos(y*0.11 - t*0.5) +
+      Math.sin((x+y)*0.045 + t*0.32) * 0.8 +
+      Math.cos((x-y)*0.06 - t*0.4) * 0.6
+    ) / 2.4;
+  }
+
+  function frame(ts){
+    if(t0===null) t0 = ts;
+    var t = (ts-t0)/1000 * params.speed;
+    ctx.fillStyle = '#07080d';
+    ctx.fillRect(0,0,W,H);
+
+    var cell = params.density;
+    ctx.font = (cell*1.15).toFixed(1)+'px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    var cols = Math.ceil(W/cell)+1, rows = Math.ceil(H/cell)+1;
+    var burstActive = burst && (performance.now()-burst.t0) < 900;
+    var burstAge = burstActive ? (performance.now()-burst.t0)/900 : 1;
+
+    for(var gy=0; gy<rows; gy++){
+      for(var gx=0; gx<cols; gx++){
+        var x = gx*cell, y = gy*cell;
+        var n = noise(gx,gy,t);
+        var dxm = x-mouse.x, dym = y-mouse.y;
+        var distm = Math.sqrt(dxm*dxm+dym*dym);
+        var falloff = Math.max(0, 1 - distm/220);
+        var ripple = Math.sin(distm*0.08 - t*4) * falloff * params.ripple;
+
+        var ox=0, oy=0, extraScale=0, glow=0;
+        if(falloff>0){
+          var ang = Math.atan2(dym,dxm);
+          ox = Math.cos(ang)*ripple*2;
+          oy = Math.sin(ang)*ripple*2 + ripple*1.5;
+          extraScale = falloff*0.5;
+          glow = falloff;
+        }
+
+        if(burstActive){
+          var dxb = x-burst.x, dyb = y-burst.y;
+          var distb = Math.sqrt(dxb*dxb+dyb*dyb);
+          var ringR = burstAge*260;
+          var ringDist = Math.abs(distb-ringR);
+          if(ringDist<70){
+            var bstrength = (1-burstAge) * (1-ringDist/70);
+            var bang = Math.atan2(dyb,dxb);
+            ox += Math.cos(bang)*bstrength*26;
+            oy += Math.sin(bang)*bstrength*26;
+            extraScale += bstrength*0.9;
+            glow += bstrength;
+          }
+        }
+
+        var v = (n+1)/2 + glow*0.5;
+        v = Math.max(0, Math.min(1, v));
+        var ci = Math.floor(v*(RAMP.length-1));
+        var ch = RAMP[ci];
+        if(ch===' ') continue;
+
+        var alpha = 0.25 + v*0.65;
+        var hue = 198 + glow*40;
+        ctx.fillStyle = glow>0.05 ? 'hsla('+hue+',80%,'+(60+glow*15)+'%,'+alpha+')' : 'rgba(125,211,252,'+alpha+')';
+        ctx.save();
+        ctx.translate(x+ox, y+oy);
+        var sc = 1+extraScale;
+        ctx.scale(sc,sc);
+        ctx.fillText(ch, 0, 0);
+        ctx.restore();
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function setMouse(clientX, clientY){
+    mouse.x = clientX; mouse.y = clientY; mouse.active = true;
+  }
+  cv.addEventListener('pointermove', function(e){ setMouse(e.clientX, e.clientY); });
+  cv.addEventListener('pointerleave', function(){ mouse.x=-9999; mouse.y=-9999; });
+  cv.addEventListener('pointerdown', function(e){
+    setMouse(e.clientX, e.clientY);
+    burst = { x:e.clientX, y:e.clientY, t0: performance.now() };
+  });
+})();
+</script>
+</body>
+</html>
