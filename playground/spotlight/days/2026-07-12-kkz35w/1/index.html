@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticky Reveal Grid — UI Spotlight</title>
+<style>
+  :root{ --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#05070d;color:#fff;font-family:system-ui,-apple-system,sans-serif;}
+
+  .back-link{
+    position:fixed; top:16px; left:16px; z-index:60;
+    background:rgba(20,24,36,0.6); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.12);
+    color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:9px 14px; border-radius:999px;
+  }
+
+  #debug{
+    position:fixed; top:16px; right:16px; z-index:60; width:180px;
+    background:rgba(14,18,30,0.7); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.12);
+    border-radius:14px; padding:14px; font-size:12px;
+  }
+  #debug h4{margin:0 0 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ab;}
+  #debug .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+  #debug .stat{color:var(--accent);font-weight:700;}
+  #debug button{
+    width:100%; margin-top:2px; background:var(--accent); border:none; color:#04202f; font-weight:700;
+    font-size:11.5px; padding:8px; border-radius:8px; cursor:pointer;
+  }
+  @media (max-width:640px){ #debug{ display:none; } }
+
+  .intro, .outro{
+    height:60vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:0 24px;
+  }
+  .intro p, .outro p{ color:rgba(255,255,255,0.45); font-size:14px; max-width:360px; margin:10px auto 0; }
+  .intro h2, .outro h2{ font-size:clamp(1.5rem,4vw,2.4rem); font-weight:800; margin:0; }
+
+  .track{ position:relative; height:400vh; }
+  .sticky{
+    position:sticky; top:0; height:100vh; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .gridWrap{ width:min(640px,84vw); aspect-ratio:3/4; position:relative; }
+  .grid{
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(4,1fr); gap:10px;
+    width:100%; height:100%; will-change:transform;
+  }
+  .tile{
+    border-radius:14px; will-change:transform,opacity;
+    display:flex; align-items:flex-end; padding:10px; font-size:11px; font-weight:700; color:rgba(255,255,255,0.75);
+    background-size:cover; background-position:center;
+  }
+  .titleOverlay{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; pointer-events:none; opacity:0;
+  }
+  .titleOverlay h1{ font-size:clamp(1.8rem,5vw,3rem); font-weight:800; margin:0 0 8px; }
+  .titleOverlay p{ color:rgba(255,255,255,0.6); font-size:14px; margin:0; }
+
+  footer{
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:60;
+    font-size:11px; color:rgba(255,255,255,0.45); background:rgba(10,12,20,0.5); backdrop-filter:blur(8px);
+    padding:6px 12px; border-radius:999px; white-space:nowrap; display:none;
+  }
+  @media (min-width:900px){ footer{ display:block; } }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">&larr; All 5 drops</a>
+
+<div id="debug">
+  <h4>Scroll Debug</h4>
+  <div class="row"><span>Phase</span><span class="stat" id="phaseLabel">Reveal</span></div>
+  <div class="row"><span>Progress</span><span class="stat" id="progressLabel">0%</span></div>
+  <button id="restartBtn">Restart ↑</button>
+</div>
+
+<div class="intro">
+  <div>
+    <h2>Scroll to reveal</h2>
+    <p>A 12-tile grid enters in staggered columns, then the whole board zooms open before the title locks in.</p>
+  </div>
+</div>
+
+<div class="track" id="track">
+  <div class="sticky">
+    <div class="gridWrap">
+      <div class="grid" id="grid"></div>
+      <div class="titleOverlay" id="titleOverlay">
+        <h1>Field Notes</h1>
+        <p>A collection, revealed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="outro">
+  <div>
+    <h2>Content locked in</h2>
+    <p>Keep scrolling past the pinned section and normal document flow resumes.</p>
+  </div>
+</div>
+
+<footer>Inspired by Codrops &middot; "Sticky Grid Scroll" &middot; UI Spotlight Day 57 &middot; Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+  var track = document.getElementById("track");
+  var grid = document.getElementById("grid");
+  var titleOverlay = document.getElementById("titleOverlay");
+  var phaseLabel = document.getElementById("phaseLabel");
+  var progressLabel = document.getElementById("progressLabel");
+  var restartBtn = document.getElementById("restartBtn");
+
+  var COLORS = ["#38bdf8","#818cf8","#34d399","#f472b6","#fbbf24","#a78bfa","#fb923c","#4ade80","#f87171","#60a5fa","#e879f9","#2dd4bf"];
+  var TILE_COUNT = 12;
+
+  for(var i=0;i<TILE_COUNT;i++){
+    var tile = document.createElement("div");
+    tile.className = "tile";
+    tile.style.background = "linear-gradient(160deg,"+COLORS[i]+"cc,"+COLORS[i]+"44)";
+    tile.textContent = "#" + (i+1);
+    grid.appendChild(tile);
+  }
+  var tiles = Array.prototype.slice.call(grid.children);
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function localProgress(p, start, end){ return clamp((p-start)/(end-start), 0, 1); }
+  function ease(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+
+  var ticking = false;
+
+  function update(){
+    ticking = false;
+    var scrollable = track.offsetHeight - window.innerHeight;
+    var raw = scrollable > 0 ? (window.scrollY - track.offsetTop) / scrollable : 0;
+    var p = clamp(raw, 0, 1);
+
+    var revealP = localProgress(p, 0, 0.45);
+    var zoomP = localProgress(p, 0.45, 0.9);
+    var contentP = localProgress(p, 0.9, 1);
+
+    tiles.forEach(function(tile, i){
+      var col = i % 3, row = Math.floor(i/3);
+      var stagger = clamp(revealP*1.5 - row*0.12, 0, 1);
+      var e = ease(stagger);
+      var fromY = col % 2 === 0 ? -140 : 140;
+      var revealY = lerp(fromY, 0, e);
+      var revealOpacity = lerp(0, 1, e);
+
+      var zEase = ease(zoomP);
+      var lateralX = col === 0 ? lerp(0,-30,zEase) : col === 2 ? lerp(0,30,zEase) : 0;
+      var centerY = col === 1 ? (row % 2 === 0 ? lerp(0,-24,zEase) : lerp(0,24,zEase)) : 0;
+
+      tile.style.opacity = revealOpacity;
+      tile.style.transform = "translate(" + lateralX + "%," + (revealY + centerY) + "%)";
+    });
+
+    var scale = lerp(1, 2.05, ease(zoomP));
+    grid.style.transform = "scale(" + scale + ")";
+
+    titleOverlay.style.opacity = contentP;
+    titleOverlay.style.transform = "translateY(" + lerp(24,0,ease(contentP)) + "px)";
+
+    var phase = p < 0.45 ? "Reveal" : p < 0.9 ? "Zoom" : "Content";
+    phaseLabel.textContent = phase;
+    progressLabel.textContent = Math.round(p*100) + "%";
+  }
+
+  function onScroll(){
+    if(!ticking){ ticking = true; requestAnimationFrame(update); }
+  }
+  window.addEventListener("scroll", onScroll, { passive:true });
+  window.addEventListener("resize", onScroll);
+  restartBtn.addEventListener("click", function(){
+    window.scrollTo({ top:0, behavior:"smooth" });
+  });
+
+  update();
+})();
+</script>
+</body>
+</html>
