@@ -105,6 +105,43 @@ jobs:
           print(f"OK  total   : {len(days)} day(s) in manifest")
           EOF
 
+      - name: Validate travel bundle
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+
+          # The travel bundle deploys incrementally, so it is optional and has
+          # no "exactly 1 active" rule — validate only that what exists is sound.
+          mp = "travel/manifest.json"
+          if not os.path.exists(mp):
+              print("OK  travel : no bundle present (skipped)")
+              sys.exit(0)
+
+          with open(mp) as f:
+              try:
+                  m = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"ERROR: travel/manifest.json is not valid JSON — {e}")
+                  sys.exit(1)
+
+          if not os.path.exists("travel/index.html"):
+              print("ERROR: travel/index.html (the hub) is missing")
+              sys.exit(1)
+
+          stops = m.get("stops", [])
+          missing = []
+          for s in stops:
+              folder = s.get("folder", s.get("date", ""))
+              if not os.path.exists(f"travel/stops/{folder}/index.html"):
+                  missing.append(folder)
+          if missing:
+              for folder in missing:
+                  print(f"ERROR: travel stop HTML missing — travel/stops/{folder}/index.html")
+              sys.exit(1)
+
+          print(f"OK  travel : hub + {len(stops)} stop(s) in manifest")
+          EOF
+
   # ── 2. Build Next.js and overlay the playground ─────────────────────────
   build:
     needs: validate-playground
@@ -156,9 +193,10 @@ jobs:
       - name: Build with Next.js
         run: pnpm build
 
-      - name: Overlay playground at /playground/
+      - name: Overlay playground and travel
         run: |
           cp -r playground ./out/playground
+          [ -d travel ] && cp -r travel ./out/travel
           cp CNAME ./out/CNAME
           echo "out/ contents:"
           find ./out -maxdepth 2 | sort
