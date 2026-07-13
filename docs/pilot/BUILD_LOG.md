@@ -5,6 +5,16 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · DoD — keyboard traversal audit
+- **Shipped:** `scratchpad/pw/keyboard.mjs` results in `DOD.md`. Tab reaches all
+  interactive elements; a skip link leads every surface; focus order is sane.
+  Visible-focus: Paris Line / Atlas / Station **0 without indicator**; Concourse
+  6/25 stops (all pre-existing redesign components) flagged for the manual pass.
+- **Gate D** keyboard item now partial-green (pilot surfaces clean; one
+  pre-existing-component flag parked). Remaining: 60fps perf, manual SR.
+
+---
+
 ### 2026-07-12 · DoD — axe-core a11y audit (WCAG 2 A/AA green)
 - **Shipped:** an automated axe-core pass (wcag2a/2aa/21a/21aa) over all four
   surfaces → **0 violations** each. Two real color-contrast misses caught and

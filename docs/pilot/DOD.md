@@ -27,15 +27,22 @@ Chromium at a mobile viewport (390×800), each surface loaded in both default an
 - **Alt coverage**: no `<img>` without alt (bindings also enforce non-empty alt
   at build time, so this holds through convergence).
 - **Slot integration** renders as expected.
+- **Keyboard traversal** (partial-green): Tab reaches all interactive elements,
+  a "Skip to concourse" skip link leads every surface, and focus order is sane.
+  Visible-focus check: Paris Line (21 stops), Atlas (18), Station (2) — **0
+  without a detected focus indicator**. Concourse: 6 of 25 stops had no
+  outline/box-shadow the automated check could see — all in **pre-existing
+  redesign components** (Ticket / DepartureBoard rows / TransitDiagram); could be
+  custom focus styling the check misses. Flagged for the manual pass; not a
+  pilot-surface regression. Method: `scratchpad/pw/keyboard.mjs`.
 
 ## Not yet verified (pending units — tracked here so it's not mistaken for done)
 - **60fps on mid-range mobile** — needs a perf-profiling pass (trace + FPS) once
   the motion/3D layers land. → perf unit.
 - **No-WebGL fallback** — trivially green today (no 3D scenes built yet); becomes
   meaningful when the Stage/scene kit ships. → verify with scenes.
-- **Keyboard traversal correctness** (focus order, visible focus, traps) — axe
-  covers ARIA/contrast, not full keyboard operability; only focusable *count* is
-  checked so far. → keyboard sweep unit.
+- **Concourse focus indicators** — 6 pre-existing-component stops need a visible
+  focus ring (or confirmation their custom focus styling is sufficient). → manual pass.
 - **Full manual SR pass** — automated axe ≠ complete a11y; a screen-reader
   walkthrough of each surface remains.
 
