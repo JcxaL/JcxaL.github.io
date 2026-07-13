@@ -5,6 +5,25 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · Phase 1 — Station exhibit surface (3 of 3) + contrast fix
+- **Shipped:** `/station/[slug]` — the third flagship surface, an immersive
+  station room (`/station/paris`): A01 plate + title, the 16:9 `station.paris.hero`
+  slot, a long-form field note (inline placeholder prose), a facts rail, and the
+  `station.paris.ambient.loop` video slot. Self-contained (inline content) to
+  avoid the station-schema/loader traps; a full content pipeline is a later unit.
+  **All three flagship surfaces are now media-independent — gate B met.**
+- **Bug fixed (tokens-only + a11y):** several pilot CSS files used
+  `var(--color-ink, …)` — a **non-existent** token — so labels/prose always fell
+  back to white and vanished in light mode. Root-caused and corrected to
+  `--color-ink-signage` (theme-aware) in MediaSlot, Atlas, and Station styles.
+  This is the light-mode contrast issue flagged in earlier passes.
+- **Verified:** tsc clean · build clean (`/station/paris` prerenders static) ·
+  both slots present · headless screenshot, zero console errors.
+- **Next:** a11y contrast/keyboard sweep (axe); component-gallery + scene-kit
+  Atlas docs; the `--depth-*` token scale.
+
+---
+
 ### 2026-07-12 · Phase 1 — Concourse home made media-independent
 - **Shipped:** the Concourse (`/`) network-map panel now leads with
   `<MediaSlot slot={CONCOURSE_HERO}>` (21:9 aerial, `concourse.hero.aerial`) —
