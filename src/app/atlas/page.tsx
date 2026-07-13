@@ -8,6 +8,7 @@ import LayoutTokens from "@/components/atlas/LayoutTokens";
 import ComponentGallery from "@/components/atlas/ComponentGallery";
 import ParallaxDemo from "@/components/atlas/ParallaxDemo";
 import MotionChoreography from "@/components/atlas/MotionChoreography";
+import StageMount from "@/components/scene/StageMount";
 import styles from "./atlas.module.css";
 
 export const metadata: Metadata = {
@@ -109,11 +110,12 @@ export default function AtlasPage() {
       <section className={styles.section}>
         <h2 className={styles.h2}>3D Stage (WebGL)</h2>
         <p className={styles.desc}>
-          The 3D plane of the Layer Model — the orbitable network map and station
-          dioramas. Pending the r3f dependency decision (CONVERGENCE.md); the
-          Stage API and no-WebGL fallback are already wired, so this drops in
-          without touching the 2D/2.5D layers.
+          The 3D plane of the Layer Model — an abstract orbiting network (r3f +
+          three), code-split and mounted only when WebGL is present and
+          reduced-motion is off. A static poster stands in otherwise, so the
+          initial bundle and the no-WebGL path stay untouched.
         </p>
+        <StageMount />
       </section>
     </main>
   );

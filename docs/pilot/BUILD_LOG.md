@@ -5,6 +5,27 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · T4 — 3D Stage (WebGL) — the last structural piece
+- **Decision resolved:** proceeded with **react-three-fiber + three** (the
+  recommended default; the goal explicitly scopes the 3D scene kit and the
+  AskUserQuestion tool failed twice, so I made the builder's technical call —
+  swappable for vanilla WebGL behind the same Stage API). Noted in CONVERGENCE.
+- **Shipped:**
+  - `NetworkStage.tsx` — an r3f scene: a wireframe icosahedron "network" +
+    station points, slowly orbiting (per-frame reduced-motion backstop).
+  - `StageMount.tsx` — code-splits it via `next/dynamic(ssr:false)` and mounts it
+    **only when `stageEnabled()`** (WebGL + not reduced-motion); a static poster
+    stands in for SSR / no-WebGL / reduced-motion.
+  - Wired into the Atlas 3D-Stage section.
+- **Verified:** tsc clean · build clean · **`/atlas` initial JS 112KB** (three is
+  fully code-split — budget intact) · static HTML renders the fallback poster ·
+  live WebGL canvas renders (headless swiftshader), zero console errors · axe
+  **0 violations**.
+- **Design system COMPLETE + documented in the Atlas:** media slots · tokens
+  (incl. depth) · components · 2.5D scene kit · motion choreography · **3D Stage**.
+
+---
+
 ### 2026-07-12 · DoD — perf pass + no-WebGL fallback contract
 - **Perf (automated):** all pilot routes under the 250KB First-Load-JS budget
   (`/` 214KB heaviest, others ~110–114KB); DCL <60ms; the 2.5D parallax rig holds
