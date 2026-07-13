@@ -5,6 +5,18 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · Phase 0 — Stage API contract (Layer Model)
+- **Shipped:** `src/lib/stage/types.ts` — the imperative `StageAPI`
+  (`focus`/`setLine`/`progress`/`reset` + `active`), `NOOP_STAGE` fallback, and
+  the `stageEnabled()` gate (`hasWebGL()` && !`prefersReducedMotion()`). Lets the
+  2D/2.5D tracks drive the 3D Stage without depending on it existing — the
+  keystone that keeps the no-WebGL / reduced-motion path correct by construction.
+- **Verified:** `tsc --noEmit` clean.
+- **Next:** a `StageProvider` + `useStage()` context (wires real scene ↔ fallback)
+  when the first scene lands; token contract (T1); vertical-slice kickoff.
+
+---
+
 ### 2026-07-12 · Phase 0 — media-slot contract (the linchpin)
 - **Branch cut:** `pilot/main` off the travel WIP branch (`…-6a8dah`, caught up
   to `main`). Knobs taken as "owner's call": build on the WIP branch · r3f for 3D
