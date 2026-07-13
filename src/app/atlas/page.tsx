@@ -6,6 +6,7 @@ import TypeTokens from "@/components/atlas/TypeTokens";
 import MotionTokens from "@/components/atlas/MotionTokens";
 import LayoutTokens from "@/components/atlas/LayoutTokens";
 import ComponentGallery from "@/components/atlas/ComponentGallery";
+import ParallaxDemo from "@/components/atlas/ParallaxDemo";
 import styles from "./atlas.module.css";
 
 export const metadata: Metadata = {
@@ -84,10 +85,21 @@ export default function AtlasPage() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.h2}>Motion choreography · Scene kit</h2>
+        <h2 className={styles.h2}>Scene kit — 2.5D Parallax</h2>
         <p className={styles.desc}>
-          Documented here as each lands — the motion vocabulary and the 3D scene
-          primitives. (In progress.)
+          The Parallax plane of the Layer Model: depth layers at{" "}
+          <code>--depth-near/mid/far</code> inside a pointer-tilt rig,
+          dependency-free CSS 3D that flattens under reduced-motion. The 3D Stage
+          (WebGL) layers behind this — pending the r3f decision in CONVERGENCE.md.
+        </p>
+        <ParallaxDemo />
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.h2}>Motion choreography · 3D Stage</h2>
+        <p className={styles.desc}>
+          Documented here as each lands — the timeline/scroll choreography
+          vocabulary and the WebGL scene primitives. (In progress.)
         </p>
       </section>
     </main>

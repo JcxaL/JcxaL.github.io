@@ -154,14 +154,15 @@ export default function LayoutTokens() {
               color: "var(--color-ink-muted)",
             }}
           >
-            TODO · not yet defined
+            Layer Model · defined
           </span>
           <span style={{ fontSize: "13px", color: "var(--color-ink-signage)" }}>
-            <code style={tokenName}>--depth-*</code> scale: not yet defined (Layer Model TODO)
+            <code style={tokenName}>--depth-*</code> scale (parallax planes)
           </span>
           <span style={{ fontSize: "11.5px", lineHeight: 1.5, color: "var(--color-ink-muted)" }}>
-            The Layer Model needs a depth / z-index scale; no <code>--depth-*</code> tokens exist in
-            tokens.json yet — placeholder until the scale is authored.
+            <code>--depth-perspective</code> 1000px · <code>--depth-near</code> −120px ·{" "}
+            <code>--depth-mid</code> −320px · <code>--depth-far</code> −640px. Drives the
+            2.5D Parallax rig — see the Scene kit section.
           </span>
         </div>
       </div>

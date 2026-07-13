@@ -5,6 +5,27 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · T1/T4 — depth token scale + 2.5D Parallax scene kit
+- **Shipped:**
+  - **`--depth-*` scale** added to `tokens.json` (perspective + near/mid/far
+    parallax planes) → regenerated via `pnpm tokens`; the generic generator
+    emitted them cleanly. Closes the Layer-Model depth TODO; LayoutTokens Atlas
+    card now documents the values.
+  - **`ParallaxRig`** (`src/components/scene/ParallaxRig.tsx` + module.css) — the
+    2.5D Parallax plane: a perspective container that tilts depth layers toward
+    the pointer. Dependency-free CSS 3D; flat under reduced-motion (JS listener
+    skipped + CSS backstop); flat at SSR/first paint.
+  - **Atlas Scene-kit section** with a live `ParallaxDemo` (three planes at
+    `--depth-near/mid/far` with translateZ scale-compensation).
+- **Verified:** tsc clean · build clean (token regen included) · demo renders +
+  tilts · axe **0 violations** all surfaces · screenshot confirms the 3D depth.
+- **Deferred (parked in CONVERGENCE):** the 3D **Stage** (WebGL/r3f) layer needs
+  the r3f dependency decision. The Stage API + fallback are already in place.
+- **Next:** motion-choreography Atlas entry; 60fps perf pass; then the r3f Stage
+  once the dep is confirmed.
+
+---
+
 ### 2026-07-12 · T2 — component gallery in the Atlas (parallel workflow)
 - **Shipped:** `/atlas` now has a **Components** section — live doc-cards for
   `SplitFlapBoard`, `DotMatrixSign`, `StationPlate`, `StatusLegend`, each
