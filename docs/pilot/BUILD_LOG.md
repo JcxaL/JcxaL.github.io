@@ -5,6 +5,22 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · T2 — component gallery in the Atlas (parallel workflow)
+- **Shipped:** `/atlas` now has a **Components** section — live doc-cards for
+  `SplitFlapBoard`, `DotMatrixSign`, `StationPlate`, `StatusLegend`, each
+  rendering a real instance from the component's actual props
+  (`src/components/atlas/gallery/*Card.tsx` + `ComponentGallery.tsx`).
+- **How:** a 4-agent parallel **Workflow** — each read the real props interface +
+  a usage example and authored one card; all typechecked first try, integrated
+  in one pass.
+- **Verified:** tsc clean · build clean · gallery renders in static HTML · axe
+  re-run **still 0 violations** across all surfaces (live components are
+  contrast-safe). Advances gate A: media slots ✅ + tokens ✅ + **components ✅**;
+  motion-choreography + scene-kit remain.
+- **Next:** motion-choreography Atlas entry; the 3D scene-kit + `--depth-*` scale.
+
+---
+
 ### 2026-07-12 · DoD — keyboard traversal audit
 - **Shipped:** `scratchpad/pw/keyboard.mjs` results in `DOD.md`. Tab reaches all
   interactive elements; a skip link leads every surface; focus order is sane.

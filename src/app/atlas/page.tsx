@@ -5,6 +5,7 @@ import ColorTokens from "@/components/atlas/ColorTokens";
 import TypeTokens from "@/components/atlas/TypeTokens";
 import MotionTokens from "@/components/atlas/MotionTokens";
 import LayoutTokens from "@/components/atlas/LayoutTokens";
+import ComponentGallery from "@/components/atlas/ComponentGallery";
 import styles from "./atlas.module.css";
 
 export const metadata: Metadata = {
@@ -74,10 +75,19 @@ export default function AtlasPage() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.h2}>Components · Motion choreography · Scene kit</h2>
+        <h2 className={styles.h2}>Components</h2>
         <p className={styles.desc}>
-          Documented here as each lands — the component gallery, the motion
-          vocabulary, and the 3D scene primitives. (In progress.)
+          The transit UI kit — boards, signs, plates, legends. Each card renders
+          a live instance from the real component.
+        </p>
+        <ComponentGallery />
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.h2}>Motion choreography · Scene kit</h2>
+        <p className={styles.desc}>
+          Documented here as each lands — the motion vocabulary and the 3D scene
+          primitives. (In progress.)
         </p>
       </section>
     </main>
