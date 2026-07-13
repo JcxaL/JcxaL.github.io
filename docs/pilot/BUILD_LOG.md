@@ -5,6 +5,21 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · Phase 0 — Atlas route (design-system docs surface)
+- **Shipped:** `/atlas` (`src/app/atlas/page.tsx` + `atlas.module.css`) — the
+  living design-system documentation surface (CHARTER T7), noindex. v1 is a live
+  **media-slot gallery**: renders all 6 `REGISTERED_SLOTS` as real `<MediaSlot>`
+  placeholders, proving the media-independent contract works in-app. Inherits
+  the transit chrome; sections stubbed for tokens/components/motion/scene-kit.
+- **Verified:** tsc clean · build clean (`/atlas` prerenders static, 1.11 kB) ·
+  placeholders present in static HTML · headless screenshot, zero console errors.
+- **Known polish:** placeholder id label is low-contrast in light mode (caption
+  below is AA-legible) — parked for the a11y sweep.
+- **Next:** token contract (T1) documented into the Atlas; then the Paris
+  vertical slice (Phase 1).
+
+---
+
 ### 2026-07-12 · Phase 0 — media-manifest integrity guard
 - **Shipped:** `__tests__/media-manifest.test.ts` + `pnpm media:check`. The
   registry is TS+zod (unrunnable by the repo's `.mjs` codegen), so instead of a
