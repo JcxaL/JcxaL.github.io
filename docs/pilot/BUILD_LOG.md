@@ -5,6 +5,23 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · Phase 0 — media-slot review fixes (all 10 findings)
+- Independent review verdict: contract sound & safe to build on. Closed every
+  finding (Ultracode — not just the blocker):
+  - **MAJOR** — `bindings.ts` (the file humans edit at convergence) now has a
+    `mediaBindingSchema` (required alt, valid src reused from content schema) +
+    load-time validation, and a new `reconcile.ts` (`reconcileBindings` /
+    `unboundSlots`) catching typo'd ids & kind mismatches that used to ship green.
+  - Placeholder tint now uses real tokens (`--color-lines-*` / `--color-board-amber`).
+  - `line` is a real `z.enum` (cast removed → runtime matches type).
+  - Cross-field `superRefine` (orientation ⟷ aspect; video-only fields).
+  - Reduced-motion-aware bound video (`BoundVideo`); unified single `.frame`
+    node across states; orientation-aware `sizes`; dead-code + comment fixes.
+- **Tests:** `__tests__/media-slot.test.ts` — 13 passing (schema guards, binding
+  validation, reconciler). **Verified:** tsc clean · jest 13/13 · build clean.
+
+---
+
 ### 2026-07-12 · Phase 0 — Stage API contract (Layer Model)
 - **Shipped:** `src/lib/stage/types.ts` — the imperative `StageAPI`
   (`focus`/`setLine`/`progress`/`reset` + `active`), `NOOP_STAGE` fallback, and

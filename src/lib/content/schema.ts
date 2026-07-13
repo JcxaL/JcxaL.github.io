@@ -43,7 +43,7 @@ const geoPointSchema = z.object({
 });
 
 /** Root-absolute path ("/images/…") or full http(s) URL. */
-const mediaRefSchema = z
+export const mediaRefSchema = z
   .string()
   .refine((v) => v.startsWith("/") || /^https?:\/\/\S+$/.test(v), {
     error: 'Must be a root-absolute path (e.g. "/images/…") or a full http(s) URL',
