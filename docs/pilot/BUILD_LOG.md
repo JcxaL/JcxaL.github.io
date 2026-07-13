@@ -5,6 +5,19 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · Phase 0 — media-manifest integrity guard
+- **Shipped:** `__tests__/media-manifest.test.ts` + `pnpm media:check`. The
+  registry is TS+zod (unrunnable by the repo's `.mjs` codegen), so instead of a
+  file-writer the manifest is kept honest by a **CI guard**: fails if any
+  declared slot is missing from `MEDIA_MANIFEST.md`, if the stated count is
+  wrong, or if a binding fails `reconcileBindings()`. Drift-proof — this is the
+  enforcement behind the convergence gate "manifest enumerates every slot."
+- **Verified:** jest 16/16 (contract + manifest guard).
+- **Next:** token contract (T1) — surface `tokens.json` as a typed, documented
+  contract; then the design-system Atlas route; then the Paris vertical slice.
+
+---
+
 ### 2026-07-12 · Phase 0 — media-slot review fixes (all 10 findings)
 - Independent review verdict: contract sound & safe to build on. Closed every
   finding (Ultracode — not just the blocker):
