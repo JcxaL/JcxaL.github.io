@@ -5,6 +5,21 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · T1 — token documentation in the Atlas (parallel workflow)
+- **Shipped:** the Atlas now documents the full token system —
+  `src/components/atlas/{ColorTokens,TypeTokens,MotionTokens,LayoutTokens}.tsx`
+  wired into `/atlas`. 22 color swatches (live CSS vars → theme-switch), 6 type
+  specimens, the motion duration/easing table, layout radii + measure, and an
+  explicit **`--depth-*` "not yet defined (Layer Model TODO)"** note.
+- **How:** a 4-agent parallel **Workflow** (one component per token category,
+  disjoint files) — the parallel-build model this pilot is designed for. All 4
+  authored against the real `tokens.json`/`tokens.css`; integrated in one pass.
+- **Verified:** tsc clean · build clean (`/atlas` static) · headless screenshot,
+  zero console errors. Advances gate A (design system documented).
+- **Follow-up:** define the `--depth-*` token scale (Layer Model) as a T1 unit.
+
+---
+
 ### 2026-07-12 · Phase 1 — Paris Line surface made media-independent
 - **Shipped:** `/travel/paris` no longer hard-codes `DuotoneImage
   src="/media/samples/paris.jpg"` (a direct contract violation). Its cover is now

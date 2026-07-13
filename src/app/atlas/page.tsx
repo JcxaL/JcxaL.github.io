@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { REGISTERED_SLOTS } from "@/lib/media/slots.registry";
 import MediaSlot from "@/components/media/MediaSlot";
+import ColorTokens from "@/components/atlas/ColorTokens";
+import TypeTokens from "@/components/atlas/TypeTokens";
+import MotionTokens from "@/components/atlas/MotionTokens";
+import LayoutTokens from "@/components/atlas/LayoutTokens";
 import styles from "./atlas.module.css";
 
 export const metadata: Metadata = {
@@ -57,11 +61,23 @@ export default function AtlasPage() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.h2}>Tokens · Components · Motion · Scene kit</h2>
+        <h2 className={styles.h2}>Tokens</h2>
         <p className={styles.desc}>
-          Documented here as each lands — color / type / space / depth token
-          tables, the component gallery, the motion vocabulary, and the 3D scene
-          primitives. (In progress.)
+          The design language&rsquo;s source of truth — every component draws
+          from these, with no hard-coded values. Swatches read live CSS custom
+          properties, so they switch with the day/night theme.
+        </p>
+        <ColorTokens />
+        <TypeTokens />
+        <MotionTokens />
+        <LayoutTokens />
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.h2}>Components · Motion choreography · Scene kit</h2>
+        <p className={styles.desc}>
+          Documented here as each lands — the component gallery, the motion
+          vocabulary, and the 3D scene primitives. (In progress.)
         </p>
       </section>
     </main>
