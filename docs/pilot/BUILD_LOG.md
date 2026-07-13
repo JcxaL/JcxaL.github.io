@@ -5,6 +5,19 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · DoD — first verification pass (a11y/reduced-motion/console)
+- **Shipped:** `docs/pilot/DOD.md` — automated headless audit over all four
+  built surfaces (`/`, `/travel/paris`, `/atlas`, `/station`) at mobile viewport,
+  default **and** reduced-motion. Result: **zero console/page errors everywhere
+  in both modes**, exactly one `h1` per surface, no `<img>` missing alt, slot
+  integration confirmed. Closes the "no DoD verification" gap for what's built.
+- **Honest gaps recorded** (not mistaken for done): WCAG-AA contrast/axe audit,
+  60fps perf profiling, no-WebGL fallback (N/A until scenes land), keyboard
+  traversal correctness — each tracked as a pending unit in DOD.md.
+- **Next:** Concourse hero slot; then the a11y sweep (contrast + keyboard).
+
+---
+
 ### 2026-07-12 · T1 — token documentation in the Atlas (parallel workflow)
 - **Shipped:** the Atlas now documents the full token system —
   `src/components/atlas/{ColorTokens,TypeTokens,MotionTokens,LayoutTokens}.tsx`
