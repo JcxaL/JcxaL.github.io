@@ -12,6 +12,8 @@ import DotMatrixSign from "@/components/transit/DotMatrixSign";
 import Ticket from "@/components/transit/Ticket";
 import TransitDiagram from "@/components/transit/TransitDiagram";
 import StatusLegend from "@/components/transit/StatusLegend";
+import MediaSlot from "@/components/media/MediaSlot";
+import { CONCOURSE_HERO } from "@/lib/media/slots.registry";
 import JourneyRecord from "@/components/ticket/JourneyRecord";
 import { punchStation } from "@/lib/ticket/punchStore";
 import { playChime } from "@/lib/sound/engine";
@@ -180,6 +182,7 @@ export default function Concourse() {
           </p>
         </div>
         <div className="jccl-panel overflow-x-auto p-6 sm:p-8">
+          <MediaSlot slot={CONCOURSE_HERO} className="mb-6" />
           <TransitDiagram
             network={SITE_NETWORK}
             currentCode="X01"

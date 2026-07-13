@@ -5,6 +5,20 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · Phase 1 — Concourse home made media-independent
+- **Shipped:** the Concourse (`/`) network-map panel now leads with
+  `<MediaSlot slot={CONCOURSE_HERO}>` (21:9 aerial, `concourse.hero.aerial`) —
+  the establishing plate the map sits over, per the slot's purpose. Placeholder
+  now, fills at convergence. The signage-first hero is untouched. `MediaSlot`
+  composes fine inside the client Concourse (it's a shared component).
+- **Verified:** tsc clean · build clean · static HTML confirms
+  `data-media-slot="concourse.hero.aerial"` + placeholder present.
+- **Surfaces: 2 of 3** now media-independent (Paris Line ✓, Concourse ✓).
+  Remaining: the Station exhibit (`/station/[slug]` room — a new-surface unit).
+- **Next:** Station exhibit surface; then the a11y contrast/keyboard sweep.
+
+---
+
 ### 2026-07-12 · DoD — first verification pass (a11y/reduced-motion/console)
 - **Shipped:** `docs/pilot/DOD.md` — automated headless audit over all four
   built surfaces (`/`, `/travel/paris`, `/atlas`, `/station`) at mobile viewport,
