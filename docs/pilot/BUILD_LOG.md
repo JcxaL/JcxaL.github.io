@@ -5,6 +5,21 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · Phase 1 — Paris Line surface made media-independent
+- **Shipped:** `/travel/paris` no longer hard-codes `DuotoneImage
+  src="/media/samples/paris.jpg"` (a direct contract violation). Its cover is now
+  `<MediaSlot slot={PARIS_LINE_COVER}>` — placeholder today, fills at convergence
+  by binding `travel.paris.cover`, zero further edits. First real flagship
+  surface converted to the slot system.
+- **Verified:** tsc clean · build clean · static HTML confirms
+  `data-media-slot="travel.paris.cover"` present and the hard-coded asset gone.
+- **Parked (CONVERGENCE):** whether MediaSlot bound *images* should carry the
+  duotone signage treatment (as DuotoneImage did) — a design call for convergence.
+- **Next:** Concourse hero slot + Station exhibit slot (finish the 3 surfaces'
+  media independence); then the token-table Atlas entry + a11y/fallback sweep.
+
+---
+
 ### 2026-07-12 · Phase 0 — Atlas route (design-system docs surface)
 - **Shipped:** `/atlas` (`src/app/atlas/page.tsx` + `atlas.module.css`) — the
   living design-system documentation surface (CHARTER T7), noindex. v1 is a live

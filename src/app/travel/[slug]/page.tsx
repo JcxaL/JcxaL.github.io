@@ -9,7 +9,8 @@ import StationPlate from "@/components/transit/StationPlate";
 import DotMatrixSign from "@/components/transit/DotMatrixSign";
 import StationPunch from "@/components/ticket/StationPunch";
 import ArrivalName from "@/components/transit/ArrivalName";
-import DuotoneImage from "@/components/media/DuotoneImage";
+import MediaSlot from "@/components/media/MediaSlot";
+import { PARIS_LINE_COVER } from "@/lib/media/slots.registry";
 import { SITE_NETWORK, STATION_NOTES } from "@/lib/transit/network";
 import type { Station } from "@/lib/transit/types";
 import { getAllSlugs, getPostBySlug } from "@/lib/mdx";
@@ -231,18 +232,16 @@ export default async function ExhibitPage({
       </header>
 
       {slug === "paris" ? (
-        <div className="mt-10">
-          <DuotoneImage
-            src="/media/samples/paris.jpg"
-            alt="The Eiffel Tower over the Seine at dusk, riverboats moored along the bank"
-            width={1200}
-            height={798}
-            line={line?.id ?? "amber"}
-            caption="The tower from the river on the first evening — placeholder frame until the real rolls are scanned."
-            credit="PHOTO: SAMPLE ASSET (UNSPLASH) · PRODUCTION MEDIA SHIPS FROM R2"
-            priority
-          />
-        </div>
+        <figure style={{ margin: "2.5rem 0 0" }}>
+          <MediaSlot slot={PARIS_LINE_COVER} />
+          <figcaption
+            className="mt-3 text-sm"
+            style={{ color: "var(--color-ink-muted)", lineHeight: 1.55 }}
+          >
+            The tower from the river on the first evening — this frame fills the
+            moment the real rolls are scanned.
+          </figcaption>
+        </figure>
       ) : null}
 
       <article className="jccl-exhibit jccl-measure mt-10">

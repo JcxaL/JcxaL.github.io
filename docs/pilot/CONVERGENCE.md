@@ -17,7 +17,11 @@ these together in the convergence pass. Nothing here blocks the build.
       base URL. Affects the `src` values in `bindings.ts`. (Assumed: `public/media`.)
 - [ ] **Duotone vs full-color.** `DuotoneImage` remaps photos into the signage
       two-tone ramp. Decide per-surface whether heroes stay duotone or go
-      full-color at convergence.
+      full-color at convergence. Related: when a real image binds to a
+      `MediaSlot`, should it inherit the duotone treatment (via `slot.line`)?
+      Currently the bound image renders full-color; the placeholder is tinted.
+      If duotone is wanted on bound media, MediaSlot's image path should apply
+      the `--duotone-filter` — a small, deferred build unit pending this call.
 
 ## Media waiting (see MEDIA_MANIFEST.md for the full spec table)
 - [ ] 6 slots currently declared, 0 bound — gather against the manifest.
