@@ -5,6 +5,19 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · DoD — axe-core a11y audit (WCAG 2 A/AA green)
+- **Shipped:** an automated axe-core pass (wcag2a/2aa/21a/21aa) over all four
+  surfaces → **0 violations** each. Two real color-contrast misses caught and
+  fixed: the Atlas kicker and the LayoutTokens "TODO" note both used amber (no
+  theme-aware dark variant → 1.47:1 on the light bg); switched to theme-aware
+  `--color-ink-muted`. Re-run: all green. `DOD.md` updated.
+- **Gate D** now: WCAG-AA contrast ✅ + reduced-motion ✅ + console ✅. Remaining:
+  keyboard operability, 60fps perf, manual SR pass.
+- **Next:** keyboard traversal sweep; then design-system breadth (component
+  gallery + scene kit) via parallel workflow.
+
+---
+
 ### 2026-07-12 · Phase 1 — Station exhibit surface (3 of 3) + contrast fix
 - **Shipped:** `/station/[slug]` — the third flagship surface, an immersive
   station room (`/station/paris`): A01 plate + title, the 16:9 `station.paris.hero`

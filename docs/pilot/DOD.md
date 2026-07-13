@@ -16,6 +16,11 @@ Chromium at a mobile viewport (390×800), each surface loaded in both default an
 ¹ Concourse hero + Station exhibit slots not yet placed (upcoming units).
 
 ## What this verifies (DoD subset — green)
+- **WCAG 2 A/AA — axe-core clean.** Automated axe (wcag2a/2aa/21a/21aa) run over
+  all four surfaces: **0 violations** each (incl. color-contrast). The two
+  contrast misses it caught were fixed: the Atlas kicker and the LayoutTokens
+  "TODO" note used amber (no theme-aware dark variant → failed on the light bg),
+  now theme-aware ink. Re-run: all green.
 - **No console/page errors** on every surface, in **default and reduced-motion**
   — the reduced-motion path is exercised and clean.
 - **Heading structure**: exactly one `h1` per surface.
@@ -24,13 +29,16 @@ Chromium at a mobile viewport (390×800), each surface loaded in both default an
 - **Slot integration** renders as expected.
 
 ## Not yet verified (pending units — tracked here so it's not mistaken for done)
-- **WCAG AA contrast / full ARIA audit** — needs axe-core; the placeholder id
-  label is known-low-contrast in light mode (noted). → a11y sweep unit.
 - **60fps on mid-range mobile** — needs a perf-profiling pass (trace + FPS) once
   the motion/3D layers land. → perf unit.
 - **No-WebGL fallback** — trivially green today (no 3D scenes built yet); becomes
   meaningful when the Stage/scene kit ships. → verify with scenes.
-- **Keyboard traversal correctness** (focus order, visible focus, traps) — only
-  focusable *count* is checked so far. → a11y sweep unit.
+- **Keyboard traversal correctness** (focus order, visible focus, traps) — axe
+  covers ARIA/contrast, not full keyboard operability; only focusable *count* is
+  checked so far. → keyboard sweep unit.
+- **Full manual SR pass** — automated axe ≠ complete a11y; a screen-reader
+  walkthrough of each surface remains.
+
+Axe method: `scratchpad/pw/axe.mjs` (axe-core injected via addScriptTag).
 
 Method: `scratchpad/pw/dod.mjs` (playwright-core + the pre-installed Chromium).

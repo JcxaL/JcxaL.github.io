@@ -149,7 +149,9 @@ export default function LayoutTokens() {
               fontSize: "10.5px",
               letterSpacing: "0.14em",
               textTransform: "uppercase",
-              color: "var(--color-board-amber)",
+              // amber fails AA on the light bg; the dashed amber border carries
+              // the accent, the label uses theme-aware ink for contrast.
+              color: "var(--color-ink-muted)",
             }}
           >
             TODO · not yet defined
