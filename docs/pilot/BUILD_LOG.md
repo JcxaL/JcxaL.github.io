@@ -5,6 +5,22 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · T3 — motion-choreography Atlas entry
+- **Shipped:** `MotionChoreography.tsx` wired into `/atlas`. Documents the
+  "train" ease vocabulary as **precise static SVG bézier plots** (decelerate =
+  arrivals, accelerate = departures, standard) — no animation, reduced-motion
+  safe — plus the choreography principles (no-motion-first baseline, named
+  seekable timelines via `window.__motion`, ambient-loop exemption).
+- **Verified:** tsc clean · build clean · curves render · axe **0 violations**.
+- **Design system now documented:** media slots · tokens (incl. depth) ·
+  components · 2.5D scene kit · motion choreography. **Only the 3D Stage remains
+  — blocked on the r3f dependency decision (parked in CONVERGENCE.md).**
+- **Next (final autonomous units):** 60fps perf pass + no-WebGL fallback
+  verification. After those, remaining gaps are user-gated (r3f · real media ·
+  manual SR · real-device perf) — the convergence boundary.
+
+---
+
 ### 2026-07-12 · T1/T4 — depth token scale + 2.5D Parallax scene kit
 - **Shipped:**
   - **`--depth-*` scale** added to `tokens.json` (perspective + near/mid/far

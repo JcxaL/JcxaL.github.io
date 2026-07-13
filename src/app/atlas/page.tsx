@@ -7,6 +7,7 @@ import MotionTokens from "@/components/atlas/MotionTokens";
 import LayoutTokens from "@/components/atlas/LayoutTokens";
 import ComponentGallery from "@/components/atlas/ComponentGallery";
 import ParallaxDemo from "@/components/atlas/ParallaxDemo";
+import MotionChoreography from "@/components/atlas/MotionChoreography";
 import styles from "./atlas.module.css";
 
 export const metadata: Metadata = {
@@ -96,10 +97,22 @@ export default function AtlasPage() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.h2}>Motion choreography · 3D Stage</h2>
+        <h2 className={styles.h2}>Motion choreography</h2>
         <p className={styles.desc}>
-          Documented here as each lands — the timeline/scroll choreography
-          vocabulary and the WebGL scene primitives. (In progress.)
+          The &ldquo;train&rdquo; ease vocabulary and the choreography principles
+          — a no-motion-first baseline, named seekable timelines, ambient-loop
+          exemption.
+        </p>
+        <MotionChoreography />
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.h2}>3D Stage (WebGL)</h2>
+        <p className={styles.desc}>
+          The 3D plane of the Layer Model — the orbitable network map and station
+          dioramas. Pending the r3f dependency decision (CONVERGENCE.md); the
+          Stage API and no-WebGL fallback are already wired, so this drops in
+          without touching the 2D/2.5D layers.
         </p>
       </section>
     </main>
