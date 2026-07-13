@@ -36,11 +36,19 @@ Chromium at a mobile viewport (390×800), each surface loaded in both default an
   custom focus styling the check misses. Flagged for the manual pass; not a
   pilot-surface regression. Method: `scratchpad/pw/keyboard.mjs`.
 
+- **Perf (automated).** First Load JS per pilot route — `/` 214KB, `/atlas`
+  110KB, `/travel/paris` 114KB, `/station/paris` 112KB — **all under the 250KB
+  budget** (`/` is heaviest: the gsap concourse intro). DCL < 60ms, load < 260ms
+  (static export). The 2.5D parallax rig holds **60fps** (16.7ms median/p95 while
+  driven). Caveat: headless desktop Chromium, not a real mid-range phone — see
+  pending. Method: `scratchpad/pw/perf.mjs`.
+- **No-WebGL fallback (contract).** `__tests__/stage.test.ts` — with no WebGL,
+  `stageEnabled()` is false so surfaces wire to `NOOP_STAGE`; every Stage method
+  is a safe no-op. The visual fallback becomes testable once 3D scenes exist.
+
 ## Not yet verified (pending units — tracked here so it's not mistaken for done)
-- **60fps on mid-range mobile** — needs a perf-profiling pass (trace + FPS) once
-  the motion/3D layers land. → perf unit.
-- **No-WebGL fallback** — trivially green today (no 3D scenes built yet); becomes
-  meaningful when the Stage/scene kit ships. → verify with scenes.
+- **Real-device 60fps confirmation** — automated FPS is desktop-headless; a real
+  mid-range phone pass is still wanted (esp. the gsap-heavy Concourse).
 - **Concourse focus indicators** — 6 pre-existing-component stops need a visible
   focus ring (or confirmation their custom focus styling is sufficient). → manual pass.
 - **Full manual SR pass** — automated axe ≠ complete a11y; a screen-reader

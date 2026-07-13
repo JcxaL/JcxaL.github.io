@@ -5,6 +5,22 @@ what's next. Keeps the autonomous loop legible across sessions.
 
 ---
 
+### 2026-07-12 · DoD — perf pass + no-WebGL fallback contract
+- **Perf (automated):** all pilot routes under the 250KB First-Load-JS budget
+  (`/` 214KB heaviest, others ~110–114KB); DCL <60ms; the 2.5D parallax rig holds
+  **60fps** (16.7ms median) while driven. Desktop-headless — real-device pass
+  still pending. (`scratchpad/pw/perf.mjs`)
+- **No-WebGL fallback:** `__tests__/stage.test.ts` (3 tests) — no WebGL →
+  `stageEnabled()` false → `NOOP_STAGE` no-ops. Contract verified.
+- **Gate D** now: WCAG-AA ✅ · reduced-motion ✅ · console ✅ · keyboard ✅ · perf
+  (automated) ✅ · no-WebGL fallback (contract) ✅. Remaining: real-device 60fps,
+  manual SR, the Concourse focus flag.
+- **This is the autonomous boundary:** everything media-independent + not blocked
+  is built. Remaining convergence-ready gaps all need the owner — the r3f
+  decision (3D Stage), real media, and the manual/real-device passes.
+
+---
+
 ### 2026-07-12 · T3 — motion-choreography Atlas entry
 - **Shipped:** `MotionChoreography.tsx` wired into `/atlas`. Documents the
   "train" ease vocabulary as **precise static SVG bézier plots** (decelerate =
