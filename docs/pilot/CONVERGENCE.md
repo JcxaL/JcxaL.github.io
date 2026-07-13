@@ -4,6 +4,28 @@ Parked here whenever a unit needs a human decision or real media to *finish*.
 The autonomous loop ships the placeholder version and keeps moving; we resolve
 these together in the convergence pass. Nothing here blocks the build.
 
+## ⇦ CONVERGENCE HAND-OFF (2026-07-12)
+The media-independent build has reached its boundary: every unit that is
+media-independent **and not blocked on your input** is built, verified, and on
+`pilot/main` (21 commits). What remains all needs you:
+
+1. **The r3f decision (blocks the 3D Stage).** This is the one structural piece
+   left. The Stage API + no-WebGL fallback are wired and the 2.5D Parallax layer
+   is done; the 3D plane (orbitable network map / dioramas) just needs the dep
+   call — `three` + `@react-three/fiber` (bundled, lazy-loaded so it stays off
+   the initial budget) **or** vanilla WebGL. I parked it rather than add a heavy
+   dependency to your repo unasked. Say the word and I build it.
+2. **Your media.** Gather against `MEDIA_MANIFEST.md` (6 slots). Binding is
+   mechanical — edit `bindings.ts`, drop files, zero code changes.
+3. **Manual/real-device passes.** Real-device 60fps (esp. the gsap Concourse),
+   a screen-reader walkthrough, and the 6 Concourse focus-ring flags (pre-existing
+   components). See `DOD.md`.
+
+Everything else — contracts, 3 surfaces, the full token/component/motion/2.5D-
+scene documentation in the Atlas, and the automated DoD (WCAG-AA, reduced-motion,
+console, keyboard, perf-budget, fallback-contract) — is green. `/atlas` is the
+living deliverable.
+
 ## Decisions needed
 - [ ] **Flagship set beyond Paris.** Pilot proves Concourse + Paris Line + one
       Paris Station. Confirm Paris is the flagship, or name a different
