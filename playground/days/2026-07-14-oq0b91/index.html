@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Prism Cascade — Match-3 Arcade</title>
+<style>
+  :root{
+    --bg0:#0a0714; --bg1:#140f24; --panel:#1a1530cc; --border:#3a2f5c;
+    --ink:#f1ecff; --sub:#a89bd4; --accent:#ff5fa2; --accent2:#5fd0ff;
+    --gold:#ffd166;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg0);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);
+    touch-action:none; user-select:none;}
+  body{
+    background:
+      radial-gradient(1200px 800px at 20% -10%, #2a1a4a55, transparent 60%),
+      radial-gradient(1000px 700px at 100% 110%, #1a2a4a55, transparent 60%),
+      var(--bg0);
+    display:flex; flex-direction:column; height:100vh;
+  }
+  #topbar{
+    flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:10px 12px;
+    background:var(--panel); backdrop-filter:blur(10px); border-bottom:1px solid var(--border);
+    z-index:20; flex-wrap:wrap;
+  }
+  h1{font-size:15px; margin:0; font-weight:700; letter-spacing:.02em;
+    background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text;
+    background-clip:text; color:transparent; white-space:nowrap;}
+  .tabs{display:flex; gap:4px; background:#00000040; border-radius:10px; padding:3px;}
+  .tab{border:0; background:transparent; color:var(--sub); font-size:12px; font-weight:600;
+    padding:6px 10px; border-radius:8px; cursor:pointer; transition:.15s;}
+  .tab.active{background:linear-gradient(135deg,var(--accent),#a15fff); color:#fff;}
+  .spacer{flex:1;}
+  .stat{font-size:11px; color:var(--sub); text-align:center; min-width:52px;}
+  .stat b{display:block; font-size:16px; color:var(--ink); font-variant-numeric:tabular-nums;}
+  .iconbtn{border:1px solid var(--border); background:#ffffff0d; color:var(--ink);
+    width:34px; height:34px; border-radius:9px; cursor:pointer; font-size:15px;
+    display:flex; align-items:center; justify-content:center;}
+  .iconbtn:active{transform:scale(.92);}
+  #stage{flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0;}
+  #levelStrip{
+    flex:0 0 auto; display:flex; gap:6px; padding:8px 10px; overflow-x:auto;
+    background:#00000030; border-bottom:1px solid var(--border);
+  }
+  #levelStrip.hidden{display:none;}
+  .lvl{flex:0 0 auto; width:46px; height:46px; border-radius:10px; border:1px solid var(--border);
+    background:#ffffff0d; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700; color:var(--sub); cursor:pointer; gap:2px;}
+  .lvl.current{border-color:var(--accent2); box-shadow:0 0 0 2px #5fd0ff33;}
+  .lvl .stars{font-size:7px; letter-spacing:1px; color:var(--gold);}
+  canvas#board{touch-action:none; border-radius:16px; box-shadow:0 20px 60px #00000080;}
+  #hud{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    display:flex; gap:10px; pointer-events:none; z-index:5;
+  }
+  .pill{background:#000000aa; border:1px solid var(--border); border-radius:20px; padding:4px 12px;
+    font-size:12px; font-weight:700; color:var(--gold);}
+  #overlay{
+    position:absolute; inset:0; background:#050308e6; display:none;
+    align-items:center; justify-content:center; z-index:30; flex-direction:column; gap:14px;
+    text-align:center; padding:20px;
+  }
+  #overlay.show{display:flex;}
+  #overlay h2{margin:0; font-size:26px; background:linear-gradient(90deg,var(--gold),var(--accent));
+    -webkit-background-clip:text; background-clip:text; color:transparent;}
+  #overlay p{margin:0; color:var(--sub); font-size:14px; max-width:280px;}
+  .stars-big{font-size:34px; letter-spacing:8px; color:#3a2f5c;}
+  .stars-big span.on{color:var(--gold);}
+  .bigbtn{border:0; background:linear-gradient(135deg,var(--accent),#a15fff); color:#fff;
+    font-weight:700; font-size:14px; padding:12px 26px; border-radius:14px; cursor:pointer;}
+  #toast{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:#000000cc; border:1px solid var(--border); color:var(--ink); font-size:12px;
+    padding:8px 16px; border-radius:20px; opacity:0; transition:.3s; z-index:40; white-space:nowrap;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  #howto{position:absolute; bottom:10px; right:10px; font-size:10px; color:#6a5f94; z-index:5; text-align:right;}
+  @media (max-width:520px){
+    h1{display:none;}
+    .stat{min-width:40px;}
+    #howto{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>◆ Prism Cascade</h1>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-mode="rush">Rush</button>
+    <button class="tab" data-mode="zen">Zen</button>
+    <button class="tab" data-mode="levels">Levels</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="stat" id="statA"><b id="statAVal">0</b><span id="statALabel">Score</span></div>
+  <div class="stat" id="statB"><b id="statBVal">60</b><span id="statBLabel">Sec</span></div>
+  <button class="iconbtn" id="snapBtn" title="Save snapshot PNG">⬇</button>
+  <button class="iconbtn" id="shareBtn" title="Copy share link">🔗</button>
+  <button class="iconbtn" id="resetBtn" title="Restart">↺</button>
+</div>
+
+<div id="levelStrip" class="hidden"></div>
+
+<div id="stage">
+  <div id="hud"><div class="pill" id="comboPill" style="display:none">Combo ×1</div></div>
+  <canvas id="board"></canvas>
+  <div id="overlay">
+    <h2 id="ovTitle">Game Over</h2>
+    <div class="stars-big" id="ovStars"></div>
+    <p id="ovMsg">Final score: 0</p>
+    <button class="bigbtn" id="ovBtn">Play Again</button>
+  </div>
+  <div id="toast"></div>
+  <div id="howto">drag or tap-tap to swap · match 3+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- RNG ---------- */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashSeed(str){
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/* ---------- Constants ---------- */
+const COLS = 8, ROWS = 8, GEMS = 6;
+const GEM_COLORS = ["#ff5fa2","#5fd0ff","#ffd166","#7bf19a","#c78cff","#ff9166"];
+const GEM_SHAPES = ["circle","diamond","square","triangle","hex","star"];
+const EMPTY = -1, LINE_H = 6, LINE_V = 7, BOMB = 8; // special gem type codes (types 0..5 normal)
+
+const LEVELS = [
+  {target: 900,  moves: 18, colors: 4},
+  {target: 1400, moves: 18, colors: 4},
+  {target: 1900, moves: 17, colors: 5},
+  {target: 2500, moves: 17, colors: 5},
+  {target: 3200, moves: 16, colors: 5},
+  {target: 4000, moves: 16, colors: 6},
+  {target: 4800, moves: 15, colors: 6},
+  {target: 5700, moves: 15, colors: 6},
+  {target: 6700, moves: 14, colors: 6},
+  {target: 8000, moves: 14, colors: 6},
+];
+
+const LS_KEY = "prismCascade_v1";
+function loadSave(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) return JSON.parse(raw);
+  }catch(e){}
+  return { rushHigh:0, zenHigh:0, zenBestCombo:0, levelStars:new Array(LEVELS.length).fill(0), lastMode:"rush" };
+}
+function save(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state.persist)); }catch(e){}
+}
+
+/* ---------- State ---------- */
+const state = {
+  mode: "rush",
+  persist: loadSave(),
+  grid: [],       // [row][col] = {type, id}
+  seed: 0,
+  rng: null,
+  numColors: GEMS,
+  score: 0,
+  combo: 0,
+  timeLeft: 60,
+  movesLeft: 0,
+  level: 0,
+  selected: null,
+  animating: false,
+  particles: [],
+  floaters: [],
+  running: false,
+  cell: 44,
+  boardPx: 0,
+  gemIdCounter: 1,
+  shakeCells: [],
+  swapAnim: null, // {a,b,progress,dir,reverting}
+  clearAnim: [],  // cells fading out
+  dropAnim: [],   // gems animating fall
+};
+
+/* ---------- DOM ---------- */
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const statAVal = document.getElementById("statAVal");
+const statALabel = document.getElementById("statALabel");
+const statBVal = document.getElementById("statBVal");
+const statBLabel = document.getElementById("statBLabel");
+const comboPill = document.getElementById("comboPill");
+const overlay = document.getElementById("overlay");
+const ovTitle = document.getElementById("ovTitle");
+const ovStars = document.getElementById("ovStars");
+const ovMsg = document.getElementById("ovMsg");
+const ovBtn = document.getElementById("ovBtn");
+const toastEl = document.getElementById("toast");
+const levelStrip = document.getElementById("levelStrip");
+
+let toastTimer = null;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 1800);
+}
+
+/* ---------- Grid helpers ---------- */
+function newGrid(){
+  const g = [];
+  for (let r=0;r<ROWS;r++){
+    const row = [];
+    for (let c=0;c<COLS;c++) row.push(null);
+    g.push(row);
+  }
+  return g;
+}
+function randType(){ return Math.floor(state.rng()*state.numColors); }
+
+function fillNoMatches(){
+  state.grid = newGrid();
+  for (let r=0;r<ROWS;r++){
+    for (let c=0;c<COLS;c++){
+      let t;
+      let tries=0;
+      do {
+        t = randType();
+        tries++;
+      } while (tries < 20 && (
+        (c>=2 && state.grid[r][c-1] && state.grid[r][c-1].type===t && state.grid[r][c-2] && state.grid[r][c-2].type===t) ||
+        (r>=2 && state.grid[r-1][c] && state.grid[r-1][c].type===t && state.grid[r-2][c] && state.grid[r-2][c].type===t)
+      ));
+      state.grid[r][c] = { type:t, id: state.gemIdCounter++, sy:r, fall:0 };
+    }
+  }
+  if (!hasAnyMove()) fillNoMatches();
+}
+
+function inBounds(r,c){ return r>=0 && r<ROWS && c>=0 && c<COLS; }
+
+function findMatches(){
+  const marks = [];
+  for (let r=0;r<ROWS;r++) marks.push(new Array(COLS).fill(false));
+  // horizontal
+  for (let r=0;r<ROWS;r++){
+    let run=1;
+    for (let c=1;c<=COLS;c++){
+      const g0 = c<COLS ? state.grid[r][c] : null;
+      const gPrev = state.grid[r][c-1];
+      if (g0 && gPrev && g0.type>=0 && g0.type===gPrev.type && g0.type<6){
+        run++;
+      } else {
+        if (run>=3){ for (let k=c-run;k<c;k++) marks[r][k]=true; }
+        run=1;
+      }
+    }
+  }
+  // vertical
+  for (let c=0;c<COLS;c++){
+    let run=1;
+    for (let r=1;r<=ROWS;r++){
+      const g0 = r<ROWS ? state.grid[r][c] : null;
+      const gPrev = state.grid[r-1][c];
+      if (g0 && gPrev && g0.type>=0 && g0.type===gPrev.type && g0.type<6){
+        run++;
+      } else {
+        if (run>=3){ for (let k=r-run;k<r;k++) marks[k][c]=true; }
+        run=1;
+      }
+    }
+  }
+  return marks;
+}
+
+function countRunInfo(){
+  // returns array of {cells:[[r,c]...], len, dir}
+  const groups = [];
+  for (let r=0;r<ROWS;r++){
+    let run=[];
+    for (let c=0;c<=COLS;c++){
+      const g = c<COLS ? state.grid[r][c] : null;
+      const prev = c>0 ? state.grid[r][c-1] : null;
+      if (g && prev && g.type===prev.type && g.type<6){
+        run.push([r,c-1]);
+      } else {
+        if (run.length){ run.push([r,c-1]); if (run.length>=3) groups.push({cells:run.slice(), dir:"h"}); }
+        run=[];
+      }
+    }
+  }
+  for (let c=0;c<COLS;c++){
+    let run=[];
+    for (let r=0;r<=ROWS;r++){
+      const g = r<ROWS ? state.grid[r][c] : null;
+      const prev = r>0 ? state.grid[r-1][c] : null;
+      if (g && prev && g.type===prev.type && g.type<6){
+        run.push([r-1,c]);
+      } else {
+        if (run.length){ run.push([r-1,c]); if (run.length>=3) groups.push({cells:run.slice(), dir:"v"}); }
+        run=[];
+      }
+    }
+  }
+  return groups;
+}
+
+function hasAnyMove(){
+  for (let r=0;r<ROWS;r++){
+    for (let c=0;c<COLS;c++){
+      if (c<COLS-1){
+        swapCells(r,c,r,c+1);
+        const m = findMatches();
+        swapCells(r,c,r,c+1);
+        if (m.some(row=>row.some(v=>v))) return true;
+      }
+      if (r<ROWS-1){
+        swapCells(r,c,r+1,c);
+        const m = findMatches();
+        swapCells(r,c,r+1,c);
+        if (m.some(row=>row.some(v=>v))) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function swapCells(r1,c1,r2,c2){
+  const tmp = state.grid[r1][c1];
+  state.grid[r1][c1] = state.grid[r2][c2];
+  state.grid[r2][c2] = tmp;
+}
+
+/* ---------- Game flow ---------- */
+function startMode(mode, opts){
+  opts = opts || {};
+  state.mode = mode;
+  state.persist.lastMode = mode;
+  state.selected = null;
+  state.animating = false;
+  state.particles = [];
+  state.floaters = [];
+  state.score = 0;
+  state.combo = 0;
+  overlay.classList.remove("show");
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.mode===mode));
+  levelStrip.classList.toggle("hidden", mode!=="levels");
+
+  if (mode==="rush"){
+    state.numColors = 6;
+    state.seed = opts.seed !== undefined ? opts.seed : Math.floor(Math.random()*1e9);
+    state.rng = mulberry32(state.seed);
+    state.timeLeft = 60;
+    statALabel.textContent = "Score";
+    statBLabel.textContent = "Sec";
+    statBVal.textContent = "60";
+  } else if (mode==="zen"){
+    state.numColors = 6;
+    state.seed = opts.seed !== undefined ? opts.seed : Math.floor(Math.random()*1e9);
+    state.rng = mulberry32(state.seed);
+    statALabel.textContent = "Score";
+    statBLabel.textContent = "Best combo";
+    statBVal.textContent = String(state.persist.zenBestCombo||0);
+  } else if (mode==="levels"){
+    state.level = opts.level !== undefined ? opts.level : 0;
+    const L = LEVELS[state.level];
+    state.numColors = L.colors;
+    state.seed = opts.seed !== undefined ? opts.seed : hashSeed("level"+state.level);
+    state.rng = mulberry32(state.seed);
+    state.movesLeft = L.moves;
+    statALabel.textContent = "Score / "+L.target;
+    statBLabel.textContent = "Moves";
+    statBVal.textContent = String(state.movesLeft);
+    buildLevelStrip();
+  }
+  fillNoMatches();
+  layoutCanvas();
+  state.running = true;
+  updateHud();
+}
+
+function buildLevelStrip(){
+  levelStrip.innerHTML = "";
+  LEVELS.forEach((L,i)=>{
+    const div = document.createElement("div");
+    div.className = "lvl" + (i===state.level ? " current" : "");
+    const stars = state.persist.levelStars[i] || 0;
+    div.innerHTML = (i+1) + "<div class='stars'>" + "★".repeat(stars) + "☆".repeat(3-stars) + "</div>";
+    div.addEventListener("click", ()=>{ if (!state.animating) startMode("levels", {level:i}); });
+    levelStrip.appendChild(div);
+  });
+}
+
+function updateHud(){
+  statAVal.textContent = String(state.score);
+  if (state.mode==="rush") statBVal.textContent = String(Math.max(0,Math.ceil(state.timeLeft)));
+  else if (state.mode==="levels") statBVal.textContent = String(state.movesLeft);
+  else statBVal.textContent = String(state.persist.zenBestCombo||0);
+  comboPill.style.display = state.combo>1 ? "block" : "none";
+  comboPill.textContent = "Combo ×"+state.combo;
+}
+
+function endGame(reason){
+  state.running = false;
+  if (state.mode==="rush"){
+    const isHigh = state.score > (state.persist.rushHigh||0);
+    if (isHigh) state.persist.rushHigh = state.score;
+    save();
+    ovTitle.textContent = "Time's Up!";
+    ovStars.style.display = "none";
+    ovMsg.textContent = "Score: "+state.score + (isHigh ? "  —  New high score!" : "  (Best: "+state.persist.rushHigh+")");
+    ovBtn.textContent = "Play Again";
+  } else if (state.mode==="levels"){
+    const L = LEVELS[state.level];
+    let stars = 0;
+    if (state.score>=L.target) stars=1;
+    if (state.score>=L.target*1.4) stars=2;
+    if (state.score>=L.target*1.8) stars=3;
+    const prev = state.persist.levelStars[state.level]||0;
+    if (stars>prev) state.persist.levelStars[state.level]=stars;
+    save();
+    ovStars.style.display = "block";
+    ovStars.innerHTML = [1,2,3].map(i=>"<span class='"+(i<=stars?"on":"")+"'>★</span>").join("");
+    ovTitle.textContent = stars>0 ? "Level Clear!" : "Out of Moves";
+    ovMsg.textContent = "Score: "+state.score+" / target "+L.target;
+    ovBtn.textContent = stars>0 && state.level<LEVELS.length-1 ? "Next Level" : "Retry";
+  }
+  overlay.classList.add("show");
+}
+
+ovBtn.addEventListener("click", ()=>{
+  if (state.mode==="levels"){
+    const L = LEVELS[state.level];
+    const stars = state.persist.levelStars[state.level]||0;
+    if (stars>0 && state.level<LEVELS.length-1) startMode("levels", {level: state.level+1});
+    else startMode("levels", {level: state.level});
+  } else {
+    startMode(state.mode);
+  }
+});
+
+/* ---------- Layout / render ---------- */
+function layoutCanvas(){
+  const stage = document.getElementById("stage");
+  const avail = Math.min(stage.clientWidth - 24, stage.clientHeight - 24);
+  const size = Math.max(240, Math.floor(avail));
+  state.cell = Math.floor(size / COLS);
+  state.boardPx = state.cell * COLS;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = state.boardPx * dpr;
+  canvas.height = state.boardPx * dpr;
+  canvas.style.width = state.boardPx+"px";
+  canvas.style.height = state.boardPx+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener("resize", layoutCanvas);
+
+function drawGemShape(cx, cy, r, type, isSpecial){
+  const shape = GEM_SHAPES[type % GEM_SHAPES.length];
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.beginPath();
+  if (shape==="circle"){
+    ctx.arc(0,0,r,0,Math.PI*2);
+  } else if (shape==="diamond"){
+    ctx.moveTo(0,-r); ctx.lineTo(r,0); ctx.lineTo(0,r); ctx.lineTo(-r,0); ctx.closePath();
+  } else if (shape==="square"){
+    const s=r*0.86; ctx.roundRect ? ctx.roundRect(-s,-s,s*2,s*2,6) : ctx.rect(-s,-s,s*2,s*2);
+  } else if (shape==="triangle"){
+    ctx.moveTo(0,-r); ctx.lineTo(r*0.87,r*0.6); ctx.lineTo(-r*0.87,r*0.6); ctx.closePath();
+  } else if (shape==="hex"){
+    for (let i=0;i<6;i++){
+      const a = Math.PI/6 + i*Math.PI/3;
+      const x=Math.cos(a)*r, y=Math.sin(a)*r;
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+  } else { // star
+    for (let i=0;i<10;i++){
+      const a = -Math.PI/2 + i*Math.PI/5;
+      const rr = i%2===0 ? r : r*0.46;
+      const x=Math.cos(a)*rr, y=Math.sin(a)*rr;
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+  }
+  ctx.restore();
+}
+
+function render(){
+  ctx.clearRect(0,0,state.boardPx,state.boardPx);
+  // board bg
+  const bgGrad = ctx.createLinearGradient(0,0,state.boardPx,state.boardPx);
+  bgGrad.addColorStop(0,"#160f2c"); bgGrad.addColorStop(1,"#0d0a1c");
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0,0,state.boardPx,state.boardPx);
+
+  // cell checker
+  for (let r=0;r<ROWS;r++){
+    for (let c=0;c<COLS;c++){
+      ctx.fillStyle = (r+c)%2===0 ? "#ffffff08" : "#00000018";
+      ctx.fillRect(c*state.cell, r*state.cell, state.cell, state.cell);
+    }
+  }
+
+  const cell = state.cell;
+  const now = performance.now();
+
+  // selection highlight
+  if (state.selected){
+    ctx.strokeStyle = "#5fd0ff";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(state.selected.c*cell+2, state.selected.r*cell+2, cell-4, cell-4);
+  }
+
+  for (let r=0;r<ROWS;r++){
+    for (let c=0;c<COLS;c++){
+      const g = state.grid[r][c];
+      if (!g) continue;
+      let px = c*cell + cell/2;
+      let py = r*cell + cell/2;
+      let scale = 1, alpha = 1;
+
+      if (g.fallOffset){
+        py -= g.fallOffset * cell;
+      }
+      if (g.swapOffset){
+        px += g.swapOffset.x * cell;
+        py += g.swapOffset.y * cell;
+      }
+      if (g.clearT !== undefined){
+        scale = 1 - g.clearT;
+        alpha = 1 - g.clearT;
+      }
+      if (g.spawnT !== undefined){
+        scale = g.spawnT;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = GEM_COLORS[g.type % GEM_COLORS.length];
+      ctx.shadowColor = GEM_COLORS[g.type % GEM_COLORS.length];
+      ctx.shadowBlur = g.isSpecial ? 18 : 6;
+      drawGemShape(px, py, (cell*0.36)*scale, g.type, g.isSpecial);
+      ctx.fill();
+      if (g.type >= LINE_H && g.type <= BOMB){
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // particles
+  for (const p of state.particles){
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life/p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // floaters (score text)
+  for (const f of state.floaters){
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, f.life/f.maxLife);
+    ctx.fillStyle = f.color;
+    ctx.font = "bold "+Math.floor(cell*0.3)+"px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+}
+
+/* ---------- Interaction ---------- */
+function cellFromEvent(e){
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width * state.boardPx;
+  const y = (e.clientY - rect.top) / rect.height * state.boardPx;
+  const c = Math.floor(x / state.cell);
+  const r = Math.floor(y / state.cell);
+  if (!inBounds(r,c)) return null;
+  return {r,c};
+}
+
+let dragStart = null;
+canvas.addEventListener("pointerdown", (e)=>{
+  if (state.animating || !state.running) return;
+  const cell = cellFromEvent(e);
+  if (!cell) return;
+  dragStart = cell;
+  if (state.selected && state.selected.r===cell.r && state.selected.c===cell.c){
+    state.selected = null;
+  } else if (state.selected && isAdjacent(state.selected, cell)){
+    attemptSwap(state.selected, cell);
+    state.selected = null;
+  } else {
+    state.selected = cell;
+  }
+});
+canvas.addEventListener("pointerup", (e)=>{
+  if (!dragStart || state.animating || !state.running) return;
+  const cell = cellFromEvent(e);
+  if (cell && !(cell.r===dragStart.r && cell.c===dragStart.c) && isAdjacent(dragStart, cell)){
+    attemptSwap(dragStart, cell);
+    state.selected = null;
+  }
+  dragStart = null;
+});
+canvas.addEventListener("pointerleave", ()=>{ dragStart = null; });
+
+function isAdjacent(a,b){
+  const dr = Math.abs(a.r-b.r), dc = Math.abs(a.c-b.c);
+  return (dr+dc)===1;
+}
+
+function attemptSwap(a,b){
+  if (state.mode==="levels" && state.movesLeft<=0) return;
+  state.animating = true;
+  swapCells(a.r,a.c,b.r,b.c);
+  const marks = findMatches();
+  const willMatch = marks.some(row=>row.some(v=>v));
+  const specialInvolved = (state.grid[a.r][a.c] && state.grid[a.r][a.c].type>=LINE_H) ||
+                           (state.grid[b.r][b.c] && state.grid[b.r][b.c].type>=LINE_H);
+  if (!willMatch && !specialInvolved){
+    swapCells(a.r,a.c,b.r,b.c);
+    animateSwap(a,b,true);
+    return;
+  }
+  if (state.mode==="levels") state.movesLeft--;
+  animateSwap(a,b,false, ()=>{
+    if (specialInvolved && !willMatch){
+      triggerSpecial(b,a);
+    }
+    resolveBoard();
+  });
+}
+
+function animateSwap(a,b,reverting,cb){
+  const ga = state.grid[a.r][a.c], gb = state.grid[b.r][b.c];
+  const dur = 160;
+  const t0 = performance.now();
+  function step(){
+    const t = Math.min(1, (performance.now()-t0)/dur);
+    const e = 1 - Math.pow(1-t,3);
+    if (ga) ga.swapOffset = { x:(a.c-b.c)*(1-e)*(reverting?-1:1)*0, y:0 };
+    // simpler: interpolate positions directly using swapOffset relative to original slot
+    if (ga) ga.swapOffset = { x:(b.c-a.c)*e, y:(b.r-a.r)*e };
+    if (gb) gb.swapOffset = { x:(a.c-b.c)*e, y:(a.r-b.r)*e };
+    render();
+    if (t<1){ requestAnimationFrame(step); }
+    else {
+      if (ga) ga.swapOffset = null;
+      if (gb) gb.swapOffset = null;
+      if (reverting){ state.animating = false; render(); }
+      else if (cb) cb();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function triggerSpecial(centerCell, otherCell){
+  const g = state.grid[centerCell.r][centerCell.c];
+  if (!g) return;
+  if (g.type === LINE_H){
+    for (let c=0;c<COLS;c++) markClear(centerCell.r,c);
+  } else if (g.type === LINE_V){
+    for (let r=0;r<ROWS;r++) markClear(r,centerCell.c);
+  } else if (g.type === BOMB){
+    const targetType = state.grid[otherCell.r] && state.grid[otherCell.r][otherCell.c] ? state.grid[otherCell.r][otherCell.c].type : -1;
+    for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++){
+      if (state.grid[r][c] && (targetType<0 || state.grid[r][c].type===targetType || state.grid[r][c].type>=LINE_H)) markClear(r,c);
+    }
+  }
+}
+let pendingClears = new Set();
+function markClear(r,c){ pendingClears.add(r+","+c); }
+
+function resolveBoard(){
+  const groups = countRunInfo();
+  if (groups.length===0 && pendingClears.size===0){
+    state.animating = false;
+    if (state.mode==="zen"){
+      let changed = false;
+      if (state.combo > (state.persist.zenBestCombo||0)){ state.persist.zenBestCombo = state.combo; changed = true; }
+      if (state.score > (state.persist.zenHigh||0)){ state.persist.zenHigh = state.score; changed = true; }
+      if (changed) save();
+    }
+    state.combo = 0;
+    updateHud();
+    checkGameOver();
+    return;
+  }
+  state.combo++;
+  const cellsToClear = new Set(pendingClears);
+  pendingClears = new Set();
+  let gained = 0;
+  const specialsToCreate = [];
+
+  for (const grp of groups){
+    grp.cells.forEach(([r,c])=>cellsToClear.add(r+","+c));
+    if (grp.cells.length===4){
+      const [r,c] = grp.cells[Math.floor(grp.cells.length/2)];
+      specialsToCreate.push({r,c,type: grp.dir==="h" ? LINE_H : LINE_V});
+    } else if (grp.cells.length>=5){
+      const [r,c] = grp.cells[Math.floor(grp.cells.length/2)];
+      specialsToCreate.push({r,c,type:BOMB});
+    }
+  }
+
+  gained = cellsToClear.size * 10 * state.combo;
+  state.score += gained;
+
+  spawnFloater(gained, cellsToClear);
+  spawnParticles(cellsToClear);
+
+  // animate clear then remove
+  const dur = 220;
+  const t0 = performance.now();
+  const cellList = [...cellsToClear].map(s=>s.split(",").map(Number));
+  cellList.forEach(([r,c])=>{ if (state.grid[r][c]) state.grid[r][c].clearT = 0; });
+
+  function fade(){
+    const t = Math.min(1,(performance.now()-t0)/dur);
+    cellList.forEach(([r,c])=>{ if (state.grid[r][c]) state.grid[r][c].clearT = t; });
+    updateParticles();
+    render();
+    if (t<1){ requestAnimationFrame(fade); }
+    else {
+      cellList.forEach(([r,c])=>{ state.grid[r][c] = null; });
+      specialsToCreate.forEach(s=>{
+        if (!cellList.some(([r,c])=>r===s.r&&c===s.c)) return;
+        state.grid[s.r][s.c] = { type:s.type, id: state.gemIdCounter++, isSpecial:true, spawnT:0 };
+      });
+      dropAndRefill(()=>{
+        updateHud();
+        resolveBoard();
+      });
+    }
+  }
+  requestAnimationFrame(fade);
+}
+
+function dropAndRefill(cb){
+  const moves = [];
+  for (let c=0;c<COLS;c++){
+    let write = ROWS-1;
+    for (let r=ROWS-1;r>=0;r--){
+      if (state.grid[r][c]){
+        if (write!==r){
+          state.grid[write][c] = state.grid[r][c];
+          state.grid[r][c] = null;
+          moves.push({r:write,c,from:r});
+        }
+        write--;
+      }
+    }
+    for (let r=write;r>=0;r--){
+      const t = randType();
+      state.grid[r][c] = { type:t, id: state.gemIdCounter++, fallFrom:(write-r+1) };
+      moves.push({r,c,newGem:true, fallFrom:(write-r+1)});
+    }
+  }
+  moves.forEach(m=>{
+    const g = state.grid[m.r][m.c];
+    if (!g) return;
+    g.fallOffset = m.newGem ? m.fallFrom : (m.from!==undefined ? (m.r-m.from) : 0);
+    if (m.newGem) g.spawnT = 1;
+  });
+
+  const dur = 220;
+  const t0 = performance.now();
+  function step(){
+    const t = Math.min(1,(performance.now()-t0)/dur);
+    const e = 1 - Math.pow(1-t,2);
+    for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++){
+      const g = state.grid[r][c];
+      if (g && g.fallOffset){
+        g.fallOffset = g.fallOffset * (1-e);
+      }
+      if (g && g.spawnT!==undefined) g.spawnT = 1;
+      if (g && g.clearT!==undefined) delete g.clearT;
+    }
+    updateParticles();
+    render();
+    if (t<1) requestAnimationFrame(step);
+    else {
+      for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++){
+        const g = state.grid[r][c];
+        if (g){ g.fallOffset = 0; delete g.spawnT; delete g.isSpecial; }
+      }
+      cb();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function spawnParticles(cellsSet){
+  for (const key of cellsSet){
+    const [r,c] = key.split(",").map(Number);
+    const g = state.grid[r][c];
+    if (!g) continue;
+    const cx = c*state.cell + state.cell/2;
+    const cy = r*state.cell + state.cell/2;
+    const color = GEM_COLORS[g.type % GEM_COLORS.length];
+    for (let i=0;i<6;i++){
+      const a = Math.random()*Math.PI*2;
+      const spd = 1+Math.random()*2.5;
+      state.particles.push({
+        x:cx, y:cy, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+        size: 2+Math.random()*2.5, color, life: 30+Math.random()*10, maxLife: 40
+      });
+    }
+  }
+}
+function updateParticles(){
+  for (const p of state.particles){ p.x+=p.vx; p.y+=p.vy; p.vy+=0.06; p.life-=1; }
+  state.particles = state.particles.filter(p=>p.life>0);
+  for (const f of state.floaters){ f.y -= 0.6; f.life -= 1; }
+  state.floaters = state.floaters.filter(f=>f.life>0);
+}
+function spawnFloater(amount, cellsSet){
+  let sr=0,sc=0,n=0;
+  for (const key of cellsSet){ const [r,c]=key.split(",").map(Number); sr+=r; sc+=c; n++; }
+  if (!n) return;
+  const cx = (sc/n)*state.cell + state.cell/2;
+  const cy = (sr/n)*state.cell + state.cell/2;
+  state.floaters.push({ x:cx, y:cy, text:"+"+amount, color: state.combo>1 ? "#ffd166" : "#f1ecff", life:50, maxLife:50 });
+}
+
+function checkGameOver(){
+  if (!hasAnyMove()){
+    toast("No moves left — reshuffling");
+    fillNoMatches();
+    render();
+  }
+  if (state.mode==="levels" && state.movesLeft<=0){
+    endGame("moves");
+  }
+}
+
+/* ---------- Timer loop (Rush) ---------- */
+let lastT = performance.now();
+function tick(now){
+  const dt = (now - lastT)/1000;
+  lastT = now;
+  if (state.running && state.mode==="rush" && !state.animating){
+    state.timeLeft -= dt;
+    if (state.timeLeft<=0){ state.timeLeft=0; endGame("time"); }
+    updateHud();
+  }
+  if (state.particles.length || state.floaters.length){ updateParticles(); }
+  render();
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- Mode tabs ---------- */
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    if (state.animating) return;
+    startMode(btn.dataset.mode);
+  });
+});
+
+/* ---------- Reset / Snapshot / Share ---------- */
+document.getElementById("resetBtn").addEventListener("click", ()=>{
+  if (state.animating) return;
+  if (state.mode==="levels") startMode("levels", {level: state.level});
+  else startMode(state.mode);
+});
+
+document.getElementById("snapBtn").addEventListener("click", ()=>{
+  const out = document.createElement("canvas");
+  out.width = state.boardPx; out.height = state.boardPx + 60;
+  const octx = out.getContext("2d");
+  octx.fillStyle = "#0d0a1c";
+  octx.fillRect(0,0,out.width,out.height);
+  octx.drawImage(canvas, 0, 60, state.boardPx, state.boardPx);
+  octx.fillStyle = "#f1ecff";
+  octx.font = "bold 22px system-ui";
+  octx.textAlign = "left";
+  octx.fillText("Prism Cascade", 14, 32);
+  octx.fillStyle = "#ffd166";
+  octx.textAlign = "right";
+  octx.font = "bold 20px system-ui";
+  octx.fillText("Score "+state.score, out.width-14, 32);
+  out.toBlob(blob=>{
+    if (!blob){ toast("Snapshot failed"); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "prism-cascade-score-"+state.score+".png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast("Snapshot saved");
+  }, "image/png");
+});
+
+document.getElementById("shareBtn").addEventListener("click", ()=>{
+  const params = new URLSearchParams();
+  params.set("mode", state.mode);
+  params.set("seed", state.seed);
+  if (state.mode==="levels") params.set("level", state.level);
+  const url = location.origin + location.pathname + "#" + params.toString();
+  const finish = ()=>toast("Share link copied!");
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(finish).catch(()=>{ prompt("Copy this link:", url); });
+  } else {
+    prompt("Copy this link:", url);
+  }
+});
+
+/* ---------- Boot ---------- */
+function boot(){
+  const hash = location.hash.replace(/^#/,"");
+  let initMode = state.persist.lastMode || "rush";
+  let opts = {};
+  if (hash){
+    const p = new URLSearchParams(hash);
+    if (p.get("mode")) initMode = p.get("mode");
+    if (p.get("seed")) opts.seed = Number(p.get("seed"));
+    if (p.get("level")) opts.level = Number(p.get("level"));
+  }
+  if (!["rush","zen","levels"].includes(initMode)) initMode = "rush";
+  startMode(initMode, opts);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>
