@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Highlight-API Word Paint — UI Spotlight</title>
+<style>
+  :root{ --accent:#f87171; --bg:#0c0708; --panel:#160f10; --line:#2c1e20; --text:#fdf1f1; --dim:#b6979a; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;}
+  body{min-height:100vh; padding:70px 18px 60px;
+    background:radial-gradient(900px 500px at 15% -10%, rgba(248,113,113,.16), transparent 60%), var(--bg);}
+  .back-link{position:fixed; top:14px; left:14px; z-index:20; background:rgba(20,26,38,.7); backdrop-filter:blur(10px);
+    border:1px solid var(--line); color:var(--text); text-decoration:none; font-size:12px; padding:8px 14px; border-radius:999px;}
+  .hero{max-width:760px; margin:0 auto 30px;}
+  .tag{display:inline-block; background:rgba(248,113,113,.14); color:var(--accent); border:1px solid rgba(248,113,113,.35);
+    font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:4px 10px; border-radius:999px;}
+  h1{font-size:26px; margin:10px 0 6px;}
+  p.desc{color:var(--dim); font-size:14px; max-width:600px; line-height:1.6;}
+  code{background:#0006; padding:1px 6px; border-radius:5px;}
+
+  .card{max-width:760px; margin:0 auto 26px; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:24px;}
+  .card h2{font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 14px; font-weight:700;}
+  .passage{font-size:19px; line-height:1.9; color:#d9c6c8;}
+
+  ::highlight(hover){ background:linear-gradient(100deg,#f87171,#fbbf24); color:#1a0708; border-radius:3px; }
+  ::highlight(read){ color:#fff; text-shadow:0 0 14px rgba(248,113,113,.55); }
+  ::highlight(match){ background:#f87171; color:#1a0708; border-radius:3px; }
+
+  .controls{display:flex; flex-direction:column; gap:6px; margin-top:6px;}
+  .controls label{font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em;}
+  input[type=range]{width:100%;}
+  input[type=text]{width:100%; background:#0006; border:1px solid var(--line); border-radius:8px; color:var(--text);
+    padding:8px 10px; font-size:13px; outline:none;}
+  .hint{font-size:11px; color:#7a5f61; margin-top:4px;}
+
+  footer{text-align:center; color:var(--dim); font-size:11px; margin-top:10px;}
+  footer a{color:var(--accent);}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="hero">
+  <span class="tag">Typography</span>
+  <h1>Highlight-API Word Paint</h1>
+  <p class="desc">The CSS Custom Highlight API lets JavaScript mark arbitrary text <code>Range</code>s and style them purely through <code>::highlight()</code> — no <code>&lt;span&gt;</code> ever touches the DOM. Three ways to use it: hover, scrub-to-reveal, and live search.</p>
+</div>
+
+<div class="card">
+  <h2>1 · Hover to paint a word</h2>
+  <p class="passage" id="passage1">Move your cursor across this sentence and watch each word light up individually as a native text highlight, computed entirely from Range geometry with no wrapper elements involved at all.</p>
+</div>
+
+<div class="card">
+  <h2>2 · Scrub to reveal reading progress</h2>
+  <p class="passage" id="passage2">Dragging the slider below marks words as read from the start of this paragraph up to wherever you stop, exactly like a karaoke lyric line or an audiobook progress indicator would.</p>
+  <div class="controls">
+    <label for="progress">Reading progress</label>
+    <input type="range" id="progress" min="0" max="100" value="35">
+  </div>
+</div>
+
+<div class="card">
+  <h2>3 · Live search match</h2>
+  <p class="passage" id="passage3">Type a word below to see every matching occurrence highlighted at once across this paragraph, the same mechanism modern in-browser code editors use for fast search-match rendering.</p>
+  <div class="controls">
+    <label for="search">Search this passage</label>
+    <input type="text" id="search" placeholder="try “highlighted” or “this”">
+    <div class="hint" id="matchCount"></div>
+  </div>
+</div>
+
+<footer>Inspired by pavi2410.com — "High-Performance Syntax Highlighting with CSS Highlights API" · UI Spotlight Day 60 · Drop #3</footer>
+
+<script>
+  var supported = 'Highlight' in window && CSS.highlights;
+  if(!supported){
+    document.querySelectorAll('.passage').forEach(function(p){
+      p.insertAdjacentHTML('afterend', '<div class="hint">Custom Highlight API not supported in this browser — showing plain text.</div>');
+    });
+  }
+
+  function buildWordRanges(el){
+    var textNode = el.firstChild;
+    if(!textNode || textNode.nodeType !== Node.TEXT_NODE) return [];
+    var text = textNode.textContent;
+    var ranges = [];
+    var re = /\S+/g, m;
+    while((m = re.exec(text))){
+      var r = document.createRange();
+      r.setStart(textNode, m.index);
+      r.setEnd(textNode, m.index + m[0].length);
+      ranges.push({ range:r, word:m[0] });
+    }
+    return ranges;
+  }
+
+  // ---- 1. hover word paint ----
+  var p1 = document.getElementById('passage1');
+  var words1 = buildWordRanges(p1);
+  var lastHoverIdx = -1;
+  if(supported){
+    p1.addEventListener('pointermove', function(e){
+      var found = -1;
+      for(var i=0;i<words1.length;i++){
+        var rects = words1[i].range.getClientRects();
+        for(var j=0;j<rects.length;j++){
+          var r = rects[j];
+          if(e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom){ found = i; break; }
+        }
+        if(found>=0) break;
+      }
+      if(found !== lastHoverIdx){
+        lastHoverIdx = found;
+        if(found>=0){ CSS.highlights.set('hover', new Highlight(words1[found].range)); }
+        else { CSS.highlights.delete('hover'); }
+      }
+    });
+    p1.addEventListener('pointerleave', function(){ CSS.highlights.delete('hover'); lastHoverIdx=-1; });
+  }
+
+  // ---- 2. scrub reading progress ----
+  var p2 = document.getElementById('passage2');
+  var words2 = buildWordRanges(p2);
+  var progressSlider = document.getElementById('progress');
+  function updateProgress(){
+    if(!supported) return;
+    var v = parseInt(progressSlider.value, 10) / 100;
+    var count = Math.round(v * words2.length);
+    var ranges = words2.slice(0, count).map(function(w){ return w.range; });
+    if(ranges.length===0){ CSS.highlights.delete('read'); }
+    else { CSS.highlights.set('read', new Highlight(...ranges)); }
+  }
+  progressSlider.addEventListener('input', updateProgress);
+  updateProgress();
+
+  // ---- 3. live search ----
+  var p3 = document.getElementById('passage3');
+  var words3 = buildWordRanges(p3);
+  var searchInput = document.getElementById('search');
+  var matchCountEl = document.getElementById('matchCount');
+  function updateSearch(){
+    var q = searchInput.value.trim().toLowerCase();
+    if(!supported) return;
+    if(!q){ CSS.highlights.delete('match'); matchCountEl.textContent=''; return; }
+    var matches = words3.filter(function(w){ return w.word.toLowerCase().indexOf(q) !== -1; });
+    if(matches.length){ CSS.highlights.set('match', new Highlight(...matches.map(function(w){ return w.range; }))); }
+    else { CSS.highlights.delete('match'); }
+    matchCountEl.textContent = matches.length + ' match' + (matches.length===1?'':'es');
+  }
+  searchInput.addEventListener('input', updateSearch);
+</script>
+</body>
+</html>
