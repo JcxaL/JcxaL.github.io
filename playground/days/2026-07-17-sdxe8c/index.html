@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Parallel Coordinates Studio</title>
+<style>
+  :root{
+    --bg:#0a0e16; --panel:#121826; --panel2:#161f30; --line:#232e42; --text:#eef3fb; --dim:#8a96ab;
+    --accent:#6c8cff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif; overflow:hidden;}
+  body{display:flex; flex-direction:column;}
+
+  /* top bar */
+  #topbar{
+    display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--panel);
+    border-bottom:1px solid var(--line); flex-wrap:wrap; position:relative; z-index:30;
+  }
+  #topbar h1{font-size:15px; margin:0; font-weight:800; white-space:nowrap; display:flex; align-items:center; gap:8px;}
+  #topbar h1 .dot{width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent);}
+  .sel, .btn{
+    font:inherit; font-size:12.5px; background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:9px; padding:8px 10px; cursor:pointer; appearance:none;
+  }
+  .btn{font-weight:700;}
+  .btn:hover, .sel:hover{border-color:#38445c;}
+  .btn:active{transform:translateY(1px);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#08101f;}
+  .spacer{flex:1;}
+  #rowCount{font-size:11.5px; color:var(--dim); white-space:nowrap;}
+  #menuToggle{display:none;}
+
+  /* main layout */
+  #main{flex:1; display:flex; min-height:0; position:relative;}
+  #canvasWrap{flex:1; position:relative; min-width:0;}
+  canvas{display:block; width:100%; height:100%; touch-action:none;}
+
+  #side{
+    width:230px; flex:0 0 auto; background:var(--panel); border-left:1px solid var(--line);
+    padding:14px; overflow-y:auto; font-size:12px;
+  }
+  #side h3{margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); font-weight:800;}
+  .field{margin-bottom:16px;}
+  .field label{display:flex; justify-content:space-between; color:var(--dim); font-size:11px; margin-bottom:6px;}
+  input[type=range]{width:100%; accent-color:var(--accent);}
+  #side .btn{width:100%; margin-bottom:8px;}
+  #legend{display:flex; flex-direction:column; gap:6px; margin-top:4px;}
+  #legend .row{display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--dim);}
+  #legend .sw{width:10px; height:10px; border-radius:3px; flex:0 0 auto;}
+
+  #tooltip{
+    position:absolute; pointer-events:none; background:rgba(18,24,38,.95); border:1px solid var(--line);
+    border-radius:10px; padding:8px 10px; font-size:11.5px; line-height:1.5; color:var(--text); z-index:40;
+    display:none; max-width:220px; backdrop-filter:blur(6px);
+  }
+  #tooltip b{color:var(--accent);}
+
+  #importPanel{
+    position:absolute; inset:0; background:rgba(6,9,15,.85); backdrop-filter:blur(4px); z-index:50;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  #importPanel.open{display:flex;}
+  #importBox{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; width:min(520px,100%);
+    max-height:86vh; overflow-y:auto;
+  }
+  #importBox h2{margin:0 0 6px; font-size:16px;}
+  #importBox p{margin:0 0 12px; color:var(--dim); font-size:12.5px; line-height:1.5;}
+  #csvText{width:100%; min-height:130px; background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:10px; padding:10px; font:12px/1.5 ui-monospace,monospace; resize:vertical;}
+  #importBox .row{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;}
+  #importBox input[type=file]{display:none;}
+  #importBox label.filebtn{
+    font-size:12.5px; font-weight:700; background:var(--panel2); border:1px solid var(--line); border-radius:9px;
+    padding:8px 10px; cursor:pointer;
+  }
+  #importMsg{font-size:11.5px; color:#ffb454; margin-top:8px; min-height:14px;}
+  #saveNameRow{display:none; gap:8px; margin-top:10px;}
+  #saveNameRow input{flex:1; background:var(--panel2); border:1px solid var(--line); border-radius:9px; color:var(--text); padding:8px 10px; font:12.5px inherit;}
+
+  #hint{
+    position:absolute; left:50%; bottom:14px; transform:translateX(-50%); background:rgba(18,24,38,.85);
+    border:1px solid var(--line); border-radius:999px; padding:7px 14px; font-size:11px; color:var(--dim);
+    backdrop-filter:blur(6px); pointer-events:none; transition:opacity .5s ease; z-index:20;
+  }
+
+  @media (max-width:760px){
+    #side{position:absolute; right:0; top:0; bottom:0; transform:translateX(100%); transition:transform .25s ease; box-shadow:-10px 0 30px rgba(0,0,0,.4); z-index:35;}
+    #side.open{transform:translateX(0);}
+    #menuToggle{display:inline-flex;}
+    #topbar h1 span.full{display:none;}
+    #hint{font-size:10px; padding:6px 12px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1><span class="dot"></span><span class="full">Parallel Coordinates Studio</span><span class="short" style="display:none">PC Studio</span></h1>
+  <select class="sel" id="datasetSel"></select>
+  <button class="btn" id="importBtn">Import CSV</button>
+  <span class="spacer"></span>
+  <span id="rowCount"></span>
+  <button class="btn" id="resetBtn" title="Clear brushes &amp; axis order">Reset</button>
+  <button class="btn" id="pngBtn">PNG ↓</button>
+  <button class="btn primary" id="csvBtn">CSV ↓</button>
+  <button class="btn" id="menuToggle">⚙</button>
+</div>
+
+<div id="main">
+  <div id="canvasWrap">
+    <canvas id="cv"></canvas>
+    <div id="tooltip"></div>
+    <div id="hint">Drag an axis line to brush · drag a label to reorder · hover a line to inspect</div>
+  </div>
+  <div id="side">
+    <h3>Color by</h3>
+    <div class="field"><select class="sel" id="colorBySel" style="width:100%"></select></div>
+    <h3>Style</h3>
+    <div class="field">
+      <label><span>Line width</span><span id="lwVal"></span></label>
+      <input type="range" id="lwRange" min="0.6" max="3.5" step="0.1" value="1.2">
+    </div>
+    <div class="field">
+      <label><span>Opacity</span><span id="opVal"></span></label>
+      <input type="range" id="opRange" min="0.08" max="0.9" step="0.02" value="0.35">
+    </div>
+    <h3>Legend</h3>
+    <div id="legend"></div>
+  </div>
+</div>
+
+<div id="importPanel">
+  <div id="importBox">
+    <h2>Bring your own data</h2>
+    <p>Paste CSV text (first row = headers) or upload a .csv file. Columns are auto-detected as numeric or categorical. Up to 600 rows.</p>
+    <textarea id="csvText" placeholder="mpg,cylinders,horsepower,origin&#10;28,4,90,Japan&#10;15,8,220,USA&#10;..."></textarea>
+    <div class="row">
+      <label class="filebtn">Choose file<input type="file" id="csvFile" accept=".csv,text/csv"></label>
+      <button class="btn primary" id="parseBtn">Visualize</button>
+      <button class="btn" id="cancelImport">Cancel</button>
+    </div>
+    <div id="saveNameRow">
+      <input id="saveNameInput" placeholder="Name this dataset to save it">
+      <button class="btn" id="saveDatasetBtn">Save</button>
+    </div>
+    <div id="importMsg"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- seeded RNG + synthetic datasets ---------- */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+var rng = mulberry32(20260717);
+function rand(a,b){ return a + rng()*(b-a); }
+function pick(arr){ return arr[Math.floor(rng()*arr.length)]; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+function genCars(){
+  var origins=['USA','Europe','Japan'], rows=[];
+  for(var i=0;i<48;i++){
+    var origin = pick(origins);
+    var cylPool = origin==='USA' ? [6,8,8,6,4] : origin==='Japan' ? [4,4,4,6] : [4,4,6];
+    var cyl = pick(cylPool);
+    var disp = cyl*rand(28,62) + rand(-15,15);
+    var hp = disp*rand(0.32,0.5) + rand(-6,6);
+    var weight = 1500 + disp*rand(5,8.5) + rand(-100,100);
+    var accel = clamp(22 - hp/72 + rand(-1.6,1.6), 8, 24);
+    var mpg = clamp(44 - weight/115 - cyl*1.05 + rand(-2.2,2.2), 9, 46);
+    var year = Math.round(rand(1998,2026));
+    rows.push({mpg:+mpg.toFixed(1), cylinders:cyl, horsepower:Math.round(hp), weight:Math.round(weight),
+      acceleration:+accel.toFixed(1), year:year, origin:origin});
+  }
+  return {
+    dims:[
+      {key:'mpg',label:'MPG',type:'num'}, {key:'cylinders',label:'Cylinders',type:'num'},
+      {key:'horsepower',label:'Horsepower',type:'num'}, {key:'weight',label:'Weight (lb)',type:'num'},
+      {key:'acceleration',label:'0-60 (s)',type:'num'}, {key:'year',label:'Year',type:'num'},
+      {key:'origin',label:'Origin',type:'cat'}
+    ],
+    rows: rows, defaultColorBy:'origin'
+  };
+}
+
+function genFlowers(){
+  var species=[
+    {name:'Setosa', sl:[4.6,5.6], sw:[3.0,4.1], pl:[1.0,1.7], pw:[0.1,0.5]},
+    {name:'Versicolor', sl:[5.4,6.6], sw:[2.3,3.1], pl:[3.5,4.9], pw:[1.0,1.6]},
+    {name:'Virginica', sl:[6.0,7.6], sw:[2.6,3.5], pl:[4.9,6.6], pw:[1.5,2.4]}
+  ];
+  var rows=[];
+  species.forEach(function(sp){
+    for(var i=0;i<16;i++){
+      rows.push({
+        sepal_length:+rand(sp.sl[0],sp.sl[1]).toFixed(1),
+        sepal_width:+rand(sp.sw[0],sp.sw[1]).toFixed(1),
+        petal_length:+rand(sp.pl[0],sp.pl[1]).toFixed(1),
+        petal_width:+rand(sp.pw[0],sp.pw[1]).toFixed(1),
+        species:sp.name
+      });
+    }
+  });
+  return {
+    dims:[
+      {key:'sepal_length',label:'Sepal Length',type:'num'}, {key:'sepal_width',label:'Sepal Width',type:'num'},
+      {key:'petal_length',label:'Petal Length',type:'num'}, {key:'petal_width',label:'Petal Width',type:'num'},
+      {key:'species',label:'Species',type:'cat'}
+    ],
+    rows: rows, defaultColorBy:'species'
+  };
+}
+
+function genCountries(){
+  var continents=['Africa','Asia','Europe','Americas','Oceania'];
+  var rows=[];
+  for(var i=0;i<42;i++){
+    var cont = pick(continents);
+    var base = cont==='Europe' ? rand(0.55,0.95) : cont==='Americas' ? rand(0.35,0.85) :
+               cont==='Asia' ? rand(0.15,0.85) : cont==='Oceania' ? rand(0.4,0.9) : rand(0.05,0.55);
+    var gdp = Math.round(600 + base*base*68000 + rand(-1500,1500));
+    var life = clamp(48 + base*36 + rand(-4,4), 45, 86);
+    var urban = clamp(base*90 + rand(-8,12) + 8, 8, 98);
+    var co2 = clamp(base*17 + rand(-1.5,1.5) + 0.2, 0.1, 19);
+    var pop = Math.round(Math.pow(10, rand(0.7,3.15)));
+    rows.push({gdp_per_capita:gdp, life_expectancy:+life.toFixed(1), urban_pct:Math.round(urban),
+      co2_per_capita:+co2.toFixed(1), population_m:pop, continent:cont});
+  }
+  return {
+    dims:[
+      {key:'gdp_per_capita',label:'GDP / capita ($)',type:'num'}, {key:'life_expectancy',label:'Life Exp. (yrs)',type:'num'},
+      {key:'urban_pct',label:'Urban %',type:'num'}, {key:'co2_per_capita',label:'CO2 / capita (t)',type:'num'},
+      {key:'population_m',label:'Population (M)',type:'num'}, {key:'continent',label:'Continent',type:'cat'}
+    ],
+    rows: rows, defaultColorBy:'continent'
+  };
+}
+
+var BUILTIN = {
+  cars: {label:'Sample · Cars', gen:genCars},
+  flowers: {label:'Sample · Flowers', gen:genFlowers},
+  countries: {label:'Sample · World Snapshot', gen:genCountries}
+};
+
+/* ---------- dataset prep (compute min/max, categories) ---------- */
+function finalize(dims, rows){
+  dims.forEach(function(d){
+    if(d.type==='num'){
+      var vals = rows.map(function(r){return +r[d.key];}).filter(function(v){return isFinite(v);});
+      d.min = Math.min.apply(null, vals); d.max = Math.max.apply(null, vals);
+      if(d.min===d.max){ d.min-=1; d.max+=1; }
+    } else {
+      var cats = []; rows.forEach(function(r){ var v=String(r[d.key]); if(cats.indexOf(v)===-1) cats.push(v); });
+      d.categories = cats;
+    }
+  });
+  return {dims:dims, rows:rows};
+}
+
+/* ---------- CSV parsing ---------- */
+function parseCSV(text){
+  var lines = text.replace(/\r/g,'').split('\n').filter(function(l){return l.trim().length;});
+  if(lines.length<2) throw new Error('Need a header row plus at least one data row.');
+  function splitLine(l){
+    var out=[], cur='', inQ=false;
+    for(var i=0;i<l.length;i++){
+      var c=l[i];
+      if(c==='"'){ inQ=!inQ; continue; }
+      if(c===',' && !inQ){ out.push(cur); cur=''; continue; }
+      cur+=c;
+    }
+    out.push(cur);
+    return out.map(function(s){return s.trim();});
+  }
+  var headers = splitLine(lines[0]);
+  var raw = lines.slice(1, 601).map(splitLine);
+  var dims = headers.map(function(h,i){
+    var vals = raw.map(function(r){return r[i];}).filter(function(v){return v!==undefined && v!=='';});
+    var numCount = vals.filter(function(v){return isFinite(parseFloat(v)) && v!=='';}).length;
+    var isNum = vals.length>0 && numCount/vals.length > 0.85;
+    return {key:'c'+i, label:h||('Column '+(i+1)), type:isNum?'num':'cat'};
+  });
+  var rows = raw.map(function(r){
+    var o={};
+    dims.forEach(function(d,i){
+      var v=r[i];
+      o[d.key] = d.type==='num' ? parseFloat(v) : (v===undefined?'':v);
+    });
+    return o;
+  }).filter(function(o){
+    return dims.some(function(d){ return d.type==='num' ? isFinite(o[d.key]) : o[d.key]!==''; });
+  });
+  if(!rows.length) throw new Error('No usable rows found.');
+  return finalize(dims, rows);
+}
+
+/* ---------- state ---------- */
+var PALETTE = ['#6c8cff','#34d6c0','#ffb454','#ff6b9d','#8b5cf6','#4ade80','#f87171','#38bdf8'];
+var S = {
+  datasetKey:'cars', dataset:null, order:[], colorBy:null, brushes:{},
+  lineWidth:1.2, opacity:0.35, hoverIdx:-1, custom:{}
+};
+
+function loadPersisted(){
+  try{
+    var st = JSON.parse(localStorage.getItem('pcs_state_v1')||'{}');
+    if(st.datasetKey) S.datasetKey = st.datasetKey;
+    if(typeof st.lineWidth==='number') S.lineWidth = st.lineWidth;
+    if(typeof st.opacity==='number') S.opacity = st.opacity;
+    S._savedColorBy = st.colorBy;
+  }catch(e){}
+  try{ S.custom = JSON.parse(localStorage.getItem('pcs_custom_v1')||'{}'); }catch(e){ S.custom = {}; }
+}
+function persistState(){
+  try{
+    localStorage.setItem('pcs_state_v1', JSON.stringify({
+      datasetKey:S.datasetKey, colorBy:S.colorBy, lineWidth:S.lineWidth, opacity:S.opacity
+    }));
+  }catch(e){}
+}
+function persistCustom(){
+  try{ localStorage.setItem('pcs_custom_v1', JSON.stringify(S.custom)); }catch(e){}
+}
+
+function setDataset(key){
+  var d;
+  if(BUILTIN[key]) d = finalize.apply(null, (function(){ var g=BUILTIN[key].gen(); return [g.dims, g.rows]; })());
+  else if(S.custom[key]) d = finalize(JSON.parse(JSON.stringify(S.custom[key].dims)), JSON.parse(JSON.stringify(S.custom[key].rows)));
+  else return;
+  S.datasetKey = key;
+  S.dataset = d;
+  S.order = d.dims.map(function(x){return x.key;});
+  S.brushes = {};
+  var defaultCB = BUILTIN[key] ? BUILTIN[key].gen().defaultColorBy : (d.dims.filter(function(x){return x.type==='cat';})[0]||d.dims[0]).key;
+  S.colorBy = (S._savedColorBy && d.dims.some(function(x){return x.key===S._savedColorBy;})) ? S._savedColorBy : defaultCB;
+  S._savedColorBy = null;
+  buildDatasetSelect();
+  buildColorBySelect();
+  buildLegend();
+  updateRowCount();
+  persistState();
+  draw();
+}
+
+/* ---------- canvas / layout ---------- */
+var wrap = document.getElementById('canvasWrap');
+var cv = document.getElementById('cv');
+var ctx = cv.getContext('2d');
+var DPR = Math.max(1, window.devicePixelRatio||1);
+var W=0,H=0;
+var AXIS_TOP=54, AXIS_BOTTOM_PAD=34;
+
+function resize(){
+  var r = wrap.getBoundingClientRect();
+  W = Math.max(200, r.width); H = Math.max(200, r.height);
+  DPR = Math.max(1, window.devicePixelRatio||1);
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  draw();
+}
+new ResizeObserver(resize).observe(wrap);
+
+function axisX(i, n){
+  var pad = 46;
+  if(n<=1) return W/2;
+  return pad + (W-2*pad) * (i/(n-1));
+}
+function axisBottom(){ return H - AXIS_BOTTOM_PAD; }
+
+function normOf(dim, value){
+  if(dim.type==='num'){
+    var t = (value - dim.min)/(dim.max-dim.min || 1);
+    return 1 - clamp(t,0,1); // 0 = top = max
+  } else {
+    var idx = dim.categories.indexOf(String(value));
+    if(idx<0) return 0.5;
+    var n = dim.categories.length;
+    return n<=1 ? 0.5 : idx/(n-1);
+  }
+}
+function yOf(norm){ return AXIS_TOP + norm*(axisBottom()-AXIS_TOP); }
+
+function colorFor(row){
+  var d = S.dataset.dims.find(function(x){return x.key===S.colorBy;});
+  if(!d) return PALETTE[0];
+  if(d.type==='cat'){
+    var idx = d.categories.indexOf(String(row[d.key]));
+    return PALETTE[(idx<0?0:idx) % PALETTE.length];
+  }
+  var t = clamp((row[d.key]-d.min)/((d.max-d.min)||1), 0, 1);
+  return mixColor('#38bdf8','#ff6b9d', t);
+}
+function hexToRgb(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+function mixColor(a,b,t){
+  var A=hexToRgb(a), B=hexToRgb(b);
+  var r=Math.round(A[0]+(B[0]-A[0])*t), g=Math.round(A[1]+(B[1]-A[1])*t), bl=Math.round(A[2]+(B[2]-A[2])*t);
+  return 'rgb('+r+','+g+','+bl+')';
+}
+
+function rowSelected(row){
+  for(var k in S.brushes){
+    var br = S.brushes[k];
+    if(!br) continue;
+    var dim = S.dataset.dims.find(function(x){return x.key===k;});
+    if(!dim) continue;
+    var n = normOf(dim, row[k]);
+    if(n < br.n0 - 0.001 || n > br.n1 + 0.001) return false;
+  }
+  return true;
+}
+function anyBrush(){ return Object.keys(S.brushes).some(function(k){return S.brushes[k];}); }
+
+function draw(){
+  if(!S.dataset) return;
+  ctx.clearRect(0,0,W,H);
+  var dims = S.order.map(function(k){ return S.dataset.dims.find(function(x){return x.key===k;}); });
+  var n = dims.length;
+  var hasBrush = anyBrush();
+
+  // background lines pass (dim, unselected) then bright pass (selected)
+  function drawLines(onlySelected){
+    S.dataset.rows.forEach(function(row, ri){
+      var sel = rowSelected(row);
+      if(onlySelected !== sel) return;
+      ctx.beginPath();
+      for(var i=0;i<n;i++){
+        var x = axisX(i,n), y = yOf(normOf(dims[i], row[dims[i].key]));
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      var isHover = ri===S.hoverIdx;
+      var col = colorFor(row);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = isHover ? S.lineWidth+2.2 : S.lineWidth;
+      ctx.globalAlpha = isHover ? 1 : (sel ? (hasBrush?Math.min(0.95,S.opacity+0.35):S.opacity) : S.opacity*0.12);
+      ctx.stroke();
+    });
+  }
+  drawLines(false);
+  drawLines(true);
+  ctx.globalAlpha=1;
+
+  // axes
+  for(var i=0;i<n;i++){
+    var d = dims[i], x = axisX(i,n);
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, AXIS_TOP-6); ctx.lineTo(x, axisBottom()+6); ctx.stroke();
+
+    // brush
+    var br = S.brushes[d.key];
+    if(br){
+      var y0=yOf(br.n0), y1=yOf(br.n1);
+      ctx.fillStyle = 'rgba(108,140,255,0.28)';
+      ctx.fillRect(x-7, y0, 14, y1-y0);
+      ctx.strokeStyle='#6c8cff'; ctx.lineWidth=1.4;
+      ctx.strokeRect(x-7, y0, 14, y1-y0);
+    }
+
+    // ticks
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '10px system-ui,sans-serif';
+    ctx.textAlign='center';
+    if(d.type==='num'){
+      ctx.fillText(fmtNum(d.max), x, AXIS_TOP-12);
+      ctx.fillText(fmtNum(d.min), x, axisBottom()+18);
+    } else {
+      d.categories.forEach(function(c,ci){
+        var yy = yOf(d.categories.length<=1?0.5:ci/(d.categories.length-1));
+        ctx.fillStyle = c===String(S.dataset.rows[S.hoverIdx>=0?S.hoverIdx:-1] && S.dataset.rows[S.hoverIdx][d.key]) ? '#fff' : 'rgba(255,255,255,0.4)';
+        ctx.textAlign='left';
+        ctx.fillText(c, x+11, yy+3);
+      });
+    }
+
+    // label (draggable header)
+    var labelDrag = dragAxis && dragAxis.key===d.key;
+    ctx.fillStyle = labelDrag ? '#6c8cff' : '#eef3fb';
+    ctx.font = '700 11px system-ui,sans-serif';
+    ctx.textAlign='center';
+    var lx = labelDrag ? dragAxis.curX : x;
+    roundRect(ctx, lx-56, AXIS_TOP-42, 112, 24, 7);
+    ctx.fillStyle = labelDrag ? 'rgba(108,140,255,0.22)' : 'rgba(255,255,255,0.05)';
+    ctx.fill();
+    ctx.fillStyle = labelDrag ? '#9fb2ff' : '#eef3fb';
+    ctx.fillText(truncate(d.label, 15), lx, AXIS_TOP-26);
+  }
+}
+function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function truncate(s,n){ s=String(s); return s.length>n ? s.slice(0,n-1)+'…' : s; }
+function fmtNum(v){ if(Math.abs(v)>=1000) return Math.round(v).toLocaleString(); return (Math.round(v*10)/10).toString(); }
+
+/* ---------- pointer interaction ---------- */
+var dragAxis=null, dragBrush=null, isCoarse = matchMedia('(pointer:coarse)').matches;
+
+function localPos(e){
+  var r = cv.getBoundingClientRect();
+  return {x:(e.clientX-r.left), y:(e.clientY-r.top)};
+}
+function nearestAxisIndex(x, n){
+  var best=0, bd=Infinity;
+  for(var i=0;i<n;i++){ var d=Math.abs(axisX(i,n)-x); if(d<bd){bd=d;best=i;} }
+  return {i:best, d:bd};
+}
+
+cv.addEventListener('pointerdown', function(e){
+  if(!S.dataset) return;
+  cv.setPointerCapture(e.pointerId);
+  var p = localPos(e);
+  var dims = S.order.map(function(k){ return S.dataset.dims.find(function(x){return x.key===k;}); });
+  var n = dims.length;
+  var near = nearestAxisIndex(p.x, n);
+  var hitTol = isCoarse ? 22 : 12;
+  if(near.d > hitTol) return;
+  var dim = dims[near.i];
+
+  if(p.y < AXIS_TOP-16){
+    dragAxis = {key:dim.key, index:near.i, curX:p.x, startX:p.x};
+  } else if(p.y >= AXIS_TOP-8 && p.y <= axisBottom()+8){
+    var norm = clamp((p.y-AXIS_TOP)/(axisBottom()-AXIS_TOP),0,1);
+    dragBrush = {key:dim.key, start:norm};
+    S.brushes[dim.key] = {n0:norm, n1:norm};
+    draw();
+  }
+});
+cv.addEventListener('pointermove', function(e){
+  if(!S.dataset) return;
+  var p = localPos(e);
+  if(dragAxis){
+    dragAxis.curX = p.x;
+    var dims = S.order.slice();
+    var n = dims.length;
+    var near = nearestAxisIndex(p.x, n);
+    if(near.i !== dragAxis.index){
+      dims.splice(dragAxis.index,1);
+      dims.splice(near.i,0,dragAxis.key);
+      S.order = dims;
+      dragAxis.index = near.i;
+    }
+    draw();
+    return;
+  }
+  if(dragBrush){
+    var norm = clamp((p.y-AXIS_TOP)/(axisBottom()-AXIS_TOP),0,1);
+    S.brushes[dragBrush.key] = {n0:Math.min(dragBrush.start,norm), n1:Math.max(dragBrush.start,norm)};
+    draw();
+    return;
+  }
+  if(isCoarse) return;
+  // hover nearest line
+  var dims2 = S.order.map(function(k){ return S.dataset.dims.find(function(x){return x.key===k;}); });
+  var n2 = dims2.length;
+  var near2 = nearestAxisIndex(p.x, n2);
+  if(near2.d > 60){ if(S.hoverIdx!==-1){S.hoverIdx=-1; draw(); hideTip();} return; }
+  var i0 = clamp(near2.i - (p.x < axisX(near2.i,n2) ? 1 : 0), 0, n2-1);
+  var i1 = clamp(i0+1, 0, n2-1);
+  var x0=axisX(i0,n2), x1=axisX(i1,n2);
+  var t = x1>x0 ? clamp((p.x-x0)/(x1-x0),0,1) : 0;
+  var best=-1, bd=Infinity;
+  S.dataset.rows.forEach(function(row, ri){
+    var y0 = yOf(normOf(dims2[i0], row[dims2[i0].key]));
+    var y1 = yOf(normOf(dims2[i1], row[dims2[i1].key]));
+    var y = y0 + (y1-y0)*t;
+    var d = Math.abs(y-p.y);
+    if(d<bd){bd=d;best=ri;}
+  });
+  if(bd<18){
+    if(S.hoverIdx!==best){ S.hoverIdx=best; draw(); }
+    showTip(p, S.dataset.rows[best]);
+  } else {
+    if(S.hoverIdx!==-1){ S.hoverIdx=-1; draw(); }
+    hideTip();
+  }
+});
+function endDrag(e){
+  if(dragAxis){ dragAxis=null; draw(); }
+  if(dragBrush){
+    var k=dragBrush.key;
+    if(Math.abs(S.brushes[k].n1-S.brushes[k].n0) < 0.012) delete S.brushes[k];
+    dragBrush=null; updateRowCount(); draw();
+  }
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', function(){ if(!dragAxis && !dragBrush){ S.hoverIdx=-1; draw(); hideTip(); } });
+cv.addEventListener('dblclick', function(e){
+  var p = localPos(e);
+  var dims = S.order.map(function(k){ return S.dataset.dims.find(function(x){return x.key===k;}); });
+  var near = nearestAxisIndex(p.x, dims.length);
+  if(near.d<20 && S.brushes[dims[near.i].key]){ delete S.brushes[dims[near.i].key]; updateRowCount(); draw(); }
+});
+
+function showTip(p,row){
+  var tip = document.getElementById('tooltip');
+  var html = S.order.map(function(k){
+    var d = S.dataset.dims.find(function(x){return x.key===k;});
+    var v = row[k];
+    return '<div><b>'+d.label+':</b> '+(d.type==='num'?fmtNum(v):v)+'</div>';
+  }).join('');
+  tip.innerHTML = html;
+  tip.style.display='block';
+  var left = clamp(p.x+16, 4, W-230), top = clamp(p.y-10, 4, H-tip.offsetHeight-4);
+  tip.style.left = left+'px'; tip.style.top = top+'px';
+}
+function hideTip(){ document.getElementById('tooltip').style.display='none'; }
+
+/* ---------- UI wiring ---------- */
+function buildDatasetSelect(){
+  var sel = document.getElementById('datasetSel');
+  sel.innerHTML='';
+  Object.keys(BUILTIN).forEach(function(k){
+    var o=document.createElement('option'); o.value=k; o.textContent=BUILTIN[k].label; sel.appendChild(o);
+  });
+  Object.keys(S.custom).forEach(function(k){
+    var o=document.createElement('option'); o.value='custom:'+k; o.textContent='Saved · '+k; sel.appendChild(o);
+  });
+  var val = BUILTIN[S.datasetKey] ? S.datasetKey : 'custom:'+S.datasetKey.replace(/^custom:/,'');
+  sel.value = S.datasetKey.indexOf('custom:')===0 ? S.datasetKey : S.datasetKey;
+  if(sel.value !== S.datasetKey) sel.value = S.datasetKey;
+}
+function buildColorBySelect(){
+  var sel = document.getElementById('colorBySel');
+  sel.innerHTML='';
+  S.dataset.dims.forEach(function(d){
+    var o=document.createElement('option'); o.value=d.key; o.textContent=d.label; sel.appendChild(o);
+  });
+  sel.value = S.colorBy;
+}
+function buildLegend(){
+  var wrap = document.getElementById('legend');
+  wrap.innerHTML='';
+  var d = S.dataset.dims.find(function(x){return x.key===S.colorBy;});
+  if(!d) return;
+  if(d.type==='cat'){
+    d.categories.forEach(function(c,i){
+      var row=document.createElement('div'); row.className='row';
+      row.innerHTML='<span class="sw" style="background:'+PALETTE[i%PALETTE.length]+'"></span>'+c;
+      wrap.appendChild(row);
+    });
+  } else {
+    var row1=document.createElement('div'); row1.className='row';
+    row1.innerHTML='<span class="sw" style="background:#38bdf8"></span>low '+fmtNum(d.min);
+    var row2=document.createElement('div'); row2.className='row';
+    row2.innerHTML='<span class="sw" style="background:#ff6b9d"></span>high '+fmtNum(d.max);
+    wrap.appendChild(row1); wrap.appendChild(row2);
+  }
+}
+function updateRowCount(){
+  var total = S.dataset.rows.length;
+  var sel = anyBrush() ? S.dataset.rows.filter(rowSelected).length : total;
+  document.getElementById('rowCount').textContent = anyBrush() ? (sel+' / '+total+' rows') : (total+' rows');
+}
+
+document.getElementById('datasetSel').addEventListener('change', function(e){
+  var v = e.target.value;
+  if(v.indexOf('custom:')===0) setDataset(v.replace('custom:','')); else setDataset(v);
+});
+document.getElementById('colorBySel').addEventListener('change', function(e){
+  S.colorBy = e.target.value; buildLegend(); persistState(); draw();
+});
+document.getElementById('lwRange').addEventListener('input', function(e){
+  S.lineWidth = parseFloat(e.target.value); document.getElementById('lwVal').textContent=S.lineWidth.toFixed(1);
+  persistState(); draw();
+});
+document.getElementById('opRange').addEventListener('input', function(e){
+  S.opacity = parseFloat(e.target.value); document.getElementById('opVal').textContent=S.opacity.toFixed(2);
+  persistState(); draw();
+});
+document.getElementById('resetBtn').addEventListener('click', function(){
+  S.order = S.dataset.dims.map(function(x){return x.key;});
+  S.brushes = {}; updateRowCount(); draw();
+});
+document.getElementById('menuToggle').addEventListener('click', function(){
+  document.getElementById('side').classList.toggle('open');
+});
+
+document.getElementById('pngBtn').addEventListener('click', function(){
+  cv.toBlob(function(blob){
+    if(!blob) return;
+    var a=document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'parallel-coords-'+S.datasetKey.replace(/[^a-z0-9]+/gi,'_')+'.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }, 'image/png');
+});
+document.getElementById('csvBtn').addEventListener('click', function(){
+  var rows = anyBrush() ? S.dataset.rows.filter(rowSelected) : S.dataset.rows;
+  var cols = S.order;
+  var header = cols.map(function(k){ return csvEsc(S.dataset.dims.find(function(x){return x.key===k;}).label); }).join(',');
+  var lines = rows.map(function(r){ return cols.map(function(k){ return csvEsc(r[k]); }).join(','); });
+  var csv = [header].concat(lines).join('\n');
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a=document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'parallel-coords-export.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+});
+function csvEsc(v){ v=String(v); return /[,"\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+
+/* ---------- import panel ---------- */
+var importPanel = document.getElementById('importPanel');
+var pendingImport = null;
+document.getElementById('importBtn').addEventListener('click', function(){
+  importPanel.classList.add('open');
+  document.getElementById('importMsg').textContent='';
+  document.getElementById('saveNameRow').style.display='none';
+});
+document.getElementById('cancelImport').addEventListener('click', function(){ importPanel.classList.remove('open'); });
+document.getElementById('csvFile').addEventListener('change', function(e){
+  var f = e.target.files[0]; if(!f) return;
+  var reader = new FileReader();
+  reader.onload = function(){ document.getElementById('csvText').value = reader.result; };
+  reader.readAsText(f);
+});
+document.getElementById('parseBtn').addEventListener('click', function(){
+  var msg = document.getElementById('importMsg');
+  try{
+    var text = document.getElementById('csvText').value;
+    var parsed = parseCSV(text);
+    pendingImport = parsed;
+    msg.style.color = '#4ade80';
+    msg.textContent = 'Parsed '+parsed.rows.length+' rows, '+parsed.dims.length+' columns. Choose a name to save, or it stays temporary.';
+    document.getElementById('saveNameRow').style.display='flex';
+    S.dataset = parsed;
+    S.datasetKey = '__preview__';
+    S.order = parsed.dims.map(function(x){return x.key;});
+    S.brushes = {};
+    var cat = parsed.dims.filter(function(x){return x.type==='cat';})[0];
+    S.colorBy = (cat||parsed.dims[0]).key;
+    buildColorBySelect(); buildLegend(); updateRowCount(); draw();
+  }catch(err){
+    msg.style.color = '#f87171';
+    msg.textContent = err.message || 'Could not parse that CSV.';
+  }
+});
+document.getElementById('saveDatasetBtn').addEventListener('click', function(){
+  var name = document.getElementById('saveNameInput').value.trim();
+  var msg = document.getElementById('importMsg');
+  if(!name || !pendingImport){ return; }
+  S.custom[name] = {dims: pendingImport.dims, rows: pendingImport.rows};
+  persistCustom();
+  S.datasetKey = name;
+  buildDatasetSelect();
+  document.getElementById('datasetSel').value = 'custom:'+name;
+  msg.style.color = '#4ade80';
+  msg.textContent = 'Saved "'+name+'" — it will reappear next time you visit.';
+  persistState();
+  importPanel.classList.remove('open');
+});
+
+/* ---------- boot ---------- */
+loadPersisted();
+document.getElementById('lwRange').value = S.lineWidth;
+document.getElementById('opRange').value = S.opacity;
+document.getElementById('lwVal').textContent = S.lineWidth.toFixed(1);
+document.getElementById('opVal').textContent = S.opacity.toFixed(2);
+setDataset(BUILTIN[S.datasetKey] ? S.datasetKey : (S.custom[S.datasetKey] ? S.datasetKey : 'cars'));
+resize();
+setTimeout(function(){ var h=document.getElementById('hint'); if(h) h.style.opacity='0'; }, 6000);
+window.addEventListener('resize', resize);
+})();
+</script>
+</body>
+</html>
