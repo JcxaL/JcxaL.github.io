@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 4 — Scrubbable Number Fields</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:#0b0a06;color:#fff7e6;
+    font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:30;background:rgba(28,22,8,.6);
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);color:#fff;
+    text-decoration:none;font-size:13px;font-weight:600;padding:9px 14px;border-radius:999px;}
+  .shell{max-width:960px;margin:0 auto;padding:96px 24px 60px;
+    display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;}
+  header{grid-column:1/-1;text-align:center;}
+  header h1{font-size:clamp(1.6rem,5vw,2.6rem);margin:0 0 8px;font-weight:800;letter-spacing:-.02em;}
+  header p{margin:0;color:rgba(255,247,230,.55);font-size:14px;}
+
+  .controls{display:flex;flex-direction:column;gap:2px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:18px;padding:10px;}
+  .field{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;}
+  .field:hover{background:rgba(255,255,255,.04);}
+  .field .lab{flex:1;}
+  .field .lab b{display:block;font-size:14px;font-weight:700;}
+  .field .lab small{color:rgba(255,247,230,.45);font-size:11.5px;}
+  .scrub{
+    position:relative;display:inline-flex;align-items:center;gap:2px;
+    min-width:98px;justify-content:flex-end;
+    padding:8px 12px;border-radius:10px;font-variant-numeric:tabular-nums;
+    background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.28);
+    color:#fde68a;font-weight:800;font-size:16px;cursor:ew-resize;user-select:none;
+    touch-action:none;transition:background .2s ease,border-color .2s ease;
+  }
+  .scrub:hover{background:rgba(251,191,36,.18);}
+  .scrub.dragging{background:rgba(251,191,36,.28);border-color:#fbbf24;}
+  .scrub .unit{font-size:11px;opacity:.6;font-weight:700;}
+  .scrub input{all:unset;width:100%;text-align:right;color:inherit;font:inherit;display:none;}
+  .scrub.editing input{display:block;}
+  .scrub.editing .val,.scrub.editing .unit{display:none;}
+  .scrub::before{content:'⇔';position:absolute;left:8px;font-size:11px;opacity:.35;}
+
+  .stage{display:flex;align-items:center;justify-content:center;min-height:340px;}
+  .card{
+    width:190px;height:190px;border-radius:26px;
+    background:conic-gradient(from 0deg,#fbbf24,#fb7185,#a78bfa,#38bdf8,#34d399,#fbbf24);
+    display:flex;align-items:center;justify-content:center;font-weight:800;color:#0b0a06;
+    box-shadow:0 30px 60px -30px rgba(0,0,0,.8);
+    /* driven by scrubbers */
+    opacity:1; transform:rotate(0deg) scale(1); filter:blur(0px) hue-rotate(0deg);
+  }
+  .card span{background:rgba(255,255,255,.85);padding:6px 12px;border-radius:999px;font-size:13px;}
+
+  .hint{grid-column:1/-1;text-align:center;color:rgba(255,247,230,.4);font-size:13px;margin-top:4px;}
+  footer{text-align:center;font-size:11px;color:rgba(255,247,230,.34);padding:10px 0 40px;}
+
+  .panel{position:fixed;top:16px;right:16px;z-index:30;width:216px;background:rgba(26,20,6,.68);
+    backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);border-radius:16px;
+    padding:14px 16px;font-size:12px;}
+  .panel h2{margin:0 0 12px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,247,230,.5);}
+  .panel .row{margin-bottom:12px;}
+  .panel label{display:flex;justify-content:space-between;margin-bottom:6px;color:rgba(255,247,230,.78);}
+  .panel input[type=range]{width:100%;accent-color:#fbbf24;}
+  .panel .chk{display:flex;align-items:center;gap:8px;cursor:pointer;color:rgba(255,247,230,.78);}
+  @media(max-width:820px){.shell{grid-template-columns:1fr;}.panel{display:none;}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h2>Scrub</h2>
+  <div class="row"><label>Sensitivity <span id="vSens">0.50</span></label>
+    <input id="pSens" type="range" min="10" max="200" value="50"></div>
+  <div class="row"><label class="chk"><input id="pLock" type="checkbox" checked> Use Pointer Lock</label></div>
+  <div class="row" style="color:rgba(255,247,230,.5);line-height:1.5">Hold <b>Shift</b> while dragging for fine (0.2×) control. Double-click a value to type it.</div>
+</div>
+
+<div class="shell">
+  <header>
+    <h1>Scrubbable Number Fields</h1>
+    <p>Drag any value left/right to scrub it — the Figma / Blender / After Effects trick.</p>
+  </header>
+
+  <div class="controls" id="controls">
+    <div class="field">
+      <div class="lab"><b>Opacity</b><small>0 – 100</small></div>
+      <div class="scrub" data-min="0" data-max="100" data-step="1" data-unit="%" data-val="100">
+        <span class="val">100</span><span class="unit">%</span><input type="text" inputmode="decimal"></div>
+    </div>
+    <div class="field">
+      <div class="lab"><b>Rotation</b><small>-180 – 180</small></div>
+      <div class="scrub" data-min="-180" data-max="180" data-step="1" data-unit="°" data-val="0">
+        <span class="val">0</span><span class="unit">°</span><input type="text" inputmode="decimal"></div>
+    </div>
+    <div class="field">
+      <div class="lab"><b>Scale</b><small>0.20 – 2.20</small></div>
+      <div class="scrub" data-min="0.2" data-max="2.2" data-step="0.01" data-unit="×" data-val="1">
+        <span class="val">1.00</span><span class="unit">×</span><input type="text" inputmode="decimal"></div>
+    </div>
+    <div class="field">
+      <div class="lab"><b>Blur</b><small>0 – 24</small></div>
+      <div class="scrub" data-min="0" data-max="24" data-step="0.5" data-unit="px" data-val="0">
+        <span class="val">0</span><span class="unit">px</span><input type="text" inputmode="decimal"></div>
+    </div>
+    <div class="field">
+      <div class="lab"><b>Hue</b><small>0 – 360</small></div>
+      <div class="scrub" data-min="0" data-max="360" data-step="1" data-unit="°" data-val="0">
+        <span class="val">0</span><span class="unit">°</span><input type="text" inputmode="decimal"></div>
+    </div>
+  </div>
+
+  <div class="stage"><div class="card" id="card"><span>drag me →</span></div></div>
+  <div class="hint">Press and drag horizontally on any amber value.</div>
+</div>
+
+<footer>Inspired by brettlyne/draggable-number-input (Figma/Blender-style) · UI Spotlight Day 62 · Drop #4</footer>
+
+<script>
+const card = document.getElementById('card');
+const scrubs = [...document.querySelectorAll('.scrub')];
+const cfg = { sens:0.5, lock:true };
+
+document.getElementById('pSens').addEventListener('input',e=>{
+  cfg.sens=+e.target.value/100; document.getElementById('vSens').textContent=cfg.sens.toFixed(2);});
+document.getElementById('pLock').addEventListener('change',e=>cfg.lock=e.target.checked);
+
+function fmt(el,v){
+  const step=+el.dataset.step;
+  return step<1 ? v.toFixed(2) : String(Math.round(v));
+}
+function setVal(el,v){
+  const min=+el.dataset.min,max=+el.dataset.max,step=+el.dataset.step;
+  v=Math.min(max,Math.max(min,Math.round(v/step)*step));
+  el.dataset.val=v;
+  el.querySelector('.val').textContent=fmt(el,v);
+  render();
+}
+function render(){
+  const v = scrubs.map(s=>+s.dataset.val);
+  card.style.opacity = v[0]/100;
+  card.style.transform = `rotate(${v[1]}deg) scale(${v[2]})`;
+  card.style.filter = `blur(${v[3]}px) hue-rotate(${v[4]}deg)`;
+}
+
+scrubs.forEach(el=>{
+  const input=el.querySelector('input');
+  let startX=0, accVal=0, usingLock=false;
+  const range = (+el.dataset.max) - (+el.dataset.min);
+
+  function onMove(e){
+    // pointer-lock mode: clientX is frozen, use accumulated movementX.
+    // normal mode: absolute delta from press point.
+    const dx = usingLock ? (e.movementX||0) : (e.clientX - startX);
+    const fine = e.shiftKey ? 0.2 : 1;
+    const perPx = cfg.sens * fine * (range/300);
+    if(usingLock){
+      accVal += dx*perPx;               // integrate frozen-cursor deltas
+      setVal(el, accVal);
+    }else{
+      setVal(el, accVal + dx*perPx);    // accVal = value at press
+    }
+  }
+  function onUp(){
+    document.removeEventListener('pointermove',onMove);
+    document.removeEventListener('pointerup',onUp);
+    if(usingLock && document.pointerLockElement) document.exitPointerLock();
+    el.classList.remove('dragging');
+  }
+  el.addEventListener('pointerdown',e=>{
+    if(el.classList.contains('editing')) return;
+    e.preventDefault();
+    startX=e.clientX; accVal=+el.dataset.val;
+    el.classList.add('dragging');
+    usingLock = cfg.lock && !!el.requestPointerLock && !matchMedia('(pointer:coarse)').matches;
+    if(usingLock){ try{ el.requestPointerLock(); }catch(_){ usingLock=false; } }
+    document.addEventListener('pointermove',onMove);
+    document.addEventListener('pointerup',onUp);
+  });
+
+  // double-click to type
+  el.addEventListener('dblclick',()=>{
+    el.classList.add('editing');
+    input.value=el.dataset.val; input.focus(); input.select();
+  });
+  function commit(){
+    const v=parseFloat(input.value);
+    if(!isNaN(v)) setVal(el,v);
+    el.classList.remove('editing');
+  }
+  input.addEventListener('blur',commit);
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Enter') commit();
+    if(e.key==='Escape') el.classList.remove('editing');
+  });
+});
+render();
+</script>
+</body>
+</html>

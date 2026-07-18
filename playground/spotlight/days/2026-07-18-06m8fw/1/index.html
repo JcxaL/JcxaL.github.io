@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 1 — Confetti Physics Bursts</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#070a12;color:#eaf1ff;
+    font-family:system-ui,-apple-system,sans-serif;}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:30;background:rgba(18,24,40,.6);
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);color:#fff;
+    text-decoration:none;font-size:13px;font-weight:600;padding:9px 14px;border-radius:999px;}
+  .stage{position:relative;z-index:10;height:100%;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:24px;pointer-events:none;}
+  .stage h1{font-size:clamp(1.6rem,5vw,2.8rem);margin:0 0 6px;font-weight:800;letter-spacing:-.02em;}
+  .stage p{margin:0 0 26px;color:rgba(234,241,255,.55);font-size:14px;}
+  .btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:560px;pointer-events:auto;}
+  .btns button{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);
+    color:#fff;font:inherit;font-weight:700;font-size:14px;padding:13px 20px;border-radius:14px;
+    cursor:pointer;transition:transform .12s ease,background .2s ease;}
+  .btns button:hover{background:rgba(255,255,255,.12);}
+  .btns button:active{transform:scale(.94);}
+  .hint{position:fixed;bottom:64px;left:0;right:0;text-align:center;font-size:12px;
+    color:rgba(234,241,255,.4);z-index:10;pointer-events:none;}
+  .panel{position:fixed;top:16px;right:16px;z-index:30;width:210px;background:rgba(14,20,34,.66);
+    backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);border-radius:16px;
+    padding:14px 16px;font-size:12px;}
+  .panel h2{margin:0 0 12px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:rgba(234,241,255,.5);}
+  .row{margin-bottom:12px;}
+  .row label{display:flex;justify-content:space-between;margin-bottom:6px;color:rgba(234,241,255,.75);}
+  .row input[type=range]{width:100%;accent-color:#38bdf8;}
+  footer{position:fixed;bottom:14px;left:0;right:0;text-align:center;font-size:11px;
+    color:rgba(234,241,255,.34);z-index:10;pointer-events:none;}
+  @media(max-width:640px){.panel{display:none;}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<canvas id="cv"></canvas>
+
+<div class="panel">
+  <h2>Physics</h2>
+  <div class="row"><label>Particles <span id="vCount">120</span></label>
+    <input id="pCount" type="range" min="20" max="400" value="120"></div>
+  <div class="row"><label>Gravity <span id="vGrav">0.35</span></label>
+    <input id="pGrav" type="range" min="0" max="100" value="35"></div>
+  <div class="row"><label>Spread <span id="vSpread">70</span>°</label>
+    <input id="pSpread" type="range" min="10" max="360" value="70"></div>
+  <div class="row"><label>Velocity <span id="vVel">26</span></label>
+    <input id="pVel" type="range" min="8" max="60" value="26"></div>
+  <div class="row"><label>Drag <span id="vDrag">0.90</span></label>
+    <input id="pDrag" type="range" min="80" max="99" value="90"></div>
+</div>
+
+<div class="stage">
+  <h1>Confetti Physics</h1>
+  <p>Hand-rolled particle bursts — no library, just canvas + gravity.</p>
+  <div class="btns">
+    <button data-fx="burst">🎉 Burst</button>
+    <button data-fx="cannonL">← Cannon</button>
+    <button data-fx="cannonR">Cannon →</button>
+    <button data-fx="fireworks">✦ Fireworks</button>
+    <button data-fx="rain">☂ Rain</button>
+  </div>
+</div>
+<div class="hint">Tap / click anywhere on the canvas to fire a burst there.</div>
+<footer>Inspired by catdad/canvas-confetti · UI Spotlight Day 62 · Drop #1</footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W, H, DPR;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.width = Math.floor(innerWidth * DPR);
+  H = cv.height = Math.floor(innerHeight * DPR);
+  cv.style.width = innerWidth + 'px';
+  cv.style.height = innerHeight + 'px';
+}
+resize();
+addEventListener('resize', resize);
+
+const COLORS = ['#38bdf8','#f472b6','#facc15','#34d399','#a78bfa','#fb7185','#f97316'];
+const SHAPES = ['rect','circle','star'];
+let particles = [];
+
+// tunables
+const P = { count:120, grav:0.35, spread:70, vel:26, drag:0.90 };
+function bind(id, valId, fmt, set){
+  const el = document.getElementById(id), out = document.getElementById(valId);
+  el.addEventListener('input', () => { const v = +el.value; set(v); out.textContent = fmt(v); });
+}
+bind('pCount','vCount', v=>v, v=>P.count=v);
+bind('pGrav','vGrav', v=>(v/100).toFixed(2), v=>P.grav=v/100);
+bind('pSpread','vSpread', v=>v, v=>P.spread=v);
+bind('pVel','vVel', v=>v, v=>P.vel=v);
+bind('pDrag','vDrag', v=>(v/100).toFixed(2), v=>P.drag=v/100);
+
+function rand(a,b){ return a + Math.random()*(b-a); }
+function spawn(x, y, opts){
+  const n = opts.count ?? P.count;
+  const spread = (opts.spread ?? P.spread) * Math.PI/180;
+  const dir = opts.dir ?? -Math.PI/2;           // default: up
+  const power = opts.vel ?? P.vel;
+  for(let i=0;i<n;i++){
+    const angle = dir + rand(-spread/2, spread/2);
+    const speed = rand(power*0.4, power) * DPR;
+    particles.push({
+      x:x*DPR, y:y*DPR,
+      vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed,
+      g:(opts.grav ?? P.grav) * DPR,
+      drag:opts.drag ?? P.drag,
+      size:rand(6,13)*DPR,
+      color:COLORS[(Math.random()*COLORS.length)|0],
+      shape:SHAPES[(Math.random()*SHAPES.length)|0],
+      rot:rand(0,Math.PI*2), vr:rand(-0.3,0.3),
+      life:1, decay:rand(0.006,0.014),
+      wobble:rand(0,Math.PI*2), flat:rand(0.4,1)
+    });
+  }
+}
+
+function star(g, r){
+  g.beginPath();
+  for(let i=0;i<10;i++){
+    const rr = i%2 ? r*0.5 : r;
+    const a = Math.PI/5*i - Math.PI/2;
+    g.lineTo(Math.cos(a)*rr, Math.sin(a)*rr);
+  }
+  g.closePath(); g.fill();
+}
+
+function frame(){
+  ctx.clearRect(0,0,W,H);
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.vy += p.g;
+    p.vx *= p.drag; p.vy *= p.drag;
+    p.x += p.vx; p.y += p.vy;
+    p.rot += p.vr;
+    p.wobble += 0.1;
+    p.life -= p.decay;
+    if(p.life <= 0 || p.y > H + 40){ particles.splice(i,1); continue; }
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    // wobble squash makes flakes flutter
+    ctx.scale(1, Math.abs(Math.cos(p.wobble))*p.flat + 0.2);
+    ctx.fillStyle = p.color;
+    if(p.shape==='rect') ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size*0.7);
+    else if(p.shape==='circle'){ ctx.beginPath(); ctx.arc(0,0,p.size/2,0,Math.PI*2); ctx.fill(); }
+    else star(ctx, p.size*0.7);
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+
+function fire(fx, x, y){
+  const cx = innerWidth/2, cy = innerHeight/2;
+  if(fx==='burst') spawn(x??cx, y??cy, { spread:360, vel:P.vel*1.1 });
+  else if(fx==='cannonL') spawn(0, innerHeight*0.72, { dir:-Math.PI/4, spread:55, vel:P.vel*1.8, count:P.count });
+  else if(fx==='cannonR') spawn(innerWidth, innerHeight*0.72, { dir:-Math.PI*0.75, spread:55, vel:P.vel*1.8, count:P.count });
+  else if(fx==='fireworks'){
+    let shots = 4;
+    const boom = () => {
+      spawn(rand(innerWidth*0.2,innerWidth*0.8), rand(innerHeight*0.2,innerHeight*0.5),
+            { spread:360, vel:P.vel*1.2, grav:P.grav*0.7, count:Math.round(P.count*0.8) });
+      if(--shots>0) setTimeout(boom, 260);
+    };
+    boom();
+  }
+  else if(fx==='rain'){
+    let ticks = 22;
+    const drop = () => {
+      for(let k=0;k<6;k++) spawn(rand(0,innerWidth), -10,
+        { dir:Math.PI/2, spread:35, vel:P.vel*0.5, count:1, grav:P.grav*1.4 });
+      if(--ticks>0) setTimeout(drop, 70);
+    };
+    drop();
+  }
+}
+
+document.querySelectorAll('.btns button').forEach(b =>
+  b.addEventListener('click', () => fire(b.dataset.fx)));
+cv.addEventListener('pointerdown', e => spawn(e.clientX, e.clientY, { spread:360, vel:P.vel }));
+// opening celebration
+setTimeout(() => fire('burst'), 350);
+</script>
+</body>
+</html>
