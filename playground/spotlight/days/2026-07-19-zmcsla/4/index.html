@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snap &amp; Settle — Elastic Drag Snapping with Inertia</title>
+<style>
+  :root{
+    --accent:#fbbf24;
+    --accent-soft: rgba(251,191,36,.32);
+    --bg-0:#0a0906;
+    --glass: rgba(255,255,255,.055);
+    --glass-b: rgba(255,255,255,.13);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg-0);color:#f3ede0;font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;height:100%;}
+  body{
+    background:
+      radial-gradient(1100px 550px at 90% -10%, rgba(251,191,36,.13), transparent 60%),
+      radial-gradient(800px 650px at 0% 100%, rgba(251,191,36,.08), transparent 55%),
+      var(--bg-0);
+  }
+
+  .back-link{
+    position:fixed; top:16px; left:16px; z-index:50;
+    display:inline-flex; align-items:center; gap:6px;
+    padding:9px 16px; border-radius:999px;
+    background:var(--glass); border:1px solid var(--glass-b);
+    backdrop-filter:blur(14px) saturate(140%);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);
+    color:#f6ecd4; text-decoration:none; font-size:13px; font-weight:500;
+    transition:background .2s ease, transform .2s ease;
+  }
+  .back-link:hover{ background:rgba(255,255,255,.12); transform:translateX(-2px); }
+
+  .panel{
+    position:fixed; top:16px; right:16px; z-index:50; width:230px;
+    background:var(--glass); border:1px solid var(--glass-b);
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
+    border-radius:16px; padding:14px 16px 16px;
+    font-size:12px;
+  }
+  .panel h3{margin:0 0 10px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); font-weight:700;}
+  .panel label{display:flex; justify-content:space-between; margin:10px 0 4px; color:#c9bfa3;}
+  .panel input[type=range]{width:100%; accent-color:var(--accent);}
+  .panel .val{color:#fff; font-variant-numeric:tabular-nums;}
+  @media (max-width: 720px), (pointer:coarse){ .panel{display:none;} }
+
+  .hero{ position:fixed; top:8vh; left:0; right:0; text-align:center; z-index:2; pointer-events:none;}
+  .hero h1{ margin:0; font-size:clamp(22px,4vw,32px); font-weight:800;}
+  .hero p{ margin:8px 0 0; color:#9b8f70; font-size:13px; }
+
+  .field{
+    position:absolute; inset:0; z-index:1;
+  }
+  .grid-dot{
+    position:absolute; width:4px; height:4px; border-radius:50%;
+    background:rgba(251,191,36,.18);
+    transform:translate(-50%,-50%);
+  }
+
+  .chip{
+    position:absolute; width:100px; height:100px; border-radius:24px;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:14px; letter-spacing:.03em; color:#1c1305;
+    touch-action:none; cursor:grab; user-select:none; z-index:3;
+    box-shadow:0 10px 30px -8px rgba(0,0,0,.6);
+    transform:translate(-50%,-50%);
+  }
+  .chip:active{ cursor:grabbing; }
+  .chip.dragging{ box-shadow:0 20px 44px -10px rgba(0,0,0,.7); }
+  .chip.c1{ background:linear-gradient(160deg,#fde68a,#f59e0b); }
+  .chip.c2{ background:linear-gradient(160deg,#fca5a5,#ef4444); }
+  .chip.c3{ background:linear-gradient(160deg,#93c5fd,#3b82f6); }
+
+  footer{
+    position:fixed; bottom:10px; left:0; right:0; text-align:center; z-index:6;
+    font-size:11px; color:#6b6248;
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Snap Physics</h3>
+  <label>Grid size <span class="val" id="vGrid">90</span>px</label>
+  <input id="rGrid" type="range" min="50" max="160" step="5" value="90">
+  <label>Stiffness <span class="val" id="vStiff">0.18</span></label>
+  <input id="rStiff" type="range" min="0.05" max="0.4" step="0.01" value="0.18">
+  <label>Damping <span class="val" id="vDamp">0.72</span></label>
+  <input id="rDamp" type="range" min="0.4" max="0.95" step="0.01" value="0.72">
+  <label>Fling inertia <span class="val" id="vFling">on</span></label>
+  <input id="rFling" type="range" min="0" max="1" step="1" value="1">
+</div>
+
+<div class="hero">
+  <h1>Snap &amp; Settle</h1>
+  <p>Drag a chip, then throw it — it coasts on inertia and locks to the nearest grid point</p>
+</div>
+
+<div class="field" id="field"></div>
+
+<footer>Inspired by taye/interact.js · snapping &amp; inertia modifiers · UI Spotlight Day 63 · Drop #4</footer>
+
+<script>
+(function(){
+  var field = document.getElementById('field');
+  var els = {
+    grid: document.getElementById('rGrid'),
+    stiff: document.getElementById('rStiff'),
+    damp: document.getElementById('rDamp'),
+    fling: document.getElementById('rFling')
+  };
+  var vals = {
+    grid: document.getElementById('vGrid'),
+    stiff: document.getElementById('vStiff'),
+    damp: document.getElementById('vDamp'),
+    fling: document.getElementById('vFling')
+  };
+  function syncLabels(){
+    vals.grid.textContent = els.grid.value;
+    vals.stiff.textContent = parseFloat(els.stiff.value).toFixed(2);
+    vals.damp.textContent = parseFloat(els.damp.value).toFixed(2);
+    vals.fling.textContent = els.fling.value === '1' ? 'on' : 'off';
+  }
+  Object.keys(els).forEach(function(k){ els[k].addEventListener('input', syncLabels); });
+  syncLabels();
+
+  function drawGrid(){
+    field.querySelectorAll('.grid-dot').forEach(function(d){ d.remove(); });
+    var gs = parseInt(els.grid.value, 10);
+    var w = field.clientWidth, h = field.clientHeight;
+    for (var x = gs/2; x < w; x += gs){
+      for (var y = 160; y < h - 40; y += gs){
+        var dot = document.createElement('div');
+        dot.className = 'grid-dot';
+        dot.style.left = x + 'px';
+        dot.style.top = y + 'px';
+        field.appendChild(dot);
+      }
+    }
+  }
+
+  function nearestSnap(x, y){
+    var gs = parseInt(els.grid.value, 10);
+    var w = field.clientWidth, h = field.clientHeight;
+    var minX = gs/2, minY = 160;
+    var maxY = h - 40;
+    var sx = Math.round((x - minX) / gs) * gs + minX;
+    var sy = Math.round((y - minY) / gs) * gs + minY;
+    sx = Math.max(minX, Math.min(w - minX, sx));
+    sy = Math.max(minY, Math.min(maxY, sy));
+    return { x: sx, y: sy };
+  }
+
+  function Chip(el, startX, startY){
+    this.el = el;
+    this.x = startX; this.y = startY;
+    this.vx = 0; this.vy = 0;
+    this.targetX = startX; this.targetY = startY;
+    this.dragging = false;
+    this.mode = 'idle'; // idle | dragging | coasting | snapping
+    this.pointerId = null;
+    this.history = [];
+    this.render();
+    this.bind();
+  }
+
+  Chip.prototype.render = function(){
+    this.el.style.left = this.x + 'px';
+    this.el.style.top = this.y + 'px';
+  };
+
+  Chip.prototype.bind = function(){
+    var self = this;
+    this.el.addEventListener('pointerdown', function(e){
+      self.el.setPointerCapture(e.pointerId);
+      self.pointerId = e.pointerId;
+      self.dragging = true;
+      self.mode = 'dragging';
+      self.el.classList.add('dragging');
+      self.history = [{ t: performance.now(), x: self.x, y: self.y }];
+      self.offsetX = e.clientX - self.x;
+      self.offsetY = e.clientY - self.y;
+    });
+    this.el.addEventListener('pointermove', function(e){
+      if (!self.dragging || e.pointerId !== self.pointerId) return;
+      self.x = e.clientX - self.offsetX;
+      self.y = e.clientY - self.offsetY;
+      self.render();
+      self.history.push({ t: performance.now(), x: self.x, y: self.y });
+      if (self.history.length > 6) self.history.shift();
+    });
+    function release(e){
+      if (!self.dragging || e.pointerId !== self.pointerId) return;
+      self.dragging = false;
+      self.el.classList.remove('dragging');
+
+      var flingOn = els.fling.value === '1';
+      var vx = 0, vy = 0;
+      if (flingOn && self.history.length >= 2){
+        var a = self.history[0], b = self.history[self.history.length - 1];
+        var dt = Math.max(1, b.t - a.t);
+        vx = (b.x - a.x) / dt * 16; // px per frame approx
+        vy = (b.y - a.y) / dt * 16;
+      }
+      self.vx = vx; self.vy = vy;
+      self.mode = (Math.abs(vx) > 0.6 || Math.abs(vy) > 0.6) ? 'coasting' : 'snapping';
+      if (self.mode === 'snapping'){
+        var snap = nearestSnap(self.x, self.y);
+        self.targetX = snap.x; self.targetY = snap.y;
+      }
+    }
+    this.el.addEventListener('pointerup', release);
+    this.el.addEventListener('pointercancel', release);
+  };
+
+  Chip.prototype.tick = function(){
+    if (this.dragging) return;
+    var stiffness = parseFloat(els.stiff.value);
+    var damping = parseFloat(els.damp.value);
+
+    if (this.mode === 'coasting'){
+      this.x += this.vx;
+      this.y += this.vy;
+      this.vx *= damping;
+      this.vy *= damping;
+      var speed = Math.abs(this.vx) + Math.abs(this.vy);
+      if (speed < 0.4){
+        var snap = nearestSnap(this.x, this.y);
+        this.targetX = snap.x; this.targetY = snap.y;
+        this.mode = 'snapping';
+      }
+      this.render();
+      return;
+    }
+
+    if (this.mode === 'snapping'){
+      var dx = this.targetX - this.x;
+      var dy = this.targetY - this.y;
+      this.vx = (this.vx + dx * stiffness) * damping;
+      this.vy = (this.vy + dy * stiffness) * damping;
+      this.x += this.vx;
+      this.y += this.vy;
+      this.render();
+      if (Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3 && Math.abs(this.vx) < 0.05 && Math.abs(this.vy) < 0.05){
+        this.x = this.targetX; this.y = this.targetY;
+        this.vx = 0; this.vy = 0;
+        this.mode = 'idle';
+        this.render();
+      }
+    }
+  };
+
+  var chips = [];
+  function initChips(){
+    var w = field.clientWidth, h = field.clientHeight;
+    var defs = [
+      { cls: 'c1', label: 'CHIP A', x: w * 0.3, y: h * 0.4 },
+      { cls: 'c2', label: 'CHIP B', x: w * 0.55, y: h * 0.55 },
+      { cls: 'c3', label: 'CHIP C', x: w * 0.72, y: h * 0.32 }
+    ];
+    chips = defs.map(function(d){
+      var el = document.createElement('div');
+      el.className = 'chip ' + d.cls;
+      el.textContent = d.label;
+      field.appendChild(el);
+      return new Chip(el, d.x, d.y);
+    });
+  }
+
+  function loop(){
+    chips.forEach(function(c){ c.tick(); });
+    requestAnimationFrame(loop);
+  }
+
+  function setup(){
+    drawGrid();
+    initChips();
+    requestAnimationFrame(loop);
+  }
+
+  els.grid.addEventListener('change', drawGrid);
+  window.addEventListener('resize', drawGrid);
+
+  setup();
+})();
+</script>
+</body>
+</html>
