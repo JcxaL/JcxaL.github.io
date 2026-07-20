@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>SDF Sculptor — Raymarched Scene Builder</title>
+<style>
+  :root{
+    --bg:#0b0d17; --panel:rgba(18,20,32,.72); --panel-brd:rgba(255,255,255,.09);
+    --accent:#6d5dfc; --accent2:#ff6ec7; --teal:#3ddad7; --text:#f2f1fb; --dim:#9997b8;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif; overflow:hidden;}
+  #glcanvas{position:fixed; inset:0; width:100%; height:100%; touch-action:none; display:block; cursor:grab;}
+  #glcanvas.dragging{cursor:grabbing;}
+  #fallback{position:fixed; inset:0; display:none; align-items:center; justify-content:center; text-align:center;
+    padding:2rem; color:var(--dim); font-size:.95rem;}
+
+  .glass{ background:var(--panel); backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%);
+    border:1px solid var(--panel-brd); border-radius:16px; box-shadow:0 8px 32px rgba(0,0,0,.35);}
+
+  #topbar{position:fixed; top:14px; left:14px; right:14px; display:flex; align-items:center; justify-content:space-between;
+    gap:10px; z-index:20; pointer-events:none;}
+  #brand{pointer-events:auto; padding:8px 14px; font-weight:700; font-size:.92rem; letter-spacing:.01em;
+    display:flex; align-items:center; gap:8px;}
+  #brand .dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2)); box-shadow:0 0 10px var(--accent2);}
+  #brand small{color:var(--dim); font-weight:500; font-size:.72rem;}
+
+  #modes{pointer-events:auto; display:flex; padding:4px; gap:2px; position:relative;}
+  #modes button{position:relative; z-index:2; border:none; background:transparent; color:var(--dim); font-size:.78rem;
+    font-weight:600; padding:8px 13px; border-radius:12px; cursor:pointer; transition:color .25s; font-family:inherit;}
+  #modes button.active{color:#fff;}
+  #modes .thumb{position:absolute; top:4px; bottom:4px; left:4px; width:calc(33.333% - 3px); border-radius:12px;
+    background:linear-gradient(135deg,var(--accent),#4a3fd6); z-index:1; transition:transform .35s cubic-bezier(.34,1.56,.64,1);}
+
+  #panelToggle{position:fixed; bottom:16px; right:16px; z-index:25; width:48px; height:48px; border-radius:50%;
+    display:none; align-items:center; justify-content:center; border:none; cursor:pointer; color:#fff; font-size:1.2rem; pointer-events:auto;}
+
+  #panel{position:fixed; top:66px; right:14px; width:296px; max-height:calc(100vh - 90px); overflow-y:auto; z-index:20;
+    padding:16px; display:flex; flex-direction:column; gap:14px;}
+  #panel::-webkit-scrollbar{width:6px;} #panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15); border-radius:3px;}
+
+  .section-title{font-size:.68rem; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); font-weight:700; margin:2px 0;}
+  .row{display:flex; align-items:center; gap:8px;}
+  .row.between{justify-content:space-between;}
+  .col{display:flex; flex-direction:column; gap:6px;}
+
+  #shapeList{display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto;}
+  .shapeItem{display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:10px; background:rgba(255,255,255,.04);
+    border:1px solid transparent; cursor:pointer; font-size:.78rem;}
+  .shapeItem:hover{background:rgba(255,255,255,.07);}
+  .shapeItem.selected{border-color:var(--accent); background:rgba(109,93,252,.16);}
+  .swatch{width:16px; height:16px; border-radius:5px; flex-shrink:0; box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);}
+  .shapeItem .lbl{flex:1; text-transform:capitalize; color:var(--text);}
+  .shapeItem .xbtn{background:none; border:none; color:var(--dim); font-size:.85rem; cursor:pointer; padding:2px 6px; border-radius:6px; font-family:inherit;}
+  .shapeItem .xbtn:hover{color:#ff6b6b; background:rgba(255,107,107,.12);}
+
+  select, input[type=text]{width:100%; background:rgba(255,255,255,.06); border:1px solid var(--panel-brd); color:var(--text);
+    border-radius:9px; padding:8px 10px; font-size:.8rem; font-family:inherit;}
+
+  button.btn{font-family:inherit; border:none; border-radius:11px; padding:9px 12px; font-size:.78rem; font-weight:600;
+    cursor:pointer; color:#fff; background:rgba(255,255,255,.08); border:1px solid var(--panel-brd); transition:transform .15s, background .2s;}
+  button.btn:active{transform:scale(.96);}
+  button.btn:hover{background:rgba(255,255,255,.14);}
+  button.btn.primary{background:linear-gradient(135deg,var(--accent),#4a3fd6); border-color:transparent;}
+  button.btn.primary:hover{filter:brightness(1.1);}
+  button.btn.wide{width:100%;}
+  button.btn.small{padding:6px 10px; font-size:.72rem;}
+
+  label.field{display:flex; flex-direction:column; gap:4px; font-size:.72rem; color:var(--dim); font-weight:600;}
+  label.field .val{color:var(--text); font-weight:700; font-variant-numeric:tabular-nums;}
+  input[type=range]{-webkit-appearance:none; width:100%; height:5px; border-radius:3px; background:rgba(255,255,255,.12); outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+    background:linear-gradient(135deg,var(--accent2),var(--accent)); cursor:pointer; box-shadow:0 0 0 3px rgba(255,255,255,.08);}
+  input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; border:none;
+    background:linear-gradient(135deg,var(--accent2),var(--accent)); cursor:pointer;}
+  input[type=color]{-webkit-appearance:none; width:100%; height:32px; border:1px solid var(--panel-brd); border-radius:9px; background:none; padding:2px; cursor:pointer;}
+  input[type=color]::-webkit-color-swatch{border-radius:6px; border:none;}
+
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+  hr.sep{border:none; border-top:1px solid var(--panel-brd); margin:2px 0;}
+
+  .presetGrid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .presetCard{padding:10px; border-radius:11px; background:rgba(255,255,255,.05); border:1px solid var(--panel-brd);
+    cursor:pointer; text-align:center; font-size:.72rem; font-weight:600;}
+  .presetCard:hover{background:rgba(255,255,255,.1);}
+  .presetCard .emoji{font-size:1.3rem; display:block; margin-bottom:4px;}
+
+  .savedItem{display:flex; align-items:center; gap:8px; padding:6px; border-radius:10px; background:rgba(255,255,255,.04); font-size:.75rem;}
+  .savedItem img{width:44px; height:33px; border-radius:6px; object-fit:cover; flex-shrink:0; background:#000;}
+  .savedItem .name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .savedItem button{background:none; border:none; color:var(--dim); cursor:pointer; font-size:.9rem; padding:2px 5px;}
+  .savedItem button:hover{color:#ff6b6b;}
+
+  #toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(120%); z-index:40; padding:10px 18px;
+    font-size:.8rem; font-weight:600; opacity:0; transition:transform .35s cubic-bezier(.34,1.56,.64,1), opacity .35s;}
+  #toast.show{transform:translateX(-50%) translateY(0); opacity:1;}
+
+  #hint{position:fixed; bottom:16px; left:16px; z-index:15; padding:8px 13px; font-size:.7rem; color:var(--dim); pointer-events:none;}
+
+  @media (max-width:720px){
+    #panel{ left:10px; right:10px; width:auto; top:auto; bottom:0; max-height:62vh; border-radius:18px 18px 0 0;
+      transform:translateY(calc(100% - 54px)); transition:transform .35s cubic-bezier(.3,1,.4,1); padding-top:12px;}
+    #panel.open{transform:translateY(0);}
+    #panel::before{content:""; display:block; width:38px; height:4px; background:rgba(255,255,255,.25); border-radius:2px; margin:0 auto 10px;}
+    #panelToggle{display:flex;}
+    #hint{display:none;}
+    #brand small{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="glcanvas"></canvas>
+<div id="fallback">Your browser/device doesn't support WebGL, which this scene builder needs. Try a recent Chrome, Safari, or Firefox.</div>
+
+<div id="topbar">
+  <div id="brand" class="glass"><span class="dot"></span>SDF Sculptor<small>&nbsp;· raymarched</small></div>
+  <div id="modes" class="glass">
+    <div class="thumb" id="modeThumb"></div>
+    <button data-mode="sculpt" class="active">Sculpt</button>
+    <button data-mode="light">Light</button>
+    <button data-mode="gallery">Gallery</button>
+  </div>
+</div>
+
+<button id="panelToggle" class="glass">⚙</button>
+<div id="hint" class="glass">Drag to orbit · Scroll / pinch to zoom</div>
+<div id="toast" class="glass"></div>
+
+<div id="panel" class="glass">
+
+  <div id="panel-sculpt" class="panelView">
+    <div class="section-title">Shapes</div>
+    <div id="shapeList"></div>
+    <div class="row">
+      <select id="newShapeType">
+        <option value="sphere">Sphere</option>
+        <option value="box">Box</option>
+        <option value="torus">Torus</option>
+        <option value="capsule">Capsule</option>
+      </select>
+      <button class="btn primary" id="addShapeBtn" style="white-space:nowrap;">+ Add</button>
+    </div>
+    <hr class="sep">
+    <div id="shapeEditor" class="col"></div>
+  </div>
+
+  <div id="panel-light" class="panelView" style="display:none;">
+    <div class="section-title">Light</div>
+    <label class="field">Azimuth <span class="val" id="v-az">45°</span>
+      <input type="range" id="lAz" min="0" max="360" step="1" value="45"></label>
+    <label class="field">Elevation <span class="val" id="v-el">50°</span>
+      <input type="range" id="lEl" min="5" max="85" step="1" value="50"></label>
+    <label class="field">Ambient <span class="val" id="v-amb">0.35</span>
+      <input type="range" id="lAmb" min="0" max="0.8" step="0.01" value="0.35"></label>
+    <hr class="sep">
+    <div class="section-title">Material</div>
+    <div class="grid2">
+      <button class="btn small" data-mat="matte">Matte</button>
+      <button class="btn small" data-mat="plastic">Plastic</button>
+      <button class="btn small" data-mat="metal">Metal</button>
+      <button class="btn small" data-mat="glow">Glow</button>
+    </div>
+    <label class="field">Specular <span class="val" id="v-spec">0.4</span>
+      <input type="range" id="lSpec" min="0" max="1.5" step="0.01" value="0.4"></label>
+    <label class="field">Shininess <span class="val" id="v-shin">24</span>
+      <input type="range" id="lShin" min="2" max="128" step="1" value="24"></label>
+    <label class="field">Rim light <span class="val" id="v-rim">0.15</span>
+      <input type="range" id="lRim" min="0" max="1" step="0.01" value="0.15"></label>
+    <hr class="sep">
+    <div class="section-title">Camera</div>
+    <label class="field">Distance <span class="val" id="v-dist">6.0</span>
+      <input type="range" id="camDist" min="2.5" max="14" step="0.1" value="6"></label>
+    <div class="row between">
+      <button class="btn small" id="autoRotateBtn">▶ Auto-rotate</button>
+      <button class="btn small" id="resetCamBtn">Reset view</button>
+    </div>
+  </div>
+
+  <div id="panel-gallery" class="panelView" style="display:none;">
+    <div class="section-title">Presets</div>
+    <div class="presetGrid" id="presetGrid"></div>
+    <hr class="sep">
+    <div class="section-title">My Saved Scenes</div>
+    <div class="row">
+      <input type="text" id="saveName" placeholder="Scene name…" maxlength="24">
+      <button class="btn primary small" id="saveSceneBtn">Save</button>
+    </div>
+    <div id="savedList" class="col"></div>
+    <hr class="sep">
+    <div class="section-title">Export &amp; Share</div>
+    <div class="grid2">
+      <button class="btn" id="exportPngBtn">↓ PNG</button>
+      <button class="btn" id="exportJsonBtn">↓ JSON</button>
+    </div>
+    <div class="grid2">
+      <button class="btn" id="importBtn">↑ Import</button>
+      <button class="btn" id="shareBtn">🔗 Share link</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json" style="display:none;">
+  </div>
+
+</div>
+
+<script id="vs" type="x-shader/x-vertex">
+attribute vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }
+</script>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+#define MAXS 8
+
+uniform vec2 uRes;
+uniform vec3 uCamPos;
+uniform vec3 uCamTarget;
+uniform float uFov;
+
+uniform int uNumShapes;
+uniform float uShapeType[MAXS];
+uniform vec3 uShapePos[MAXS];
+uniform vec3 uShapeParams[MAXS];
+uniform vec3 uShapeColor[MAXS];
+uniform float uShapeSmooth[MAXS];
+
+uniform vec3 uLightDir;
+uniform float uAmbient;
+uniform float uSpecStrength;
+uniform float uShininess;
+uniform float uRim;
+uniform float uGroundY;
+
+float sdSphere(vec3 p, float r){ return length(p) - r; }
+float sdBox(vec3 p, vec3 b){
+  vec3 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+float sdTorus(vec3 p, vec2 t){
+  vec2 q = vec2(length(p.xz) - t.x, p.y);
+  return length(q) - t.y;
+}
+float sdCapsule(vec3 p, float r, float h){
+  p.y -= clamp(p.y, -h, h);
+  return length(p) - r;
+}
+
+float shapeDist(vec3 lp, int t, vec3 pr){
+  if(t == 0) return sdSphere(lp, pr.x);
+  if(t == 1) return sdBox(lp, pr);
+  if(t == 2) return sdTorus(lp, pr.xy);
+  return sdCapsule(lp, pr.x, pr.y);
+}
+
+vec4 mapShapes(vec3 p){
+  vec4 res = vec4(1e5, 0.0, 0.0, 0.0);
+  for(int i = 0; i < MAXS; i++){
+    if(i >= uNumShapes) break;
+    vec3 lp = p - uShapePos[i];
+    int t = int(uShapeType[i] + 0.5);
+    float d = shapeDist(lp, t, uShapeParams[i]);
+    if(i == 0){
+      res = vec4(d, uShapeColor[i]);
+    } else {
+      float k = max(uShapeSmooth[i], 0.0001);
+      float h = clamp(0.5 + 0.5 * (d - res.x) / k, 0.0, 1.0);
+      float blended = mix(d, res.x, h) - k * h * (1.0 - h);
+      vec3 blendedColor = mix(uShapeColor[i], res.yzw, h);
+      res = vec4(blended, blendedColor);
+    }
+  }
+  return res;
+}
+
+vec4 mapScene(vec3 p){
+  vec4 res = mapShapes(p);
+  float plane = p.y - uGroundY;
+  if(plane < res.x){
+    float chk = mod(floor(p.x * 0.8) + floor(p.z * 0.8), 2.0);
+    vec3 gcol = mix(vec3(0.09, 0.095, 0.14), vec3(0.14, 0.145, 0.20), chk);
+    res = vec4(plane, gcol);
+  }
+  return res;
+}
+
+vec3 calcNormal(vec3 p){
+  const vec2 e = vec2(1.0, -1.0) * 0.0015;
+  return normalize(
+    e.xyy * mapScene(p + e.xyy).x +
+    e.yyx * mapScene(p + e.yyx).x +
+    e.yxy * mapScene(p + e.yxy).x +
+    e.xxx * mapScene(p + e.xxx).x
+  );
+}
+
+float softShadow(vec3 ro, vec3 rd){
+  float res = 1.0;
+  float t = 0.03;
+  for(int i = 0; i < 20; i++){
+    float h = mapScene(ro + rd * t).x;
+    res = min(res, 10.0 * h / t);
+    t += clamp(h, 0.02, 0.4);
+    if(res < 0.005 || t > 10.0) break;
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+float calcAO(vec3 p, vec3 n){
+  float occ = 0.0;
+  float sca = 1.0;
+  for(int i = 0; i < 4; i++){
+    float h = 0.02 + 0.13 * float(i) / 3.0;
+    float d = mapScene(p + n * h).x;
+    occ += (h - d) * sca;
+    sca *= 0.65;
+  }
+  return clamp(1.0 - 2.6 * occ, 0.0, 1.0);
+}
+
+vec3 background(vec3 rd){
+  return mix(vec3(0.043, 0.05, 0.09), vec3(0.10, 0.09, 0.16), rd.y * 0.5 + 0.5);
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec3 ro = uCamPos;
+  vec3 ww = normalize(uCamTarget - ro);
+  vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
+  vec3 vv = normalize(cross(uu, ww));
+  vec3 rd = normalize(uv.x * uu + uv.y * vv + uFov * ww);
+
+  float t = 0.0;
+  bool hit = false;
+  vec3 hitColor = vec3(0.0);
+  for(int i = 0; i < 90; i++){
+    vec3 p = ro + rd * t;
+    vec4 res = mapScene(p);
+    if(res.x < 0.0015){ hit = true; hitColor = res.yzw; break; }
+    t += res.x;
+    if(t > 40.0) break;
+  }
+
+  vec3 col = background(rd);
+  if(hit){
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p);
+    float diff = max(dot(n, uLightDir), 0.0);
+    float shadow = softShadow(p + n * 0.003, uLightDir);
+    float ao = calcAO(p, n);
+    vec3 viewDir = normalize(ro - p);
+    vec3 halfV = normalize(uLightDir + viewDir);
+    float spec = pow(max(dot(n, halfV), 0.0), uShininess) * uSpecStrength;
+    float rim = pow(1.0 - max(dot(n, viewDir), 0.0), 3.0) * uRim;
+    vec3 lit = hitColor * (uAmbient * ao + diff * shadow * 0.9) + vec3(spec) * shadow + rim * vec3(0.9, 0.95, 1.0);
+    col = lit;
+    col = mix(col, background(rd), 1.0 - exp(-0.0022 * t * t));
+  }
+
+  col = pow(clamp(col, 0.0, 1.0), vec3(0.4545));
+  gl_FragColor = vec4(col, 1.0);
+}
+</script>
+
+<script>
+(function(){
+"use strict";
+
+var MAXS = 8;
+var canvas = document.getElementById('glcanvas');
+var gl = canvas.getContext('webgl', {antialias:true, preserveDrawingBuffer:true, powerPreference:'high-performance'}) ||
+         canvas.getContext('experimental-webgl', {antialias:true, preserveDrawingBuffer:true});
+
+if(!gl){
+  document.getElementById('fallback').style.display = 'flex';
+  canvas.style.display = 'none';
+  return;
+}
+
+function compile(type, src){
+  var sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+    console.error('Shader compile error:', gl.getShaderInfoLog(sh));
+    return null;
+  }
+  return sh;
+}
+
+var vsSrc = document.getElementById('vs').textContent;
+var fsSrc = document.getElementById('fs').textContent;
+var vs = compile(gl.VERTEX_SHADER, vsSrc);
+var fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+var prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog, gl.LINK_STATUS)){
+  console.error('Program link error:', gl.getProgramInfoLog(prog));
+  document.getElementById('fallback').style.display = 'flex';
+  document.getElementById('fallback').textContent = 'Shader failed to compile on this device.';
+  canvas.style.display = 'none';
+  return;
+}
+gl.useProgram(prog);
+
+var quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+var aPos = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+var U = {};
+['uRes','uCamPos','uCamTarget','uFov','uNumShapes','uShapeType','uShapePos','uShapeParams',
+ 'uShapeColor','uShapeSmooth','uLightDir','uAmbient','uSpecStrength','uShininess','uRim','uGroundY'
+].forEach(function(n){ U[n] = gl.getUniformLocation(prog, n); });
+
+// ---------- state ----------
+var TYPES = ['sphere','box','torus','capsule'];
+var TYPE_DEFAULT_PARAMS = { sphere:[0.55,0,0], box:[0.45,0.4,0.45], torus:[0.55,0.18,0], capsule:[0.25,0.55,0] };
+var TYPE_SLIDERS = {
+  sphere:[{k:0,label:'Radius',min:0.15,max:1.4,step:0.01}],
+  box:[{k:0,label:'Width',min:0.1,max:1.3,step:0.01},{k:1,label:'Height',min:0.1,max:1.3,step:0.01},{k:2,label:'Depth',min:0.1,max:1.3,step:0.01}],
+  torus:[{k:0,label:'Radius',min:0.2,max:1.3,step:0.01},{k:1,label:'Thickness',min:0.03,max:0.45,step:0.01}],
+  capsule:[{k:0,label:'Radius',min:0.08,max:0.6,step:0.01},{k:1,label:'Half-length',min:0.1,max:1.3,step:0.01}]
+};
+
+function newShape(type, pos, color, k){
+  return { type: type || 'sphere', pos: pos || [0,0.4,0], params: (TYPE_DEFAULT_PARAMS[type||'sphere']).slice(),
+    color: color || randColor(), smooth: (k===undefined?0.25:k) };
+}
+function randColor(){
+  var hues = [262, 322, 190, 280, 340, 205];
+  var h = hues[Math.floor(Math.random()*hues.length)];
+  return hslToHex(h, 70, 62);
+}
+function hslToHex(h,s,l){
+  s/=100; l/=100;
+  var c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2, r,g,b;
+  if(h<60){r=c;g=x;b=0;} else if(h<120){r=x;g=c;b=0;} else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;} else if(h<300){r=x;g=0;b=c;} else {r=c;g=0;b=x;}
+  var rr=Math.round((r+m)*255), gg=Math.round((g+m)*255), bb=Math.round((b+m)*255);
+  return '#' + [rr,gg,bb].map(function(v){return v.toString(16).padStart(2,'0');}).join('');
+}
+function hexToRgb01(hex){
+  var v = parseInt(hex.slice(1),16);
+  return [((v>>16)&255)/255, ((v>>8)&255)/255, (v&255)/255];
+}
+
+function defaultScene(){
+  return {
+    shapes: [
+      newShape('sphere', [0,0.15,0], '#6d5dfc', 0.25),
+      newShape('sphere', [0.55,0.45,0.15], '#ff6ec7', 0.35),
+      newShape('sphere', [-0.5,0.55,-0.1], '#3ddad7', 0.35),
+      newShape('torus', [0,1.05,0], '#f5c66d', 0.15)
+    ],
+    light: { az:45, el:50, amb:0.35, spec:0.4, shin:24, rim:0.15 },
+    camera: { yaw:0.7, pitch:0.35, dist:6 }
+  };
+}
+
+var PRESETS = {
+  blob: { emoji:'🫧', name:'Blob Trio', build: defaultScene },
+  snowman: { emoji:'⛄', name:'Snowman', build: function(){
+    var base = newShape('sphere',[0,-0.35,0],'#eef3ff',0.1); base.params=[0.62,0,0];
+    var mid = newShape('sphere',[0,0.55,0],'#eef3ff',0.1); mid.params=[0.5,0,0];
+    var head = newShape('sphere',[0,1.28,0],'#f8fbff',0.08); head.params=[0.4,0,0];
+    var eye = newShape('sphere',[0.16,1.32,0.36],'#232323',0.02); eye.params=[0.055,0,0];
+    var nose = newShape('capsule',[0,1.24,0.4],'#e8641f',0.02); nose.params=[0.05,0.16,0];
+    return { shapes:[base,mid,head,eye,nose], light:{az:60,el:55,amb:0.4,spec:0.5,shin:30,rim:0.1}, camera:{yaw:0.5,pitch:0.3,dist:6.5} };
+  }},
+  molecule: { emoji:'🧬', name:'Molecule', build: function(){
+    return { shapes:[
+      newShape('sphere',[0,0.5,0],'#3ddad7',0.05),
+      newShape('sphere',[0.85,0.85,0.2],'#ff6ec7',0.05),
+      newShape('sphere',[-0.8,0.15,0.35],'#f5c66d',0.05),
+      newShape('sphere',[0.1,0.15,-0.85],'#6d5dfc',0.05),
+      newShape('capsule',[0.42,0.68,0.1],'#cfd3e6',0.02),
+      newShape('capsule',[-0.4,0.32,0.17],'#cfd3e6',0.02),
+      newShape('capsule',[0.05,0.32,-0.42],'#cfd3e6',0.02)
+    ].map(function(s,i){
+      if(i>=4){ s.params=[0.09,0.42,0]; }
+      else { s.params=[0.32,0,0]; }
+      return s;
+    }), light:{az:30,el:60,amb:0.4,spec:0.6,shin:40,rim:0.2}, camera:{yaw:0.9,pitch:0.4,dist:6.5} };
+  }},
+  chain: { emoji:'🔗', name:'Torus Chain', build: function(){
+    var shapes=[]; var colors=['#6d5dfc','#ff6ec7','#3ddad7','#f5c66d'];
+    for(var i=0;i<4;i++){
+      shapes.push(newShape('torus', [Math.sin(i*1.1)*0.5, 0.3+i*0.42, i*0.05], colors[i%4], 0.1));
+      shapes[i].params=[0.45,0.16,0];
+    }
+    return { shapes:shapes, light:{az:70,el:45,amb:0.3,spec:0.7,shin:60,rim:0.25}, camera:{yaw:1.1,pitch:0.25,dist:6.5} };
+  }}
+};
+
+var state = defaultScene();
+var selected = 0;
+var mode = 'sculpt';
+var dirty = true;
+var autoRotate = false;
+var dragging = false;
+var lastX=0, lastY=0, pinchDist=0;
+
+// ---------- persistence ----------
+var LS_LAST = 'sdf_sculptor_last_v1';
+var LS_SAVED = 'sdf_sculptor_saved_v1';
+
+function b64Encode(str){ return btoa(unescape(encodeURIComponent(str))); }
+function b64Decode(str){ return decodeURIComponent(escape(atob(str))); }
+
+function serializeScene(){
+  return { v:1, shapes: state.shapes, light: state.light, camera: state.camera };
+}
+function loadScene(data){
+  if(!data || !Array.isArray(data.shapes) || !data.shapes.length) return false;
+  state.shapes = data.shapes.slice(0, MAXS).map(function(s){
+    return { type: TYPES.indexOf(s.type)>=0?s.type:'sphere', pos: s.pos||[0,0.4,0],
+      params: s.params||[0.5,0,0], color: s.color||'#6d5dfc', smooth: (s.smooth===undefined?0.25:s.smooth) };
+  });
+  if(data.light) state.light = Object.assign({az:45,el:50,amb:0.35,spec:0.4,shin:24,rim:0.15}, data.light);
+  if(data.camera) state.camera = Object.assign({yaw:0.7,pitch:0.35,dist:6}, data.camera);
+  selected = 0;
+  return true;
+}
+
+function autosave(){
+  try{ localStorage.setItem(LS_LAST, JSON.stringify(serializeScene())); }catch(e){}
+}
+var autosaveTimer = null;
+function scheduleAutosave(){ clearTimeout(autosaveTimer); autosaveTimer = setTimeout(autosave, 500); }
+
+function getSaved(){
+  try{ return JSON.parse(localStorage.getItem(LS_SAVED) || '[]'); }catch(e){ return []; }
+}
+function setSaved(list){ try{ localStorage.setItem(LS_SAVED, JSON.stringify(list)); }catch(e){ showToast('Storage full — could not save'); } }
+
+// ---------- init load: hash > autosave > default ----------
+(function initialLoad(){
+  var hash = location.hash;
+  if(hash && hash.indexOf('#s=') === 0){
+    try{
+      var data = JSON.parse(b64Decode(hash.slice(3)));
+      if(loadScene(data)){ showToastSoon('Loaded shared scene'); return; }
+    }catch(e){}
+  }
+  try{
+    var last = JSON.parse(localStorage.getItem(LS_LAST));
+    if(loadScene(last)) return;
+  }catch(e){}
+})();
+var pendingToast = null;
+function showToastSoon(msg){ pendingToast = msg; }
+
+// ---------- GL render ----------
+var flatType = new Float32Array(MAXS);
+var flatPos = new Float32Array(MAXS*3);
+var flatParams = new Float32Array(MAXS*3);
+var flatColor = new Float32Array(MAXS*3);
+var flatSmooth = new Float32Array(MAXS);
+
+function render(){
+  var w = canvas.width, h = canvas.height;
+  gl.viewport(0,0,w,h);
+
+  var n = Math.min(state.shapes.length, MAXS);
+  for(var i=0;i<MAXS;i++){
+    var s = state.shapes[i];
+    if(!s){ flatType[i]=0; flatSmooth[i]=0; continue; }
+    flatType[i] = TYPES.indexOf(s.type);
+    flatPos[i*3]=s.pos[0]; flatPos[i*3+1]=s.pos[1]; flatPos[i*3+2]=s.pos[2];
+    flatParams[i*3]=s.params[0]||0; flatParams[i*3+1]=s.params[1]||0; flatParams[i*3+2]=s.params[2]||0;
+    var c = hexToRgb01(s.color);
+    flatColor[i*3]=c[0]; flatColor[i*3+1]=c[1]; flatColor[i*3+2]=c[2];
+    flatSmooth[i] = s.smooth;
+  }
+
+  var cam = state.camera;
+  var camPos = [
+    Math.cos(cam.pitch)*Math.sin(cam.yaw)*cam.dist,
+    Math.sin(cam.pitch)*cam.dist + 0.4,
+    Math.cos(cam.pitch)*Math.cos(cam.yaw)*cam.dist
+  ];
+
+  var az = state.light.az*Math.PI/180, el = state.light.el*Math.PI/180;
+  var ldx = Math.cos(el)*Math.sin(az), ldy = Math.sin(el), ldz = Math.cos(el)*Math.cos(az);
+  var llen = Math.sqrt(ldx*ldx+ldy*ldy+ldz*ldz);
+
+  gl.uniform2f(U.uRes, w, h);
+  gl.uniform3f(U.uCamPos, camPos[0], camPos[1], camPos[2]);
+  gl.uniform3f(U.uCamTarget, 0, 0.35, 0);
+  gl.uniform1f(U.uFov, 1.85);
+  gl.uniform1i(U.uNumShapes, n);
+  gl.uniform1fv(U.uShapeType, flatType);
+  gl.uniform3fv(U.uShapePos, flatPos);
+  gl.uniform3fv(U.uShapeParams, flatParams);
+  gl.uniform3fv(U.uShapeColor, flatColor);
+  gl.uniform1fv(U.uShapeSmooth, flatSmooth);
+  gl.uniform3f(U.uLightDir, ldx/llen, ldy/llen, ldz/llen);
+  gl.uniform1f(U.uAmbient, state.light.amb);
+  gl.uniform1f(U.uSpecStrength, state.light.spec);
+  gl.uniform1f(U.uShininess, state.light.shin);
+  gl.uniform1f(U.uRim, state.light.rim);
+  gl.uniform1f(U.uGroundY, -0.9);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+function resize(){
+  var dpr = Math.min(window.devicePixelRatio || 1, 1.6);
+  var w = Math.min(window.innerWidth, 1100);
+  var h = window.innerHeight;
+  canvas.width = Math.round(window.innerWidth * dpr);
+  canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  dirty = true;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function markDirty(){ dirty = true; }
+
+function loop(){
+  if(autoRotate){ state.camera.yaw += 0.004; dirty = true; }
+  if(dirty){ render(); dirty = false; }
+  if(pendingToast){ var m = pendingToast; pendingToast = null; showToast(m); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------- pointer / camera controls ----------
+var activePointers = {};
+canvas.addEventListener('pointerdown', function(e){
+  canvas.setPointerCapture(e.pointerId);
+  activePointers[e.pointerId] = {x:e.clientX, y:e.clientY};
+  var keys = Object.keys(activePointers);
+  if(keys.length === 1){ dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.classList.add('dragging'); }
+  if(keys.length === 2){
+    var pts = keys.map(function(k){return activePointers[k];});
+    pinchDist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+  }
+});
+canvas.addEventListener('pointermove', function(e){
+  if(!activePointers[e.pointerId]) return;
+  activePointers[e.pointerId] = {x:e.clientX, y:e.clientY};
+  var keys = Object.keys(activePointers);
+  if(keys.length === 2){
+    var pts = keys.map(function(k){return activePointers[k];});
+    var d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    if(pinchDist>0){
+      state.camera.dist = clamp(state.camera.dist - (d-pinchDist)*0.02, 2.5, 14);
+      syncCamSlider(); markDirty();
+    }
+    pinchDist = d;
+    return;
+  }
+  if(!dragging) return;
+  var dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  state.camera.yaw -= dx * 0.0068;
+  state.camera.pitch = clamp(state.camera.pitch + dy * 0.0068, -1.4, 1.4);
+  markDirty();
+});
+function endDrag(e){
+  if(e && activePointers[e.pointerId]) delete activePointers[e.pointerId];
+  if(Object.keys(activePointers).length < 2) pinchDist = 0;
+  if(Object.keys(activePointers).length === 0){ dragging = false; canvas.classList.remove('dragging'); scheduleAutosave(); }
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('wheel', function(e){
+  e.preventDefault();
+  state.camera.dist = clamp(state.camera.dist + e.deltaY*0.0035, 2.5, 14);
+  syncCamSlider(); markDirty(); scheduleAutosave();
+}, {passive:false});
+
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+// ---------- UI: mode tabs ----------
+var modeThumb = document.getElementById('modeThumb');
+var modeBtns = Array.prototype.slice.call(document.querySelectorAll('#modes button'));
+var modeOrder = ['sculpt','light','gallery'];
+function setMode(m){
+  mode = m;
+  modeBtns.forEach(function(b){ b.classList.toggle('active', b.dataset.mode===m); });
+  modeThumb.style.transform = 'translateX(' + (modeOrder.indexOf(m)*100) + '%)';
+  document.getElementById('panel-sculpt').style.display = m==='sculpt' ? 'flex' : 'none';
+  document.getElementById('panel-sculpt').style.flexDirection = 'column';
+  document.getElementById('panel-light').style.display = m==='light' ? 'flex' : 'none';
+  document.getElementById('panel-light').style.flexDirection = 'column';
+  document.getElementById('panel-gallery').style.display = m==='gallery' ? 'flex' : 'none';
+  document.getElementById('panel-gallery').style.flexDirection = 'column';
+  document.getElementById('panel').classList.add('open');
+}
+modeBtns.forEach(function(b){ b.addEventListener('click', function(){ setMode(b.dataset.mode); }); });
+document.getElementById('panelToggle').addEventListener('click', function(){
+  document.getElementById('panel').classList.toggle('open');
+});
+
+// ---------- UI: shape list + editor ----------
+function renderShapeList(){
+  var list = document.getElementById('shapeList');
+  list.innerHTML = '';
+  state.shapes.forEach(function(s, i){
+    var el = document.createElement('div');
+    el.className = 'shapeItem' + (i===selected?' selected':'');
+    el.innerHTML = '<span class="swatch" style="background:'+s.color+'"></span><span class="lbl">'+s.type+' #'+(i+1)+'</span>'+
+      (state.shapes.length>1 ? '<button class="xbtn" data-i="'+i+'">✕</button>' : '');
+    el.addEventListener('click', function(ev){
+      if(ev.target.classList.contains('xbtn')) return;
+      selected = i; renderShapeList(); renderShapeEditor();
+    });
+    var xb = el.querySelector('.xbtn');
+    if(xb) xb.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      state.shapes.splice(i,1);
+      if(selected>=state.shapes.length) selected = state.shapes.length-1;
+      renderShapeList(); renderShapeEditor(); markDirty(); scheduleAutosave();
+    });
+    list.appendChild(el);
+  });
+}
+
+function renderShapeEditor(){
+  var host = document.getElementById('shapeEditor');
+  host.innerHTML = '';
+  var s = state.shapes[selected];
+  if(!s){ return; }
+
+  var typeSel = document.createElement('select');
+  TYPES.forEach(function(t){
+    var o = document.createElement('option'); o.value=t; o.textContent = t[0].toUpperCase()+t.slice(1);
+    if(t===s.type) o.selected = true;
+    typeSel.appendChild(o);
+  });
+  typeSel.addEventListener('change', function(){
+    s.type = typeSel.value;
+    s.params = TYPE_DEFAULT_PARAMS[s.type].slice();
+    renderShapeEditor(); renderShapeList(); markDirty(); scheduleAutosave();
+  });
+  host.appendChild(labeled('Type', typeSel));
+
+  ['X','Y','Z'].forEach(function(axis, ai){
+    host.appendChild(slider('Position ' + axis, s.pos[ai], -2.2, 2.2, 0.02, function(v){ s.pos[ai]=v; markDirty(); scheduleAutosave(); }));
+  });
+
+  TYPE_SLIDERS[s.type].forEach(function(def){
+    host.appendChild(slider(def.label, s.params[def.k]||0, def.min, def.max, def.step, function(v){ s.params[def.k]=v; markDirty(); scheduleAutosave(); }));
+  });
+
+  var colorInput = document.createElement('input');
+  colorInput.type = 'color'; colorInput.value = s.color;
+  colorInput.addEventListener('input', function(){ s.color = colorInput.value; renderShapeList(); markDirty(); scheduleAutosave(); });
+  host.appendChild(labeled('Color', colorInput));
+
+  host.appendChild(slider('Blend smoothness', s.smooth, 0, 1.2, 0.01, function(v){ s.smooth=v; markDirty(); scheduleAutosave(); }));
+
+  var dup = document.createElement('button');
+  dup.className = 'btn wide small'; dup.textContent = '⧉ Duplicate shape';
+  dup.addEventListener('click', function(){
+    if(state.shapes.length >= MAXS){ showToast('Max ' + MAXS + ' shapes'); return; }
+    var copy = JSON.parse(JSON.stringify(s));
+    copy.pos = [copy.pos[0]+0.3, copy.pos[1], copy.pos[2]+0.2];
+    state.shapes.push(copy); selected = state.shapes.length-1;
+    renderShapeList(); renderShapeEditor(); markDirty(); scheduleAutosave();
+  });
+  host.appendChild(dup);
+}
+
+function labeled(text, el){
+  var wrap = document.createElement('label'); wrap.className = 'field'; wrap.textContent = text;
+  wrap.appendChild(el);
+  return wrap;
+}
+function slider(label, val, min, max, step, onInput){
+  var wrap = document.createElement('label'); wrap.className = 'field';
+  var span = document.createElement('span'); span.className='val'; span.textContent = Number(val).toFixed(2);
+  wrap.appendChild(document.createTextNode(label+' ')); wrap.appendChild(span);
+  var input = document.createElement('input'); input.type='range';
+  input.min=min; input.max=max; input.step=step; input.value=val;
+  input.addEventListener('input', function(){ span.textContent = Number(input.value).toFixed(2); onInput(parseFloat(input.value)); });
+  wrap.appendChild(input);
+  return wrap;
+}
+
+document.getElementById('addShapeBtn').addEventListener('click', function(){
+  if(state.shapes.length >= MAXS){ showToast('Max ' + MAXS + ' shapes reached'); return; }
+  var type = document.getElementById('newShapeType').value;
+  var last = state.shapes[state.shapes.length-1];
+  var pos = last ? [last.pos[0]*-0.6+0.4, last.pos[1]+0.3, last.pos[2]*-0.6] : [0,0.5,0];
+  state.shapes.push(newShape(type, pos, randColor(), 0.25));
+  selected = state.shapes.length-1;
+  renderShapeList(); renderShapeEditor(); markDirty(); scheduleAutosave();
+});
+
+// ---------- UI: light + camera ----------
+function bindLightSlider(id, key, valId, fmt){
+  var input = document.getElementById(id);
+  input.value = state.light[key];
+  document.getElementById(valId).textContent = fmt(state.light[key]);
+  input.addEventListener('input', function(){
+    var v = parseFloat(input.value);
+    state.light[key] = v;
+    document.getElementById(valId).textContent = fmt(v);
+    markDirty(); scheduleAutosave();
+  });
+}
+bindLightSlider('lAz','az','v-az', function(v){ return Math.round(v)+'°'; });
+bindLightSlider('lEl','el','v-el', function(v){ return Math.round(v)+'°'; });
+bindLightSlider('lAmb','amb','v-amb', function(v){ return v.toFixed(2); });
+bindLightSlider('lSpec','spec','v-spec', function(v){ return v.toFixed(2); });
+bindLightSlider('lShin','shin','v-shin', function(v){ return Math.round(v); });
+bindLightSlider('lRim','rim','v-rim', function(v){ return v.toFixed(2); });
+
+var MATERIALS = {
+  matte:{spec:0.15, shin:8, rim:0.05},
+  plastic:{spec:0.6, shin:32, rim:0.1},
+  metal:{spec:1.1, shin:80, rim:0.35},
+  glow:{spec:0.3, shin:16, rim:0.7}
+};
+document.querySelectorAll('[data-mat]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var m = MATERIALS[btn.dataset.mat];
+    Object.assign(state.light, m);
+    document.getElementById('lSpec').value = m.spec; document.getElementById('v-spec').textContent = m.spec.toFixed(2);
+    document.getElementById('lShin').value = m.shin; document.getElementById('v-shin').textContent = m.shin;
+    document.getElementById('lRim').value = m.rim; document.getElementById('v-rim').textContent = m.rim.toFixed(2);
+    markDirty(); scheduleAutosave();
+  });
+});
+
+var camDistInput = document.getElementById('camDist');
+camDistInput.value = state.camera.dist;
+document.getElementById('v-dist').textContent = state.camera.dist.toFixed(1);
+camDistInput.addEventListener('input', function(){
+  state.camera.dist = parseFloat(camDistInput.value);
+  document.getElementById('v-dist').textContent = state.camera.dist.toFixed(1);
+  markDirty(); scheduleAutosave();
+});
+function syncCamSlider(){ camDistInput.value = state.camera.dist; document.getElementById('v-dist').textContent = state.camera.dist.toFixed(1); }
+
+document.getElementById('autoRotateBtn').addEventListener('click', function(e){
+  autoRotate = !autoRotate;
+  e.target.textContent = autoRotate ? '⏸ Stop rotating' : '▶ Auto-rotate';
+});
+document.getElementById('resetCamBtn').addEventListener('click', function(){
+  state.camera.yaw = 0.7; state.camera.pitch = 0.35; state.camera.dist = 6;
+  syncCamSlider(); markDirty(); scheduleAutosave();
+});
+
+// ---------- UI: gallery / presets / save / export ----------
+var presetGrid = document.getElementById('presetGrid');
+Object.keys(PRESETS).forEach(function(key){
+  var p = PRESETS[key];
+  var card = document.createElement('div'); card.className = 'presetCard';
+  card.innerHTML = '<span class="emoji">'+p.emoji+'</span>'+p.name;
+  card.addEventListener('click', function(){
+    var data = p.build();
+    loadScene(data);
+    selected = 0;
+    refreshAllUI(); markDirty(); scheduleAutosave();
+    showToast('Loaded "' + p.name + '"');
+  });
+  presetGrid.appendChild(card);
+});
+
+function renderSavedList(){
+  var host = document.getElementById('savedList');
+  var saved = getSaved();
+  host.innerHTML = '';
+  if(!saved.length){ var e=document.createElement('div'); e.style.cssText='font-size:.72rem;color:var(--dim);'; e.textContent='No saved scenes yet.'; host.appendChild(e); return; }
+  saved.slice().reverse().forEach(function(item){
+    var row = document.createElement('div'); row.className = 'savedItem';
+    row.innerHTML = '<img src="'+item.thumb+'" alt=""><span class="name">'+escapeHtml(item.name)+'</span><button data-act="load">↥</button><button data-act="del">✕</button>';
+    row.querySelector('[data-act=load]').addEventListener('click', function(){
+      loadScene(item.data); selected=0; refreshAllUI(); markDirty(); scheduleAutosave();
+      showToast('Loaded "' + item.name + '"');
+    });
+    row.querySelector('[data-act=del]').addEventListener('click', function(){
+      setSaved(getSaved().filter(function(x){ return x.id !== item.id; }));
+      renderSavedList();
+    });
+    host.appendChild(row);
+  });
+}
+function escapeHtml(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+document.getElementById('saveSceneBtn').addEventListener('click', function(){
+  var nameInput = document.getElementById('saveName');
+  var name = nameInput.value.trim() || ('Scene ' + new Date().toISOString().slice(0,10));
+  render();
+  var thumbCanvas = document.createElement('canvas'); thumbCanvas.width=88; thumbCanvas.height=66;
+  var tctx = thumbCanvas.getContext('2d');
+  tctx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+  var thumb = thumbCanvas.toDataURL('image/jpeg', 0.7);
+  var saved = getSaved();
+  saved.push({ id: 'sc'+Math.random().toString(36).slice(2,9), name: name, thumb: thumb, data: serializeScene() });
+  if(saved.length > 20) saved.shift();
+  setSaved(saved);
+  nameInput.value = '';
+  renderSavedList();
+  showToast('Scene saved');
+});
+
+document.getElementById('exportPngBtn').addEventListener('click', function(){
+  render();
+  canvas.toBlob(function(blob){
+    if(!blob){ showToast('Export failed'); return; }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'sdf-sculptor-scene.png';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+    showToast('PNG downloaded');
+  }, 'image/png');
+});
+
+document.getElementById('exportJsonBtn').addEventListener('click', function(){
+  var data = serializeScene();
+  var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href = url; a.download = 'sdf-sculptor-scene.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  showToast('JSON downloaded');
+});
+
+document.getElementById('importBtn').addEventListener('click', function(){
+  document.getElementById('importFile').click();
+});
+document.getElementById('importFile').addEventListener('change', function(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    try{
+      var data = JSON.parse(reader.result);
+      if(loadScene(data)){ selected=0; refreshAllUI(); markDirty(); scheduleAutosave(); showToast('Scene imported'); }
+      else showToast('Invalid scene file');
+    }catch(err){ showToast('Could not parse file'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('shareBtn').addEventListener('click', function(){
+  var data = serializeScene();
+  var encoded = b64Encode(JSON.stringify(data));
+  var url = location.origin + location.pathname + '#s=' + encoded;
+  location.hash = 's=' + encoded;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){ showToast('Link copied to clipboard'); })
+      .catch(function(){ showToast('Link updated in address bar'); });
+  } else {
+    showToast('Link updated in address bar');
+  }
+});
+
+// ---------- toast ----------
+var toastTimer = null;
+function showToast(msg){
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2200);
+}
+
+function refreshAllUI(){
+  renderShapeList(); renderShapeEditor(); renderSavedList();
+  document.getElementById('lAz').value = state.light.az; document.getElementById('v-az').textContent = Math.round(state.light.az)+'°';
+  document.getElementById('lEl').value = state.light.el; document.getElementById('v-el').textContent = Math.round(state.light.el)+'°';
+  document.getElementById('lAmb').value = state.light.amb; document.getElementById('v-amb').textContent = state.light.amb.toFixed(2);
+  document.getElementById('lSpec').value = state.light.spec; document.getElementById('v-spec').textContent = state.light.spec.toFixed(2);
+  document.getElementById('lShin').value = state.light.shin; document.getElementById('v-shin').textContent = Math.round(state.light.shin);
+  document.getElementById('lRim').value = state.light.rim; document.getElementById('v-rim').textContent = state.light.rim.toFixed(2);
+  syncCamSlider();
+}
+
+// ---------- boot ----------
+refreshAllUI();
+setMode('sculpt');
+document.getElementById('panel').classList.remove('open');
+markDirty();
+
+})();
+</script>
+</body>
+</html>

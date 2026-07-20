@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sticker Peel — Drag-to-Peel Micro-interaction</title>
+<style>
+  :root{
+    --accent:#fbbf24; --accent-soft: rgba(251,191,36,.35);
+    --bg-0:#0b0906; --glass: rgba(255,255,255,.06); --glass-b: rgba(255,255,255,.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg-0);color:#f4efe4;font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow-x:hidden;}
+  body{ min-height:100vh; background: radial-gradient(1200px 600px at 15% -10%, rgba(251,191,36,.14), transparent 60%),
+    radial-gradient(900px 700px at 110% 20%, rgba(251,191,36,.08), transparent 55%), var(--bg-0);
+    padding:96px 20px 60px; }
+
+  .back-link{ position:fixed; top:16px; left:16px; z-index:50; display:inline-flex; align-items:center; gap:6px;
+    padding:9px 16px; border-radius:999px; background:var(--glass); border:1px solid var(--glass-b);
+    backdrop-filter:blur(14px) saturate(140%); -webkit-backdrop-filter:blur(14px) saturate(140%);
+    color:#f3ecdd; text-decoration:none; font-size:13px; font-weight:500; transition:background .2s, transform .2s; }
+  .back-link:hover{ background:rgba(255,255,255,.12); transform:translateX(-2px); }
+
+  .panel{ position:fixed; top:16px; right:16px; z-index:50; width:220px; background:var(--glass);
+    border:1px solid var(--glass-b); backdrop-filter:blur(16px) saturate(140%); -webkit-backdrop-filter:blur(16px) saturate(140%);
+    border-radius:16px; padding:14px 16px 16px; font-size:12px; }
+  .panel h3{margin:0 0 10px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); font-weight:700;}
+  .panel label{display:flex; justify-content:space-between; margin:10px 0 4px; color:#cabb9a;}
+  .panel input[type=range]{width:100%; accent-color:var(--accent);}
+  .panel .val{color:#fff; font-variant-numeric:tabular-nums;}
+  @media (max-width: 780px), (pointer:coarse){ .panel{display:none;} }
+
+  .hero{ max-width:640px; margin:0 auto 54px; text-align:center; }
+  .hero span.eyebrow{ display:inline-block; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:#8a93a8;
+    padding:6px 14px; border:1px solid var(--glass-b); border-radius:999px; background:var(--glass); margin-bottom:16px; }
+  .hero h1{ margin:0; font-size:clamp(26px,5vw,42px); font-weight:800; letter-spacing:-.02em; }
+  .hero p{ margin:14px 0 0; color:#a99a7d; font-size:14px; line-height:1.6; }
+
+  .board{ max-width:760px; margin:0 auto; display:flex; flex-wrap:wrap; gap:44px; justify-content:center;
+    padding:30px 10px 10px; }
+
+  .slot{ position:relative; width:150px; height:150px; }
+  .sticker{
+    position:absolute; inset:0; touch-action:none; cursor:grab;
+    --peel: 0px; --tiltx:0deg; --tilty:0deg; --dx:0px; --dy:0px;
+  }
+  .sticker.grabbing{ cursor:grabbing; }
+  .sticker-inner{
+    position:relative; width:100%; height:100%;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--tilty));
+    transition: transform .55s cubic-bezier(.22,1.6,.36,1);
+  }
+  .sticker.dragging .sticker-inner{ transition:none; }
+
+  .face, .under{ position:absolute; left:0; right:0; border-radius:20px; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; font-weight:800; color:#1b1408; user-select:none; }
+  .face{
+    top:0; bottom:0;
+    clip-path: inset(var(--peel) 0 0 0 round 20px);
+    box-shadow: 0 14px 28px rgba(0,0,0,.35);
+    transition: clip-path .55s cubic-bezier(.22,1.6,.36,1);
+  }
+  .sticker.dragging .face{ transition:none; }
+  .under{
+    top:0; height:100%;
+    clip-path: inset(0 0 calc(100% - var(--peel)) 0 round 20px);
+    transform: scaleY(-1) translateY(2px);
+    transform-origin: top;
+    filter: brightness(.5) saturate(.7) blur(.4px);
+    transition: clip-path .55s cubic-bezier(.22,1.6,.36,1);
+  }
+  .sticker.dragging .under{ transition:none; }
+
+  .emoji{ font-size:38px; line-height:1; margin-bottom:6px; }
+  .label{ font-size:11px; letter-spacing:.04em; }
+
+  .s1 .face, .s1 .under{ background:linear-gradient(150deg,#ffe08a,#fbbf24); }
+  .s2 .face, .s2 .under{ background:linear-gradient(150deg,#ffb199,#fb7185); }
+  .s3 .face, .s3 .under{ background:linear-gradient(150deg,#a7f3d0,#34d399); }
+  .s4 .face, .s4 .under{ background:linear-gradient(150deg,#bfdbfe,#60a5fa); }
+
+  .hint{ text-align:center; font-size:11.5px; color:#8a7c5f; margin-top:8px; }
+
+  footer{ text-align:center; padding:8vh 20px 4vh; font-size:12px; color:#5a6577; }
+  footer a{ color:#c9b189; text-decoration:none; }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Peel Controls</h3>
+  <label>Hover peel <span class="val" id="vHover">18</span>px</label>
+  <input id="rHover" type="range" min="4" max="40" step="1" value="18">
+  <label>Drag peel <span class="val" id="vDrag">55</span>px</label>
+  <input id="rDrag" type="range" min="30" max="90" step="1" value="55">
+  <label>Tilt sensitivity <span class="val" id="vTilt">18</span>°</label>
+  <input id="rTilt" type="range" min="4" max="35" step="1" value="18">
+</div>
+
+<div class="hero">
+  <span class="eyebrow">UI Spotlight · Day 64 · Drop #4</span>
+  <h1>Sticker Peel</h1>
+  <p>Hover to curl a corner, drag to peel further and tilt with velocity — release and it snaps flat with an elastic spring. Try it with touch too.</p>
+</div>
+
+<div class="board" id="board">
+  <div class="slot"><div class="sticker s1" id="s1">
+    <div class="sticker-inner">
+      <div class="under"><span class="emoji">✦</span><span class="label">SHINE</span></div>
+      <div class="face"><span class="emoji">✦</span><span class="label">SHINE</span></div>
+    </div>
+  </div></div>
+  <div class="slot"><div class="sticker s2" id="s2">
+    <div class="sticker-inner">
+      <div class="under"><span class="emoji">◆</span><span class="label">PEEL ME</span></div>
+      <div class="face"><span class="emoji">◆</span><span class="label">PEEL ME</span></div>
+    </div>
+  </div></div>
+  <div class="slot"><div class="sticker s3" id="s3">
+    <div class="sticker-inner">
+      <div class="under"><span class="emoji">✺</span><span class="label">FRESH</span></div>
+      <div class="face"><span class="emoji">✺</span><span class="label">FRESH</span></div>
+    </div>
+  </div></div>
+  <div class="slot"><div class="sticker s4" id="s4">
+    <div class="sticker-inner">
+      <div class="under"><span class="emoji">◈</span><span class="label">DRAG</span></div>
+      <div class="face"><span class="emoji">◈</span><span class="label">DRAG</span></div>
+    </div>
+  </div></div>
+</div>
+<p class="hint">hover a corner · drag to peel &amp; tilt · release to spring back</p>
+
+<footer>Inspired by React Bits — StickerPeel (David Haz) · UI Spotlight Day 64 · Drop #4</footer>
+
+<script>
+(function(){
+  var HOVER = 18, DRAGMAX = 55, TILT = 18;
+  var rHover = document.getElementById('rHover');
+  var rDrag = document.getElementById('rDrag');
+  var rTilt = document.getElementById('rTilt');
+  var vHover = document.getElementById('vHover');
+  var vDrag = document.getElementById('vDrag');
+  var vTilt = document.getElementById('vTilt');
+
+  function sync(){
+    HOVER = parseFloat(rHover.value); DRAGMAX = parseFloat(rDrag.value); TILT = parseFloat(rTilt.value);
+    vHover.textContent = HOVER; vDrag.textContent = DRAGMAX; vTilt.textContent = TILT;
+  }
+  [rHover, rDrag, rTilt].forEach(function(el){ el.addEventListener('input', sync); });
+  sync();
+
+  Array.prototype.slice.call(document.querySelectorAll('.sticker')).forEach(function(sticker){
+    var dragging = false;
+    var startX = 0, startY = 0;
+
+    function setPeel(px){ sticker.style.setProperty('--peel', px + 'px'); }
+    function setTilt(deg){ sticker.style.setProperty('--tilty', deg + 'deg'); }
+    function setOffset(dx, dy){
+      sticker.style.setProperty('--dx', dx + 'px');
+      sticker.style.setProperty('--dy', dy + 'px');
+    }
+
+    sticker.addEventListener('pointerenter', function(){ if(!dragging) setPeel(HOVER); });
+    sticker.addEventListener('pointerleave', function(){ if(!dragging) setPeel(0); });
+
+    sticker.addEventListener('pointerdown', function(e){
+      dragging = true;
+      sticker.classList.add('dragging', 'grabbing');
+      sticker.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      setPeel(DRAGMAX * 0.7);
+    });
+
+    sticker.addEventListener('pointermove', function(e){
+      if(!dragging) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      var clampedDx = Math.max(-70, Math.min(70, dx));
+      var clampedDy = Math.max(-70, Math.min(70, dy));
+      setOffset(clampedDx, clampedDy);
+      var tiltDeg = Math.max(-TILT, Math.min(TILT, dx * 0.12));
+      setTilt(tiltDeg);
+      var dist = Math.min(1, Math.hypot(dx,dy) / 140);
+      setPeel(DRAGMAX * 0.7 + dist * DRAGMAX * 0.3);
+    });
+
+    function endDrag(e){
+      if(!dragging) return;
+      dragging = false;
+      sticker.classList.remove('dragging', 'grabbing');
+      setOffset(0, 0);
+      setTilt(0);
+      setPeel(0);
+    }
+    sticker.addEventListener('pointerup', endDrag);
+    sticker.addEventListener('pointercancel', endDrag);
+  });
+})();
+</script>
+</body>
+</html>
