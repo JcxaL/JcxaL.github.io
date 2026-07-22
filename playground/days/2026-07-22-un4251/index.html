@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>FM Forge — 4-Operator FM Synthesizer</title>
+<style>
+  :root{
+    --bg:#07070d; --bg2:#0d0d18; --card:#12121e; --card2:#181828;
+    --accent:#7c6fff; --accent2:#4ee6c0; --accent3:#ff6b8a; --accent4:#f0b429;
+    --text:#e8e6f5; --text-dim:#8a87a8; --line:#252540;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    overscroll-behavior:none; user-select:none; -webkit-user-select:none;}
+  body{min-height:100vh; display:flex; flex-direction:column;}
+
+  header{padding:14px 18px 8px; text-align:center;}
+  header h1{margin:0; font-size:22px; font-weight:800;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    letter-spacing:0.5px;}
+  header p{margin:4px 0 0; font-size:12px; color:var(--text-dim);}
+
+  main{flex:1; display:flex; flex-direction:column; gap:12px; padding:8px 12px 12px; max-width:1100px; width:100%; margin:0 auto;}
+
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px;}
+
+  select, button, input[type=text]{
+    font-family:inherit; font-size:13px; color:var(--text); background:var(--card2);
+    border:1px solid var(--line); border-radius:9px; padding:8px 10px; outline:none;
+  }
+  button{cursor:pointer; transition:transform .1s, background .15s, border-color .15s;}
+  button:active{transform:scale(0.95);}
+  button.primary{background:linear-gradient(135deg,var(--accent),#5a4fd8); border-color:transparent; color:#fff; font-weight:600;}
+  button.rec{background:var(--card2); border-color:var(--accent3); color:var(--accent3); font-weight:600;}
+  button.rec.active{background:var(--accent3); color:#1a0509; animation:pulse 1.2s infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,138,.5);}50%{box-shadow:0 0 0 8px rgba(255,107,138,0);}}
+  a.dl{color:var(--accent2); font-size:12px; text-decoration:none; border:1px solid var(--accent2); border-radius:9px; padding:8px 10px;}
+  a.dl:hover{background:rgba(78,230,192,.1);}
+
+  label.lbl{font-size:11px; color:var(--text-dim); display:block; margin-bottom:2px;}
+  .control{min-width:150px;}
+
+  #topbar{justify-content:space-between;}
+  #topbar .group{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+
+  #operators{display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:10px;}
+  .op-card{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px 12px; position:relative; min-width:0;}
+  .op-card h3{margin:0 0 6px; font-size:13px; display:flex; align-items:center; gap:6px;}
+  .op-dot{width:9px;height:9px;border-radius:50%; display:inline-block;}
+  .op-card .role{font-size:10px; color:var(--text-dim); font-weight:400; margin-left:auto;}
+  .op-row{display:flex; align-items:center; gap:6px; margin:5px 0;}
+  .op-row label{font-size:11px; color:var(--text-dim); width:56px; flex-shrink:0;}
+  .op-row input[type=range]{flex:1; min-width:0; accent-color:var(--accent);}
+  .op-row .val{font-size:10px; color:var(--text-dim); width:34px; text-align:right; flex-shrink:0;}
+  .op-row select{padding:4px 6px; font-size:11px; flex:1;}
+
+  #algo-diagram{font-size:11px; color:var(--text-dim); margin-top:4px; white-space:pre; font-family:ui-monospace,monospace;}
+
+  #viz-wrap{position:relative;}
+  canvas#viz{width:100%; height:70px; display:block; border-radius:10px; background:#000; }
+
+  #piano-wrap{padding:8px 8px 12px;}
+  #piano{position:relative; height:150px; display:flex; touch-action:none;}
+  .wkey, .bkey{position:relative; border-radius:0 0 6px 6px; cursor:pointer; user-select:none;}
+  .wkey{flex:1; background:linear-gradient(180deg,#f4f2fb,#d8d4ea); border:1px solid #302f45; border-top:none; z-index:1;}
+  .wkey.active{background:linear-gradient(180deg,var(--accent2),#2ba084);}
+  .bkey{position:absolute; top:0; width:6.2%; height:62%; background:linear-gradient(180deg,#232238,#0c0c16); border:1px solid #000; z-index:2; border-radius:0 0 5px 5px;}
+  .bkey.active{background:linear-gradient(180deg,var(--accent),#4a3fc2);}
+  .wkey .kc, .bkey .kc{position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:9px; color:#8880; pointer-events:none;}
+  .wkey .kc{color:#8880aa;}
+  .bkey .kc{color:#aaa9;}
+
+  #octave-controls{display:flex; gap:6px; align-items:center; justify-content:center; margin-top:6px; font-size:12px; color:var(--text-dim);}
+
+  footer{text-align:center; font-size:11px; color:var(--text-dim); padding:6px 0 14px;}
+
+  @media (max-width:640px){
+    #operators{grid-template-columns:repeat(2,1fr);}
+    .op-row label{width:44px;}
+    header h1{font-size:18px;}
+    #piano{height:120px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FM Forge</h1>
+  <p>4-operator FM synthesizer — play, shape, record, export</p>
+</header>
+
+<main>
+  <div class="panel row" id="topbar">
+    <div class="group">
+      <div class="control">
+        <label class="lbl">Algorithm</label>
+        <select id="algoSelect"></select>
+      </div>
+      <div class="control">
+        <label class="lbl">Preset</label>
+        <select id="presetSelect"></select>
+      </div>
+      <button id="savePresetBtn" title="Save current settings as a new preset">💾 Save</button>
+      <button id="deletePresetBtn" title="Delete selected custom preset">🗑</button>
+    </div>
+    <div class="group">
+      <div class="control" style="min-width:110px;">
+        <label class="lbl">Master Vol</label>
+        <input type="range" id="masterVol" min="0" max="100" value="70">
+      </div>
+      <button id="recordBtn" class="rec">⏺ Record</button>
+      <a id="downloadLink" class="dl" style="display:none;" download="fm-forge-take.wav">⬇ Download WAV</a>
+    </div>
+  </div>
+
+  <div class="panel" id="algo-panel">
+    <div id="algo-diagram"></div>
+  </div>
+
+  <div id="operators"></div>
+
+  <div class="panel" id="viz-wrap">
+    <canvas id="viz" width="1000" height="140"></canvas>
+  </div>
+
+  <div class="panel" id="piano-wrap">
+    <div id="piano"></div>
+    <div id="octave-controls">
+      <button id="octDown">◀ Octave</button>
+      <span id="octLabel">Octave 4</span>
+      <button id="octUp">Octave ▶</button>
+      <span style="margin-left:14px;">Keys: Z–M &amp; Q–P play notes</span>
+    </div>
+  </div>
+</main>
+
+<footer>FM Forge · Daily Playground mini-app · self-contained, no external dependencies</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Constants ----------
+  const NUM_OPS = 4;
+  const MAX_MOD_HZ = 3200;
+  const MAX_VOICES = 8;
+  const OP_COLORS = ["#ff6b8a","#4ee6c0","#f0b429","#7c6fff"];
+  const WAVE_TYPES = ["sine","triangle","square","sawtooth"];
+
+  const ALGORITHMS = [
+    { id:"A", name:"4→3→2→1  (Chain)", links:[[3,2],[2,1],[1,0]], carriers:[0] },
+    { id:"B", name:"4→2, 3→1  (Two Pairs)", links:[[3,1],[2,0]], carriers:[0,1] },
+    { id:"C", name:"4,3,2→1  (Stack)", links:[[3,0],[2,0],[1,0]], carriers:[0] },
+    { id:"D", name:"4→3→1, 2→1  (Branch)", links:[[3,2],[2,0],[1,0]], carriers:[0] },
+    { id:"E", name:"1+2+3+4  (Additive)", links:[], carriers:[0,1,2,3] },
+    { id:"F", name:"2→1, 4→3  (Dual FM)", links:[[1,0],[3,2]], carriers:[0,2] },
+  ];
+
+  const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+  function midiToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
+
+  // ---------- Default operator params ----------
+  function defaultOperator(i){
+    return { wave:"sine", ratio:[1,1,2,3][i], detune:0, level: i===0?80:50,
+      attack:0.01+i*0.005, decay:0.25, sustain:0.6, release:0.35 };
+  }
+
+  const BUILTIN_PRESETS = [
+    { name:"E.Piano", builtin:true, algo:"C",
+      operators:[
+        {wave:"sine",ratio:1,detune:0,level:85,attack:0.005,decay:0.9,sustain:0.35,release:0.5},
+        {wave:"sine",ratio:1,detune:6,level:35,attack:0.005,decay:0.5,sustain:0.1,release:0.3},
+        {wave:"sine",ratio:3.01,detune:0,level:28,attack:0.005,decay:0.35,sustain:0.05,release:0.25},
+        {wave:"sine",ratio:7,detune:0,level:18,attack:0.002,decay:0.18,sustain:0,release:0.15}
+      ]},
+    { name:"Glass Bell", builtin:true, algo:"A",
+      operators:[
+        {wave:"sine",ratio:1,detune:0,level:80,attack:0.002,decay:1.4,sustain:0,release:1.2},
+        {wave:"sine",ratio:3.5,detune:0,level:55,attack:0.002,decay:1.0,sustain:0,release:0.9},
+        {wave:"sine",ratio:6.01,detune:0,level:40,attack:0.001,decay:0.7,sustain:0,release:0.6},
+        {wave:"sine",ratio:11,detune:0,level:30,attack:0.001,decay:0.4,sustain:0,release:0.3}
+      ]},
+    { name:"Sub Growl Bass", builtin:true, algo:"D",
+      operators:[
+        {wave:"sine",ratio:1,detune:0,level:90,attack:0.001,decay:0.3,sustain:0.7,release:0.2},
+        {wave:"sine",ratio:1,detune:-8,level:45,attack:0.001,decay:0.25,sustain:0.5,release:0.2},
+        {wave:"triangle",ratio:0.5,detune:0,level:60,attack:0.001,decay:0.4,sustain:0.4,release:0.2},
+        {wave:"sine",ratio:2,detune:0,level:25,attack:0.001,decay:0.15,sustain:0.1,release:0.1}
+      ]},
+    { name:"Warm Pad", builtin:true, algo:"E",
+      operators:[
+        {wave:"sine",ratio:1,detune:0,level:55,attack:1.1,decay:0.6,sustain:0.85,release:1.6},
+        {wave:"triangle",ratio:1,detune:7,level:35,attack:1.4,decay:0.6,sustain:0.8,release:1.8},
+        {wave:"sine",ratio:2,detune:-5,level:22,attack:1.6,decay:0.6,sustain:0.7,release:1.6},
+        {wave:"sine",ratio:0.5,detune:0,level:30,attack:1.2,decay:0.6,sustain:0.8,release:2.0}
+      ]},
+    { name:"Pluck Bass", builtin:true, algo:"C",
+      operators:[
+        {wave:"sine",ratio:1,detune:0,level:80,attack:0.001,decay:0.5,sustain:0.15,release:0.15},
+        {wave:"sine",ratio:2,detune:0,level:45,attack:0.001,decay:0.2,sustain:0,release:0.1},
+        {wave:"sine",ratio:3,detune:0,level:30,attack:0.001,decay:0.12,sustain:0,release:0.08},
+        {wave:"sine",ratio:5,detune:0,level:20,attack:0.001,decay:0.08,sustain:0,release:0.06}
+      ]},
+    { name:"Brass Stab", builtin:true, algo:"C",
+      operators:[
+        {wave:"sawtooth",ratio:1,detune:0,level:70,attack:0.04,decay:0.3,sustain:0.65,release:0.2},
+        {wave:"sine",ratio:1,detune:0,level:38,attack:0.06,decay:0.35,sustain:0.3,release:0.2},
+        {wave:"sine",ratio:2,detune:0,level:25,attack:0.08,decay:0.3,sustain:0.15,release:0.15},
+        {wave:"sine",ratio:1,detune:9,level:20,attack:0.1,decay:0.25,sustain:0.1,release:0.1}
+      ]}
+  ];
+
+  // ---------- State ----------
+  let state = {
+    algoId: "C",
+    operators: BUILTIN_PRESETS[0].operators.map(o=>({...o})),
+    masterVol: 70,
+    octave: 4,
+  };
+
+  const LS_STATE_KEY = "fmforge_state_v1";
+  const LS_PRESETS_KEY = "fmforge_custom_presets_v1";
+
+  function loadPersisted(){
+    try{
+      const raw = localStorage.getItem(LS_STATE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        if(parsed && parsed.operators && parsed.operators.length===NUM_OPS){
+          state = parsed;
+        }
+      }
+    }catch(e){}
+  }
+  function persistState(){
+    try{ localStorage.setItem(LS_STATE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+  function loadCustomPresets(){
+    try{
+      const raw = localStorage.getItem(LS_PRESETS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){ return []; }
+  }
+  function saveCustomPresets(list){
+    try{ localStorage.setItem(LS_PRESETS_KEY, JSON.stringify(list)); }catch(e){}
+  }
+
+  loadPersisted();
+
+  // ---------- Audio graph ----------
+  let ctx = null;
+  let masterGain, analyser, compressor, recProcessor, muteNode;
+  let recording = false;
+  let recordedChunks = [];
+  const activeVoices = new Map(); // midiNote -> voice
+
+  function ensureAudio(){
+    if(ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = ctx.createGain();
+    masterGain.gain.value = state.masterVol/100;
+
+    compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -12;
+    compressor.knee.value = 20;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.25;
+
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+
+    masterGain.connect(compressor);
+    compressor.connect(analyser);
+    analyser.connect(ctx.destination);
+
+    // recorder tap — captures pre-destination signal without doubling audible output
+    const BUF = 4096;
+    recProcessor = ctx.createScriptProcessor(BUF, 1, 1);
+    muteNode = ctx.createGain();
+    muteNode.gain.value = 0;
+    compressor.connect(recProcessor);
+    recProcessor.connect(muteNode);
+    muteNode.connect(ctx.destination);
+    recProcessor.onaudioprocess = function(e){
+      if(!recording) return;
+      recordedChunks.push(e.inputBuffer.getChannelData(0).slice());
+    };
+
+    drawViz();
+  }
+
+  function getAlgorithm(){
+    return ALGORITHMS.find(a=>a.id===state.algoId) || ALGORITHMS[0];
+  }
+
+  function noteOn(midi){
+    ensureAudio();
+    if(ctx.state === "suspended") ctx.resume();
+    if(activeVoices.has(midi)) noteOff(midi, true);
+
+    if(activeVoices.size >= MAX_VOICES){
+      // steal oldest voice
+      let oldestKey = null, oldestTime = Infinity;
+      activeVoices.forEach((v,k)=>{ if(v.startTime < oldestTime){ oldestTime=v.startTime; oldestKey=k; } });
+      if(oldestKey !== null) killVoiceImmediately(oldestKey);
+    }
+
+    const algo = getAlgorithm();
+    const now = ctx.currentTime;
+    const freqBase = midiToFreq(midi);
+    const oscs = [], envGains = [];
+
+    const isCarrier = new Array(NUM_OPS).fill(false);
+    algo.carriers.forEach(c=>isCarrier[c]=true);
+    const isModSource = new Array(NUM_OPS).fill(false);
+    algo.links.forEach(([src])=>isModSource[src]=true);
+
+    for(let i=0;i<NUM_OPS;i++){
+      const opState = state.operators[i];
+      const osc = ctx.createOscillator();
+      osc.type = opState.wave;
+      osc.frequency.value = freqBase * opState.ratio;
+      osc.detune.value = opState.detune;
+      const envGain = ctx.createGain();
+      envGain.gain.value = 0;
+      osc.connect(envGain);
+      oscs.push(osc); envGains.push(envGain);
+    }
+
+    const modGains = [];
+    algo.links.forEach(([src,dst])=>{
+      const modGain = ctx.createGain();
+      const depth = (state.operators[src].level/100) * MAX_MOD_HZ;
+      modGain.gain.value = depth;
+      envGains[src].connect(modGain);
+      modGain.connect(oscs[dst].frequency);
+      modGains.push(modGain);
+    });
+
+    const voiceGain = ctx.createGain();
+    voiceGain.gain.value = 1;
+    algo.carriers.forEach(c=>{
+      envGains[c].connect(voiceGain);
+    });
+    voiceGain.connect(masterGain);
+
+    // envelopes
+    for(let i=0;i<NUM_OPS;i++){
+      const opState = state.operators[i];
+      const g = envGains[i].gain;
+      let peak;
+      if(isCarrier[i]){
+        peak = (opState.level/100) * (0.9 / Math.max(1, algo.carriers.length*0.7));
+      } else if(isModSource[i]){
+        peak = 1; // amplitude envelope shapes the modulator; depth already baked into modGain
+      } else {
+        peak = 0;
+      }
+      const a = Math.max(0.001, opState.attack);
+      const d = Math.max(0.001, opState.decay);
+      const s = Math.max(0.0001, opState.sustain);
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(0.0001, now);
+      g.linearRampToValueAtTime(Math.max(peak,0.0001), now + a);
+      g.linearRampToValueAtTime(Math.max(peak*s,0.0001), now + a + d);
+    }
+
+    oscs.forEach(o=>o.start(now));
+
+    activeVoices.set(midi, { oscs, envGains, modGains, voiceGain, startTime: now, releasing:false });
+    updateKeyVisual(midi, true);
+  }
+
+  function killVoiceImmediately(midi){
+    const v = activeVoices.get(midi);
+    if(!v) return;
+    try{
+      v.oscs.forEach(o=>{ try{o.stop();}catch(e){} });
+      v.voiceGain.disconnect();
+    }catch(e){}
+    activeVoices.delete(midi);
+    updateKeyVisual(midi, false);
+  }
+
+  function noteOff(midi, immediate){
+    const v = activeVoices.get(midi);
+    if(!v || v.releasing) return;
+    v.releasing = true;
+    updateKeyVisual(midi, false);
+    if(immediate){ killVoiceImmediately(midi); return; }
+    const now = ctx.currentTime;
+    let maxRelease = 0.05;
+    for(let i=0;i<NUM_OPS;i++){
+      const opState = state.operators[i];
+      const g = v.envGains[i].gain;
+      const r = Math.max(0.02, opState.release);
+      maxRelease = Math.max(maxRelease, r);
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(0.0001, now + r);
+    }
+    const stopAt = now + maxRelease + 0.05;
+    v.oscs.forEach(o=>{ try{o.stop(stopAt);}catch(e){} });
+    setTimeout(()=>{
+      try{ v.voiceGain.disconnect(); }catch(e){}
+      activeVoices.delete(midi);
+    }, (maxRelease+0.1)*1000);
+  }
+
+  // ---------- WAV export ----------
+  function encodeWavPCM16(chunks, sampleRate){
+    let total = 0;
+    chunks.forEach(c=>total+=c.length);
+    const buffer = new ArrayBuffer(44 + total*2);
+    const view = new DataView(buffer);
+    function writeStr(off, str){ for(let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i)); }
+    writeStr(0,"RIFF"); view.setUint32(4, 36+total*2, true);
+    writeStr(8,"WAVE"); writeStr(12,"fmt ");
+    view.setUint32(16,16,true); view.setUint16(20,1,true);
+    view.setUint16(22,1,true); view.setUint32(24,sampleRate,true);
+    view.setUint32(28,sampleRate*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
+    writeStr(36,"data"); view.setUint32(40,total*2,true);
+    let offset = 44;
+    chunks.forEach(chunk=>{
+      for(let i=0;i<chunk.length;i++){
+        let s = Math.max(-1, Math.min(1, chunk[i]));
+        view.setInt16(offset, s<0 ? s*0x8000 : s*0x7fff, true);
+        offset += 2;
+      }
+    });
+    return new Blob([view], {type:"audio/wav"});
+  }
+
+  const recordBtn = document.getElementById("recordBtn");
+  const downloadLink = document.getElementById("downloadLink");
+  recordBtn.addEventListener("click", ()=>{
+    ensureAudio();
+    if(!recording){
+      recording = true;
+      recordedChunks = [];
+      recordBtn.textContent = "⏹ Stop";
+      recordBtn.classList.add("active");
+      downloadLink.style.display = "none";
+    } else {
+      recording = false;
+      recordBtn.textContent = "⏺ Record";
+      recordBtn.classList.remove("active");
+      if(recordedChunks.length){
+        const blob = encodeWavPCM16(recordedChunks, ctx.sampleRate);
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.style.display = "inline-block";
+      }
+    }
+  });
+
+  // ---------- UI: Algorithm select ----------
+  const algoSelect = document.getElementById("algoSelect");
+  ALGORITHMS.forEach(a=>{
+    const opt = document.createElement("option");
+    opt.value = a.id; opt.textContent = a.name;
+    algoSelect.appendChild(opt);
+  });
+  algoSelect.value = state.algoId;
+  algoSelect.addEventListener("change", ()=>{
+    state.algoId = algoSelect.value;
+    renderAlgoDiagram();
+    renderOperatorRoles();
+    persistState();
+  });
+
+  function renderAlgoDiagram(){
+    const algo = getAlgorithm();
+    const el = document.getElementById("algo-diagram");
+    let lines = ["Algorithm " + algo.id + ":  " + algo.name, ""];
+    if(algo.links.length){
+      lines.push("Modulation:  " + algo.links.map(([s,d])=>("Op"+(s+1)+" → Op"+(d+1))).join("   "));
+    }
+    lines.push("Output (carriers):  " + algo.carriers.map(c=>"Op"+(c+1)).join(" + "));
+    el.textContent = lines.join("\n");
+  }
+
+  // ---------- UI: Operators ----------
+  const opsContainer = document.getElementById("operators");
+  function buildOperatorCards(){
+    opsContainer.innerHTML = "";
+    for(let i=0;i<NUM_OPS;i++){
+      const card = document.createElement("div");
+      card.className = "op-card";
+      card.dataset.op = i;
+      card.innerHTML = `
+        <h3><span class="op-dot" style="background:${OP_COLORS[i]}"></span> Op ${i+1} <span class="role" data-role="${i}"></span></h3>
+        <div class="op-row">
+          <label>Wave</label>
+          <select data-field="wave"></select>
+        </div>
+        <div class="op-row">
+          <label>Ratio</label>
+          <input type="range" data-field="ratio" min="0.5" max="16" step="0.01">
+          <span class="val" data-valfor="ratio"></span>
+        </div>
+        <div class="op-row">
+          <label>Detune</label>
+          <input type="range" data-field="detune" min="-50" max="50" step="1">
+          <span class="val" data-valfor="detune"></span>
+        </div>
+        <div class="op-row">
+          <label>Level</label>
+          <input type="range" data-field="level" min="0" max="100" step="1">
+          <span class="val" data-valfor="level"></span>
+        </div>
+        <div class="op-row">
+          <label>Attack</label>
+          <input type="range" data-field="attack" min="0" max="2" step="0.005">
+          <span class="val" data-valfor="attack"></span>
+        </div>
+        <div class="op-row">
+          <label>Decay</label>
+          <input type="range" data-field="decay" min="0" max="2" step="0.005">
+          <span class="val" data-valfor="decay"></span>
+        </div>
+        <div class="op-row">
+          <label>Sustain</label>
+          <input type="range" data-field="sustain" min="0" max="1" step="0.01">
+          <span class="val" data-valfor="sustain"></span>
+        </div>
+        <div class="op-row">
+          <label>Release</label>
+          <input type="range" data-field="release" min="0" max="3" step="0.01">
+          <span class="val" data-valfor="release"></span>
+        </div>
+      `;
+      const waveSelect = card.querySelector('select[data-field="wave"]');
+      WAVE_TYPES.forEach(w=>{
+        const opt = document.createElement("option");
+        opt.value = w; opt.textContent = w;
+        waveSelect.appendChild(opt);
+      });
+      opsContainer.appendChild(card);
+
+      card.querySelectorAll("[data-field]").forEach(input=>{
+        input.addEventListener("input", ()=>{
+          const field = input.dataset.field;
+          const val = (input.tagName==="SELECT") ? input.value : parseFloat(input.value);
+          state.operators[i][field] = val;
+          updateOperatorValueLabel(card, field, val);
+          persistState();
+        });
+      });
+    }
+  }
+
+  function updateOperatorValueLabel(card, field, val){
+    const span = card.querySelector(`[data-valfor="${field}"]`);
+    if(!span) return;
+    if(field==="ratio") span.textContent = val.toFixed(2);
+    else if(field==="detune") span.textContent = val.toFixed(0);
+    else if(field==="level") span.textContent = val.toFixed(0)+"%";
+    else if(field==="sustain") span.textContent = val.toFixed(2);
+    else span.textContent = val.toFixed(2)+"s";
+  }
+
+  function refreshOperatorUI(){
+    const cards = opsContainer.querySelectorAll(".op-card");
+    cards.forEach((card,i)=>{
+      const opState = state.operators[i];
+      card.querySelector('select[data-field="wave"]').value = opState.wave;
+      ["ratio","detune","level","attack","decay","sustain","release"].forEach(field=>{
+        const input = card.querySelector(`[data-field="${field}"]`);
+        input.value = opState[field];
+        updateOperatorValueLabel(card, field, opState[field]);
+      });
+    });
+    renderOperatorRoles();
+  }
+
+  function renderOperatorRoles(){
+    const algo = getAlgorithm();
+    const isCarrier = new Array(NUM_OPS).fill(false);
+    algo.carriers.forEach(c=>isCarrier[c]=true);
+    const isModSource = new Array(NUM_OPS).fill(false);
+    algo.links.forEach(([src])=>isModSource[src]=true);
+    for(let i=0;i<NUM_OPS;i++){
+      const roleEl = opsContainer.querySelector(`[data-role="${i}"]`);
+      if(!roleEl) continue;
+      roleEl.textContent = isCarrier[i] ? "carrier" : (isModSource[i] ? "modulator" : "");
+    }
+  }
+
+  // ---------- Presets ----------
+  const presetSelect = document.getElementById("presetSelect");
+  function refreshPresetList(selectName){
+    presetSelect.innerHTML = "";
+    const grp1 = document.createElement("optgroup"); grp1.label = "Built-in";
+    BUILTIN_PRESETS.forEach(p=>{
+      const opt = document.createElement("option");
+      opt.value = "b:"+p.name; opt.textContent = p.name;
+      grp1.appendChild(opt);
+    });
+    presetSelect.appendChild(grp1);
+    const custom = loadCustomPresets();
+    if(custom.length){
+      const grp2 = document.createElement("optgroup"); grp2.label = "My Presets";
+      custom.forEach(p=>{
+        const opt = document.createElement("option");
+        opt.value = "c:"+p.name; opt.textContent = p.name;
+        grp2.appendChild(opt);
+      });
+      presetSelect.appendChild(grp2);
+    }
+    if(selectName) presetSelect.value = selectName;
+  }
+  refreshPresetList("b:"+BUILTIN_PRESETS[0].name);
+
+  function applyPreset(preset){
+    state.algoId = preset.algo;
+    state.operators = preset.operators.map(o=>({...o}));
+    algoSelect.value = state.algoId;
+    renderAlgoDiagram();
+    refreshOperatorUI();
+    persistState();
+  }
+
+  presetSelect.addEventListener("change", ()=>{
+    const val = presetSelect.value;
+    if(val.startsWith("b:")){
+      const name = val.slice(2);
+      const p = BUILTIN_PRESETS.find(p=>p.name===name);
+      if(p) applyPreset(p);
+    } else if(val.startsWith("c:")){
+      const name = val.slice(2);
+      const p = loadCustomPresets().find(p=>p.name===name);
+      if(p) applyPreset(p);
+    }
+  });
+
+  document.getElementById("savePresetBtn").addEventListener("click", ()=>{
+    const name = prompt("Preset name?");
+    if(!name) return;
+    const custom = loadCustomPresets();
+    const existingIdx = custom.findIndex(p=>p.name===name);
+    const preset = { name, algo: state.algoId, operators: state.operators.map(o=>({...o})) };
+    if(existingIdx>=0) custom[existingIdx] = preset; else custom.push(preset);
+    saveCustomPresets(custom);
+    refreshPresetList("c:"+name);
+  });
+
+  document.getElementById("deletePresetBtn").addEventListener("click", ()=>{
+    const val = presetSelect.value;
+    if(!val.startsWith("c:")) { alert("Select one of your saved presets to delete."); return; }
+    const name = val.slice(2);
+    let custom = loadCustomPresets();
+    custom = custom.filter(p=>p.name!==name);
+    saveCustomPresets(custom);
+    refreshPresetList("b:"+BUILTIN_PRESETS[0].name);
+  });
+
+  // ---------- Master volume ----------
+  const masterVolSlider = document.getElementById("masterVol");
+  masterVolSlider.value = state.masterVol;
+  masterVolSlider.addEventListener("input", ()=>{
+    state.masterVol = parseFloat(masterVolSlider.value);
+    if(masterGain) masterGain.gain.setTargetAtTime(state.masterVol/100, ctx.currentTime, 0.01);
+    persistState();
+  });
+
+  // ---------- Piano ----------
+  const piano = document.getElementById("piano");
+  const octLabel = document.getElementById("octLabel");
+  const WHITE_STEPS = [0,2,4,5,7,9,11];
+  const BLACK_AFTER = {0:1,1:1,3:1,4:1,5:1}; // white-index -> has black key after it (skip after E(idx2) and B(idx6))
+  const KB_KEYS_WHITE = ["z","x","c","v","b","n","m","q","w","e","r"];
+  const KB_KEYS_BLACK_MAP = {"s":1,"d":1,"g":1,"h":1,"j":1,"2":1,"3":1};
+  const KEY_TO_SEMITONE = {}; // computer key -> semitone offset from octave base C
+
+  function buildPiano(){
+    piano.innerHTML = "";
+    const numWhiteKeys = 11; // ~1.5 octaves
+    const whiteKeyEls = [];
+    let whiteCount = 0;
+    const seq = []; // {semitone, isWhite}
+    let octOffset = 0;
+    for(let w=0; w<numWhiteKeys; w++){
+      const stepIdx = w % 7;
+      const semitone = octOffset*12 + WHITE_STEPS[stepIdx];
+      seq.push({semitone, isWhite:true, whiteIndex:w});
+      if(stepIdx===6) octOffset++;
+    }
+    Object.keys(KEY_TO_SEMITONE).forEach(k=>delete KEY_TO_SEMITONE[k]);
+
+    seq.forEach((note, idx)=>{
+      const key = document.createElement("div");
+      key.className = "wkey";
+      key.dataset.semitone = note.semitone;
+      const kc = document.createElement("span");
+      kc.className = "kc";
+      const kbKey = KB_KEYS_WHITE[idx];
+      if(kbKey){ kc.textContent = kbKey.toUpperCase(); KEY_TO_SEMITONE[kbKey] = note.semitone; }
+      key.appendChild(kc);
+      piano.appendChild(key);
+      whiteKeyEls.push(key);
+    });
+
+    requestAnimationFrame(()=>{
+      const whiteWidth = piano.clientWidth / numWhiteKeys;
+      let blackKbIdx = 0;
+      const blackKbKeys = Object.keys(KB_KEYS_BLACK_MAP);
+      seq.forEach((note, idx)=>{
+        const stepIdx = idx % 7;
+        if([0,1,3,4,5].includes(stepIdx) && idx < numWhiteKeys-1){
+          const bkey = document.createElement("div");
+          bkey.className = "bkey";
+          const semitone = note.semitone+1;
+          bkey.dataset.semitone = semitone;
+          bkey.style.left = (whiteWidth*(idx+1) - whiteWidth*0.31) + "px";
+          const kc = document.createElement("span");
+          kc.className = "kc";
+          const kbKey = blackKbKeys[blackKbIdx];
+          if(kbKey && blackKbIdx < blackKbKeys.length){ kc.textContent = kbKey.toUpperCase(); KEY_TO_SEMITONE[kbKey]=semitone; blackKbIdx++; }
+          bkey.appendChild(kc);
+          piano.appendChild(bkey);
+        }
+      });
+    });
+  }
+  buildPiano();
+  window.addEventListener("resize", buildPiano);
+
+  function currentBaseMidi(){ return 12*(state.octave+1); } // C4 = midi 60 -> octave 4 base
+
+  function midiFromSemitone(semitone){ return currentBaseMidi() + semitone; }
+
+  function updateKeyVisual(midi, on){
+    const base = currentBaseMidi();
+    const semitone = midi - base;
+    document.querySelectorAll(`[data-semitone="${semitone}"]`).forEach(el=>{
+      el.classList.toggle("active", on);
+    });
+  }
+
+  const semitoneToMidiTouch = new Map(); // pointerId -> midi
+  piano.addEventListener("pointerdown", e=>{
+    const el = e.target.closest(".wkey,.bkey");
+    if(!el) return;
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    const semitone = parseInt(el.dataset.semitone,10);
+    const midi = midiFromSemitone(semitone);
+    semitoneToMidiTouch.set(e.pointerId, midi);
+    noteOn(midi);
+  });
+  function releasePointer(e){
+    const midi = semitoneToMidiTouch.get(e.pointerId);
+    if(midi!==undefined){ noteOff(midi); semitoneToMidiTouch.delete(e.pointerId); }
+  }
+  piano.addEventListener("pointerup", releasePointer);
+  piano.addEventListener("pointercancel", releasePointer);
+  piano.addEventListener("pointerleave", e=>{ if(e.target===piano) return; });
+  piano.addEventListener("contextmenu", e=>e.preventDefault());
+
+  document.getElementById("octUp").addEventListener("click", ()=>{
+    state.octave = Math.min(7, state.octave+1);
+    octLabel.textContent = "Octave "+state.octave;
+    persistState();
+  });
+  document.getElementById("octDown").addEventListener("click", ()=>{
+    state.octave = Math.max(1, state.octave-1);
+    octLabel.textContent = "Octave "+state.octave;
+    persistState();
+  });
+  octLabel.textContent = "Octave "+state.octave;
+
+  // computer keyboard
+  const heldKeys = new Set();
+  window.addEventListener("keydown", e=>{
+    if(e.repeat) return;
+    const k = e.key.toLowerCase();
+    if(KEY_TO_SEMITONE.hasOwnProperty(k) && !heldKeys.has(k)){
+      heldKeys.add(k);
+      noteOn(midiFromSemitone(KEY_TO_SEMITONE[k]));
+    }
+  });
+  window.addEventListener("keyup", e=>{
+    const k = e.key.toLowerCase();
+    if(KEY_TO_SEMITONE.hasOwnProperty(k)){
+      heldKeys.delete(k);
+      noteOff(midiFromSemitone(KEY_TO_SEMITONE[k]));
+    }
+  });
+
+  // ---------- Visualizer ----------
+  const vizCanvas = document.getElementById("viz");
+  const vizCtx = vizCanvas.getContext("2d");
+  function resizeViz(){
+    const rect = vizCanvas.getBoundingClientRect();
+    vizCanvas.width = rect.width * (window.devicePixelRatio||1);
+    vizCanvas.height = rect.height * (window.devicePixelRatio||1);
+  }
+  resizeViz();
+  window.addEventListener("resize", resizeViz);
+
+  let vizData = null;
+  function drawViz(){
+    if(!analyser){ requestAnimationFrame(drawViz); return; }
+    if(!vizData) vizData = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(vizData);
+    const w = vizCanvas.width, h = vizCanvas.height;
+    vizCtx.fillStyle = "#000";
+    vizCtx.fillRect(0,0,w,h);
+    vizCtx.lineWidth = 2*(window.devicePixelRatio||1);
+    vizCtx.strokeStyle = "#4ee6c0";
+    vizCtx.beginPath();
+    const step = w / vizData.length;
+    for(let i=0;i<vizData.length;i++){
+      const y = (vizData[i]/255)*h;
+      const x = i*step;
+      if(i===0) vizCtx.moveTo(x,y); else vizCtx.lineTo(x,y);
+    }
+    vizCtx.stroke();
+    requestAnimationFrame(drawViz);
+  }
+  requestAnimationFrame(drawViz);
+  // draw a flat idle line before audio context exists
+  (function idleDraw(){
+    if(analyser) return;
+    const w = vizCanvas.width, h = vizCanvas.height;
+    vizCtx.fillStyle = "#000"; vizCtx.fillRect(0,0,w,h);
+    vizCtx.strokeStyle = "#333"; vizCtx.lineWidth=2;
+    vizCtx.beginPath(); vizCtx.moveTo(0,h/2); vizCtx.lineTo(w,h/2); vizCtx.stroke();
+    requestAnimationFrame(idleDraw);
+  })();
+
+  // ---------- Init UI ----------
+  buildOperatorCards();
+  refreshOperatorUI();
+  renderAlgoDiagram();
+
+})();
+</script>
+</body>
+</html>
