@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liquid Wave Fill — UI Spotlight Day 66</title>
+<style>
+  :root{ --bg:#07080d; --panel:rgba(255,255,255,.05); --panel-b:rgba(255,255,255,.1); --text:#eef0f8; --sub:#8b93a7; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; background:radial-gradient(1100px 700px at 20% -10%, rgba(56,189,248,.14), transparent 60%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; align-items:center;
+    padding:90px 18px 60px;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.55); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.8);}
+
+  h1{font-size:clamp(24px,5vw,38px); margin:0 0 8px; font-weight:800; letter-spacing:-.02em; text-align:center;}
+  p.sub{color:var(--sub); font-size:14.5px; max-width:560px; text-align:center; margin:0 0 40px; line-height:1.6;}
+
+  .tanks{display:flex; gap:34px; flex-wrap:wrap; justify-content:center; margin-bottom:20px;}
+  .tank{width:150px; height:150px; border-radius:50%; position:relative; overflow:hidden;
+    border:3px solid rgba(255,255,255,.14); background:rgba(255,255,255,.03);
+    box-shadow:inset 0 0 30px rgba(0,0,0,.5);}
+  .tank .pct{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:26px; font-weight:800; z-index:5; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.6); mix-blend-mode:normal;}
+  .tank .label{position:absolute; bottom:-26px; left:0; right:0; text-align:center; font-size:12px; color:var(--sub);}
+  .tank-wrap{display:flex; flex-direction:column; align-items:center;}
+
+  .fill-below{position:absolute; left:0; right:0; bottom:0; height:100%;}
+  .wave{position:absolute; left:-50%; width:200%; height:60px; top:0;
+    background-repeat:repeat-x; background-size:220px 60px;}
+
+  /* Wave SVG pattern baked as a repeating background via linear-gradient trick */
+  .wave-svg{
+    background-image:
+      radial-gradient(circle at 27px 30px, transparent 24px, currentColor 25px, currentColor 26px, transparent 27px),
+      radial-gradient(circle at 137px 30px, transparent 24px, currentColor 25px, currentColor 26px, transparent 27px);
+    background-size:110px 60px;
+  }
+
+  @keyframes fillWave{ from{ background-position-x:0; } to{ background-position-x:-220px; } }
+  @keyframes fillRise{ from{ transform:translateY(100%); } to{ transform:translateY(var(--rise)); } }
+
+  footer{ text-align:center; color:var(--sub); font-size:11.5px; margin-top:44px; max-width:520px; line-height:1.6; }
+  footer a{color:var(--accent);}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:40; background:rgba(20,22,30,.65); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:220px;}
+  #panel h3{margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel label{display:block; margin:8px 0 3px; color:var(--sub);}
+  #panel input[type=range]{width:100%;}
+  #panel .valrow{display:flex; justify-content:space-between; font-size:11px; color:var(--sub);}
+  @media (max-width:720px){ #panel{display:none;} .tanks{gap:24px;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h3>Tune the fill</h3>
+  <label>Fill level <span id="vFill"></span></label>
+  <input type="range" id="fill" min="10" max="95" value="62">
+  <label>Wave speed <span id="vSpeed"></span></label>
+  <input type="range" id="speed" min="1" max="10" value="4">
+</div>
+
+<h1>Liquid Wave Fill</h1>
+<p class="sub">A pure-CSS "liquid tank" loader — two layers locked in step with a negative <code>animation-delay</code>, then left to slosh forever with mismatched, odd-numbered durations so it never visibly repeats.</p>
+
+<div class="tanks" id="tanks"></div>
+
+<footer>Inspired by coiger/fill-water-animation — "Fill wavy water in circle with pure CSS" · UI Spotlight Day 66 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+  var TANKS = [
+    { level:62, color:"#38bdf8", label:"Battery" },
+    { level:88, color:"#34d399", label:"Storage" },
+    { level:34, color:"#f472b6", label:"Progress" }
+  ];
+  var container = document.getElementById("tanks");
+  var tankEls = [];
+
+  function buildTank(t){
+    var wrap = document.createElement("div");
+    wrap.className = "tank-wrap";
+    var tank = document.createElement("div");
+    tank.className = "tank";
+    tank.style.color = t.color;
+
+    var below = document.createElement("div");
+    below.className = "fill-below";
+    below.style.background = t.color;
+    below.style.clipPath = "polygon(0% 100%, 100% 100%, 100% " + (100 - t.level) + "%, 0% " + (100 - t.level) + "%)";
+
+    var wave = document.createElement("div");
+    wave.className = "wave wave-svg";
+    wave.style.color = t.color;
+    wave.style.opacity = "0.85";
+
+    var pct = document.createElement("div");
+    pct.className = "pct";
+    pct.textContent = t.level + "%";
+
+    var label = document.createElement("div");
+    label.className = "label";
+    label.textContent = t.label;
+
+    tank.appendChild(below);
+    tank.appendChild(wave);
+    tank.appendChild(pct);
+    wrap.appendChild(tank);
+    wrap.appendChild(label);
+    container.appendChild(wrap);
+    return { tank:tank, below:below, wave:wave, pct:pct, data:t };
+  }
+
+  TANKS.forEach(function(t){ tankEls.push(buildTank(t)); });
+
+  function applyAnimation(speedFactor){
+    tankEls.forEach(function(entry, i){
+      var dur = (7 + i*4) / speedFactor;
+      entry.wave.style.animation = "fillWave " + dur.toFixed(2) + "s linear infinite";
+      entry.wave.style.top = (100 - entry.data.level - 3) + "%";
+      entry.wave.style.height = "40px";
+    });
+  }
+
+  function setFillLevel(level){
+    tankEls.forEach(function(entry){
+      entry.data.level = level;
+      entry.below.style.clipPath = "polygon(0% 100%, 100% 100%, 100% " + (100-level) + "%, 0% " + (100-level) + "%)";
+      entry.wave.style.top = (100 - level - 3) + "%";
+      entry.pct.textContent = level + "%";
+    });
+  }
+
+  applyAnimation(4);
+
+  var fillInput = document.getElementById("fill");
+  var speedInput = document.getElementById("speed");
+  var vFill = document.getElementById("vFill");
+  var vSpeed = document.getElementById("vSpeed");
+  function refreshLabels(){
+    vFill.textContent = fillInput.value + "%";
+    vSpeed.textContent = speedInput.value + "x";
+  }
+  fillInput.addEventListener("input", function(){
+    setFillLevel(parseInt(fillInput.value,10));
+    refreshLabels();
+  });
+  speedInput.addEventListener("input", function(){
+    applyAnimation(parseFloat(speedInput.value));
+    refreshLabels();
+  });
+  refreshLabels();
+})();
+</script>
+</body>
+</html>

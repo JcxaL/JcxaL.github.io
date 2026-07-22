@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hover-to-Play Cards — UI Spotlight Day 66</title>
+<style>
+  :root{ --bg:#08070d; --panel-b:rgba(255,255,255,.1); --sub:#8b8fae; --text:#eef0f8; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; background:radial-gradient(1100px 700px at 15% -10%, rgba(167,139,250,.12), transparent 60%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; align-items:center;
+    padding:90px 18px 60px;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.55); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.8);}
+
+  h1{font-size:clamp(24px,5vw,38px); margin:0 0 8px; font-weight:800; letter-spacing:-.02em; text-align:center;}
+  p.sub{color:var(--sub); font-size:14.5px; max-width:600px; text-align:center; margin:0 0 40px; line-height:1.6;}
+
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:20px; max-width:900px; width:100%;}
+
+  .hvcard{ position:relative; border-radius:16px; overflow:hidden; aspect-ratio:16/10; background:#111;
+    border:1px solid var(--panel-b); cursor:pointer; }
+  .hvcard canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; opacity:0; transition:opacity .35s ease; }
+  .hvcard.is-playing canvas{ opacity:1; }
+  .hvcard .thumb{ position:absolute; inset:0; background-size:cover; transition:opacity .35s ease; }
+  .hvcard.is-playing .thumb{ opacity:0; }
+
+  .overlay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .overlay .play-icon{ width:56px; height:56px; border-radius:50%; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center;
+    transition:opacity .25s ease, transform .25s ease; backdrop-filter:blur(6px); }
+  .overlay .play-icon svg{ width:20px; height:20px; fill:#fff; margin-left:3px; }
+  .hvcard.is-playing .overlay .play-icon{ opacity:0; transform:scale(0.8); }
+
+  .loading{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.35);
+    opacity:0; transition:opacity .2s ease; pointer-events:none; }
+  .hvcard.is-loading .loading{ opacity:1; }
+  .spinner{ width:26px; height:26px; border-radius:50%; border:3px solid rgba(255,255,255,.25); border-top-color:#fff; animation:spin .7s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .cap{ position:absolute; left:0; right:0; bottom:0; padding:14px 16px; background:linear-gradient(0deg, rgba(0,0,0,.7), transparent);
+    font-size:13px; font-weight:700; }
+  .cap span{ display:block; font-size:11px; font-weight:500; color:var(--sub); margin-top:2px;}
+
+  .badge-lazy{ position:absolute; top:10px; right:10px; font-size:10px; padding:3px 8px; border-radius:999px;
+    background:rgba(0,0,0,.5); color:var(--sub); z-index:3; }
+
+  footer{ text-align:center; color:var(--sub); font-size:11.5px; margin-top:44px; max-width:560px; line-height:1.6; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Hover-to-Play Media Cards</h1>
+<p class="sub">Static thumbnails that lazy-load into looping motion only once they're near the viewport — desktop hovers to play, touch taps to play, and scrolling away pauses everything automatically. (Canvas-generated loops stand in for video, since this playground ships zero external assets.)</p>
+
+<div class="cards" id="cards"></div>
+
+<footer>Inspired by Cult UI — Hover Video Player component (cult-ui.com) · UI Spotlight Day 66 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+  var isCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+
+  var CARD_DEFS = [
+    { title:"Particle Drift", sub:"generative · loop", gen:drawParticles, hue:270 },
+    { title:"Gradient Waves", sub:"generative · loop", gen:drawWaves, hue:190 },
+    { title:"Orbit Field", sub:"generative · loop", gen:drawOrbits, hue:330 }
+  ];
+
+  var container = document.getElementById("cards");
+
+  CARD_DEFS.forEach(function(def){
+    var card = document.createElement("div");
+    card.className = "hvcard";
+
+    var thumb = document.createElement("div");
+    thumb.className = "thumb";
+    thumb.style.background = "linear-gradient(135deg, hsl(" + def.hue + ",60%,18%), hsl(" + (def.hue+40) + ",50%,10%))";
+    card.appendChild(thumb);
+
+    var canvas = document.createElement("canvas");
+    canvas.width = 480; canvas.height = 300;
+    card.appendChild(canvas);
+
+    var badge = document.createElement("div");
+    badge.className = "badge-lazy";
+    badge.textContent = "lazy";
+    card.appendChild(badge);
+
+    var loading = document.createElement("div");
+    loading.className = "loading";
+    loading.innerHTML = '<div class="spinner"></div>';
+    card.appendChild(loading);
+
+    var overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = '<div class="play-icon"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>';
+    card.appendChild(overlay);
+
+    var cap = document.createElement("div");
+    cap.className = "cap";
+    cap.innerHTML = def.title + "<span>" + def.sub + "</span>";
+    card.appendChild(cap);
+
+    container.appendChild(card);
+
+    var ctx = canvas.getContext("2d");
+    var raf = null;
+    var loaded = false;
+    var state = def.gen === drawParticles ? makeParticleState() : (def.gen === drawWaves ? makeWaveState() : makeOrbitState());
+    var visible = false;
+
+    function loop(){
+      def.gen(ctx, canvas.width, canvas.height, state);
+      raf = requestAnimationFrame(loop);
+    }
+
+    function startPlaying(){
+      if(!visible) return;
+      if(!loaded){
+        card.classList.add("is-loading");
+        badge.textContent = "loading";
+        setTimeout(function(){
+          loaded = true;
+          card.classList.remove("is-loading");
+          badge.style.display = "none";
+          play();
+        }, 260);
+      } else {
+        play();
+      }
+    }
+    function play(){
+      card.classList.add("is-playing");
+      if(!raf) loop();
+    }
+    function pause(){
+      card.classList.remove("is-playing");
+      if(raf){ cancelAnimationFrame(raf); raf = null; }
+    }
+
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        visible = entry.isIntersecting;
+        if(!visible) pause();
+      });
+    }, { threshold: 0.35 });
+    io.observe(card);
+
+    if(isCoarsePointer){
+      card.addEventListener("click", function(){
+        if(card.classList.contains("is-playing")) pause(); else startPlaying();
+      });
+    } else {
+      var enterTimer = null;
+      card.addEventListener("mouseenter", function(){
+        enterTimer = setTimeout(startPlaying, 120); // playbackStartDelay: ignore quick pass-bys
+      });
+      card.addEventListener("mouseleave", function(){
+        clearTimeout(enterTimer);
+        pause();
+      });
+    }
+  });
+
+  // ---- generative "video" loops (stand-ins for real footage) ----
+  function makeParticleState(){
+    var pts = [];
+    for(var i=0;i<60;i++) pts.push({ x:Math.random()*480, y:Math.random()*300, vx:(Math.random()-0.5)*1.4, vy:(Math.random()-0.5)*1.4 });
+    return { pts:pts };
+  }
+  function drawParticles(ctx,w,h,state){
+    ctx.fillStyle = "rgba(10,8,20,0.25)";
+    ctx.fillRect(0,0,w,h);
+    state.pts.forEach(function(p){
+      p.x += p.vx; p.y += p.vy;
+      if(p.x<0||p.x>w) p.vx*=-1;
+      if(p.y<0||p.y>h) p.vy*=-1;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,2.2,0,Math.PI*2);
+      ctx.fillStyle = "rgba(200,170,255,0.8)";
+      ctx.fill();
+    });
+  }
+
+  function makeWaveState(){ return { t:0 }; }
+  function drawWaves(ctx,w,h,state){
+    state.t += 0.02;
+    ctx.fillStyle = "#081018";
+    ctx.fillRect(0,0,w,h);
+    for(var line=0; line<4; line++){
+      ctx.beginPath();
+      for(var x=0;x<=w;x+=8){
+        var y = h/2 + Math.sin(x*0.02 + state.t*2 + line*1.3)*30*(line+1)/4;
+        if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = "hsla(" + (190+line*20) + ",80%,60%,0.55)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  function makeOrbitState(){ return { t:0 }; }
+  function drawOrbits(ctx,w,h,state){
+    state.t += 0.015;
+    ctx.fillStyle = "rgba(10,4,16,0.3)";
+    ctx.fillRect(0,0,w,h);
+    var cx=w/2, cy=h/2;
+    for(var i=0;i<5;i++){
+      var r = 30 + i*22;
+      var ang = state.t*(1+i*0.3) + i;
+      var x = cx + Math.cos(ang)*r;
+      var y = cy + Math.sin(ang)*r*0.6;
+      ctx.beginPath();
+      ctx.arc(x,y,5,0,Math.PI*2);
+      ctx.fillStyle = "hsla(" + (330+i*15) + ",85%,65%,0.9)";
+      ctx.fill();
+    }
+  }
+})();
+</script>
+</body>
+</html>
