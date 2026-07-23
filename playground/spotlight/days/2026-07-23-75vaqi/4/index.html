@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction-Aware Hover Cards — UI Spotlight Day 67</title>
+<style>
+  :root{ --bg:#07080d; --panel:rgba(255,255,255,.05); --panel-b:rgba(255,255,255,.1); --text:#eef0f8; --sub:#8b93a7; --accent:#fbbf24; }
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; background:radial-gradient(1100px 700px at 20% -10%, rgba(251,191,36,.14), transparent 60%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; align-items:center;
+    padding:90px 18px 60px;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.55); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.8);}
+
+  h1{font-size:clamp(24px,5vw,38px); margin:0 0 8px; font-weight:800; letter-spacing:-.02em; text-align:center;}
+  p.sub{color:var(--sub); font-size:14.5px; max-width:600px; text-align:center; margin:0 0 34px; line-height:1.6;}
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:18px; max-width:900px; width:100%; }
+
+  .card{ position:relative; height:180px; border-radius:16px; overflow:hidden; cursor:pointer;
+    background:linear-gradient(135deg, var(--c1), var(--c2)); border:1px solid var(--panel-b);
+    display:flex; align-items:center; justify-content:center; }
+  .card .label{ position:relative; z-index:2; font-size:18px; font-weight:800; color:#fff;
+    text-shadow:0 2px 10px rgba(0,0,0,.4); pointer-events:none; }
+  .card .reveal{
+    position:absolute; inset:0; z-index:1; background:rgba(0,0,0,.35);
+    display:flex; align-items:center; justify-content:center; padding:16px;
+    opacity:0; transition: transform .45s cubic-bezier(.22,.61,.36,1), opacity .45s ease;
+  }
+  .card .reveal p{ margin:0; color:#fff; font-size:13px; text-align:center; line-height:1.5; }
+
+  /* default (no direction yet) offsets, overridden via inline transform per-direction */
+  .card .reveal.dir-top{ transform: translateY(-100%); }
+  .card .reveal.dir-bottom{ transform: translateY(100%); }
+  .card .reveal.dir-left{ transform: translateX(-100%); }
+  .card .reveal.dir-right{ transform: translateX(100%); }
+  .card .reveal.show{ opacity:1; transform: translate(0,0); }
+
+  footer{ text-align:center; color:var(--sub); font-size:11.5px; margin-top:44px; max-width:520px; line-height:1.6; }
+  footer a{color:var(--accent);}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:40; background:rgba(20,22,30,.65); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:210px;}
+  #panel h3{margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel label{display:block; margin:8px 0 3px; color:var(--sub);}
+  #panel .valrow{display:flex; justify-content:space-between; font-size:11px; color:var(--sub);}
+  #panel .note{font-size:10.5px; color:var(--sub); line-height:1.5;}
+  @media (max-width:720px){ #panel{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h3>How it works</h3>
+  <div class="note">Diagonals split each card into 4 triangles. The entry/exit edge is computed from cursor position each time, so exits retreat the way they came.</div>
+</div>
+
+<h1>Direction-Aware Hover Cards</h1>
+<p class="sub">Hover any card from a different edge — the reveal panel always slides in and out through the edge the cursor actually crossed, computed live from two diagonal cross-products.</p>
+
+<div class="grid" id="grid"></div>
+
+<footer>Inspired by Codrops — "Direction-Aware Hover Effect with CSS3 and jQuery" (2012 classic, reimplemented in vanilla JS) · UI Spotlight Day 67 · Drop #4</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var CARDS = [
+    { label: "Explore", c1: "#fbbf24", c2: "#f59e0b", text: "Discover new collections curated weekly." },
+    { label: "Create", c1: "#38bdf8", c2: "#0ea5e9", text: "Start a project from a blank canvas." },
+    { label: "Connect", c1: "#34d399", c2: "#059669", text: "Invite your team and start collaborating." },
+    { label: "Analyze", c1: "#a78bfa", c2: "#7c3aed", text: "Dashboards that update in real time." },
+    { label: "Ship", c1: "#f87171", c2: "#dc2626", text: "Deploy with one click, roll back just as fast." }
+  ];
+
+  var grid = document.getElementById("grid");
+
+  function directionFromPoint(x, y, w, h){
+    // Two diagonals split the box into 4 triangles.
+    var d1 = h * x - w * y;                 // top-left <-> bottom-right diagonal
+    var d2 = h * x + w * y - w * h;         // top-right <-> bottom-left diagonal
+    if (d1 >= 0 && d2 >= 0) return "right";
+    if (d1 >= 0 && d2 < 0) return "top";
+    if (d1 < 0 && d2 >= 0) return "bottom";
+    return "left";
+  }
+
+  function buildCard(cfg){
+    var card = document.createElement("div");
+    card.className = "card";
+    card.style.setProperty("--c1", cfg.c1);
+    card.style.setProperty("--c2", cfg.c2);
+
+    var label = document.createElement("div");
+    label.className = "label";
+    label.textContent = cfg.label;
+
+    var reveal = document.createElement("div");
+    reveal.className = "reveal";
+    var p = document.createElement("p");
+    p.textContent = cfg.text;
+    reveal.appendChild(p);
+
+    card.appendChild(label);
+    card.appendChild(reveal);
+    grid.appendChild(card);
+
+    function setDirClass(dir){
+      reveal.classList.remove("dir-top", "dir-bottom", "dir-left", "dir-right");
+      reveal.classList.add("dir-" + dir);
+    }
+
+    function pointerDir(clientX, clientY){
+      var rect = card.getBoundingClientRect();
+      var x = clientX - rect.left;
+      var y = clientY - rect.top;
+      return directionFromPoint(x, y, rect.width, rect.height);
+    }
+
+    card.addEventListener("mouseenter", function(e){
+      var dir = pointerDir(e.clientX, e.clientY);
+      reveal.classList.remove("show");
+      setDirClass(dir);
+      // force reflow so the starting transform (off-screen edge) applies
+      // before we add .show to animate it in.
+      void reveal.offsetWidth;
+      reveal.classList.add("show");
+    });
+
+    card.addEventListener("mouseleave", function(e){
+      var dir = pointerDir(e.clientX, e.clientY);
+      setDirClass(dir);
+      reveal.classList.remove("show");
+    });
+
+    // basic touch fallback: tap toggles a default "bottom" reveal
+    var touchOpen = false;
+    card.addEventListener("touchstart", function(){
+      touchOpen = !touchOpen;
+      if (touchOpen){
+        setDirClass("bottom");
+        void reveal.offsetWidth;
+        reveal.classList.add("show");
+      } else {
+        setDirClass("bottom");
+        reveal.classList.remove("show");
+      }
+    }, { passive: true });
+  }
+
+  CARDS.forEach(buildCard);
+})();
+</script>
+</body>
+</html>

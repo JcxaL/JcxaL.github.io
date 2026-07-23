@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio-Reactive Kinetic Type — UI Spotlight Day 67</title>
+<style>
+  :root{ --bg:#07080d; --panel:rgba(255,255,255,.05); --panel-b:rgba(255,255,255,.1); --text:#eef0f8; --sub:#8b93a7; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; background:radial-gradient(1100px 700px at 20% -10%, rgba(56,189,248,.14), transparent 60%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; align-items:center;
+    padding:90px 18px 60px;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.55); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.8);}
+
+  h1{font-size:clamp(24px,5vw,38px); margin:0 0 8px; font-weight:800; letter-spacing:-.02em; text-align:center;}
+  p.sub{color:var(--sub); font-size:14.5px; max-width:580px; text-align:center; margin:0 0 30px; line-height:1.6;}
+
+  .controls{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-bottom:34px;}
+  .btn{background:var(--panel); border:1px solid var(--panel-b); color:var(--text); font-size:13px; font-weight:700;
+    padding:10px 18px; border-radius:999px; cursor:pointer; font-family:inherit; transition:background .2s, transform .15s;}
+  .btn:hover{background:rgba(255,255,255,.1);}
+  .btn:active{transform:scale(.96);}
+  .btn.primary{background:var(--accent); color:#06131c; border-color:transparent;}
+  .btn[aria-pressed="true"]{outline:2px solid var(--accent);}
+
+  .stage{width:100%; max-width:920px; display:flex; flex-direction:column; gap:28px;}
+
+  .headline-wrap{ min-height:120px; display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--panel-b); border-radius:20px; padding:30px 18px; }
+  .headline{ display:flex; gap:.02em; font-weight:900; font-size:clamp(28px,7vw,64px); letter-spacing:-.01em; user-select:none; }
+  .headline span{
+    display:inline-block;
+    transform: translateY(calc(var(--level, 0) * -18px)) scaleY(calc(1 + var(--level, 0) * .6));
+    color: hsl(calc(198 + var(--level, 0) * 160), 90%, calc(58% + var(--level,0)*15%));
+    text-shadow: 0 0 calc(var(--level,0) * 26px) hsla(calc(198 + var(--level,0)*160), 95%, 65%, calc(var(--level,0)*.9));
+    transition: color .05s linear;
+    transform-origin: bottom;
+  }
+
+  .panel-view{background:var(--panel); border:1px solid var(--panel-b); border-radius:20px; padding:20px;}
+  canvas#spectrum{width:100%; height:180px; display:block; border-radius:12px; background:#000;}
+
+  .mode-tabs{display:flex; gap:8px; justify-content:center; margin-bottom:6px;}
+  .mode-tabs button{background:transparent; border:1px solid var(--panel-b); color:var(--sub); font-size:12.5px; font-weight:700;
+    padding:7px 14px; border-radius:999px; cursor:pointer; font-family:inherit;}
+  .mode-tabs button.active{color:var(--text); background:rgba(255,255,255,.08); border-color:var(--accent);}
+  .hidden{display:none !important;}
+
+  footer{ text-align:center; color:var(--sub); font-size:11.5px; margin-top:44px; max-width:520px; line-height:1.6; }
+  footer a{color:var(--accent);}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:40; background:rgba(20,22,30,.65); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:220px;}
+  #panel h3{margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel label{display:block; margin:8px 0 3px; color:var(--sub);}
+  #panel select, #panel input[type=range]{width:100%;}
+  #panel .valrow{display:flex; justify-content:space-between; font-size:11px; color:var(--sub);}
+  @media (max-width:720px){ #panel{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h3>Sound</h3>
+  <label>Waveform</label>
+  <select id="wave">
+    <option value="sawtooth" selected>Sawtooth</option>
+    <option value="square">Square</option>
+    <option value="sine">Sine</option>
+  </select>
+  <label>Tempo <span id="vTempo"></span></label>
+  <input type="range" id="tempo" min="60" max="180" value="118">
+  <label>Input source</label>
+  <select id="source">
+    <option value="synth" selected>Internal synth loop</option>
+    <option value="mic">Microphone</option>
+  </select>
+</div>
+
+<h1>Audio-Reactive Kinetic Type</h1>
+<p class="sub">A self-synthesized bass-and-lead loop drives an <code>AnalyserNode</code>. Each letter reads its own frequency bin every frame and writes it into a CSS custom property — no external audio file, no library.</p>
+
+<div class="controls">
+  <button class="btn primary" id="playBtn">▶ Play internal loop</button>
+</div>
+
+<div class="stage">
+  <div class="mode-tabs">
+    <button class="active" id="tabType">Kinetic headline</button>
+    <button id="tabSpectrum">Spectrum panel</button>
+  </div>
+
+  <div class="headline-wrap panel-view" id="typeView">
+    <div class="headline" id="headline"></div>
+  </div>
+
+  <div class="panel-view hidden" id="spectrumView">
+    <canvas id="spectrum" width="880" height="180"></canvas>
+  </div>
+</div>
+
+<footer>Inspired by MDN — "Visualizations with Web Audio API" · UI Spotlight Day 67 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var HEADLINE_TEXT = "REACT LIVE";
+  var headlineEl = document.getElementById("headline");
+  var letters = [];
+  HEADLINE_TEXT.split("").forEach(function(ch){
+    var span = document.createElement("span");
+    span.textContent = ch === " " ? " " : ch;
+    headlineEl.appendChild(span);
+    letters.push(span);
+  });
+
+  var playBtn = document.getElementById("playBtn");
+  var waveSel = document.getElementById("wave");
+  var tempoInput = document.getElementById("tempo");
+  var vTempo = document.getElementById("vTempo");
+  var sourceSel = document.getElementById("source");
+  var tabType = document.getElementById("tabType");
+  var tabSpectrum = document.getElementById("tabSpectrum");
+  var typeView = document.getElementById("typeView");
+  var spectrumView = document.getElementById("spectrumView");
+  var canvas = document.getElementById("spectrum");
+  var ctx2d = canvas.getContext("2d");
+
+  function refreshLabels(){ vTempo.textContent = tempoInput.value + " BPM"; }
+  refreshLabels();
+  tempoInput.addEventListener("input", refreshLabels);
+
+  tabType.addEventListener("click", function(){
+    tabType.classList.add("active"); tabSpectrum.classList.remove("active");
+    typeView.classList.remove("hidden"); spectrumView.classList.add("hidden");
+  });
+  tabSpectrum.addEventListener("click", function(){
+    tabSpectrum.classList.add("active"); tabType.classList.remove("active");
+    spectrumView.classList.remove("hidden"); typeView.classList.add("hidden");
+  });
+
+  // --- Audio graph, created ONLY on first user gesture ---
+  var audioCtx = null;
+  var analyser = null;
+  var dataArray = null;
+  var masterGain = null;
+  var micStream = null;
+  var micSource = null;
+  var playing = false;
+  var rafId = null;
+  var sequencerTimer = null;
+
+  function buildGraph(){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256; // frequencyBinCount = 128
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.5;
+    masterGain.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  }
+
+  function playNote(freq, startTime, dur, type){
+    var osc = audioCtx.createOscillator();
+    var env = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, startTime);
+    env.gain.setValueAtTime(0, startTime);
+    env.gain.linearRampToValueAtTime(0.9, startTime + 0.02);
+    env.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+    osc.connect(env);
+    env.connect(masterGain);
+    osc.start(startTime);
+    osc.stop(startTime + dur + 0.05);
+  }
+
+  var BASS = [55, 55, 82.4, 73.4];
+  var LEAD = [220, 277.18, 329.63, 392, 349.23, 293.66, 246.94, 220];
+  var stepIndex = 0;
+
+  function scheduleStep(){
+    if (!playing) return;
+    var bpm = parseFloat(tempoInput.value, 10);
+    var stepDur = 60 / bpm / 2; // eighth notes
+    var type = waveSel.value;
+    var t = audioCtx.currentTime + 0.02;
+
+    playNote(BASS[stepIndex % BASS.length], t, stepDur * 1.8, "sine");
+    if (stepIndex % 2 === 0){
+      playNote(LEAD[(stepIndex / 2 | 0) % LEAD.length], t, stepDur * 0.9, type);
+    }
+    stepIndex++;
+    sequencerTimer = setTimeout(scheduleStep, stepDur * 1000);
+  }
+
+  function startMic(){
+    return navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(function(stream){
+      micStream = stream;
+      micSource = audioCtx.createMediaStreamSource(stream);
+      micSource.connect(analyser);
+    });
+  }
+
+  function stopMic(){
+    if (micSource){ try { micSource.disconnect(); } catch(e){} micSource = null; }
+    if (micStream){ micStream.getTracks().forEach(function(t){ t.stop(); }); micStream = null; }
+  }
+
+  function start(){
+    if (!audioCtx) buildGraph();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    playing = true;
+    playBtn.textContent = "■ Stop";
+    stepIndex = 0;
+
+    if (sourceSel.value === "mic"){
+      startMic().catch(function(){
+        // permission denied or unavailable: fall back to internal synth
+        sourceSel.value = "synth";
+        scheduleStep();
+      });
+    } else {
+      scheduleStep();
+    }
+    runVisual();
+  }
+
+  function stop(){
+    playing = false;
+    playBtn.textContent = "▶ Play internal loop";
+    if (sequencerTimer) clearTimeout(sequencerTimer);
+    stopMic();
+    if (rafId) cancelAnimationFrame(rafId);
+    letters.forEach(function(el){ el.style.setProperty("--level", 0); });
+  }
+
+  playBtn.addEventListener("click", function(){
+    if (playing) stop(); else start();
+  });
+
+  sourceSel.addEventListener("change", function(){
+    if (!playing) return;
+    // restart with new source
+    stop();
+    start();
+  });
+
+  function runVisual(){
+    if (!playing){ rafId = null; return; }
+    analyser.getByteFrequencyData(dataArray);
+
+    // drive per-letter custom property
+    letters.forEach(function(el, i){
+      var bin = Math.floor(i / letters.length * dataArray.length);
+      var v = dataArray[bin] / 255;
+      el.style.setProperty("--level", v.toFixed(3));
+    });
+
+    // draw spectrum bars
+    var w = canvas.width, h = canvas.height;
+    ctx2d.clearRect(0, 0, w, h);
+    var barCount = dataArray.length;
+    var barW = w / barCount;
+    for (var i = 0; i < barCount; i++){
+      var v2 = dataArray[i] / 255;
+      var barH = v2 * h;
+      var hue = 198 + v2 * 160;
+      ctx2d.fillStyle = "hsl(" + hue + ", 90%, 60%)";
+      ctx2d.fillRect(i * barW, h - barH, Math.max(1, barW - 1), barH);
+    }
+
+    rafId = requestAnimationFrame(runVisual);
+  }
+
+  window.addEventListener("beforeunload", function(){
+    if (sequencerTimer) clearTimeout(sequencerTimer);
+    if (rafId) cancelAnimationFrame(rafId);
+    stopMic();
+  });
+})();
+</script>
+</body>
+</html>

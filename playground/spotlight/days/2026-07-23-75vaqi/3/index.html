@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLIP Word-Flip Headline — UI Spotlight Day 67</title>
+<style>
+  :root{ --bg:#07080d; --panel:rgba(255,255,255,.05); --panel-b:rgba(255,255,255,.1); --text:#eef0f8; --sub:#8b93a7; --accent:#f87171; }
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; background:radial-gradient(1100px 700px at 20% -10%, rgba(248,113,113,.14), transparent 60%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; align-items:center;
+    padding:90px 18px 60px;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.55); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.8);}
+
+  h1{font-size:clamp(24px,5vw,38px); margin:0 0 8px; font-weight:800; letter-spacing:-.02em; text-align:center;}
+  p.sub{color:var(--sub); font-size:14.5px; max-width:580px; text-align:center; margin:0 0 30px; line-height:1.6;}
+
+  .stage{width:100%; max-width:820px; display:flex; flex-direction:column; gap:26px;}
+  .row{ background:var(--panel); border:1px solid var(--panel-b); border-radius:18px; padding:28px 22px;
+    display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-size:clamp(20px,4.4vw,32px); font-weight:800;
+    perspective:600px; }
+
+  .flip-pill{
+    display:inline-flex; align-items:center; justify-content:center; overflow:hidden;
+    border-radius:10px; padding:6px 16px; color:#0b0e14; white-space:nowrap;
+    transition: width .5s cubic-bezier(.34,1.56,.64,1);
+  }
+  .flip-word{ display:inline-block; transform-style:preserve-3d; transform-origin:bottom; white-space:nowrap; }
+  .flip-word.out{ animation: flipOut .28s ease forwards; }
+  .flip-word.in{ animation: flipIn .32s ease forwards; }
+
+  @keyframes flipOut{
+    from{ transform: rotateX(0deg); opacity:1; }
+    to{ transform: rotateX(90deg); opacity:0; }
+  }
+  @keyframes flipIn{
+    from{ transform: rotateX(-90deg); opacity:0; }
+    to{ transform: rotateX(0deg); opacity:1; }
+  }
+
+  footer{ text-align:center; color:var(--sub); font-size:11.5px; margin-top:44px; max-width:520px; line-height:1.6; }
+  footer a{color:var(--accent);}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:40; background:rgba(20,22,30,.65); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:210px;}
+  #panel h3{margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel label{display:block; margin:8px 0 3px; color:var(--sub);}
+  #panel input[type=range]{width:100%;}
+  #panel .valrow{display:flex; justify-content:space-between; font-size:11px; color:var(--sub);}
+  @media (max-width:720px){ #panel{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h3>Cycle speed</h3>
+  <label>Global multiplier <span id="vSpeed"></span></label>
+  <input type="range" id="speed" min="50" max="200" value="100">
+</div>
+
+<h1>FLIP Word-Flip Headline</h1>
+<p class="sub">Each pill's text rotates out and a new word rotates in — while the pill's own width animates through a FLIP (First–Last–Invert–Play) pass, so the colored box resizes in lockstep with zero visible jump.</p>
+
+<div class="stage" id="stage"></div>
+
+<footer>Inspired by Aceternity UI — "Container Text Flip" · UI Spotlight Day 67 · Drop #3</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var HEADLINES = [
+    { prefix: "We build ", words: ["fast", "resilient", "delightful", "accessible"], color: "#38bdf8", intervalMs: 2200, suffix: " products." },
+    { prefix: "Ship with ", words: ["confidence", "speed", "clarity", "care"], color: "#34d399", intervalMs: 1700, suffix: "." },
+    { prefix: "Designed for ", words: ["humans", "teams", "scale", "the edge"], color: "#f87171", intervalMs: 2600, suffix: "." }
+  ];
+
+  var speedInput = document.getElementById("speed");
+  var vSpeed = document.getElementById("vSpeed");
+  var stage = document.getElementById("stage");
+  var instances = [];
+
+  function refreshSpeedLabel(){ vSpeed.textContent = speedInput.value + "%"; }
+  refreshSpeedLabel();
+  speedInput.addEventListener("input", refreshSpeedLabel);
+
+  function buildRow(cfg){
+    var row = document.createElement("div");
+    row.className = "row";
+
+    var prefixSpan = document.createElement("span");
+    prefixSpan.textContent = cfg.prefix;
+    row.appendChild(prefixSpan);
+
+    var pill = document.createElement("span");
+    pill.className = "flip-pill";
+    pill.style.background = cfg.color;
+    var wordSpan = document.createElement("span");
+    wordSpan.className = "flip-word";
+    wordSpan.textContent = cfg.words[0];
+    pill.appendChild(wordSpan);
+    row.appendChild(pill);
+
+    var suffixSpan = document.createElement("span");
+    suffixSpan.textContent = cfg.suffix;
+    row.appendChild(suffixSpan);
+
+    stage.appendChild(row);
+
+    return { cfg: cfg, pill: pill, wordSpan: wordSpan, index: 0, timer: null };
+  }
+
+  function swapWord(inst){
+    var cfg = inst.cfg;
+    var pill = inst.pill;
+    var oldWordSpan = inst.wordSpan;
+
+    // FIRST: measure current width
+    var firstRect = pill.getBoundingClientRect();
+    var firstWidth = firstRect.width;
+
+    // animate old word rotating out
+    oldWordSpan.classList.add("out");
+
+    var nextIndex = (inst.index + 1) % cfg.words.length;
+    var nextWord = cfg.words[nextIndex];
+
+    setTimeout(function(){
+      // swap DOM text (create new span for clean animation state)
+      var newWordSpan = document.createElement("span");
+      newWordSpan.className = "flip-word";
+      newWordSpan.textContent = nextWord;
+      pill.innerHTML = "";
+      pill.appendChild(newWordSpan);
+
+      // LAST: measure natural width after swap
+      // Temporarily remove width constraint to measure natural size.
+      pill.style.width = "";
+      var lastWidth = pill.getBoundingClientRect().width;
+
+      // INVERT: snap back to old width instantly (no transition)
+      pill.style.transition = "none";
+      pill.style.width = firstWidth + "px";
+      // force reflow so the invert is applied before we re-enable transition
+      void pill.offsetWidth;
+
+      // PLAY: re-enable transition and animate to natural width
+      pill.style.transition = "width .5s cubic-bezier(.34,1.56,.64,1)";
+      requestAnimationFrame(function(){
+        pill.style.width = lastWidth + "px";
+      });
+
+      newWordSpan.classList.add("in");
+
+      inst.wordSpan = newWordSpan;
+      inst.index = nextIndex;
+    }, 260);
+  }
+
+  HEADLINES.forEach(function(cfg){
+    instances.push(buildRow(cfg));
+  });
+
+  function scheduleAll(){
+    var mult = 100 / parseFloat(speedInput.value, 10);
+    instances.forEach(function(inst){
+      if (inst.timer) clearInterval(inst.timer);
+      inst.timer = setInterval(function(){ swapWord(inst); }, inst.cfg.intervalMs * mult);
+    });
+  }
+
+  speedInput.addEventListener("change", scheduleAll);
+  speedInput.addEventListener("input", function(){
+    // re-arm intervals live so speed changes feel immediate
+    scheduleAll();
+  });
+
+  scheduleAll();
+
+  window.addEventListener("beforeunload", function(){
+    instances.forEach(function(inst){ if (inst.timer) clearInterval(inst.timer); });
+  });
+})();
+</script>
+</body>
+</html>
