@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>AntWorks — Colony Simulator</title>
+<style>
+  :root{
+    --bg0:#0c0a08; --bg1:#171310; --panel:#1c1712ee; --panel2:#221b14;
+    --line:#3a2f22; --text:#f4ead9; --dim:#a3927c; --dim2:#7a6a58;
+    --food:#7bc96f; --wood:#c98b4a; --jelly:#f2c14e; --accent:#e0a94e;
+    --danger:#e0664e; --good:#7bc96f;
+    --r:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(1200px 800px at 50% -10%, #241c14, var(--bg0) 60%);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; touch-action:manipulation; user-select:none;
+    display:flex; flex-direction:column; height:100vh; height:100dvh;
+  }
+  /* ---------- top bar ---------- */
+  #topbar{
+    display:flex; align-items:center; gap:10px; padding:8px 10px;
+    background:linear-gradient(#1a140fee,#1a140fcc); border-bottom:1px solid var(--line);
+    flex-wrap:wrap; z-index:5;
+  }
+  .brand{ font-weight:800; letter-spacing:.5px; font-size:15px; color:var(--accent); margin-right:4px; white-space:nowrap;}
+  .stat{
+    display:flex; align-items:center; gap:6px; background:var(--panel2); border:1px solid var(--line);
+    border-radius:999px; padding:5px 10px; font-size:12.5px; font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .stat .ic{font-size:14px;}
+  .stat b{color:var(--text); font-weight:700;}
+  .stat .rate{color:var(--dim); font-size:10.5px;}
+  #topbar .spacer{flex:1;}
+  .iconbtn{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text); border-radius:10px;
+    padding:6px 10px; font-size:12px; cursor:pointer; white-space:nowrap;
+  }
+  .iconbtn:active{ transform:scale(.96); }
+
+  /* ---------- stage ---------- */
+  #stage{ position:relative; flex:1; min-height:0; }
+  #colonyCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  #toast{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%) translateY(-140%);
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 16px;
+    font-size:13px; max-width:min(92vw,480px); text-align:center; box-shadow:0 10px 30px #0009;
+    transition:transform .35s cubic-bezier(.2,.9,.25,1); z-index:20; pointer-events:none;
+  }
+  #toast.show{ transform:translateX(-50%) translateY(0); }
+
+  /* ---------- bottom panel ---------- */
+  #panel{
+    background:linear-gradient(#1a140ff2,#150f0bfa); border-top:1px solid var(--line);
+    display:flex; flex-direction:column; z-index:5; flex-shrink:0;
+    max-height:52vh;
+  }
+  #tabs{ display:flex; gap:6px; padding:8px 10px 0; }
+  .tabbtn{
+    flex:1; background:transparent; border:1px solid var(--line); color:var(--dim);
+    padding:9px 6px; border-radius:10px 10px 0 0; font-size:12.5px; font-weight:600; cursor:pointer;
+    border-bottom:none;
+  }
+  .tabbtn.active{ background:var(--panel2); color:var(--accent); }
+  #tabcontent{ padding:12px; overflow-y:auto; background:var(--panel2); border-top:1px solid var(--line); }
+
+  .row{ display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px dashed var(--line); }
+  .row:last-child{ border-bottom:none; }
+  .row .lbl{ flex:1; min-width:0; }
+  .row .lbl .t{ font-size:13.5px; font-weight:600; }
+  .row .lbl .s{ font-size:11px; color:var(--dim); margin-top:2px; }
+  .stepper{ display:flex; align-items:center; gap:8px; }
+  .stepper button{
+    width:32px; height:32px; border-radius:9px; border:1px solid var(--line); background:var(--bg1);
+    color:var(--text); font-size:17px; cursor:pointer; line-height:1;
+  }
+  .stepper button:disabled{ opacity:.35; cursor:not-allowed; }
+  .stepper .n{ min-width:26px; text-align:center; font-variant-numeric:tabular-nums; font-weight:700; }
+
+  .buybtn{
+    border:1px solid var(--line); background:var(--bg1); color:var(--text); border-radius:10px;
+    padding:8px 12px; font-size:12px; cursor:pointer; white-space:nowrap; text-align:right; min-width:96px;
+  }
+  .buybtn b{ display:block; font-size:13px; }
+  .buybtn .cost{ font-size:10.5px; color:var(--dim); }
+  .buybtn:disabled{ opacity:.4; cursor:not-allowed; }
+  .buybtn.afford{ border-color:var(--accent); box-shadow:0 0 0 1px #e0a94e33 inset; }
+
+  .kv{ display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; color:var(--dim); }
+  .kv b{ color:var(--text); }
+
+  .btnrow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .btn{
+    flex:1; min-width:120px; background:var(--bg1); border:1px solid var(--line); color:var(--text);
+    padding:11px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .btn.primary{ background:linear-gradient(180deg,#e0a94e,#c98b30); color:#241a08; border-color:#00000000; }
+  .btn.danger{ border-color:var(--danger); color:var(--danger); }
+  .btn:active{ transform:scale(.98); }
+
+  #welcome{
+    position:absolute; inset:0; background:#0c0a08ee; z-index:30; display:flex; align-items:center;
+    justify-content:center; padding:20px;
+  }
+  #welcome .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:22px;
+    max-width:420px; text-align:center; box-shadow:0 20px 60px #000a;
+  }
+  #welcome h1{ margin:0 0 8px; font-size:20px; color:var(--accent); }
+  #welcome p{ font-size:13.5px; color:var(--dim); line-height:1.5; margin:8px 0 18px; }
+  #welcome .emoji{ font-size:38px; margin-bottom:6px; }
+
+  .hidden{ display:none !important; }
+  #fileInput{ display:none; }
+
+  @media (max-width:520px){
+    .brand{ display:none; }
+    .stat{ padding:4px 8px; font-size:11.5px; }
+    #panel{ max-height:58vh; }
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="brand">🐜 AntWorks</div>
+  <div class="stat"><span class="ic">🍃</span><b id="statFood">0</b><span class="rate" id="rateFood"></span></div>
+  <div class="stat"><span class="ic">🪵</span><b id="statWood">0</b><span class="rate" id="rateWood"></span></div>
+  <div class="stat"><span class="ic">🐜</span><b id="statAnts">0</b>/<span id="statMaxAnts">0</span></div>
+  <div class="stat" id="jellyStat" style="display:none"><span class="ic">👑</span><b id="statJelly">0</b></div>
+  <div class="spacer"></div>
+  <button class="iconbtn" id="btnHelp">?</button>
+</div>
+
+<div id="stage">
+  <canvas id="colonyCanvas"></canvas>
+  <div id="toast"></div>
+</div>
+
+<div id="panel">
+  <div id="tabs">
+    <button class="tabbtn active" data-tab="roles">Roles</button>
+    <button class="tabbtn" data-tab="build">Build</button>
+    <button class="tabbtn" data-tab="colony">Colony</button>
+  </div>
+  <div id="tabcontent">
+    <div id="tab-roles"></div>
+    <div id="tab-build" class="hidden"></div>
+    <div id="tab-colony" class="hidden"></div>
+  </div>
+</div>
+
+<div id="welcome">
+  <div class="card">
+    <div class="emoji">🐜</div>
+    <h1>AntWorks</h1>
+    <p>Grow a colony from the ground up. Assign ants to forage food &amp; wood, grow your population in the nursery, buy upgrades, and prestige for permanent bonuses. Your colony keeps working while you're away — even offline. Everything autosaves.</p>
+    <button class="btn primary" id="btnStart" style="width:100%">Start Digging</button>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="application/json">
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================== STATE ============================== */
+  const SAVE_KEY = "antworks_save_v1";
+  const MAX_OFFLINE_SEC = 8*3600;
+
+  const BUILDINGS = {
+    storage:  { name:"Storage Silo",   desc:"+40 food & wood capacity",     base:{food:20,wood:15}, growth:1.18, effect:"cap" },
+    tunnel:   { name:"Tunnel Network", desc:"+5 max ant population",        base:{food:30,wood:30}, growth:1.22, effect:"pop" },
+    farm:     { name:"Farm Terrace",   desc:"+25% food gather rate",        base:{food:25,wood:10}, growth:1.20, effect:"food" },
+    woodyard: { name:"Woodyard",       desc:"+25% wood gather rate",        base:{food:10,wood:25}, growth:1.20, effect:"wood" },
+  };
+  const ROLE_META = {
+    forage_food: { name:"Forager · Food", rate:0.4, unit:"food/s", color:"#7bc96f" },
+    forage_wood: { name:"Forager · Wood", rate:0.3, unit:"wood/s", color:"#c98b4a" },
+    nursery:     { name:"Nursery Tender", rate:0.25, unit:"larvae/s", color:"#e08bc0" },
+  };
+
+  function freshState(){
+    return {
+      v:1,
+      lastSave: Date.now(),
+      totalAntsEver: 8,
+      royalJelly: 0,
+      resources: { food:15, wood:10 },
+      idleAnts: 8,
+      roles: { forage_food:0, forage_wood:0, nursery:0 },
+      buildings: { storage:0, tunnel:0, farm:0, woodyard:0 },
+      larvae: 0,
+      prestigeCount: 0,
+    };
+  }
+
+  let state = load() || freshState();
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(SAVE_KEY);
+      if(!raw) return null;
+      const s = JSON.parse(raw);
+      if(!s || typeof s !== "object" || !s.resources || !s.roles || !s.buildings) return null;
+      return Object.assign(freshState(), s, {
+        resources: Object.assign({food:0,wood:0}, s.resources),
+        roles: Object.assign({forage_food:0,forage_wood:0,nursery:0}, s.roles),
+        buildings: Object.assign({storage:0,tunnel:0,farm:0,woodyard:0}, s.buildings),
+      });
+    }catch(e){ return null; }
+  }
+
+  function save(){
+    state.lastSave = Date.now();
+    try{ localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  /* ============================== DERIVED ============================== */
+  function buildingCost(key){
+    const b = BUILDINGS[key], n = state.buildings[key];
+    const mult = Math.pow(b.growth, n);
+    return { food: Math.ceil(b.base.food*mult), wood: Math.ceil(b.base.wood*mult) };
+  }
+  function canAfford(cost){ return state.resources.food >= cost.food && state.resources.wood >= cost.wood; }
+
+  function maxAnts(){ return 10 + state.buildings.tunnel*5; }
+  function foodCap(){ return 50 + state.buildings.storage*40; }
+  function woodCap(){ return 50 + state.buildings.storage*40; }
+  function jellyMult(){ return 1 + state.royalJelly*0.02; }
+  function foodRate(){
+    return state.roles.forage_food * ROLE_META.forage_food.rate * (1+state.buildings.farm*0.25) * jellyMult();
+  }
+  function woodRate(){
+    return state.roles.forage_wood * ROLE_META.forage_wood.rate * (1+state.buildings.woodyard*0.25) * jellyMult();
+  }
+  function larvaeRate(){ return state.roles.nursery * ROLE_META.nursery.rate * jellyMult(); }
+  function totalAssigned(){ return state.roles.forage_food + state.roles.forage_wood + state.roles.nursery; }
+  function totalAnts(){ return state.idleAnts + totalAssigned(); }
+  function prestigeEligible(){ return state.totalAntsEver >= 40; }
+  function prestigeGain(){ return Math.floor(Math.sqrt(state.totalAntsEver) * 1.5); }
+
+  /* ============================== SIM TICK ============================== */
+  function simulate(dtSec){
+    if(dtSec <= 0) return;
+    state.resources.food = Math.min(foodCap(), state.resources.food + foodRate()*dtSec);
+    state.resources.wood = Math.min(woodCap(), state.resources.wood + woodRate()*dtSec);
+    state.larvae += larvaeRate()*dtSec;
+
+    const LARVA_THRESHOLD = 8, LARVA_FOOD_COST = 4;
+    while(state.larvae >= LARVA_THRESHOLD && totalAnts() < maxAnts() && state.resources.food >= LARVA_FOOD_COST){
+      state.larvae -= LARVA_THRESHOLD;
+      state.resources.food -= LARVA_FOOD_COST;
+      state.idleAnts += 1;
+      state.totalAntsEver += 1;
+      spawnFx = 1;
+    }
+    if(totalAnts() >= maxAnts()) state.larvae = Math.min(state.larvae, LARVA_THRESHOLD);
+  }
+
+  let spawnFx = 0;
+
+  /* ============================== OFFLINE PROGRESS ============================== */
+  function applyOfflineProgress(){
+    const elapsedMs = Date.now() - (state.lastSave || Date.now());
+    const elapsedSec = Math.max(0, Math.min(elapsedMs/1000, MAX_OFFLINE_SEC));
+    if(elapsedSec < 30) return; // not worth a popup
+    const beforeFood = state.resources.food, beforeWood = state.resources.wood, beforeAnts = totalAnts();
+    // simulate in coarse steps so larvae spawning still behaves
+    const STEP = 5;
+    let remaining = elapsedSec;
+    while(remaining > 0){
+      const d = Math.min(STEP, remaining);
+      simulate(d);
+      remaining -= d;
+    }
+    const gotFood = Math.round(state.resources.food - beforeFood);
+    const gotWood = Math.round(state.resources.wood - beforeWood);
+    const gotAnts = totalAnts() - beforeAnts;
+    const mins = Math.round(elapsedSec/60);
+    if(gotFood>0 || gotWood>0 || gotAnts>0){
+      showToast(`Welcome back! While you were away ${mins}m: +${gotFood} 🍃 food, +${gotWood} 🪵 wood${gotAnts>0? `, +${gotAnts} 🐜 new ants`:""}.`, 5200);
+    }
+  }
+
+  /* ============================== UI: TOAST ============================== */
+  const toastEl = document.getElementById("toast");
+  let toastTimer = null;
+  function showToast(msg, ms){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> toastEl.classList.remove("show"), ms||3000);
+  }
+
+  /* ============================== UI: TOP BAR ============================== */
+  function fmt(n){
+    if(n >= 1e6) return (n/1e6).toFixed(2)+"M";
+    if(n >= 1e4) return Math.floor(n).toLocaleString();
+    if(n >= 100) return Math.floor(n).toString();
+    return n.toFixed(1);
+  }
+  function renderTopbar(){
+    document.getElementById("statFood").textContent = fmt(state.resources.food)+" / "+foodCap();
+    document.getElementById("statWood").textContent = fmt(state.resources.wood)+" / "+woodCap();
+    document.getElementById("statAnts").textContent = totalAnts();
+    document.getElementById("statMaxAnts").textContent = maxAnts();
+    document.getElementById("rateFood").textContent = "+"+foodRate().toFixed(1)+"/s";
+    document.getElementById("rateWood").textContent = "+"+woodRate().toFixed(1)+"/s";
+    const jellyStat = document.getElementById("jellyStat");
+    if(state.royalJelly > 0){
+      jellyStat.style.display = "";
+      document.getElementById("statJelly").textContent = state.royalJelly;
+    } else {
+      jellyStat.style.display = "none";
+    }
+  }
+
+  /* ============================== UI: TABS ============================== */
+  const tabButtons = document.querySelectorAll(".tabbtn");
+  const tabPanels = { roles: document.getElementById("tab-roles"), build: document.getElementById("tab-build"), colony: document.getElementById("tab-colony") };
+  let activeTab = "roles";
+  tabButtons.forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      activeTab = btn.dataset.tab;
+      tabButtons.forEach(b=> b.classList.toggle("active", b===btn));
+      Object.keys(tabPanels).forEach(k=> tabPanels[k].classList.toggle("hidden", k!==activeTab));
+      renderActiveTab();
+    });
+  });
+
+  function renderActiveTab(){
+    if(activeTab==="roles") renderRoles();
+    else if(activeTab==="build") renderBuild();
+    else renderColonyTab();
+  }
+
+  function assign(role, delta){
+    if(delta>0){
+      if(state.idleAnts<=0) return;
+      state.idleAnts--; state.roles[role]++;
+    } else {
+      if(state.roles[role]<=0) return;
+      state.roles[role]--; state.idleAnts++;
+    }
+    renderAll();
+  }
+
+  function renderRoles(){
+    const el = tabPanels.roles;
+    el.innerHTML = "";
+    const head = document.createElement("div");
+    head.className = "kv";
+    head.innerHTML = `<span>Idle ants ready to assign</span><b id="idleCount">${state.idleAnts}</b>`;
+    el.appendChild(head);
+
+    Object.keys(ROLE_META).forEach((role,i)=>{
+      const meta = ROLE_META[role];
+      const row = document.createElement("div");
+      row.className = "row";
+      const n = state.roles[role];
+      row.innerHTML = `
+        <div class="lbl">
+          <div class="t"><span style="color:${meta.color}">●</span> ${meta.name}</div>
+          <div class="s">${(n*meta.rate*(role==='forage_food'?(1+state.buildings.farm*0.25):role==='forage_wood'?(1+state.buildings.woodyard*0.25):1)*jellyMult()).toFixed(2)} ${meta.unit} total · key ${i+1}</div>
+        </div>
+        <div class="stepper">
+          <button data-role="${role}" data-d="-1" ${n<=0?"disabled":""}>−</button>
+          <span class="n">${n}</span>
+          <button data-role="${role}" data-d="1" ${state.idleAnts<=0?"disabled":""}>+</button>
+        </div>`;
+      el.appendChild(row);
+    });
+
+    el.querySelectorAll(".stepper button").forEach(b=>{
+      b.addEventListener("click", ()=> assign(b.dataset.role, parseInt(b.dataset.d,10)));
+    });
+  }
+
+  function buyBuilding(key){
+    const cost = buildingCost(key);
+    if(!canAfford(cost)) return;
+    state.resources.food -= cost.food;
+    state.resources.wood -= cost.wood;
+    state.buildings[key]++;
+    showToast(`Built ${BUILDINGS[key].name} (level ${state.buildings[key]})`, 1800);
+    renderAll();
+  }
+
+  function renderBuild(){
+    const el = tabPanels.build;
+    el.innerHTML = "";
+    Object.keys(BUILDINGS).forEach(key=>{
+      const b = BUILDINGS[key];
+      const cost = buildingCost(key);
+      const afford = canAfford(cost);
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `
+        <div class="lbl">
+          <div class="t">${b.name} <span style="color:var(--dim);font-weight:400">Lv.${state.buildings[key]}</span></div>
+          <div class="s">${b.desc}</div>
+        </div>
+        <button class="buybtn ${afford?'afford':''}" data-key="${key}" ${afford?'':'disabled'}>
+          <b>Build</b>
+          <span class="cost">🍃${cost.food} 🪵${cost.wood}</span>
+        </button>`;
+      el.appendChild(row);
+    });
+    el.querySelectorAll(".buybtn").forEach(b=> b.addEventListener("click", ()=> buyBuilding(b.dataset.key)));
+  }
+
+  function renderColonyTab(){
+    const el = tabPanels.colony;
+    el.innerHTML = "";
+    const stats = document.createElement("div");
+    stats.innerHTML = `
+      <div class="kv"><span>Total ants ever born</span><b>${state.totalAntsEver}</b></div>
+      <div class="kv"><span>Royal Jelly (permanent bonus)</span><b>${state.royalJelly} (+${(state.royalJelly*2)}% rates)</b></div>
+      <div class="kv"><span>Prestige count</span><b>${state.prestigeCount}</b></div>
+    `;
+    el.appendChild(stats);
+
+    const prestigeWrap = document.createElement("div");
+    prestigeWrap.style.marginTop = "10px";
+    if(prestigeEligible()){
+      prestigeWrap.innerHTML = `
+        <div class="row" style="border:none;padding-top:4px">
+          <div class="lbl">
+            <div class="t">👑 Prestige — Start a new swarm</div>
+            <div class="s">Reset your colony for +${prestigeGain()} permanent Royal Jelly (${(prestigeGain()*2)}% faster gathering forever).</div>
+          </div>
+        </div>
+        <button class="btn primary" id="btnPrestige" style="width:100%">Prestige (+${prestigeGain()} 👑)</button>`;
+    } else {
+      prestigeWrap.innerHTML = `<div class="row" style="border:none"><div class="lbl"><div class="t" style="color:var(--dim)">👑 Prestige locked</div><div class="s">Grow your colony to ${40} total ants ever born (currently ${state.totalAntsEver}) to unlock.</div></div></div>`;
+    }
+    el.appendChild(prestigeWrap);
+
+    const saveWrap = document.createElement("div");
+    saveWrap.className = "btnrow";
+    saveWrap.innerHTML = `
+      <button class="btn" id="btnExport">⭳ Export Save</button>
+      <button class="btn" id="btnImport">⭱ Import Save</button>
+    `;
+    el.appendChild(saveWrap);
+
+    const resetWrap = document.createElement("div");
+    resetWrap.className = "btnrow";
+    resetWrap.innerHTML = `<button class="btn danger" id="btnResetAll">Abandon Colony (full reset)</button>`;
+    el.appendChild(resetWrap);
+
+    const pb = document.getElementById("btnPrestige");
+    if(pb) pb.addEventListener("click", doPrestige);
+    document.getElementById("btnExport").addEventListener("click", exportSave);
+    document.getElementById("btnImport").addEventListener("click", ()=> document.getElementById("fileInput").click());
+    document.getElementById("btnResetAll").addEventListener("click", ()=>{
+      if(confirm("Abandon this colony and start completely fresh? This cannot be undone.")){
+        state = freshState();
+        sprites = { forage_food:[], forage_wood:[], nursery:[], idle:[] };
+        save(); renderAll();
+        showToast("New colony started.", 2000);
+      }
+    });
+  }
+
+  function doPrestige(){
+    if(!prestigeEligible()) return;
+    const gain = prestigeGain();
+    if(!confirm(`Prestige now? You'll gain +${gain} Royal Jelly (${gain*2}% permanent boost) and start a fresh colony.`)) return;
+    const jelly = state.royalJelly + gain;
+    const count = state.prestigeCount + 1;
+    state = freshState();
+    state.royalJelly = jelly;
+    state.prestigeCount = count;
+    sprites = { forage_food:[], forage_wood:[], nursery:[], idle:[] };
+    save(); renderAll();
+    showToast(`Swarm reborn! Royal Jelly is now ${jelly}.`, 3000);
+  }
+
+  function exportSave(){
+    save();
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type:"application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `antworks-save-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+    showToast("Save exported.", 1800);
+  }
+
+  document.getElementById("fileInput").addEventListener("change", (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const parsed = JSON.parse(reader.result);
+        if(!parsed || typeof parsed !== "object" || !parsed.resources || !parsed.roles || !parsed.buildings){
+          throw new Error("bad shape");
+        }
+        state = Object.assign(freshState(), parsed, {
+          resources: Object.assign({food:0,wood:0}, parsed.resources),
+          roles: Object.assign({forage_food:0,forage_wood:0,nursery:0}, parsed.roles),
+          buildings: Object.assign({storage:0,tunnel:0,farm:0,woodyard:0}, parsed.buildings),
+        });
+        sprites = { forage_food:[], forage_wood:[], nursery:[], idle:[] };
+        save(); renderAll();
+        showToast("Save imported successfully.", 2200);
+      }catch(err){
+        showToast("Could not read that save file.", 2500);
+      }
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  function renderAll(){
+    renderTopbar();
+    renderActiveTab();
+  }
+
+  /* ============================== KEYBOARD ============================== */
+  window.addEventListener("keydown", (e)=>{
+    const map = { "1":"forage_food", "2":"forage_wood", "3":"nursery" };
+    if(map[e.key]){
+      assign(map[e.key], e.shiftKey ? -1 : 1);
+    }
+  });
+
+  /* ============================== CANVAS VISUALIZATION ============================== */
+  const canvas = document.getElementById("colonyCanvas");
+  const ctx = canvas.getContext("2d");
+  let W=0,H=0,DPR=1;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    const rect = canvas.parentElement.getBoundingClientRect();
+    W = Math.max(1,Math.floor(rect.width));
+    H = Math.max(1,Math.floor(rect.height));
+    canvas.width = Math.floor(W*DPR);
+    canvas.height = Math.floor(H*DPR);
+    canvas.style.width = W+"px";
+    canvas.style.height = H+"px";
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  let sprites = { forage_food:[], forage_wood:[], nursery:[], idle:[] };
+  let particles = [];
+
+  function makeSprite(role){
+    return { t: Math.random(), dir: Math.random()<0.5?1:-1, speed:0.18+Math.random()*0.14, lane:(Math.random()-0.5), bob:Math.random()*Math.PI*2 };
+  }
+  function syncSprites(){
+    ["forage_food","forage_wood","nursery"].forEach(role=>{
+      const want = state.roles[role];
+      const arr = sprites[role];
+      while(arr.length < want) arr.push(makeSprite(role));
+      while(arr.length > want) arr.pop();
+    });
+    const wantIdle = state.idleAnts;
+    while(sprites.idle.length < wantIdle) sprites.idle.push(makeSprite("idle"));
+    while(sprites.idle.length > wantIdle) sprites.idle.pop();
+  }
+
+  function nestPos(){ return { x: W*0.22, y: H*0.42 }; }
+  function patchPos(role){
+    if(role==="forage_food") return { x: W*0.82, y: H*0.28 };
+    if(role==="forage_wood") return { x: W*0.82, y: H*0.62 };
+    return nestPos();
+  }
+  function bezier(p0,p1,p2,t){
+    const x = (1-t)*(1-t)*p0.x + 2*(1-t)*t*p1.x + t*t*p2.x;
+    const y = (1-t)*(1-t)*p0.y + 2*(1-t)*t*p1.y + t*t*p2.y;
+    return {x,y};
+  }
+  function pathPoint(role, t, lane){
+    const nest = nestPos(), patch = patchPos(role);
+    const mid = { x:(nest.x+patch.x)/2 + lane*24, y:(nest.y+patch.y)/2 - 40 + lane*10 };
+    return bezier(nest, mid, patch, t);
+  }
+
+  function drawScene(dt, time){
+    ctx.clearRect(0,0,W,H);
+    const groundY = H*0.20;
+    // sky
+    const skyGrad = ctx.createLinearGradient(0,0,0,groundY);
+    skyGrad.addColorStop(0,"#241c14"); skyGrad.addColorStop(1,"#3a2c1c");
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0,0,W,groundY);
+    // ground
+    const gGrad = ctx.createLinearGradient(0,groundY,0,H);
+    gGrad.addColorStop(0,"#3a2c1c"); gGrad.addColorStop(1,"#100c08");
+    ctx.fillStyle = gGrad;
+    ctx.fillRect(0,groundY,W,H-groundY);
+    ctx.strokeStyle = "#5a4630"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0,groundY); ctx.lineTo(W,groundY); ctx.stroke();
+
+    // nest
+    const nest = nestPos();
+    ctx.save();
+    for(let i=3;i>=1;i--){
+      ctx.beginPath();
+      ctx.ellipse(nest.x, nest.y, 30+i*16, 18+i*9, 0, 0, Math.PI*2);
+      ctx.strokeStyle = `rgba(224,169,78,${0.10*i})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.ellipse(nest.x, nest.y, 26, 16, 0, 0, Math.PI*2);
+    ctx.fillStyle = "#0a0705";
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = "#c9b28a"; ctx.font = "11px system-ui"; ctx.textAlign="center";
+    ctx.fillText("NEST", nest.x, nest.y+34);
+
+    // patches
+    const foodP = patchPos("forage_food"), woodP = patchPos("forage_wood");
+    drawPatch(foodP, "#7bc96f", "🍃");
+    drawPatch(woodP, "#c98b4a", "🪵");
+
+    // paths (faint)
+    ctx.setLineDash([4,7]);
+    ctx.strokeStyle = "#ffffff14"; ctx.lineWidth = 1.5;
+    [["forage_food",foodP],["forage_wood",woodP]].forEach(([role,p])=>{
+      const mid = pathPoint(role,0.5,0);
+      ctx.beginPath(); ctx.moveTo(nest.x,nest.y);
+      ctx.quadraticCurveTo(mid.x,mid.y,p.x,p.y);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    // idle ants wander near nest
+    sprites.idle.forEach((s,i)=>{
+      s.bob += dt*1.3;
+      const ang = s.bob + i*0.7;
+      const r = 34 + (i%5)*7;
+      const x = nest.x + Math.cos(ang)*r*0.6;
+      const y = nest.y + Math.sin(ang)*r*0.32;
+      drawAnt(x,y, "#c9b28a", ang);
+    });
+
+    // nursery ants bob near nest inner ring
+    sprites.nursery.forEach((s,i)=>{
+      s.bob += dt*1.8;
+      const ang = s.bob*0.6 + i*1.1;
+      const x = nest.x + Math.cos(ang)*14;
+      const y = nest.y + Math.sin(ang)*8 - 6;
+      drawAnt(x,y, ROLE_META.nursery.color, ang);
+    });
+
+    // foragers travel nest <-> patch
+    ["forage_food","forage_wood"].forEach(role=>{
+      sprites[role].forEach(s=>{
+        s.t += s.dir * s.speed * dt;
+        if(s.t >= 1){ s.t = 1; s.dir = -1; particles.push(mkParticle(patchPos(role), ROLE_META[role].color)); }
+        if(s.t <= 0){ s.t = 0; s.dir = 1; }
+        const p = pathPoint(role, s.t, s.lane);
+        drawAnt(p.x, p.y, ROLE_META[role].color, s.dir>0?0:Math.PI);
+      });
+    });
+
+    // spawn burst at nest
+    if(spawnFx > 0){
+      particles.push(mkParticle(nest, "#f2c14e"));
+      spawnFx = 0;
+    }
+
+    // particles
+    particles.forEach(p=> p.life -= dt);
+    particles = particles.filter(p=> p.life>0);
+    particles.forEach(p=>{
+      const a = Math.max(0,p.life/p.maxLife);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - (1-a)*22, 3*a+1, 0, Math.PI*2);
+      ctx.fillStyle = p.color + Math.floor(a*255).toString(16).padStart(2,"0");
+      ctx.fill();
+    });
+  }
+
+  function mkParticle(pos,color){ return { x:pos.x+(Math.random()-0.5)*10, y:pos.y+(Math.random()-0.5)*10, color, life:0.7, maxLife:0.7 }; }
+
+  function drawPatch(p,color,emoji){
+    ctx.beginPath();
+    ctx.ellipse(p.x,p.y,26,16,0,0,Math.PI*2);
+    ctx.fillStyle = color+"33";
+    ctx.fill();
+    ctx.strokeStyle = color+"88"; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.font = "16px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(emoji, p.x, p.y);
+  }
+
+  function drawAnt(x,y,color,angle){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(angle||0);
+    ctx.beginPath();
+    ctx.ellipse(0,0,4.5,2.6,0,0,Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-5.5,0,2.4,1.7,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* ============================== MAIN LOOP ============================== */
+  let lastFrame = performance.now();
+  let lastLogicTick = performance.now();
+  const LOGIC_INTERVAL = 100; // ms
+  let lastSaveTime = performance.now();
+  let lastSlowRender = performance.now();
+  const SLOW_RENDER_INTERVAL = 1000; // ms — refreshes afford-state / prestige eligibility, not roles (those update on user action)
+  let running = true;
+
+  function frame(now){
+    if(!running){ requestAnimationFrame(frame); return; }
+    const dt = Math.min(0.05, (now-lastFrame)/1000);
+    lastFrame = now;
+
+    if(now - lastLogicTick >= LOGIC_INTERVAL){
+      const logicDt = (now-lastLogicTick)/1000;
+      lastLogicTick = now;
+      simulate(logicDt);
+      syncSprites();
+      renderTopbar();
+    }
+
+    if(now - lastSlowRender >= SLOW_RENDER_INTERVAL){
+      lastSlowRender = now;
+      if(activeTab==="build") renderBuild();
+      else if(activeTab==="colony") renderColonyTab();
+    }
+
+    drawScene(dt, now);
+
+    if(now - lastSaveTime > 4000){
+      lastSaveTime = now;
+      save();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) save();
+  });
+  window.addEventListener("beforeunload", save);
+  window.addEventListener("pagehide", save);
+
+  /* ============================== WELCOME / BOOT ============================== */
+  document.getElementById("btnStart").addEventListener("click", ()=>{
+    document.getElementById("welcome").classList.add("hidden");
+  });
+  document.getElementById("btnHelp").addEventListener("click", ()=>{
+    document.getElementById("welcome").classList.remove("hidden");
+  });
+
+  applyOfflineProgress();
+  syncSprites();
+  renderAll();
+  requestAnimationFrame((t)=>{ lastFrame=t; lastLogicTick=t; frame(t); });
+  save();
+})();
+</script>
+</body>
+</html>
