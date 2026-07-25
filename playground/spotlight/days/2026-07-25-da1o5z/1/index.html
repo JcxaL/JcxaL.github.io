@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cursor Shader Field — UI Spotlight Day 69</title>
+<style>
+  :root{ --bg:#05070c; --panel:rgba(255,255,255,.06); --panel-b:rgba(255,255,255,.1); --text:#eef0f8; --sub:#8b93a7; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  body{margin:0; height:100vh; overflow:hidden; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  canvas{position:fixed; inset:0; width:100%; height:100%; touch-action:none;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.6); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.85);}
+
+  .caption{position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:30; text-align:center;
+    max-width:520px; padding:0 16px;}
+  .caption h1{font-size:clamp(16px,3vw,20px); margin:0 0 4px; font-weight:800;}
+  .caption p{margin:0; font-size:12px; color:var(--sub); line-height:1.5;}
+
+  footer{position:fixed; bottom:2px; left:50%; transform:translateX(-50%); z-index:30; font-size:10.5px;
+    color:var(--sub); text-align:center; opacity:.75;}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:40; background:rgba(20,22,30,.68); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:210px;}
+  #panel h3{margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel label{display:block; margin:8px 0 3px; color:var(--sub); display:flex; justify-content:space-between;}
+  #panel input[type=range]{width:100%; accent-color:var(--accent);}
+  #panel button{width:100%; margin-top:10px; padding:8px; border-radius:8px; border:1px solid var(--panel-b);
+    background:rgba(255,255,255,.06); color:var(--text); font-size:11.5px; cursor:pointer; font-weight:600;}
+  @media (max-width:820px){ #panel{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h3>Field</h3>
+  <label>Push strength <span id="vPush"></span></label>
+  <input type="range" id="push" min="0" max="200" step="5" value="90">
+  <label>Radius <span id="vRadius"></span></label>
+  <input type="range" id="radius" min="60" max="500" step="10" value="220">
+  <label>Point size <span id="vSize"></span></label>
+  <input type="range" id="size" min="2" max="14" step="1" value="6">
+  <button id="regen">🎨 Regenerate art</button>
+</div>
+
+<canvas id="gl"></canvas>
+
+<div class="caption">
+  <h1>Cursor Shader Field</h1>
+  <p>Move your cursor (or drag a finger) across the field — nearby points push outward and glow along a raw WebGL point-sprite mesh.</p>
+</div>
+<footer>Inspired by Gabriel Villanueva — "Particles Cursor Turns Images Into a Shader Field" (webgpu.com) · UI Spotlight Day 69 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var canvas = document.getElementById('gl');
+  var gl = canvas.getContext('webgl', { antialias:true, alpha:false });
+  if (!gl){
+    document.body.innerHTML = '<p style="padding:40px;color:#eef0f8;font-family:system-ui">WebGL is not available in this browser.</p>';
+    return;
+  }
+
+  var dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+  var GRID_X = 96, GRID_Y = 60;
+
+  var state = { push: 90, radius: 220, size: 6 };
+
+  /* ---------------- procedural source "image" (no external assets) ---------------- */
+  var src = document.createElement('canvas');
+  var sctx = src.getContext('2d');
+  src.width = GRID_X; src.height = GRID_Y;
+
+  function mulberry32(a){
+    return function(){
+      a|=0; a=(a+0x6D2B79F5)|0;
+      var t=Math.imul(a^(a>>>15),1|a);
+      t=(t+Math.imul(t^(t>>>7),61|t))^t;
+      return ((t^(t>>>14))>>>0)/4294967296;
+    };
+  }
+
+  function paintSourceArt(seed){
+    var rng = mulberry32(seed);
+    var g = sctx.createLinearGradient(0,0,GRID_X,GRID_Y);
+    var hues = [rng()*360, rng()*360, rng()*360];
+    g.addColorStop(0, 'hsl('+hues[0]+',85%,55%)');
+    g.addColorStop(0.5, 'hsl('+hues[1]+',85%,55%)');
+    g.addColorStop(1, 'hsl('+hues[2]+',85%,55%)');
+    sctx.fillStyle = g;
+    sctx.fillRect(0,0,GRID_X,GRID_Y);
+    var blobs = 5 + Math.floor(rng()*4);
+    for (var i=0;i<blobs;i++){
+      var cx = rng()*GRID_X, cy = rng()*GRID_Y, r = 8+rng()*22;
+      var rg = sctx.createRadialGradient(cx,cy,0,cx,cy,r);
+      rg.addColorStop(0, 'hsla('+ (rng()*360) +',90%,70%,0.9)');
+      rg.addColorStop(1, 'hsla(0,0%,0%,0)');
+      sctx.fillStyle = rg;
+      sctx.beginPath(); sctx.arc(cx,cy,r,0,Math.PI*2); sctx.fill();
+    }
+  }
+  paintSourceArt(Date.now()%100000 || 1);
+
+  /* ---------------- build point mesh from sampled pixels ---------------- */
+  var positions = new Float32Array(GRID_X*GRID_Y*2);
+  var colors = new Float32Array(GRID_X*GRID_Y*3);
+
+  function buildMesh(){
+    var img = sctx.getImageData(0,0,GRID_X,GRID_Y).data;
+    var i2=0, i3=0;
+    for (var y=0;y<GRID_Y;y++){
+      for (var x=0;x<GRID_X;x++){
+        var nx = (x/(GRID_X-1))*2-1;
+        var ny = (1-y/(GRID_Y-1))*2-1;
+        positions[i2++] = nx;
+        positions[i2++] = ny;
+        var idx = (y*GRID_X+x)*4;
+        colors[i3++] = img[idx]/255;
+        colors[i3++] = img[idx+1]/255;
+        colors[i3++] = img[idx+2]/255;
+      }
+    }
+  }
+  buildMesh();
+
+  /* ---------------- shaders ---------------- */
+  var VERT = [
+    'attribute vec2 aPos;',
+    'attribute vec3 aColor;',
+    'uniform vec2 uMouse;',
+    'uniform float uPush;',
+    'uniform float uRadius;',
+    'uniform float uPointSize;',
+    'uniform vec2 uAspect;',
+    'varying vec3 vColor;',
+    'varying float vGlow;',
+    'void main(){',
+    '  vec2 world = aPos * uAspect;',
+    '  vec2 mouseW = uMouse * uAspect;',
+    '  vec2 diff = world - mouseW;',
+    '  float dist = length(diff);',
+    '  float falloff = clamp(1.0 - dist/uRadius, 0.0, 1.0);',
+    '  falloff = falloff*falloff;',
+    '  vec2 dir = dist > 0.0001 ? diff/dist : vec2(0.0);',
+    '  vec2 displaced = world + dir * falloff * uPush * 0.01;',
+    '  vec2 clip = displaced / uAspect;',
+    '  gl_Position = vec4(clip, 0.0, 1.0);',
+    '  gl_PointSize = uPointSize * (1.0 + falloff*1.8);',
+    '  vColor = aColor;',
+    '  vGlow = falloff;',
+    '}'
+  ].join('\n');
+
+  var FRAG = [
+    'precision mediump float;',
+    'varying vec3 vColor;',
+    'varying float vGlow;',
+    'void main(){',
+    '  vec2 c = gl_PointCoord - vec2(0.5);',
+    '  float d = length(c);',
+    '  float alpha = smoothstep(0.5, 0.0, d);',
+    '  vec3 glowColor = mix(vColor, vec3(1.0), vGlow*0.6);',
+    '  gl_FragColor = vec4(glowColor * alpha, alpha);',
+    '}'
+  ].join('\n');
+
+  function compile(type, src){
+    var sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+      console.error(gl.getShaderInfoLog(sh));
+    }
+    return sh;
+  }
+  var prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)){
+    console.error(gl.getProgramInfoLog(prog));
+  }
+  gl.useProgram(prog);
+
+  var posBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+  var aPos = gl.getAttribLocation(prog, 'aPos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  var colBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+  var aColor = gl.getAttribLocation(prog, 'aColor');
+  gl.enableVertexAttribArray(aColor);
+  gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, 0, 0);
+
+  var uMouse = gl.getUniformLocation(prog, 'uMouse');
+  var uPush = gl.getUniformLocation(prog, 'uPush');
+  var uRadius = gl.getUniformLocation(prog, 'uRadius');
+  var uPointSize = gl.getUniformLocation(prog, 'uPointSize');
+  var uAspect = gl.getUniformLocation(prog, 'uAspect');
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.clearColor(0.02, 0.027, 0.047, 1);
+
+  var mouse = { x:0, y:0, active:false };
+  var aspect = [1,1];
+
+  function resize(){
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.round(w*dpr);
+    canvas.height = Math.round(h*dpr);
+    gl.viewport(0,0,canvas.width, canvas.height);
+    aspect[0] = w > h ? w/h : 1;
+    aspect[1] = w > h ? 1 : h/w;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function setMouseFromClient(clientX, clientY){
+    var r = canvas.getBoundingClientRect();
+    var nx = ((clientX - r.left)/r.width)*2-1;
+    var ny = (1-(clientY - r.top)/r.height)*2-1;
+    mouse.x = nx; mouse.y = ny; mouse.active = true;
+  }
+  canvas.addEventListener('mousemove', function(e){ setMouseFromClient(e.clientX, e.clientY); });
+  canvas.addEventListener('mouseleave', function(){ mouse.active = false; });
+  canvas.addEventListener('touchstart', function(e){ if (e.touches[0]) setMouseFromClient(e.touches[0].clientX, e.touches[0].clientY); }, {passive:true});
+  canvas.addEventListener('touchmove', function(e){ if (e.touches[0]) setMouseFromClient(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, {passive:false});
+  canvas.addEventListener('touchend', function(){ mouse.active = false; });
+
+  var effMouse = { x:0, y:9999 };
+  function frame(){
+    if (mouse.active){
+      effMouse.x += (mouse.x - effMouse.x)*0.25;
+      effMouse.y += (mouse.y - effMouse.y)*0.25;
+    } else {
+      effMouse.x += (0 - effMouse.x)*0.05;
+      effMouse.y += (9999 - effMouse.y)*0.05;
+    }
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(uMouse, effMouse.x, effMouse.y);
+    gl.uniform1f(uPush, state.push);
+    gl.uniform1f(uRadius, state.radius/100);
+    gl.uniform1f(uPointSize, state.size*dpr);
+    gl.uniform2f(uAspect, aspect[0], aspect[1]);
+    gl.drawArrays(gl.POINTS, 0, GRID_X*GRID_Y);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ---------------- debug panel wiring ---------------- */
+  var push = document.getElementById('push');
+  var radius = document.getElementById('radius');
+  var size = document.getElementById('size');
+  var vPush = document.getElementById('vPush');
+  var vRadius = document.getElementById('vRadius');
+  var vSize = document.getElementById('vSize');
+
+  function sync(){
+    state.push = +push.value; vPush.textContent = push.value;
+    state.radius = +radius.value; vRadius.textContent = radius.value;
+    state.size = +size.value; vSize.textContent = size.value;
+  }
+  push.addEventListener('input', sync);
+  radius.addEventListener('input', sync);
+  size.addEventListener('input', sync);
+  sync();
+
+  document.getElementById('regen').addEventListener('click', function(){
+    paintSourceArt(Math.floor(Math.random()*1000000)+1);
+    buildMesh();
+    gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+  });
+})();
+</script>
+</body>
+</html>
