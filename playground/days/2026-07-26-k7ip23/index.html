@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Crystal Garden — generative crystal &amp; frost growth</title>
+<style>
+  :root{
+    --bg:#060814; --fg:#e8f0ff; --accent:#7dd3fc; --panel:rgba(14,18,30,0.62); --panel-border:rgba(255,255,255,0.10);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--fg);}
+  canvas{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;}
+
+  .veil{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(0,0,0,0.45) 100%);}
+
+  header{position:fixed;top:0;left:0;right:0;padding:14px 16px 6px;display:flex;align-items:baseline;gap:10px;
+    pointer-events:none;z-index:5;}
+  header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:0.01em;text-shadow:0 2px 12px rgba(0,0,0,0.6);}
+  header span{font-size:11px;opacity:0.6;text-shadow:0 2px 8px rgba(0,0,0,0.6);}
+
+  #status{position:fixed;top:14px;right:16px;z-index:5;font-size:11px;padding:6px 10px;border-radius:20px;
+    background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);opacity:0.85;transition:opacity 0.3s;}
+
+  .panel{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:10;
+    background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border-radius:20px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.4);
+    width:min(94vw,560px);max-height:52vh;overflow-y:auto;}
+  .row{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap;}
+  .row:first-child{margin-top:0;}
+  .label{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;opacity:0.55;width:100%;margin-bottom:2px;}
+  .seg{display:flex;gap:6px;flex:1;flex-wrap:wrap;}
+  .seg button{flex:1;min-width:64px;padding:7px 6px;border-radius:10px;border:1px solid var(--panel-border);
+    background:rgba(255,255,255,0.04);color:var(--fg);font-size:11.5px;cursor:pointer;transition:all .15s;font-family:inherit;}
+  .seg button.active{background:var(--accent);color:#08101c;border-color:var(--accent);font-weight:700;}
+  .swatches{display:flex;gap:8px;}
+  .swatch{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;flex-shrink:0;
+    transition:transform .15s;position:relative;}
+  .swatch.active{border-color:#fff;transform:scale(1.15);}
+  input[type=range]{flex:1;accent-color:var(--accent);}
+  .btnrow{display:flex;gap:8px;margin-top:10px;}
+  .btn{flex:1;padding:9px 8px;border-radius:12px;border:1px solid var(--panel-border);background:rgba(255,255,255,0.06);
+    color:var(--fg);font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;transition:background .15s;}
+  .btn:active{background:rgba(255,255,255,0.16);}
+  .btn.primary{background:var(--accent);color:#08101c;border-color:var(--accent);}
+  .toggle-tab{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:11;width:40px;height:40px;
+    display:none;align-items:center;justify-content:center;border-radius:50%;background:var(--panel);
+    border:1px solid var(--panel-border);backdrop-filter:blur(10px);color:var(--fg);font-size:16px;cursor:pointer;}
+
+  #gallery{position:fixed;right:14px;top:56px;z-index:8;width:120px;max-height:60vh;overflow-y:auto;
+    display:flex;flex-direction:column;gap:6px;}
+  #gallery.hidden{display:none;}
+  #gallery .thumb{border-radius:10px;overflow:hidden;border:1px solid var(--panel-border);cursor:pointer;
+    background:var(--panel);backdrop-filter:blur(8px);}
+  #gallery .thumb img{display:block;width:100%;height:auto;}
+  #galleryToggle{position:fixed;right:14px;top:14px;z-index:9;font-size:11px;padding:6px 10px;border-radius:20px;
+    background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(10px);color:var(--fg);cursor:pointer;font-family:inherit;}
+
+  #toast{position:fixed;left:50%;top:16px;transform:translateX(-50%) translateY(-140%);z-index:20;
+    background:rgba(20,24,36,0.92);border:1px solid var(--panel-border);padding:9px 16px;border-radius:14px;
+    font-size:12.5px;transition:transform .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
+  #toast.show{transform:translateX(-50%) translateY(0);}
+
+  @media (max-width:520px){
+    .panel{max-height:46vh;padding:10px 12px;}
+    #gallery{width:88px;top:52px;}
+    header h1{font-size:14px;}
+  }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="veil"></div>
+
+<header>
+  <h1>❄ Crystal Garden</h1>
+  <span>tap to seed a nucleation point</span>
+</header>
+
+<div id="status">growing…</div>
+
+<button id="galleryToggle">🖼 Gallery</button>
+<div id="gallery" class="hidden"></div>
+
+<div id="toast"></div>
+
+<div class="panel" id="panel">
+  <div class="row">
+    <div class="label">Growth mode</div>
+    <div class="seg" id="modeSeg">
+      <button data-mode="dendrite">Dendrite</button>
+      <button data-mode="mineral">Mineral</button>
+      <button data-mode="coral">Coral</button>
+      <button data-mode="frost">Frost</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="label">Palette</div>
+    <div class="swatches" id="paletteSeg"></div>
+  </div>
+  <div class="row">
+    <div class="label">Density</div>
+    <input type="range" id="density" min="0" max="100" value="55">
+  </div>
+  <div class="btnrow">
+    <button class="btn" id="btnReset">↻ New Crystal</button>
+    <button class="btn" id="btnShare">🔗 Share</button>
+  </div>
+  <div class="btnrow">
+    <button class="btn primary" id="btnSave">💾 Save to Gallery</button>
+    <button class="btn primary" id="btnExport">⬇ Export PNG</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- RNG ----------
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- palettes ----------
+  const PALETTES = {
+    aurora:  { name:"Aurora",  bg:"#070818", accent:"#7dd3fc", stops:["#0b1030","#3b3f9e","#5b8def","#7dd3fc","#f0fbff"] },
+    ember:   { name:"Ember",   bg:"#160806", accent:"#ff8a4c", stops:["#2a0904","#7a1d0e","#c1440e","#ff8a4c","#ffe3b0"] },
+    glacier: { name:"Glacier", bg:"#040c14", accent:"#8fe8ff", stops:["#031824","#0a4a63","#2f9bc4","#8fe8ff","#ffffff"] },
+    toxic:   { name:"Toxic",   bg:"#060f06", accent:"#8bff5a", stops:["#081204","#1f4d12","#3f9420","#8bff5a","#ecffd8"] },
+    rose:    { name:"Rose Quartz", bg:"#12060d", accent:"#ff9fd6", stops:["#210a1a","#6c1c4d","#c93f8f","#ff9fd6","#fff1f8"] }
+  };
+  const PALETTE_KEYS = Object.keys(PALETTES);
+
+  // ---------- growth modes ----------
+  const MODES = {
+    dendrite: { label:"Dendrite", symmetry:"six",  stickiness:0.40, speed:1.55, inwardPull:0.030 },
+    mineral:  { label:"Mineral",  symmetry:"four", stickiness:0.88, speed:1.15, inwardPull:0.055 },
+    coral:    { label:"Coral",    symmetry:"none", stickiness:0.12, speed:2.05, inwardPull:0.016 },
+    frost:    { label:"Frost",    symmetry:"none", stickiness:0.22, speed:1.85, inwardPull:0.012, frostBias:true }
+  };
+
+  // ---------- state ----------
+  let mode = "dendrite", paletteKey = "aurora", density = 55;
+  let seed = (Date.now() % 2000000000) ^ (Math.floor(Math.random()*1e6));
+  let rng = mulberry32(seed);
+
+  let GW, GH, W, H, dpr;
+  let occupied, age, globalAge = 0, maxRadius = 0, completed = false;
+  let primarySeed = { x:0, y:0 };
+  let particles = [];
+  let dirty = [];
+  let offCanvas, offCtx, offImg;
+
+  const canvas = document.getElementById("cv");
+  const ctx = canvas.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const toastEl = document.getElementById("toast");
+
+  // ---------- persistence ----------
+  const SETTINGS_KEY = "crystalGarden_settings_v1";
+  const GALLERY_KEY = "crystalGarden_gallery_v1";
+
+  function loadSettings(){
+    try{
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if(raw){
+        const s = JSON.parse(raw);
+        if(s.mode && MODES[s.mode]) mode = s.mode;
+        if(s.palette && PALETTES[s.palette]) paletteKey = s.palette;
+        if(typeof s.density === "number") density = s.density;
+      }
+    }catch(e){}
+  }
+  function saveSettings(){
+    try{
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mode, palette:paletteKey, density }));
+    }catch(e){}
+  }
+
+  function loadGallery(){
+    try{
+      const raw = localStorage.getItem(GALLERY_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){ return []; }
+  }
+  function saveGallery(list){
+    try{ localStorage.setItem(GALLERY_KEY, JSON.stringify(list.slice(0,12))); }catch(e){}
+  }
+
+  // ---------- URL hash sharing ----------
+  function parseHash(){
+    const h = location.hash.replace(/^#c=/, "");
+    if(!h) return null;
+    try{
+      const json = decodeURIComponent(escape(atob(h.replace(/-/g,"+").replace(/_/g,"/"))));
+      return JSON.parse(json);
+    }catch(e){ return null; }
+  }
+  function encodeRecipe(m,p,s,d){
+    const json = JSON.stringify({ m, p, s, d });
+    return btoa(unescape(encodeURIComponent(json))).replace(/\+/g,"-").replace(/\//g,"_");
+  }
+  function updateHash(){
+    history.replaceState(null, "", "#c=" + encodeRecipe(mode, paletteKey, seed, density));
+  }
+
+  // ---------- toast ----------
+  let toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> toastEl.classList.remove("show"), 1800);
+  }
+
+  // ---------- grid setup ----------
+  function resizeCanvas(){
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = Math.round(W*dpr); canvas.height = Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function setupGrid(){
+    const baseCells = 30000;
+    GW = Math.max(90, Math.min(320, Math.round(Math.sqrt(baseCells * (W/H)))));
+    GH = Math.max(90, Math.min(320, Math.round(baseCells / GW)));
+    occupied = new Uint8Array(GW*GH);
+    age = new Uint16Array(GW*GH);
+    globalAge = 0; maxRadius = 0; completed = false; particles = []; dirty = [];
+    primarySeed = { x: Math.round(GW/2), y: Math.round(GH/2) };
+
+    offCanvas = document.createElement("canvas");
+    offCanvas.width = GW; offCanvas.height = GH;
+    offCtx = offCanvas.getContext("2d");
+    const bg = hexToRgb(PALETTES[paletteKey].bg);
+    offImg = offCtx.createImageData(GW, GH);
+    for(let i=0;i<GW*GH;i++){
+      offImg.data[i*4]=bg.r; offImg.data[i*4+1]=bg.g; offImg.data[i*4+2]=bg.b; offImg.data[i*4+3]=255;
+    }
+    offCtx.putImageData(offImg,0,0);
+
+    stickRaw(primarySeed.x, primarySeed.y);
+  }
+
+  function hexToRgb(hex){
+    const v = parseInt(hex.slice(1),16);
+    return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 };
+  }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function paletteColor(t){
+    const stops = PALETTES[paletteKey].stops;
+    t = Math.max(0, Math.min(1,t));
+    const seg = t * (stops.length-1);
+    const i = Math.min(stops.length-2, Math.floor(seg));
+    const localT = seg - i;
+    const c1 = hexToRgb(stops[i]), c2 = hexToRgb(stops[i+1]);
+    return {
+      r: Math.round(lerp(c1.r,c2.r,localT)),
+      g: Math.round(lerp(c1.g,c2.g,localT)),
+      b: Math.round(lerp(c1.b,c2.b,localT))
+    };
+  }
+
+  // ---------- occupancy ----------
+  function inBounds(x,y){ return x>=0 && y>=0 && x<GW && y<GH; }
+  function stickRaw(x,y){
+    if(!inBounds(x,y)) return false;
+    const idx = y*GW+x;
+    if(occupied[idx]) return false;
+    occupied[idx] = 1;
+    globalAge++;
+    age[idx] = Math.min(65535, globalAge);
+    dirty.push(idx);
+    const d = Math.hypot(x-primarySeed.x, y-primarySeed.y);
+    if(d > maxRadius) maxRadius = d;
+    return true;
+  }
+  function stickWithSymmetry(x,y){
+    stickRaw(x,y);
+    const m = MODES[mode];
+    if(m.symmetry === "six"){
+      const dx = x-primarySeed.x, dy = y-primarySeed.y;
+      for(let k=1;k<6;k++){
+        const ang = k*Math.PI/3;
+        const rx = Math.round(dx*Math.cos(ang) - dy*Math.sin(ang));
+        const ry = Math.round(dx*Math.sin(ang) + dy*Math.cos(ang));
+        stickRaw(primarySeed.x+rx, primarySeed.y+ry);
+      }
+    } else if(m.symmetry === "four"){
+      const dx = x-primarySeed.x, dy = y-primarySeed.y;
+      stickRaw(primarySeed.x-dx, primarySeed.y+dy);
+      stickRaw(primarySeed.x+dx, primarySeed.y-dy);
+      stickRaw(primarySeed.x-dx, primarySeed.y-dy);
+    }
+  }
+  function neighborOccupied(x,y){
+    for(let oy=-1;oy<=1;oy++){
+      for(let ox=-1;ox<=1;ox++){
+        if(ox===0 && oy===0) continue;
+        const nx=x+ox, ny=y+oy;
+        if(inBounds(nx,ny) && occupied[ny*GW+nx]) return true;
+      }
+    }
+    return false;
+  }
+
+  // ---------- particles ----------
+  function particlePoolTarget(){
+    if(completed) return 0;
+    return Math.round(24 + (density/100)*260);
+  }
+  function spawnRadius(){
+    const maxSpawn = Math.min(GW,GH)/2 - 2;
+    return Math.min(maxRadius + 16, maxSpawn);
+  }
+  function spawnParticle(){
+    const r = spawnRadius();
+    const ang = rng()*Math.PI*2;
+    particles.push({
+      x: primarySeed.x + Math.cos(ang)*r,
+      y: primarySeed.y + Math.sin(ang)*r
+    });
+  }
+
+  function tick(){
+    const m = MODES[mode];
+    const maxSpawn = Math.min(GW,GH)/2 - 2;
+    if(spawnRadius() >= maxSpawn - 1.5) completed = true;
+
+    const target = particlePoolTarget();
+    let guard = 0;
+    while(particles.length < target && guard < 40){ spawnParticle(); guard++; }
+
+    const sr = spawnRadius();
+    for(let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      const dx0 = primarySeed.x - p.x, dy0 = primarySeed.y - p.y;
+      const dist = Math.hypot(dx0,dy0) || 1;
+      let bx = dx0/dist*m.inwardPull, by = dy0/dist*m.inwardPull;
+      if(m.frostBias) by += 0.012;
+      p.x += (rng()-0.5)*m.speed + bx;
+      p.y += (rng()-0.5)*m.speed + by;
+
+      const cx = Math.round(p.x), cy = Math.round(p.y);
+      if(cx<0||cy<0||cx>=GW||cy>=GH||dist>sr*1.5){
+        particles.splice(i,1);
+        continue;
+      }
+      if(neighborOccupied(cx,cy) && rng() < m.stickiness){
+        stickWithSymmetry(cx,cy);
+        particles.splice(i,1);
+      }
+    }
+  }
+
+  // ---------- rendering ----------
+  function flushDirty(){
+    if(!dirty.length) return;
+    const img = offCtx.getImageData(0,0,GW,GH);
+    for(let k=0;k<dirty.length;k++){
+      const idx = dirty[k];
+      const t = age[idx] / Math.max(1, globalAge);
+      const c = paletteColor(t);
+      img.data[idx*4] = c.r; img.data[idx*4+1] = c.g; img.data[idx*4+2] = c.b; img.data[idx*4+3] = 255;
+    }
+    offCtx.putImageData(img,0,0);
+    dirty.length = 0;
+  }
+
+  function render(){
+    const pal = PALETTES[paletteKey];
+    ctx.fillStyle = pal.bg;
+    ctx.fillRect(0,0,W,H);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(offCanvas, 0,0,GW,GH, 0,0,W,H);
+
+    const sx = W/GW, sy = H/GH;
+    ctx.fillStyle = pal.accent;
+    ctx.shadowColor = pal.accent;
+    ctx.shadowBlur = 6;
+    ctx.globalAlpha = 0.85;
+    for(let i=0;i<particles.length;i++){
+      const p = particles[i];
+      ctx.beginPath();
+      ctx.arc(p.x*sx, p.y*sy, 1.6, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    // primary seed marker
+    ctx.fillStyle = "#ffffff";
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.arc(primarySeed.x*sx, primarySeed.y*sy, 3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- main loop ----------
+  let lastT = 0, accum = 0;
+  const STEP = 1000/60;
+  function frame(t){
+    if(!lastT) lastT = t;
+    let dt = t - lastT; lastT = t;
+    if(dt > 100) dt = 100;
+    accum += dt;
+    let ticks = 0;
+    while(accum >= STEP && ticks < 4){
+      tick(); tick(); // two logical sub-steps per animation step
+      accum -= STEP; ticks++;
+    }
+    flushDirty();
+    render();
+    const fillPct = Math.min(100, Math.round((maxRadius / (Math.min(GW,GH)/2 - 2)) * 100));
+    statusEl.textContent = completed ? "crystal complete — tap New Crystal" : ("growing… " + fillPct + "%");
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- UI wiring ----------
+  const modeSeg = document.getElementById("modeSeg");
+  const paletteSeg = document.getElementById("paletteSeg");
+  const densitySlider = document.getElementById("density");
+
+  function buildPaletteSwatches(){
+    paletteSeg.innerHTML = "";
+    PALETTE_KEYS.forEach(key=>{
+      const b = document.createElement("div");
+      b.className = "swatch" + (key===paletteKey ? " active" : "");
+      b.style.background = "linear-gradient(135deg," + PALETTES[key].stops[1] + "," + PALETTES[key].stops[3] + ")";
+      b.title = PALETTES[key].name;
+      b.dataset.key = key;
+      b.addEventListener("click", ()=>{
+        paletteKey = key;
+        document.querySelectorAll(".swatch").forEach(s=>s.classList.remove("active"));
+        b.classList.add("active");
+        document.body.style.background = PALETTES[key].bg;
+        saveSettings(); updateHash();
+      });
+      paletteSeg.appendChild(b);
+    });
+  }
+  function syncModeButtons(){
+    document.querySelectorAll("#modeSeg button").forEach(btn=>{
+      btn.classList.toggle("active", btn.dataset.mode === mode);
+    });
+  }
+
+  modeSeg.addEventListener("click", (e)=>{
+    const btn = e.target.closest("button[data-mode]");
+    if(!btn) return;
+    mode = btn.dataset.mode;
+    syncModeButtons();
+    saveSettings(); updateHash();
+  });
+
+  densitySlider.addEventListener("input", ()=>{
+    density = parseInt(densitySlider.value, 10);
+    saveSettings(); updateHash();
+  });
+
+  function newCrystal(newSeed){
+    seed = (typeof newSeed === "number") ? newSeed : ((Date.now() % 2000000000) ^ Math.floor(Math.random()*1e6));
+    rng = mulberry32(seed);
+    setupGrid();
+    updateHash();
+  }
+
+  document.getElementById("btnReset").addEventListener("click", ()=>{
+    newCrystal();
+    showToast("New crystal seeded");
+  });
+
+  canvas.addEventListener("pointerdown", (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    const gx = Math.round((e.clientX - rect.left) / rect.width * GW);
+    const gy = Math.round((e.clientY - rect.top) / rect.height * GH);
+    if(inBounds(gx,gy)) stickRaw(gx,gy);
+  });
+
+  document.getElementById("btnShare").addEventListener("click", async ()=>{
+    updateHash();
+    const url = location.href;
+    try{
+      await navigator.clipboard.writeText(url);
+      showToast("Share link copied!");
+    }catch(e){
+      try{
+        const ta = document.createElement("textarea");
+        ta.value = url; ta.style.position="fixed"; ta.style.opacity="0";
+        document.body.appendChild(ta); ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        showToast("Share link copied!");
+      }catch(e2){
+        showToast("Copy this: " + url);
+      }
+    }
+  });
+
+  function renderToCanvas(targetW, targetH){
+    const tmp = document.createElement("canvas");
+    tmp.width = targetW; tmp.height = targetH;
+    const tctx = tmp.getContext("2d");
+    tctx.fillStyle = PALETTES[paletteKey].bg;
+    tctx.fillRect(0,0,targetW,targetH);
+    tctx.imageSmoothingEnabled = false;
+    tctx.drawImage(offCanvas, 0,0,GW,GH, 0,0,targetW,targetH);
+    return tmp;
+  }
+
+  document.getElementById("btnExport").addEventListener("click", ()=>{
+    const tmp = renderToCanvas(1400, Math.round(1400*(GH/GW)));
+    tmp.toBlob((blob)=>{
+      if(!blob || blob.size === 0){ showToast("Export failed"); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "crystal-garden-" + mode + ".png";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("PNG exported");
+    }, "image/png");
+  });
+
+  document.getElementById("btnSave").addEventListener("click", ()=>{
+    const tmp = renderToCanvas(200, Math.round(200*(GH/GW)));
+    const thumb = tmp.toDataURL("image/png");
+    const list = loadGallery();
+    list.unshift({ id: Date.now(), mode, palette: paletteKey, seed, density, thumb });
+    saveGallery(list);
+    renderGallery();
+    showToast("Saved to gallery");
+  });
+
+  const galleryEl = document.getElementById("gallery");
+  const galleryToggle = document.getElementById("galleryToggle");
+  galleryToggle.addEventListener("click", ()=>{
+    galleryEl.classList.toggle("hidden");
+  });
+
+  function renderGallery(){
+    const list = loadGallery();
+    galleryEl.innerHTML = "";
+    list.forEach(item=>{
+      const div = document.createElement("div");
+      div.className = "thumb";
+      const img = document.createElement("img");
+      img.src = item.thumb; img.alt = item.mode + " crystal";
+      div.appendChild(img);
+      div.addEventListener("click", ()=>{
+        mode = item.mode; paletteKey = item.palette; density = item.density;
+        syncModeButtons();
+        document.querySelectorAll(".swatch").forEach(s=>s.classList.toggle("active", s.dataset.key===paletteKey));
+        densitySlider.value = density;
+        document.body.style.background = PALETTES[paletteKey].bg;
+        saveSettings();
+        newCrystal(item.seed);
+        showToast("Loaded from gallery");
+      });
+      galleryEl.appendChild(div);
+    });
+  }
+
+  document.addEventListener("keydown", (e)=>{
+    if(e.key === "r" || e.key === "R"){ newCrystal(); showToast("New crystal seeded"); }
+    if(e.key === "s" || e.key === "S"){ document.getElementById("btnExport").click(); }
+    const numMap = { "1":"dendrite", "2":"mineral", "3":"coral", "4":"frost" };
+    if(numMap[e.key]){ mode = numMap[e.key]; syncModeButtons(); saveSettings(); updateHash(); }
+  });
+
+  window.addEventListener("resize", ()=>{
+    resizeCanvas();
+    setupGrid();
+  });
+
+  // ---------- init ----------
+  function init(){
+    loadSettings();
+    const fromHash = parseHash();
+    if(fromHash){
+      if(fromHash.m && MODES[fromHash.m]) mode = fromHash.m;
+      if(fromHash.p && PALETTES[fromHash.p]) paletteKey = fromHash.p;
+      if(typeof fromHash.d === "number") density = fromHash.d;
+      if(typeof fromHash.s === "number") seed = fromHash.s;
+    }
+    rng = mulberry32(seed);
+
+    document.body.style.background = PALETTES[paletteKey].bg;
+    densitySlider.value = density;
+    buildPaletteSwatches();
+    syncModeButtons();
+    renderGallery();
+
+    resizeCanvas();
+    setupGrid();
+    updateHash();
+
+    requestAnimationFrame(frame);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
