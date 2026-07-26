@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peek &amp; Pop — UI Spotlight Day 71</title>
+<style>
+  :root{ --bg:#0b0906; --panel:rgba(255,255,255,.06); --panel-b:rgba(255,255,255,.1); --text:#f5efe6; --sub:#a99b81; --accent:#fbbf24; }
+  *{box-sizing:border-box; -webkit-user-select:none; user-select:none;}
+  body{margin:0; min-height:100vh; background:
+      radial-gradient(900px 600px at 85% 0%, rgba(251,191,36,.10), transparent 60%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:70px 20px 100px; display:flex; flex-direction:column; align-items:center;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:60; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.6); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.85);}
+
+  .caption{text-align:center; max-width:580px; margin-bottom:32px;}
+  .caption h1{font-size:clamp(18px,3.4vw,24px); margin:0 0 8px; font-weight:800;}
+  .caption p{margin:0; font-size:13px; color:var(--sub); line-height:1.6;}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:20px; max-width:820px; width:100%;}
+  .card{border-radius:18px; overflow:hidden; background:var(--panel); border:1px solid var(--panel-b);
+    cursor:pointer; transition:transform .25s cubic-bezier(.2,.9,.3,1.2); touch-action:none;}
+  .card.holding{transform:scale(1.06);}
+  .thumb{height:120px;}
+  .card:nth-child(1) .thumb{background:linear-gradient(135deg,#f59e0b,#ef4444);}
+  .card:nth-child(2) .thumb{background:linear-gradient(135deg,#8b5cf6,#38bdf8);}
+  .card:nth-child(3) .thumb{background:linear-gradient(135deg,#10b981,#fbbf24);}
+  .card .body{padding:12px 14px;}
+  .card h3{margin:0 0 3px; font-size:14px; font-weight:800;}
+  .card p{margin:0; font-size:11.5px; color:var(--sub);}
+
+  .ring{position:fixed; z-index:80; width:56px; height:56px; margin:-28px 0 0 -28px; pointer-events:none;}
+  .ring svg{width:100%; height:100%; transform:rotate(-90deg);}
+  .ring circle{fill:none; stroke-width:4;}
+  .ring .bg{stroke:rgba(255,255,255,.15);}
+  .ring .fg{stroke:var(--accent); stroke-linecap:round; transition:stroke .2s;}
+
+  .scrim{position:fixed; inset:0; background:rgba(6,4,2,0); backdrop-filter:blur(0px); z-index:50;
+    transition:background .3s, backdrop-filter .3s; pointer-events:none;}
+  .scrim.show{background:rgba(6,4,2,.55); backdrop-filter:blur(6px); pointer-events:auto;}
+
+  .peekPanel{position:fixed; z-index:55; left:50%; top:50%; transform:translate(-50%,-50%) scale(.4); opacity:0;
+    width:min(86vw,340px); border-radius:22px; overflow:hidden; background:#14120e; border:1px solid var(--panel-b);
+    box-shadow:0 20px 60px rgba(0,0,0,.5); transition:transform .18s, opacity .18s; pointer-events:none;}
+  .peekPanel.visible{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  .peekPanel.popped{transform:translate(-50%,-50%) scale(1.02); pointer-events:auto;}
+  .peekPanel .thumb{height:180px;}
+  .peekPanel .body{padding:18px;}
+  .peekPanel h3{font-size:19px; margin:0 0 6px;}
+  .peekPanel p{font-size:13px; color:var(--sub); line-height:1.5; margin:0 0 12px;}
+  .peekPanel .close{display:none; padding:9px 14px; border-radius:10px; border:1px solid var(--panel-b);
+    background:rgba(255,255,255,.08); color:var(--text); font-size:12.5px; font-weight:700; cursor:pointer; font-family:inherit;}
+  .peekPanel.popped .close{display:inline-block;}
+
+  #status{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:30; font-size:12px;
+    padding:7px 14px; border-radius:20px; background:var(--panel); border:1px solid var(--panel-b); backdrop-filter:blur(10px);}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:60; background:rgba(20,22,30,.68); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:200px;}
+  #panel h3{margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel label{display:block; margin:8px 0 3px; color:var(--sub); display:flex; justify-content:space-between;}
+  #panel input[type=range]{width:100%; accent-color:var(--accent);}
+  #panel .chk{display:flex; align-items:center; gap:8px; margin-top:10px;}
+  @media (max-width:820px){ #panel{display:none;} }
+
+  footer{text-align:center; color:var(--sub); font-size:11px; margin-top:26px; opacity:.8;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="caption">
+  <h1>Peek &amp; Pop</h1>
+  <p>Press and hold a card — a radial ring fills at your touch point. Hold through it to peek, then drag upward to pop into full detail. Release early for a normal tap. Each stage fires its own haptic pulse where supported.</p>
+</div>
+
+<div class="grid" id="grid">
+  <div class="card" data-title="Aurora Trail" data-desc="A GPU-shaded aurora simulation you can steer with your cursor — six color modes, freeze-frame export."><div class="thumb"></div><div class="body"><h3>Aurora Trail</h3><p>Hold to peek →</p></div></div>
+  <div class="card" data-title="Glass Deck" data-desc="A stack of frosted glass cards with refraction that reacts to device tilt on mobile and cursor on desktop."><div class="thumb"></div><div class="body"><h3>Glass Deck</h3><p>Hold to peek →</p></div></div>
+  <div class="card" data-title="Meadow Loop" data-desc="A generative procedural meadow that regrows every visit — seeded, shareable, and fully offline."><div class="thumb"></div><div class="body"><h3>Meadow Loop</h3><p>Hold to peek →</p></div></div>
+</div>
+
+<div id="status">idle</div>
+
+<div id="panel">
+  <h3>Gesture</h3>
+  <label>Peek hold <span id="vHold">450ms</span></label>
+  <input type="range" id="holdMs" min="250" max="900" step="10" value="450">
+  <label>Pop distance <span id="vPop">90px</span></label>
+  <input type="range" id="popDist" min="40" max="160" step="5" value="90">
+  <div class="chk"><input type="checkbox" id="vibToggle" checked><label for="vibToggle" style="margin:0;">Haptics</label></div>
+</div>
+
+<footer>Inspired by "Mobile App Design Trends 2026" · Muzli Design Blog · UI Spotlight Day 71 · Drop #4</footer>
+
+<script>
+(function(){
+  "use strict";
+  var HOLD_MS = 450, POP_DIST = 90, VIBE = true;
+
+  document.getElementById("holdMs").addEventListener("input", function(){
+    HOLD_MS = parseInt(this.value,10); document.getElementById("vHold").textContent = HOLD_MS + "ms";
+  });
+  document.getElementById("popDist").addEventListener("input", function(){
+    POP_DIST = parseInt(this.value,10); document.getElementById("vPop").textContent = POP_DIST + "px";
+  });
+  document.getElementById("vibToggle").addEventListener("change", function(){ VIBE = this.checked; });
+
+  function vibrate(pattern){
+    if(VIBE && navigator.vibrate){ try{ navigator.vibrate(pattern); }catch(e){} }
+  }
+
+  var statusEl = document.getElementById("status");
+  function setStatus(s){ statusEl.textContent = s; }
+
+  var scrim = document.createElement("div");
+  scrim.className = "scrim";
+  document.body.appendChild(scrim);
+
+  var peekPanel = document.createElement("div");
+  peekPanel.className = "peekPanel";
+  peekPanel.innerHTML = '<div class="thumb"></div><div class="body"><h3></h3><p></p><button class="close">Close ✕</button></div>';
+  document.body.appendChild(peekPanel);
+  var peekThumb = peekPanel.querySelector(".thumb");
+  var peekTitle = peekPanel.querySelector("h3");
+  var peekDesc = peekPanel.querySelector("p");
+  peekPanel.querySelector(".close").addEventListener("click", function(){ dismissAll(); });
+  scrim.addEventListener("click", function(){ if(peekPanel.classList.contains("popped")) dismissAll(); });
+
+  function dismissAll(){
+    scrim.classList.remove("show");
+    peekPanel.classList.remove("visible","popped");
+    setStatus("idle");
+  }
+
+  function createRing(x,y){
+    var wrap = document.createElement("div");
+    wrap.className = "ring";
+    wrap.style.left = x + "px"; wrap.style.top = y + "px";
+    wrap.innerHTML = '<svg viewBox="0 0 56 56"><circle class="bg" cx="28" cy="28" r="24"></circle><circle class="fg" cx="28" cy="28" r="24" stroke-dasharray="150.8" stroke-dashoffset="150.8"></circle></svg>';
+    document.body.appendChild(wrap);
+    return wrap;
+  }
+  function setRingProgress(ring, p){
+    var fg = ring.querySelector(".fg");
+    var c = 150.8;
+    fg.style.strokeDashoffset = (c * (1-p)).toFixed(1);
+  }
+
+  document.querySelectorAll(".card").forEach(function(card){
+    card.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+
+    card.addEventListener("pointerdown", function(e){
+      e.preventDefault();
+      var startX = e.clientX, startY = e.clientY, startT = performance.now();
+      var ring = createRing(startX, startY);
+      var peeked = false, popped = false, raf;
+      card.classList.add("holding");
+      setStatus("holding…");
+
+      function step(now){
+        var p = Math.min(1, (now-startT)/HOLD_MS);
+        setRingProgress(ring, p);
+        if(p >= 1 && !peeked){
+          peeked = true;
+          vibrate(15);
+          scrim.classList.add("show");
+          peekThumb.style.background = getComputedStyle(card.querySelector(".thumb")).background;
+          peekTitle.textContent = card.dataset.title;
+          peekDesc.textContent = card.dataset.desc;
+          peekPanel.classList.add("visible");
+          setStatus("peeking — drag up to pop");
+        }
+        if(!peeked) raf = requestAnimationFrame(step);
+      }
+      raf = requestAnimationFrame(step);
+
+      function onMove(ev){
+        if(!peeked || popped) return;
+        var dy = startY - ev.clientY;
+        var t = Math.max(0, Math.min(1, dy / POP_DIST));
+        peekPanel.style.transform = "translate(-50%,-50%) scale(" + (1 + t*0.06) + ")";
+        if(dy > POP_DIST){
+          popped = true;
+          vibrate([10,30,10]);
+          peekPanel.classList.add("popped");
+          peekPanel.style.transform = "";
+          setStatus("popped — full detail open");
+        }
+      }
+      function onUp(){
+        cancelAnimationFrame(raf);
+        ring.remove();
+        card.classList.remove("holding");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        if(popped){
+          // stays open until close/scrim tap
+        } else if(peeked){
+          dismissAll();
+        } else {
+          setStatus("tapped: " + card.dataset.title);
+          setTimeout(function(){ if(statusEl.textContent.indexOf("tapped") === 0) setStatus("idle"); }, 1400);
+        }
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp, { once:true });
+    });
+  });
+})();
+</script>
+</body>
+</html>

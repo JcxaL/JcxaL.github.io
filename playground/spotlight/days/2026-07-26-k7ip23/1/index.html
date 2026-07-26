@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Native Random Bursts — UI Spotlight Day 71</title>
+<style>
+  :root{ --bg:#05070c; --panel:rgba(255,255,255,.06); --panel-b:rgba(255,255,255,.1); --text:#eef0f8; --sub:#8b93a7; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  body{margin:0; height:100vh; overflow:hidden; background:
+      radial-gradient(900px 600px at 50% 30%, rgba(56,189,248,.10), transparent 65%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; position:relative;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.6); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.85);}
+
+  #stage{position:absolute; inset:0; overflow:hidden;}
+
+  .particle{position:absolute; left:var(--ox); top:var(--oy); width:var(--sz); height:var(--sz);
+    margin:calc(var(--sz) / -2) 0 0 calc(var(--sz) / -2); pointer-events:none; will-change:transform,opacity;
+    animation-name:fly; animation-timing-function:cubic-bezier(.17,.67,.3,.96); animation-fill-mode:forwards;
+    animation-duration:var(--dur); animation-delay:var(--delay);}
+  .particle.confetti{border-radius:2px;}
+  .particle.ember{border-radius:50%; filter:blur(.5px); box-shadow:0 0 8px currentColor;}
+  .particle.bubble{border-radius:50%; border:1px solid rgba(255,255,255,.5); background:transparent !important;
+    box-shadow:inset 0 0 6px rgba(255,255,255,.35), 0 0 4px rgba(255,255,255,.15);}
+
+  @keyframes fly{
+    0%{ transform:translate(0,0) rotate(0deg) scale(1); opacity:1; }
+    100%{ transform:translate(var(--dx),var(--dy)) rotate(var(--rot)) scale(.4); opacity:0; }
+  }
+
+  .controls{position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:30;
+    display:flex; gap:10px; background:rgba(16,18,26,.6); border:1px solid var(--panel-b); backdrop-filter:blur(14px);
+    padding:10px; border-radius:16px;}
+  .controls button{padding:9px 16px; border-radius:11px; border:1px solid var(--panel-b); cursor:pointer;
+    font-family:inherit; font-size:13px; font-weight:700; color:var(--text); background:rgba(255,255,255,.05); transition:transform .12s;}
+  .controls button:active{transform:scale(.94);}
+  .controls button.confetti{background:linear-gradient(135deg,#f472b6,#38bdf8); color:#0a0f18; border:none;}
+  .controls button.ember{background:linear-gradient(135deg,#f97316,#ef4444); color:#160800; border:none;}
+  .controls button.bubble{background:rgba(255,255,255,.08);}
+
+  .caption{position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:30; text-align:center; max-width:560px; padding:0 16px;}
+  .caption h1{font-size:clamp(16px,3vw,20px); margin:0 0 4px; font-weight:800;}
+  .caption p{margin:0; font-size:12px; color:var(--sub); line-height:1.5;}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:40; background:rgba(20,22,30,.68); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:200px;}
+  #panel h3{margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel .row{display:flex; justify-content:space-between; margin:6px 0; color:var(--sub); font-size:11.5px;}
+  #panel .row b{color:var(--accent);}
+  @media (max-width:820px){ #panel{display:none;} }
+
+  footer{position:fixed; bottom:2px; left:50%; transform:translateX(-50%); z-index:30; font-size:10.5px;
+    color:var(--sub); text-align:center; opacity:.75; white-space:nowrap;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="caption">
+  <h1>Native Random Bursts</h1>
+  <p>Tap anywhere or press a preset. CSS is gaining a native <code>random()</code> function so each particle's flight path can be computed declaratively in the stylesheet — this demo detects support live and computes the same custom properties in JS today, since no stable browser ships it yet.</p>
+</div>
+
+<div id="panel">
+  <h3>Engine</h3>
+  <div class="row">CSS <code>random()</code><b id="supportBadge">checking…</b></div>
+  <div class="row">Particles/burst<b id="countBadge">70</b></div>
+  <div class="row">Bursts fired<b id="burstBadge">0</b></div>
+</div>
+
+<div id="stage"></div>
+
+<div class="controls">
+  <button class="confetti" data-type="confetti">🎊 Confetti</button>
+  <button class="ember" data-type="ember">🔥 Embers</button>
+  <button class="bubble" data-type="bubble">💧 Bubbles</button>
+</div>
+
+<footer>Inspired by "CSS math-random() in Production" · SitePoint · UI Spotlight Day 71 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+  var stage = document.getElementById("stage");
+  var supportBadge = document.getElementById("supportBadge");
+  var burstBadge = document.getElementById("burstBadge");
+  var burstCount = 0;
+
+  var NATIVE_RANDOM = false;
+  try{
+    NATIVE_RANDOM = CSS.supports("width", "random(1px, 2px)");
+  }catch(e){ NATIVE_RANDOM = false; }
+  supportBadge.textContent = NATIVE_RANDOM ? "native ✓" : "JS fallback";
+
+  var confettiColors = ["#f472b6","#38bdf8","#fbbf24","#34d399","#a78bfa"];
+  var emberColors = ["#f97316","#ef4444","#fbbf24"];
+
+  function rand(min, max){ return min + Math.random() * (max - min); }
+
+  function spawnBurst(type, x, y){
+    var count = type === "bubble" ? 44 : 70;
+    document.getElementById("countBadge").textContent = count;
+    for(var i=0;i<count;i++){
+      var el = document.createElement("div");
+      el.className = "particle " + type;
+      el.style.setProperty("--ox", x + "px");
+      el.style.setProperty("--oy", y + "px");
+
+      var sz, dx, dy, rot, dur, delay, color;
+      if(type === "confetti"){
+        sz = rand(6,12); dx = rand(-170,170) + "px"; dy = rand(-260,-30) + "px";
+        rot = rand(-720,720) + "deg"; dur = rand(900,1700) + "ms"; delay = rand(0,220) + "ms";
+        color = confettiColors[i % confettiColors.length];
+      } else if(type === "ember"){
+        sz = rand(3,8); dx = rand(-60,60) + "px"; dy = rand(-260,-120) + "px";
+        rot = rand(-90,90) + "deg"; dur = rand(1100,2000) + "ms"; delay = rand(0,300) + "ms";
+        color = emberColors[i % emberColors.length];
+      } else {
+        sz = rand(8,20); dx = rand(-90,90) + "px"; dy = rand(-220,-100) + "px";
+        rot = rand(-40,40) + "deg"; dur = rand(1400,2400) + "ms"; delay = rand(0,260) + "ms";
+        color = "transparent";
+      }
+
+      el.style.setProperty("--sz", sz + "px");
+      el.style.setProperty("--dx", dx);
+      el.style.setProperty("--dy", dy);
+      el.style.setProperty("--rot", rot);
+      el.style.setProperty("--dur", dur);
+      el.style.setProperty("--delay", delay);
+      if(type !== "bubble"){ el.style.background = color; el.style.color = color; }
+
+      stage.appendChild(el);
+      el.addEventListener("animationend", function(){ this.remove(); }, { once:true });
+    }
+    burstCount++; burstBadge.textContent = burstCount;
+  }
+
+  document.querySelectorAll(".controls button").forEach(function(btn){
+    btn.addEventListener("click", function(e){
+      var rect = document.body.getBoundingClientRect();
+      spawnBurst(btn.dataset.type, rect.width/2, rect.height * 0.62);
+    });
+  });
+
+  document.getElementById("stage").addEventListener("pointerdown", function(e){
+    spawnBurst("confetti", e.clientX, e.clientY);
+  });
+
+  setTimeout(function(){
+    var rect = document.body.getBoundingClientRect();
+    spawnBurst("confetti", rect.width/2, rect.height*0.6);
+  }, 500);
+})();
+</script>
+</body>
+</html>

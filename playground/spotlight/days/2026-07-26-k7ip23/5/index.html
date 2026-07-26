@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streaming Response Bubble — UI Spotlight Day 71</title>
+<style>
+  :root{ --bg:#08090d; --panel:rgba(255,255,255,.06); --panel-b:rgba(255,255,255,.1); --text:#eef0f8; --sub:#8b93a7; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; background:
+      radial-gradient(900px 600px at 50% 0%, rgba(167,139,250,.10), transparent 60%), var(--bg);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:70px 20px 40px; display:flex; flex-direction:column; align-items:center;}
+
+  .back-link{position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:var(--text);
+    background:rgba(20,22,30,.6); border:1px solid var(--panel-b); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;}
+  .back-link:hover{background:rgba(20,22,30,.85);}
+
+  .caption{text-align:center; max-width:600px; margin-bottom:24px;}
+  .caption h1{font-size:clamp(18px,3.4vw,24px); margin:0 0 8px; font-weight:800;}
+  .caption p{margin:0; font-size:13px; color:var(--sub); line-height:1.6;}
+
+  .presets{display:flex; gap:8px; margin-bottom:22px; flex-wrap:wrap; justify-content:center;}
+  .presets button{padding:9px 15px; border-radius:12px; border:1px solid var(--panel-b); cursor:pointer;
+    font-family:inherit; font-size:12.5px; font-weight:700; color:var(--text); background:rgba(255,255,255,.05);}
+  .presets button.active{background:linear-gradient(135deg,#a78bfa,#38bdf8); color:#0a0f18; border:none;}
+
+  .chatWrap{width:100%; max-width:600px;}
+  .bubble{background:var(--panel); border:1px solid var(--panel-b); border-radius:18px 18px 18px 4px;
+    padding:18px 20px; min-height:70px; font-size:14.5px; line-height:1.7;}
+  .bubble p{margin:0 0 10px;}
+  .bubble p:last-child{margin-bottom:0;}
+  .cursor{display:inline-block; width:2px; height:1.1em; background:var(--accent); vertical-align:text-bottom;
+    animation:blink 1s steps(1) infinite; margin-left:1px;}
+  @keyframes blink{ 0%,50%{opacity:1;} 50.01%,100%{opacity:0;} }
+
+  .codePlaceholder{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--sub); margin:8px 0;
+    padding:10px 12px; border:1px dashed var(--panel-b); border-radius:10px;}
+  .codePlaceholder::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--accent);
+    animation:pulse 1s ease-in-out infinite;}
+  @keyframes pulse{ 0%,100%{opacity:.3;} 50%{opacity:1;} }
+
+  .bubble pre{background:#0d0e14; border:1px solid var(--panel-b); border-radius:10px; padding:12px 14px;
+    overflow-x:auto; margin:8px 0; font-size:12.5px; line-height:1.55;}
+  .bubble code{font-family:"SF Mono",Consolas,Menlo,monospace;}
+  .kw{color:#c084fc;} .str{color:#4ade80;} .cmt{color:#6b7280; font-style:italic;} .num{color:#fbbf24;}
+
+  .actions{display:flex; gap:8px; margin-top:12px; min-height:34px;}
+  .actions button{padding:7px 13px; border-radius:10px; border:1px solid var(--panel-b); cursor:pointer;
+    font-family:inherit; font-size:12px; font-weight:600; color:var(--text); background:rgba(255,255,255,.05);
+    opacity:0; transform:translateY(4px); transition:opacity .35s, transform .35s; pointer-events:none;}
+  .actions button.show{opacity:1; transform:translateY(0); pointer-events:auto;}
+  .actions .stop{background:rgba(239,68,68,.18); border-color:rgba(239,68,68,.4); color:#fca5a5;}
+
+  #status{margin-top:14px; font-size:11.5px; color:var(--sub);}
+
+  #panel{position:fixed; top:14px; right:14px; z-index:40; background:rgba(20,22,30,.68); border:1px solid var(--panel-b);
+    backdrop-filter:blur(14px); border-radius:14px; padding:14px 16px; font-size:12px; width:190px;}
+  #panel h3{margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub);}
+  #panel label{display:block; margin:8px 0 3px; color:var(--sub); display:flex; justify-content:space-between;}
+  #panel input[type=range]{width:100%; accent-color:var(--accent);}
+  @media (max-width:820px){ #panel{display:none;} }
+
+  footer{text-align:center; color:var(--sub); font-size:11px; margin-top:30px; opacity:.8;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="caption">
+  <h1>Streaming Response Bubble</h1>
+  <p>The AI-era "toast": text appends token-by-token with a blinking cursor, code fences buffer silently until they close so no broken markup ever flashes, and Stop halts generation instantly.</p>
+</div>
+
+<div class="presets" id="presets">
+  <button data-p="closures" class="active">Explain closures</button>
+  <button data-p="haiku">Write a haiku</button>
+  <button data-p="code">Show code snippet</button>
+</div>
+
+<div class="chatWrap">
+  <div class="bubble" id="bubble"><span class="cursor" id="cursor"></span></div>
+  <div class="actions" id="actions">
+    <button class="stop" id="stopBtn">⏹ Stop</button>
+    <button id="copyBtn">📋 Copy</button>
+    <button id="regenBtn">↻ Regenerate</button>
+  </div>
+  <div id="status">streaming…</div>
+</div>
+
+<div id="panel">
+  <h3>Stream</h3>
+  <label>Token speed <span id="vSpeed">35ms</span></label>
+  <input type="range" id="speed" min="10" max="90" step="5" value="35">
+</div>
+
+<footer>Inspired by "Streaming" output pattern · AI UX Playground · UI Spotlight Day 71 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+  var PRESETS = {
+    closures:
+      "Closures let an inner function remember the variables from the scope it was created in, even after that outer function has returned.\n\n" +
+      "Each call to the outer function creates a fresh scope, so every closure it returns keeps its own private copy of those variables — that's how counters, memoized caches, and private state are built in JavaScript without classes.",
+    haiku:
+      "cursor blinks and waits\n\nwords arrive like falling rain\n\nsilence, then — enter",
+    code:
+      "Here's a small debounce helper that only fires after the user stops typing:\n\n" +
+      "```js\n" +
+      "function debounce(fn, wait) {\n" +
+      "  let t; // pending timer id\n" +
+      "  return (...args) => {\n" +
+      "    clearTimeout(t);\n" +
+      "    t = setTimeout(() => fn(...args), wait);\n" +
+      "  };\n" +
+      "}\n" +
+      "```\n\n" +
+      "Call `debounce(save, 400)` and it only invokes `save` 400ms after the last call."
+  };
+
+  var bubble = document.getElementById("bubble");
+  var cursor = document.getElementById("cursor");
+  var actions = document.getElementById("actions");
+  var stopBtn = document.getElementById("stopBtn");
+  var copyBtn = document.getElementById("copyBtn");
+  var regenBtn = document.getElementById("regenBtn");
+  var statusEl = document.getElementById("status");
+  var speedInput = document.getElementById("speed");
+  var SPEED = 35;
+  speedInput.addEventListener("input", function(){ SPEED = parseInt(this.value,10); document.getElementById("vSpeed").textContent = SPEED + "ms"; });
+
+  var currentPreset = "closures";
+  var timer = null;
+
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function highlight(code){
+    var h = esc(code);
+    h = h.replace(/(\/\/.*$)/gm, '<span class="cmt">$1</span>');
+    h = h.replace(/(`[^`]*`|"[^"]*"|'[^']*')/g, '<span class="str">$1</span>');
+    h = h.replace(/\b(function|const|let|var|return|if|else|for|while|new|class|await|async)\b/g, '<span class="kw">$1</span>');
+    h = h.replace(/\b(\d+)\b/g, '<span class="num">$1</span>');
+    return h;
+  }
+
+  function buildQueue(raw){
+    var lines = raw.split("\n");
+    var queue = [];
+    var inCode = false, lang = "";
+    lines.forEach(function(line){
+      if(/^```/.test(line)){
+        if(!inCode){ inCode = true; lang = line.slice(3).trim(); queue.push({t:"codeStart", lang:lang}); }
+        else { inCode = false; queue.push({t:"codeEnd"}); }
+        return;
+      }
+      if(inCode){ queue.push({t:"codeLine", v:line}); return; }
+      if(line.length === 0){ queue.push({t:"break"}); return; }
+      var words = line.split(/(\s+)/).filter(function(w){ return w.length > 0; });
+      words.forEach(function(w){ queue.push({t:"word", v:w}); });
+      queue.push({t:"break"});
+    });
+    return queue;
+  }
+
+  var currentParagraph, placeholderEl, codeBuffer, codeLang, inCodeMode;
+
+  function resetRender(){
+    bubble.innerHTML = "";
+    bubble.appendChild(cursor);
+    currentParagraph = null; placeholderEl = null; codeBuffer = []; codeLang = ""; inCodeMode = false;
+  }
+
+  function processAction(a){
+    if(a.t === "word"){
+      if(!currentParagraph){ currentParagraph = document.createElement("p"); bubble.insertBefore(currentParagraph, cursor); }
+      currentParagraph.appendChild(document.createTextNode(a.v));
+    } else if(a.t === "break"){
+      currentParagraph = null;
+    } else if(a.t === "codeStart"){
+      inCodeMode = true; codeBuffer = []; codeLang = a.lang;
+      placeholderEl = document.createElement("div");
+      placeholderEl.className = "codePlaceholder";
+      placeholderEl.textContent = "writing " + (a.lang || "code") + "…";
+      bubble.insertBefore(placeholderEl, cursor);
+    } else if(a.t === "codeLine"){
+      codeBuffer.push(a.v);
+    } else if(a.t === "codeEnd"){
+      inCodeMode = false;
+      if(placeholderEl){ placeholderEl.remove(); placeholderEl = null; }
+      var pre = document.createElement("pre");
+      var code = document.createElement("code");
+      code.innerHTML = highlight(codeBuffer.join("\n"));
+      pre.appendChild(code);
+      bubble.insertBefore(pre, cursor);
+      currentParagraph = null;
+    }
+  }
+
+  function showActions(){
+    actions.querySelectorAll("button").forEach(function(b){ b.classList.add("show"); });
+    stopBtn.classList.remove("show");
+  }
+
+  function stream(presetKey){
+    currentPreset = presetKey;
+    clearInterval(timer);
+    resetRender();
+    cursor.style.display = "inline-block";
+    actions.querySelectorAll("button").forEach(function(b){ b.classList.remove("show"); });
+    stopBtn.classList.add("show");
+    statusEl.textContent = "streaming…";
+
+    var queue = buildQueue(PRESETS[presetKey]);
+    var qi = 0;
+
+    timer = setInterval(function(){
+      if(qi >= queue.length){
+        finish(false);
+        return;
+      }
+      processAction(queue[qi++]);
+    }, SPEED);
+
+    function finish(stopped){
+      clearInterval(timer);
+      if(inCodeMode){
+        // flush whatever code arrived before the stop
+        if(placeholderEl) placeholderEl.remove();
+        if(codeBuffer.length){
+          var pre = document.createElement("pre");
+          var code = document.createElement("code");
+          code.innerHTML = highlight(codeBuffer.join("\n"));
+          pre.appendChild(code);
+          bubble.insertBefore(pre, cursor);
+        }
+      }
+      cursor.style.display = "none";
+      statusEl.textContent = stopped ? "generation stopped." : "done.";
+      showActions();
+    }
+
+    stopBtn.onclick = function(){ finish(true); };
+  }
+
+  copyBtn.addEventListener("click", function(){
+    var text = bubble.innerText.replace(/​/g, "");
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(text).then(function(){
+        statusEl.textContent = "copied to clipboard.";
+      }).catch(function(){ statusEl.textContent = "copy failed."; });
+    }
+  });
+  regenBtn.addEventListener("click", function(){ stream(currentPreset); });
+
+  document.getElementById("presets").addEventListener("click", function(e){
+    var btn = e.target.closest("button[data-p]");
+    if(!btn) return;
+    document.querySelectorAll(".presets button").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    stream(btn.dataset.p);
+  });
+
+  stream("closures");
+})();
+</script>
+</body>
+</html>
