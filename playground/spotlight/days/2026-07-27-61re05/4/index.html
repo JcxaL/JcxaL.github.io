@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cursor FX Lab — Micro-interaction Spotlight</title>
+<style>
+  :root{ --amber:#fbbf24; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; height:100%; background:#0b0710; overflow:hidden; font-family:system-ui,-apple-system,sans-serif; color:#f6f1e6;}
+  canvas{position:fixed; inset:0; width:100%; height:100%; z-index:1;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:#eaf1ff;
+    background:rgba(20,26,42,0.7); backdrop-filter:blur(10px); border:1px solid rgba(120,160,255,0.22);
+    padding:8px 14px; border-radius:999px; font-size:12.5px; font-weight:600;
+  }
+  .back-link:hover{background:rgba(40,52,80,0.85);}
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:rgba(20,16,28,0.72); backdrop-filter:blur(12px);
+    border:1px solid rgba(251,191,36,0.25); border-radius:14px; padding:12px 14px; display:flex; gap:8px; flex-wrap:wrap; max-width:220px;
+  }
+  #panel button{
+    background:rgba(255,255,255,0.06); border:1px solid rgba(251,191,36,0.3); color:#f6f1e6;
+    padding:8px 12px; border-radius:9px; font-family:inherit; font-size:12px; cursor:pointer;
+  }
+  #panel button.active{ background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#1a1206; font-weight:700; border-color:transparent; }
+  #hero{
+    position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; z-index:2; pointer-events:none;
+  }
+  #hero h1{ font-size:clamp(26px,6vw,52px); margin:0; }
+  #hero p{ color:#c9b48a; margin-top:10px; font-size:14px; max-width:320px; }
+  footer{
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:20; color:#5c6b8c;
+    font-size:10.5px; text-align:center; width:90%;
+  }
+  footer a{ color:#fbbf24; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<canvas id="c"></canvas>
+<div id="hero">
+  <h1>Cursor FX Lab</h1>
+  <p>Move your mouse or drag a finger across the canvas — pick an effect below.</p>
+</div>
+<div id="panel">
+  <button class="active" data-fx="particles">Particle Trail</button>
+  <button data-fx="ribbon">Magnetic Ribbon</button>
+  <button data-fx="ripple">Ripple Burst</button>
+</div>
+<footer>Inspired by Felix-au's <a href="https://github.com/Felix-au/CursorX-Interactive-Cursor-Effects" target="_blank" rel="noopener">CursorX Interactive Cursor Effects</a> (Canvas API cursor showcase) · UI Spotlight Day 71 · Drop #4</footer>
+<script>
+(function(){
+  "use strict";
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var DPR = Math.min(window.devicePixelRatio||1, 2);
+  var W=0,H=0;
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W*DPR; canvas.height = H*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var fx = 'particles';
+  document.querySelectorAll('#panel button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('#panel button').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      fx = btn.getAttribute('data-fx');
+      particlePool.length = 0; ribbonPoints.length = 0; ripples.length = 0;
+    });
+  });
+
+  var pointer = { x: W/2, y: H/2, px: W/2, py: H/2, down:false, active:false };
+  function updatePointer(x,y){
+    pointer.px = pointer.x; pointer.py = pointer.y;
+    pointer.x = x; pointer.y = y; pointer.active = true;
+  }
+  window.addEventListener('pointermove', function(e){ updatePointer(e.clientX, e.clientY); });
+  window.addEventListener('pointerdown', function(e){ pointer.down = true; updatePointer(e.clientX, e.clientY); if (fx==='ripple') spawnRipple(e.clientX, e.clientY); });
+  window.addEventListener('pointerup', function(){ pointer.down = false; });
+  canvas.addEventListener('pointerdown', function(e){ if (fx==='ripple') spawnRipple(e.clientX, e.clientY); });
+
+  // ---- Effect 1: Particle trail ----
+  var particlePool = [];
+  function stepParticles(){
+    var speed = Math.hypot(pointer.x-pointer.px, pointer.y-pointer.py);
+    if (pointer.active && speed > 0.5){
+      var n = Math.min(4, Math.ceil(speed/8));
+      for (var i=0;i<n;i++){
+        particlePool.push({
+          x: pointer.x + (Math.random()-0.5)*6, y: pointer.y + (Math.random()-0.5)*6,
+          vx: (Math.random()-0.5)*1.4, vy: (Math.random()-0.5)*1.4 - 0.3,
+          life: 1, hue: 40 + Math.random()*20, r: 2+Math.random()*3
+        });
+      }
+    }
+    ctx.clearRect(0,0,W,H);
+    for (var p=particlePool.length-1;p>=0;p--){
+      var pt = particlePool[p];
+      pt.x += pt.vx; pt.y += pt.vy; pt.life -= 0.018;
+      if (pt.life <= 0){ particlePool.splice(p,1); continue; }
+      ctx.beginPath();
+      ctx.fillStyle = 'hsla(' + pt.hue + ',95%,65%,' + pt.life + ')';
+      ctx.arc(pt.x, pt.y, pt.r*pt.life, 0, Math.PI*2);
+      ctx.fill();
+    }
+    if (particlePool.length > 400) particlePool.splice(0, particlePool.length-400);
+  }
+
+  // ---- Effect 2: Magnetic ribbon (spring-chained segments) ----
+  var ribbonPoints = [];
+  var RIBBON_LEN = 22;
+  function initRibbon(){
+    ribbonPoints = [];
+    for (var i=0;i<RIBBON_LEN;i++) ribbonPoints.push({x:pointer.x, y:pointer.y});
+  }
+  function stepRibbon(){
+    if (ribbonPoints.length === 0) initRibbon();
+    ribbonPoints[0].x += (pointer.x - ribbonPoints[0].x) * 0.5;
+    ribbonPoints[0].y += (pointer.y - ribbonPoints[0].y) * 0.5;
+    for (var i=1;i<ribbonPoints.length;i++){
+      ribbonPoints[i].x += (ribbonPoints[i-1].x - ribbonPoints[i].x) * 0.42;
+      ribbonPoints[i].y += (ribbonPoints[i-1].y - ribbonPoints[i].y) * 0.42;
+    }
+    ctx.clearRect(0,0,W,H);
+    for (var s=0;s<ribbonPoints.length-1;s++){
+      var t = s/ribbonPoints.length;
+      var w = (1-t) * 16 + 1;
+      ctx.beginPath();
+      ctx.moveTo(ribbonPoints[s].x, ribbonPoints[s].y);
+      ctx.lineTo(ribbonPoints[s+1].x, ribbonPoints[s+1].y);
+      ctx.strokeStyle = 'hsla(' + (280 - t*120) + ',90%,68%,' + (0.9-t*0.7) + ')';
+      ctx.lineWidth = w;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+    var head = ribbonPoints[0];
+    ctx.beginPath(); ctx.arc(head.x, head.y, 7, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+  }
+
+  // ---- Effect 3: Ripple burst on click ----
+  var ripples = [];
+  function spawnRipple(x,y){
+    ripples.push({ x:x, y:y, r:4, alpha:1 });
+  }
+  function stepRipples(){
+    ctx.clearRect(0,0,W,H);
+    // faint cursor dot
+    ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 4, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(251,191,36,0.6)'; ctx.fill();
+    for (var i=ripples.length-1;i>=0;i--){
+      var r = ripples[i];
+      r.r += 3.2; r.alpha -= 0.014;
+      if (r.alpha <= 0){ ripples.splice(i,1); continue; }
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.r, 0, Math.PI*2);
+      ctx.strokeStyle = 'hsla(' + (38 + r.r*0.6) + ',95%,60%,' + r.alpha + ')';
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    }
+  }
+
+  function loop(){
+    if (fx === 'particles') stepParticles();
+    else if (fx === 'ribbon') stepRibbon();
+    else if (fx === 'ripple') stepRipples();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // touch fallback: simulate movement/ripple for touch devices
+  canvas.addEventListener('touchmove', function(e){
+    if (e.touches[0]) updatePointer(e.touches[0].clientX, e.touches[0].clientY);
+  }, {passive:true});
+})();
+</script>
+</body>
+</html>

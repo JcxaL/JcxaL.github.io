@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Field Lab — Electric Field Sandbox</title>
+<style>
+  :root{
+    --bg:#050912; --panel:rgba(18,26,42,0.82); --panel-brd:rgba(120,160,255,0.18);
+    --pos:#ff5f6d; --neg:#4fa8ff; --accent:#7dd3fc; --text:#eaf1ff; --muted:#8fa3c7;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:var(--bg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);}
+  #app{position:fixed; inset:0;}
+  canvas{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
+  #fieldCanvas{z-index:1;}
+  #fxCanvas{z-index:2; pointer-events:none;}
+
+  .glass{
+    background:var(--panel); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--panel-brd); border-radius:16px; box-shadow:0 8px 30px rgba(0,0,0,0.4);
+  }
+
+  #topbar{
+    position:absolute; top:12px; left:12px; right:12px; z-index:10;
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:10px 14px;
+  }
+  #topbar h1{font-size:15px; margin:0; font-weight:700; letter-spacing:0.2px;}
+  #topbar h1 span{color:var(--muted); font-weight:500; font-size:12px; display:block; margin-top:2px;}
+  #topActions{display:flex; gap:6px;}
+  .iconbtn{
+    background:rgba(255,255,255,0.06); border:1px solid var(--panel-brd); color:var(--text);
+    border-radius:10px; padding:7px 10px; font-size:12px; cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; gap:5px; transition:background .15s, transform .1s;
+  }
+  .iconbtn:hover{background:rgba(255,255,255,0.14);}
+  .iconbtn:active{transform:scale(0.94);}
+
+  #modes{
+    position:absolute; top:70px; left:12px; z-index:10; padding:6px; display:flex; flex-direction:column; gap:4px;
+  }
+  .modebtn{
+    background:transparent; border:none; color:var(--muted); font-family:inherit; font-size:12.5px;
+    padding:9px 14px; border-radius:10px; cursor:pointer; text-align:left; white-space:nowrap; transition:all .15s;
+  }
+  .modebtn.active{background:linear-gradient(135deg,#3b6fd6,#7dd3fc); color:#08101f; font-weight:700;}
+  .modebtn:not(.active):hover{background:rgba(255,255,255,0.08); color:var(--text);}
+
+  #bottomPanel{
+    position:absolute; bottom:12px; left:12px; right:12px; z-index:10;
+    padding:12px 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  }
+  .field-group{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
+  .field-group label{white-space:nowrap;}
+  input[type=range]{width:90px; accent-color:var(--accent);}
+  select{
+    background:rgba(255,255,255,0.08); color:var(--text); border:1px solid var(--panel-brd);
+    border-radius:8px; padding:6px 8px; font-family:inherit; font-size:12px;
+  }
+
+  #polarityToggle{
+    display:flex; border-radius:10px; overflow:hidden; border:1px solid var(--panel-brd);
+  }
+  #polarityToggle button{
+    border:none; padding:8px 12px; font-family:inherit; font-size:12px; font-weight:700; cursor:pointer;
+    background:rgba(255,255,255,0.04); color:var(--muted);
+  }
+  #polarityToggle button.active[data-pol="1"]{background:var(--pos); color:#fff;}
+  #polarityToggle button.active[data-pol="-1"]{background:var(--neg); color:#fff;}
+
+  #hint{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:5;
+    padding:16px 22px; text-align:center; font-size:13px; color:var(--muted); pointer-events:none;
+    max-width:280px; opacity:1; transition:opacity .4s;
+  }
+  #hint b{color:var(--text);}
+  #hint.hide{opacity:0;}
+
+  #toast{
+    position:absolute; bottom:78px; left:50%; transform:translateX(-50%) translateY(10px); z-index:20;
+    padding:9px 16px; font-size:12.5px; border-radius:10px; opacity:0; pointer-events:none; transition:all .25s;
+    white-space:nowrap;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  #savePanel{
+    position:absolute; z-index:30; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(2,6,14,0.55); backdrop-filter:blur(4px);
+  }
+  #savePanel.open{display:flex;}
+  #savePanel .card{width:min(320px,86vw); padding:20px; display:flex; flex-direction:column; gap:12px;}
+  #savePanel h2{margin:0; font-size:15px;}
+  #savePanel input[type=text]{
+    background:rgba(255,255,255,0.07); border:1px solid var(--panel-brd); color:var(--text);
+    border-radius:8px; padding:9px 10px; font-family:inherit; font-size:13px; width:100%;
+  }
+  #savedList{max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;}
+  .savedRow{display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; padding:7px 9px; background:rgba(255,255,255,0.04); border-radius:8px;}
+  .savedRow button{background:none; border:none; color:var(--accent); cursor:pointer; font-family:inherit; font-size:11px;}
+  .rowbtns{display:flex; gap:10px;}
+  .primary{
+    background:linear-gradient(135deg,#3b6fd6,#7dd3fc); color:#08101f; border:none; border-radius:9px;
+    padding:10px; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;
+  }
+  .ghost{background:transparent; border:1px solid var(--panel-brd); color:var(--muted); border-radius:9px; padding:10px; cursor:pointer; font-family:inherit; font-size:13px;}
+
+  #legend{
+    position:absolute; top:70px; right:12px; z-index:10; padding:10px 12px; font-size:11px; color:var(--muted);
+    display:flex; flex-direction:column; gap:5px; max-width:150px;
+  }
+  #legend .row{display:flex; align-items:center; gap:6px;}
+  #legend .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+
+  @media (max-width:640px){
+    #topbar h1{font-size:13px;}
+    #topbar h1 span{display:none;}
+    #legend{display:none;}
+    #modes{top:64px; flex-direction:row; overflow-x:auto; max-width:calc(100vw - 24px); background:rgba(18,26,42,0.82); }
+    .modebtn{padding:8px 10px; font-size:11px;}
+    #bottomPanel{flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start;}
+    input[type=range]{width:64px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="fieldCanvas"></canvas>
+  <canvas id="fxCanvas"></canvas>
+
+  <div id="topbar" class="glass">
+    <h1>⚡ Field Lab <span>tap empty space to add a charge · drag to move</span></h1>
+    <div id="topActions">
+      <button class="iconbtn" id="btnRandom" title="Randomize">🎲 Random</button>
+      <button class="iconbtn" id="btnPng">⬇ PNG</button>
+      <button class="iconbtn" id="btnSave">💾 Save</button>
+      <button class="iconbtn" id="btnShare">🔗 Share</button>
+      <button class="iconbtn" id="btnReset">↺ Reset</button>
+    </div>
+  </div>
+
+  <div id="modes" class="glass">
+    <button class="modebtn active" data-mode="lines">Field Lines</button>
+    <button class="modebtn" data-mode="tracers">Iron Filings</button>
+    <button class="modebtn" data-mode="heat">Potential Heatmap</button>
+    <button class="modebtn" data-mode="vectors">Vector Grid</button>
+  </div>
+
+  <div id="legend" class="glass">
+    <div class="row"><span class="dot" style="background:var(--pos)"></span> Positive charge</div>
+    <div class="row"><span class="dot" style="background:var(--neg)"></span> Negative charge</div>
+    <div class="row" style="margin-top:2px;">Drag charges to move them. Double-tap a charge to delete it.</div>
+  </div>
+
+  <div id="hint">
+    <b>Tap anywhere</b> to place a charge.<br>Switch polarity below, drag the magnitude slider, then explore how the field reshapes in real time.
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="bottomPanel" class="glass">
+    <div id="polarityToggle">
+      <button data-pol="1" class="active">+ Positive</button>
+      <button data-pol="-1">− Negative</button>
+    </div>
+    <div class="field-group">
+      <label>Magnitude</label>
+      <input type="range" id="magSlider" min="1" max="10" value="4" step="1">
+    </div>
+    <div class="field-group">
+      <label>Density</label>
+      <input type="range" id="densitySlider" min="4" max="20" value="10" step="1">
+    </div>
+    <div class="field-group">
+      <label>Preset</label>
+      <select id="presetSelect">
+        <option value="">— choose —</option>
+        <option value="dipole">Dipole</option>
+        <option value="quadrupole">Quadrupole</option>
+        <option value="capacitor">Capacitor Plates</option>
+        <option value="ring">Ring of Charges</option>
+        <option value="random5">Random Cluster</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="savePanel">
+    <div class="card glass">
+      <h2>Saved Field Configs</h2>
+      <input type="text" id="saveNameInput" placeholder="Name this configuration…">
+      <button class="primary" id="btnDoSave">Save Current Field</button>
+      <div id="savedList"></div>
+      <button class="ghost" id="btnCloseSave">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var fieldCanvas = document.getElementById('fieldCanvas');
+  var fxCanvas = document.getElementById('fxCanvas');
+  var fctx = fieldCanvas.getContext('2d');
+  var xctx = fxCanvas.getContext('2d');
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  var W = 0, H = 0;
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    [fieldCanvas, fxCanvas].forEach(function(c){
+      c.width = Math.round(W * DPR);
+      c.height = Math.round(H * DPR);
+    });
+    fctx.setTransform(DPR,0,0,DPR,0,0);
+    xctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- State ----------
+  var charges = []; // {x,y,q,id}
+  var nextId = 1;
+  var mode = 'lines';
+  var density = 10;
+  var magnitude = 4;
+  var polarity = 1;
+  var K = 26000; // visual Coulomb constant, tuned for canvas-scale field strength
+  var tracerParticles = [];
+  var dragging = null;
+  var dragMoved = false;
+
+  var STORE_KEY = 'fieldlab_saves_v1';
+
+  function fieldAt(x,y){
+    var ex=0, ey=0;
+    for (var i=0;i<charges.length;i++){
+      var c = charges[i];
+      var dx = x - c.x, dy = y - c.y;
+      var r2 = dx*dx + dy*dy;
+      var r = Math.sqrt(r2) || 0.001;
+      var rSoft = Math.max(r, 14); // soften near singularity
+      var mag = K * c.q / (rSoft*rSoft);
+      ex += mag * dx / r;
+      ey += mag * dy / r;
+    }
+    return {x:ex, y:ey, mag:Math.hypot(ex,ey)};
+  }
+
+  function potentialAt(x,y){
+    var v = 0;
+    for (var i=0;i<charges.length;i++){
+      var c = charges[i];
+      var dx = x-c.x, dy = y-c.y;
+      var r = Math.max(Math.sqrt(dx*dx+dy*dy), 14);
+      v += K * c.q / r;
+    }
+    return v;
+  }
+
+  // ---------- Charge management ----------
+  function addCharge(x,y,q){
+    charges.push({x:x,y:y,q:q, id:nextId++});
+    persist();
+  }
+  function removeCharge(id){
+    charges = charges.filter(function(c){return c.id !== id;});
+    persist();
+  }
+  function chargeAtPoint(x,y){
+    for (var i=charges.length-1;i>=0;i--){
+      var c = charges[i];
+      var r = 14 + Math.abs(c.q)*2.2;
+      if (Math.hypot(x-c.x, y-c.y) < r+8) return c;
+    }
+    return null;
+  }
+
+  // ---------- Drawing ----------
+  function chargeColor(q){ return q > 0 ? '#ff5f6d' : '#4fa8ff'; }
+
+  function drawCharges(){
+    for (var i=0;i<charges.length;i++){
+      var c = charges[i];
+      var r = 12 + Math.abs(c.q)*2.4;
+      var grad = fctx.createRadialGradient(c.x,c.y,0,c.x,c.y,r*1.8);
+      var col = chargeColor(c.q);
+      grad.addColorStop(0, col);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      fctx.fillStyle = grad;
+      fctx.beginPath(); fctx.arc(c.x,c.y,r*1.8,0,Math.PI*2); fctx.fill();
+
+      fctx.fillStyle = col;
+      fctx.beginPath(); fctx.arc(c.x,c.y,r,0,Math.PI*2); fctx.fill();
+      fctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      fctx.lineWidth = 1.5;
+      fctx.stroke();
+
+      fctx.fillStyle = '#08101f';
+      fctx.font = '700 ' + Math.max(11,r*0.9) + 'px system-ui';
+      fctx.textAlign = 'center'; fctx.textBaseline = 'middle';
+      fctx.fillText(c.q > 0 ? '+' : '−', c.x, c.y+1);
+    }
+  }
+
+  function traceFieldLine(startX, startY, sign){
+    var pts = [[startX,startY]];
+    var x = startX, y = startY;
+    var stepLen = 4.5;
+    for (var i=0;i<800;i++){
+      var f = fieldAt(x,y);
+      if (f.mag < 1e-6) break;
+      var dx = f.x/f.mag, dy = f.y/f.mag;
+      x += dx*stepLen*sign; y += dy*stepLen*sign;
+      if (x<-20||x>W+20||y<-20||y>H+20) { pts.push([x,y]); break; }
+      // stop if landed on a negative-ish charge
+      var landed = false;
+      for (var k=0;k<charges.length;k++){
+        var c = charges[k];
+        if (sign>0 && c.q<0 && Math.hypot(x-c.x,y-c.y) < 16) { landed = true; break; }
+        if (sign<0 && c.q>0 && Math.hypot(x-c.x,y-c.y) < 16) { landed = true; break; }
+      }
+      pts.push([x,y]);
+      if (landed) break;
+    }
+    return pts;
+  }
+
+  function drawFieldLines(){
+    fctx.clearRect(0,0,W,H);
+    if (charges.length === 0) return;
+    fctx.lineWidth = 1.3;
+    fctx.strokeStyle = 'rgba(160,200,255,0.55)';
+    var linesPerCharge = Math.round(density);
+    charges.forEach(function(c){
+      if (c.q <= 0) return;
+      var n = Math.max(4, Math.round(linesPerCharge * Math.min(Math.abs(c.q),6)/4));
+      for (var i=0;i<n;i++){
+        var ang = (i/n) * Math.PI*2;
+        var sx = c.x + Math.cos(ang)*16, sy = c.y + Math.sin(ang)*16;
+        var pts = traceFieldLine(sx,sy,1);
+        drawPolyline(pts);
+      }
+    });
+    // lines emanating from negative charges that don't connect to a positive (open field), traced backward
+    charges.forEach(function(c){
+      if (c.q >= 0) return;
+      var hasPartner = charges.some(function(o){return o.q>0;});
+      if (hasPartner) return;
+      var n = Math.max(4, Math.round(linesPerCharge * Math.min(Math.abs(c.q),6)/4));
+      for (var i=0;i<n;i++){
+        var ang = (i/n) * Math.PI*2;
+        var sx = c.x + Math.cos(ang)*16, sy = c.y + Math.sin(ang)*16;
+        var pts = traceFieldLine(sx,sy,-1);
+        drawPolyline(pts);
+      }
+    });
+    drawCharges();
+  }
+
+  function drawPolyline(pts){
+    if (pts.length < 2) return;
+    fctx.beginPath();
+    fctx.moveTo(pts[0][0], pts[0][1]);
+    for (var i=1;i<pts.length;i++) fctx.lineTo(pts[i][0], pts[i][1]);
+    fctx.stroke();
+    // arrow near midpoint
+    var mid = pts[Math.floor(pts.length/2)];
+    var next = pts[Math.min(pts.length-1, Math.floor(pts.length/2)+2)];
+    if (mid && next){
+      var ang = Math.atan2(next[1]-mid[1], next[0]-mid[0]);
+      fctx.save();
+      fctx.translate(mid[0], mid[1]);
+      fctx.rotate(ang);
+      fctx.beginPath();
+      fctx.moveTo(4,0); fctx.lineTo(-4,-3); fctx.lineTo(-4,3); fctx.closePath();
+      fctx.fillStyle = 'rgba(200,225,255,0.75)';
+      fctx.fill();
+      fctx.restore();
+    }
+  }
+
+  function drawHeatmap(){
+    var cell = 10;
+    var cols = Math.ceil(W/cell), rows = Math.ceil(H/cell);
+    var img = fctx.createImageData(cols, rows);
+    var maxV = 1;
+    var vals = new Float32Array(cols*rows);
+    for (var j=0;j<rows;j++){
+      for (var i=0;i<cols;i++){
+        var v = potentialAt(i*cell+cell/2, j*cell+cell/2);
+        vals[j*cols+i] = v;
+        if (Math.abs(v) > maxV) maxV = Math.abs(v);
+      }
+    }
+    for (var j2=0;j2<rows;j2++){
+      for (var i2=0;i2<cols;i2++){
+        var vn = vals[j2*cols+i2]/maxV; // -1..1
+        var idx = (j2*cols+i2)*4;
+        var r,g,b;
+        if (vn >= 0){ r = 255*Math.min(1,vn*1.4); g = 60*vn; b = 40; }
+        else { r = 40; g = 70*(-vn); b = 255*Math.min(1,-vn*1.4); }
+        img.data[idx]=r; img.data[idx+1]=g; img.data[idx+2]=b; img.data[idx+3]=210;
+      }
+    }
+    var off = document.createElement('canvas');
+    off.width = cols; off.height = rows;
+    off.getContext('2d').putImageData(img,0,0);
+    fctx.clearRect(0,0,W,H);
+    fctx.imageSmoothingEnabled = true;
+    fctx.drawImage(off, 0,0, cols, rows, 0,0, W, H);
+
+    // faint equipotential contour rings via field line overlay
+    fctx.globalAlpha = 0.35;
+    drawVectorsOverlayLight();
+    fctx.globalAlpha = 1;
+    drawCharges();
+  }
+
+  function drawVectorsOverlayLight(){
+    var step = 46;
+    fctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    fctx.lineWidth = 1;
+    for (var y=step/2;y<H;y+=step){
+      for (var x=step/2;x<W;x+=step){
+        var f = fieldAt(x,y);
+        if (f.mag < 1e-6) continue;
+        var len = Math.min(14, 3+Math.log(f.mag+1)*2);
+        var dx = f.x/f.mag*len, dy = f.y/f.mag*len;
+        fctx.beginPath(); fctx.moveTo(x-dx/2,y-dy/2); fctx.lineTo(x+dx/2,y+dy/2); fctx.stroke();
+      }
+    }
+  }
+
+  function drawVectorGrid(){
+    fctx.clearRect(0,0,W,H);
+    var step = Math.max(24, 56 - density*1.6);
+    for (var y=step/2;y<H;y+=step){
+      for (var x=step/2;x<W;x+=step){
+        var f = fieldAt(x,y);
+        if (f.mag < 1e-6) continue;
+        var logMag = Math.log(f.mag+1);
+        var len = Math.min(step*0.8, 4 + logMag*2.6);
+        var dx = f.x/f.mag*len, dy = f.y/f.mag*len;
+        var t = Math.min(1, logMag/9);
+        var col = 'rgba(' + Math.round(90+165*t) + ',' + Math.round(120+80*(1-t)) + ',255,' + (0.35+0.55*t) + ')';
+        fctx.strokeStyle = col;
+        fctx.lineWidth = 1.4;
+        var ang = Math.atan2(dy,dx);
+        fctx.save();
+        fctx.translate(x,y);
+        fctx.rotate(ang);
+        fctx.beginPath(); fctx.moveTo(-len/2,0); fctx.lineTo(len/2,0); fctx.stroke();
+        fctx.beginPath(); fctx.moveTo(len/2,0); fctx.lineTo(len/2-4,-3); fctx.lineTo(len/2-4,3); fctx.closePath();
+        fctx.fillStyle = col; fctx.fill();
+        fctx.restore();
+      }
+    }
+    drawCharges();
+  }
+
+  // Iron-filings tracer particles (animated dots that flow along field lines)
+  function seedTracers(){
+    tracerParticles = [];
+    var count = Math.round(60 + density*10);
+    for (var i=0;i<count;i++){
+      tracerParticles.push({x:Math.random()*W, y:Math.random()*H, life:Math.random()*120, trail:[]});
+    }
+  }
+  function stepTracers(){
+    xctx.clearRect(0,0,W,H);
+    if (charges.length === 0) return;
+    xctx.lineWidth = 1.1;
+    for (var i=0;i<tracerParticles.length;i++){
+      var p = tracerParticles[i];
+      var f = fieldAt(p.x, p.y);
+      if (f.mag > 1e-6){
+        var speed = Math.min(3.2, 0.4 + Math.log(f.mag+1)*0.35);
+        p.x += f.x/f.mag*speed;
+        p.y += f.y/f.mag*speed;
+      }
+      p.trail.push([p.x,p.y]);
+      if (p.trail.length > 10) p.trail.shift();
+      p.life--;
+      var offscreen = p.x<-10||p.x>W+10||p.y<-10||p.y>H+10;
+      var nearCharge = charges.some(function(c){return Math.hypot(p.x-c.x,p.y-c.y) < 15 && c.q<0;});
+      if (p.life <= 0 || offscreen || nearCharge){
+        p.x = Math.random()*W; p.y = Math.random()*H; p.life = 80+Math.random()*120; p.trail = [];
+      }
+      if (p.trail.length > 1){
+        xctx.beginPath();
+        xctx.moveTo(p.trail[0][0], p.trail[0][1]);
+        for (var t=1;t<p.trail.length;t++) xctx.lineTo(p.trail[t][0], p.trail[t][1]);
+        xctx.strokeStyle = 'rgba(160,215,255,0.55)';
+        xctx.stroke();
+        var last = p.trail[p.trail.length-1];
+        xctx.beginPath(); xctx.arc(last[0],last[1],1.6,0,Math.PI*2);
+        xctx.fillStyle = 'rgba(220,240,255,0.9)'; xctx.fill();
+      }
+    }
+  }
+
+  // ---------- Render loop ----------
+  var rafId = null;
+  function render(){
+    if (mode === 'lines'){ drawFieldLines(); xctx.clearRect(0,0,W,H); }
+    else if (mode === 'heat'){ drawHeatmap(); xctx.clearRect(0,0,W,H); }
+    else if (mode === 'vectors'){ drawVectorGrid(); xctx.clearRect(0,0,W,H); }
+    else if (mode === 'tracers'){
+      fctx.clearRect(0,0,W,H);
+      drawFadedLinesBackdrop();
+      drawCharges();
+      stepTracers();
+    }
+    rafId = requestAnimationFrame(render);
+  }
+
+  function drawFadedLinesBackdrop(){
+    fctx.globalAlpha = 0.22;
+    fctx.lineWidth = 1;
+    fctx.strokeStyle = 'rgba(140,180,255,0.5)';
+    var linesPerCharge = Math.max(3, Math.round(density*0.5));
+    charges.forEach(function(c){
+      if (c.q <= 0) return;
+      for (var i=0;i<linesPerCharge;i++){
+        var ang = (i/linesPerCharge)*Math.PI*2;
+        var pts = traceFieldLine(c.x+Math.cos(ang)*16, c.y+Math.sin(ang)*16, 1);
+        drawPolylineNoArrow(pts);
+      }
+    });
+    fctx.globalAlpha = 1;
+  }
+  function drawPolylineNoArrow(pts){
+    if (pts.length<2) return;
+    fctx.beginPath(); fctx.moveTo(pts[0][0],pts[0][1]);
+    for (var i=1;i<pts.length;i++) fctx.lineTo(pts[i][0],pts[i][1]);
+    fctx.stroke();
+  }
+
+  // ---------- Input ----------
+  function hideHint(){ document.getElementById('hint').classList.add('hide'); }
+
+  function pointerDown(x,y){
+    var hit = chargeAtPoint(x,y);
+    if (hit){ dragging = hit; dragMoved = false; return; }
+    addCharge(x,y, polarity*magnitude);
+    hideHint();
+    showToast((polarity>0?'+':'−') + magnitude + ' charge placed');
+  }
+  function pointerMove(x,y){
+    if (dragging){
+      dragging.x = x; dragging.y = y; dragMoved = true; persist();
+    }
+  }
+  function pointerUp(){ dragging = null; }
+
+  var lastTapTime = 0, lastTapCharge = null;
+  fieldCanvas.addEventListener('pointerdown', function(e){
+    var rect = fieldCanvas.getBoundingClientRect();
+    var x = e.clientX - rect.left, y = e.clientY - rect.top;
+    var hit = chargeAtPoint(x,y);
+    var now = Date.now();
+    if (hit && lastTapCharge === hit.id && now - lastTapTime < 350){
+      removeCharge(hit.id);
+      showToast('Charge removed');
+      lastTapCharge = null;
+      return;
+    }
+    lastTapTime = now; lastTapCharge = hit ? hit.id : null;
+    pointerDown(x,y);
+  });
+  fieldCanvas.addEventListener('pointermove', function(e){
+    var rect = fieldCanvas.getBoundingClientRect();
+    pointerMove(e.clientX - rect.left, e.clientY - rect.top);
+  });
+  window.addEventListener('pointerup', pointerUp);
+  window.addEventListener('pointercancel', pointerUp);
+
+  // ---------- UI wiring ----------
+  document.querySelectorAll('.modebtn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.modebtn').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      mode = btn.getAttribute('data-mode');
+      if (mode === 'tracers') seedTracers();
+    });
+  });
+
+  document.querySelectorAll('#polarityToggle button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('#polarityToggle button').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      polarity = parseInt(btn.getAttribute('data-pol'),10);
+    });
+  });
+
+  document.getElementById('magSlider').addEventListener('input', function(e){
+    magnitude = parseInt(e.target.value,10);
+  });
+  document.getElementById('densitySlider').addEventListener('input', function(e){
+    density = parseInt(e.target.value,10);
+  });
+
+  document.getElementById('btnReset').addEventListener('click', function(){
+    charges = []; persist(); showToast('Field cleared');
+  });
+
+  document.getElementById('btnRandom').addEventListener('click', function(){
+    applyPreset('random5');
+  });
+
+  var toastTimer = null;
+  function showToast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 1600);
+  }
+
+  // Presets
+  function applyPreset(name){
+    var cx = W/2, cy = H/2;
+    charges = [];
+    if (name === 'dipole'){
+      addCharge(cx-100, cy, 5);
+      addCharge(cx+100, cy, -5);
+    } else if (name === 'quadrupole'){
+      addCharge(cx-100, cy-100, 5);
+      addCharge(cx+100, cy-100, -5);
+      addCharge(cx-100, cy+100, -5);
+      addCharge(cx+100, cy+100, 5);
+    } else if (name === 'capacitor'){
+      for (var i=-3;i<=3;i++){
+        addCharge(cx-130, cy+i*30, 3);
+        addCharge(cx+130, cy+i*30, -3);
+      }
+    } else if (name === 'ring'){
+      var n = 6, R = 140;
+      for (var k=0;k<n;k++){
+        var ang = (k/n)*Math.PI*2;
+        addCharge(cx+Math.cos(ang)*R, cy+Math.sin(ang)*R, k%2===0?4:-4);
+      }
+    } else if (name === 'random5'){
+      var count = 4 + Math.floor(Math.random()*3);
+      for (var r=0;r<count;r++){
+        addCharge(80+Math.random()*(W-160), 100+Math.random()*(H-220), (Math.random()<0.5?-1:1)*(2+Math.floor(Math.random()*6)));
+      }
+    }
+    hideHint();
+    if (mode === 'tracers') seedTracers();
+    showToast('Preset loaded: ' + (name === 'random5' ? 'Random Cluster' : name));
+  }
+
+  document.getElementById('presetSelect').addEventListener('change', function(e){
+    if (e.target.value) applyPreset(e.target.value);
+    e.target.value = '';
+  });
+
+  // ---------- PNG export ----------
+  document.getElementById('btnPng').addEventListener('click', function(){
+    var out = document.createElement('canvas');
+    out.width = fieldCanvas.width; out.height = fieldCanvas.height;
+    var octx = out.getContext('2d');
+    octx.fillStyle = '#050912';
+    octx.fillRect(0,0,out.width,out.height);
+    octx.drawImage(fieldCanvas, 0, 0);
+    octx.drawImage(fxCanvas, 0, 0);
+    out.toBlob(function(blob){
+      if (!blob || blob.size === 0){ showToast('Export failed'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'field-lab-' + Date.now() + '.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      showToast('PNG downloaded');
+    }, 'image/png');
+  });
+
+  // ---------- Share via URL hash ----------
+  function encodeState(){
+    var payload = {c: charges.map(function(c){return [Math.round(c.x),Math.round(c.y),c.q];}), m: mode};
+    return btoa(encodeURIComponent(JSON.stringify(payload)));
+  }
+  function decodeState(hash){
+    try{
+      var payload = JSON.parse(decodeURIComponent(atob(hash)));
+      charges = payload.c.map(function(arr){return {x:arr[0],y:arr[1],q:arr[2], id: nextId++};});
+      if (payload.m) mode = payload.m;
+      document.querySelectorAll('.modebtn').forEach(function(b){
+        b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+      });
+      return true;
+    } catch(e){ return false; }
+  }
+  document.getElementById('btnShare').addEventListener('click', function(){
+    var hash = encodeState();
+    var url = location.origin + location.pathname + '#' + hash;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){
+        showToast('Share link copied to clipboard');
+      }).catch(function(){
+        location.hash = hash; showToast('Link updated in address bar');
+      });
+    } else {
+      location.hash = hash; showToast('Link updated in address bar');
+    }
+  });
+
+  // ---------- LocalStorage autosave + named saves ----------
+  var AUTOSAVE_KEY = 'fieldlab_autosave_v1';
+  function persist(){
+    try{
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(charges.map(function(c){return [c.x,c.y,c.q];})));
+    }catch(e){}
+  }
+  function loadAutosave(){
+    try{
+      var raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return false;
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr) || arr.length===0) return false;
+      charges = arr.map(function(a){return {x:a[0],y:a[1],q:a[2], id:nextId++};});
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function getSaves(){
+    try{ return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch(e){ return []; }
+  }
+  function setSaves(list){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch(e){}
+  }
+  function renderSavedList(){
+    var list = getSaves();
+    var el = document.getElementById('savedList');
+    el.innerHTML = '';
+    if (list.length === 0){
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;">No saved configurations yet.</div>';
+      return;
+    }
+    list.forEach(function(item, idx){
+      var row = document.createElement('div');
+      row.className = 'savedRow';
+      var name = document.createElement('span');
+      name.textContent = item.name + ' (' + item.charges.length + ' charges)';
+      var btns = document.createElement('span');
+      btns.className = 'rowbtns';
+      var loadBtn = document.createElement('button');
+      loadBtn.textContent = 'Load';
+      loadBtn.addEventListener('click', function(){
+        charges = item.charges.map(function(a){return {x:a[0],y:a[1],q:a[2], id:nextId++};});
+        persist();
+        hideHint();
+        document.getElementById('savePanel').classList.remove('open');
+        showToast('Loaded "' + item.name + '"');
+      });
+      var delBtn = document.createElement('button');
+      delBtn.textContent = 'Delete';
+      delBtn.style.color = '#ff8a8a';
+      delBtn.addEventListener('click', function(){
+        var l = getSaves(); l.splice(idx,1); setSaves(l); renderSavedList();
+      });
+      btns.appendChild(loadBtn); btns.appendChild(delBtn);
+      row.appendChild(name); row.appendChild(btns);
+      el.appendChild(row);
+    });
+  }
+
+  document.getElementById('btnSave').addEventListener('click', function(){
+    renderSavedList();
+    document.getElementById('savePanel').classList.add('open');
+  });
+  document.getElementById('btnCloseSave').addEventListener('click', function(){
+    document.getElementById('savePanel').classList.remove('open');
+  });
+  document.getElementById('btnDoSave').addEventListener('click', function(){
+    var input = document.getElementById('saveNameInput');
+    var name = input.value.trim() || ('Config ' + (getSaves().length+1));
+    var list = getSaves();
+    list.push({name:name, charges: charges.map(function(c){return [c.x,c.y,c.q];})});
+    setSaves(list);
+    input.value = '';
+    renderSavedList();
+    showToast('Saved "' + name + '"');
+  });
+
+  // ---------- Init ----------
+  function init(){
+    var loaded = false;
+    if (location.hash && location.hash.length > 4){
+      loaded = decodeState(location.hash.slice(1));
+    }
+    if (!loaded) loaded = loadAutosave();
+    if (!loaded){
+      applyPreset('dipole');
+    } else {
+      document.getElementById('hint').classList.add('hide');
+    }
+    seedTracers();
+    render();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
