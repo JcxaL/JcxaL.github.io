@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Rivergraph Studio</title>
+<style>
+  :root{
+    --bg:#080a12;
+    --panel:rgba(18,20,32,0.72);
+    --panel-border:rgba(255,255,255,0.09);
+    --text:#e9ecf5;
+    --sub:#9aa1bd;
+    --accent:#6c8cff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+  /* header */
+  header{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 14px;z-index:20;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:.2px;}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,#6c8cff,#34d6c0);
+    box-shadow:0 0 10px rgba(108,140,255,.8);}
+  .modebar{display:flex;gap:4px;background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);
+    border-radius:999px;padding:3px;}
+  .modebar button{
+    border:none;background:transparent;color:var(--sub);font-size:12px;font-weight:600;
+    padding:6px 12px;border-radius:999px;cursor:pointer;transition:.18s;white-space:nowrap;
+  }
+  .modebar button.active{background:var(--accent);color:#fff;box-shadow:0 2px 10px rgba(108,140,255,.5);}
+  .iconbtn{
+    width:34px;height:34px;border-radius:10px;border:1px solid var(--panel-border);
+    background:rgba(255,255,255,0.05);color:var(--text);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;font-size:15px;
+  }
+  .iconbtn:active{transform:scale(0.92);}
+
+  /* chart area */
+  #chartWrap{flex:1;position:relative;min-height:0;}
+  canvas{display:block;width:100%;height:100%;touch-action:none;}
+  #tooltip{
+    position:absolute;pointer-events:none;background:rgba(10,12,20,0.92);border:1px solid var(--panel-border);
+    border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.5;color:var(--text);
+    box-shadow:0 8px 24px rgba(0,0,0,.4);opacity:0;transition:opacity .1s;max-width:200px;z-index:15;
+  }
+  #tooltip .tt-x{color:var(--sub);font-size:10px;margin-bottom:3px;}
+  #tooltip .row{display:flex;align-items:center;gap:6px;}
+  #tooltip .sw{width:8px;height:8px;border-radius:2px;flex:none;}
+
+  #zoomBadge{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(108,140,255,0.18);border:1px solid rgba(108,140,255,0.4);color:#c9d5ff;
+    font-size:11px;padding:5px 12px;border-radius:999px;display:none;cursor:pointer;z-index:14;font-weight:600;
+  }
+
+  /* control panel */
+  #panel{
+    position:absolute;top:64px;right:14px;width:250px;max-height:calc(100% - 90px);overflow-y:auto;
+    background:var(--panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--panel-border);border-radius:16px;padding:14px;
+    box-shadow:0 12px 40px rgba(0,0,0,.4);z-index:18;transition:.2s;
+  }
+  #panel.hidden{transform:translateX(280px);opacity:0;pointer-events:none;}
+  #panel h3{margin:0 0 8px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--sub);
+    font-weight:700;}
+  #panel .grp{margin-bottom:14px;}
+  #panel select, #panel input[type=range]{width:100%;}
+  #panel select{
+    background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--panel-border);
+    border-radius:8px;padding:7px 8px;font-size:12px;font-family:inherit;
+  }
+  #panel .swatches{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .swatch{width:26px;height:26px;border-radius:8px;cursor:pointer;border:2px solid transparent;
+    display:flex;overflow:hidden;}
+  .swatch.active{border-color:#fff;}
+  .swatch i{flex:1;}
+  .rowlabel{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);margin-bottom:4px;}
+  .rowlabel b{color:var(--text);font-weight:600;}
+  .btnrow{display:flex;gap:6px;}
+  .miniBtn{
+    flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--panel-border);color:var(--text);
+    padding:8px 6px;border-radius:9px;font-size:11px;cursor:pointer;font-weight:600;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+  }
+  .miniBtn:active{transform:scale(0.95);}
+  .miniBtn span{font-size:14px;}
+  #fileInput{display:none;}
+  .legend{display:flex;flex-direction:column;gap:5px;margin-top:6px;}
+  .legend .lrow{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sub);}
+  .legend .sw{width:9px;height:9px;border-radius:2px;flex:none;}
+
+  #toast{
+    position:absolute;bottom:18px;left:50%;transform:translate(-50%,20px);
+    background:rgba(20,22,34,0.95);border:1px solid var(--panel-border);color:var(--text);
+    padding:9px 16px;border-radius:999px;font-size:12px;font-weight:600;opacity:0;
+    transition:.25s;z-index:30;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0);}
+
+  #hint{
+    position:absolute;left:14px;bottom:14px;font-size:11px;color:var(--sub);
+    background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);border-radius:999px;
+    padding:6px 12px;z-index:12;max-width:60vw;
+  }
+
+  @media (max-width:720px){
+    #panel{left:10px;right:10px;top:auto;bottom:10px;width:auto;max-height:52vh;}
+    #panel.hidden{transform:translateY(300px);}
+    #hint{display:none;}
+    header{padding:8px 10px;}
+    .brand{font-size:13px;}
+    .modebar button{padding:6px 8px;font-size:11px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><span class="dot"></span>Rivergraph Studio</div>
+    <div class="modebar" id="modebar">
+      <button data-mode="stream" class="active">Stream</button>
+      <button data-mode="stack">Stacked</button>
+      <button data-mode="ridge">Ridgeline</button>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="iconbtn" id="togglePanel" title="Controls">⚙</button>
+    </div>
+  </header>
+
+  <div id="chartWrap">
+    <canvas id="cv"></canvas>
+    <div id="tooltip"></div>
+    <div id="zoomBadge">Zoomed — tap to reset</div>
+    <div id="hint">Drag to zoom a time range · hover for values</div>
+
+    <div id="panel">
+      <h3>Dataset</h3>
+      <div class="grp">
+        <select id="datasetSelect">
+          <option value="music">Music Genre Streams</option>
+          <option value="traffic">Website Traffic Channels</option>
+          <option value="cloud">Cloud Spend by Service</option>
+          <option value="server">Server Load by Region</option>
+          <option value="random">Random Walk (generated)</option>
+        </select>
+      </div>
+
+      <div class="grp" id="randomControls" style="display:none;">
+        <div class="rowlabel">Series count <b id="seriesCountVal">5</b></div>
+        <input type="range" id="seriesCount" min="3" max="9" value="5" step="1">
+        <div class="rowlabel" style="margin-top:8px;">Volatility <b id="volatilityVal">0.5</b></div>
+        <input type="range" id="volatility" min="0.1" max="1" value="0.5" step="0.05">
+        <div class="btnrow" style="margin-top:8px;">
+          <button class="miniBtn" id="regenBtn"><span>🎲</span>Regenerate</button>
+        </div>
+      </div>
+
+      <h3>Style</h3>
+      <div class="grp">
+        <div class="rowlabel">Smoothing <b id="smoothVal">0.5</b></div>
+        <input type="range" id="smoothing" min="0" max="1" value="0.5" step="0.05">
+      </div>
+      <div class="grp">
+        <div class="rowlabel">Theme</div>
+        <div class="swatches" id="themeSwatches"></div>
+      </div>
+
+      <h3>Data</h3>
+      <div class="grp btnrow">
+        <button class="miniBtn" id="importBtn"><span>📂</span>Import CSV</button>
+        <button class="miniBtn" id="exportCsvBtn"><span>⬇</span>Export CSV</button>
+      </div>
+      <div class="grp btnrow">
+        <button class="miniBtn" id="exportPngBtn"><span>🖼</span>Export PNG</button>
+        <button class="miniBtn" id="shareBtn"><span>🔗</span>Share Link</button>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,text/csv">
+
+      <h3>Series</h3>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+  <div id="toast"></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------- datasets ----------
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function buildLabels(n, prefix){
+    var out = [];
+    for (var i = 0; i < n; i++) out.push(prefix + (i+1));
+    return out;
+  }
+
+  function seededRand(seed){
+    var s = seed >>> 0;
+    return function(){
+      s ^= s << 13; s >>>= 0;
+      s ^= s >> 17;
+      s ^= s << 5; s >>>= 0;
+      return (s >>> 0) / 4294967296;
+    };
+  }
+
+  function genSeries(name, n, base, amp, rnd, phase){
+    var vals = [];
+    for (var i = 0; i < n; i++){
+      var t = i / (n - 1);
+      var wave = Math.sin(t * Math.PI * 2 * 1.3 + phase) * 0.5 + 0.5;
+      var noise = rnd() * 0.35;
+      vals.push(Math.max(0, base + amp * (wave * 0.7 + noise)));
+    }
+    return { name: name, values: vals };
+  }
+
+  function dataset_music(){
+    var n = 20; var rnd = seededRand(11);
+    var labels = [];
+    for (var i=0;i<n;i++){ labels.push(MONTHS[i%12] + " '" + (20 + Math.floor(i/12) + 1)); }
+    return {
+      labels: labels,
+      series: [
+        genSeries('Pop', n, 40, 30, rnd, 0.2),
+        genSeries('Hip-Hop', n, 35, 28, rnd, 1.4),
+        genSeries('Electronic', n, 22, 20, rnd, 2.6),
+        genSeries('Rock', n, 18, 12, rnd, 0.8),
+        genSeries('Indie', n, 12, 10, rnd, 3.4)
+      ]
+    };
+  }
+  function dataset_traffic(){
+    var n = 18; var rnd = seededRand(42);
+    var labels = buildLabels(n, 'Wk ');
+    return {
+      labels: labels,
+      series: [
+        genSeries('Organic', n, 34, 18, rnd, 0.1),
+        genSeries('Paid Search', n, 20, 14, rnd, 1.1),
+        genSeries('Social', n, 16, 16, rnd, 2.0),
+        genSeries('Email', n, 10, 8, rnd, 2.9),
+        genSeries('Referral', n, 8, 6, rnd, 3.6),
+        genSeries('Direct', n, 14, 9, rnd, 0.6)
+      ]
+    };
+  }
+  function dataset_cloud(){
+    var n = 16; var rnd = seededRand(77);
+    var labels = [];
+    for (var i=0;i<n;i++){ labels.push(MONTHS[i%12] + " '" + (24 + Math.floor(i/12) + 1)); }
+    return {
+      labels: labels,
+      series: [
+        genSeries('Compute', n, 42, 22, rnd, 0.3),
+        genSeries('Storage', n, 18, 10, rnd, 1.6),
+        genSeries('Network', n, 14, 9, rnd, 2.4),
+        genSeries('Database', n, 20, 13, rnd, 3.1),
+        genSeries('ML/AI', n, 10, 24, rnd, 0.9)
+      ]
+    };
+  }
+  function dataset_server(){
+    var n = 24; var rnd = seededRand(5);
+    var labels = buildLabels(n, 'H');
+    return {
+      labels: labels,
+      series: [
+        genSeries('US-East', n, 30, 20, rnd, 0.5),
+        genSeries('US-West', n, 24, 18, rnd, 3.6),
+        genSeries('EU', n, 26, 19, rnd, 1.9),
+        genSeries('APAC', n, 22, 21, rnd, 5.2),
+        genSeries('SA', n, 12, 9, rnd, 4.4)
+      ]
+    };
+  }
+  function dataset_random(count, volatility){
+    var n = 20; var rnd = seededRand((Date.now?0:0) + count*97 + Math.round(volatility*1000) + 13);
+    var names = ['Alpha','Beta','Gamma','Delta','Epsilon','Zeta','Eta','Theta','Iota'];
+    var out = [];
+    for (var s = 0; s < count; s++){
+      out.push(genSeries(names[s], n, 14 + rnd()*20, 10 + volatility*30, rnd, s*1.3));
+    }
+    return { labels: buildLabels(n, 'T'), series: out };
+  }
+
+  var DATASET_FNS = {
+    music: dataset_music,
+    traffic: dataset_traffic,
+    cloud: dataset_cloud,
+    server: dataset_server
+  };
+
+  // ---------- themes ----------
+  var THEMES = [
+    ['#6c8cff','#34d6c0','#ffb454','#ff6b9d','#a78bfa','#4ade80','#f87171','#38bdf8','#fbbf24'],
+    ['#ff5470','#00d9c0','#ffd23f','#6c5ce7','#0aefff','#ff9f45','#43e97b','#c94b4b','#6a89cc'],
+    ['#f72585','#4cc9f0','#ffd60a','#7209b7','#06ffa5','#f77f00','#3a86ff','#fb5607','#8338ec'],
+    ['#e8a33d','#c1502e','#7c9070','#4fb0a5','#f2c14e','#8ecae6','#d97742','#a3c9a8','#e07a5f'],
+    ['#22d3ee','#a78bfa','#f472b6','#34d399','#fbbf24','#818cf8','#f97316','#60a5fa','#facc15']
+  ];
+
+  // ---------- state ----------
+  var state = {
+    mode: 'stream',
+    dataset: null,
+    themeIdx: 0,
+    smoothing: 0.5,
+    zoomStart: 0,
+    zoomEnd: null,
+    seriesCount: 5,
+    volatility: 0.5,
+    lastDatasetKey: 'music'
+  };
+
+  var canvas = document.getElementById('cv');
+  var ctx = canvas.getContext('2d');
+  var DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+
+  function resize(){
+    var wrap = document.getElementById('chartWrap');
+    var w = wrap.clientWidth, h = wrap.clientHeight;
+    canvas.width = Math.round(w * DPR);
+    canvas.height = Math.round(h * DPR);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    draw();
+  }
+  var ro = new ResizeObserver(resize);
+  ro.observe(document.getElementById('chartWrap'));
+
+  // ---------- persistence ----------
+  var LS_KEY = 'rivergraph_studio_v1';
+  function saveState(){
+    try{
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        mode: state.mode, themeIdx: state.themeIdx, smoothing: state.smoothing,
+        lastDatasetKey: state.lastDatasetKey, seriesCount: state.seriesCount,
+        volatility: state.volatility,
+        customData: state.lastDatasetKey === 'custom' ? state.dataset : null
+      }));
+    }catch(e){}
+  }
+  function loadState(){
+    try{
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    }catch(e){ return null; }
+  }
+
+  function encodeShare(){
+    var payload = { d: state.dataset, m: state.mode, t: state.themeIdx, s: state.smoothing };
+    return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  }
+  function decodeShare(hash){
+    try{
+      var json = decodeURIComponent(escape(atob(hash)));
+      return JSON.parse(json);
+    }catch(e){ return null; }
+  }
+
+  // ---------- interpolation ----------
+  // Catmull-Rom -> cubic bezier smoothing of a polyline for a canvas path
+  function drawSmoothPath(points, tension){
+    if (points.length < 2){ return; }
+    ctx.moveTo(points[0][0], points[0][1]);
+    appendSmoothPath(points, tension);
+  }
+
+  // Continues the CURRENT path (no moveTo) through points, keeping one unbroken subpath.
+  function appendSmoothPath(points, tension){
+    if (points.length < 1) return;
+    ctx.lineTo(points[0][0], points[0][1]);
+    if (tension <= 0.02){
+      for (var i=1;i<points.length;i++) ctx.lineTo(points[i][0], points[i][1]);
+      return;
+    }
+    for (var i=0;i<points.length-1;i++){
+      var p0 = points[i-1] || points[i];
+      var p1 = points[i];
+      var p2 = points[i+1];
+      var p3 = points[i+2] || p2;
+      var t = tension * 0.5;
+      var c1x = p1[0] + (p2[0]-p0[0]) * t / 3;
+      var c1y = p1[1] + (p2[1]-p0[1]) * t / 3;
+      var c2x = p2[0] - (p3[0]-p1[0]) * t / 3;
+      var c2y = p2[1] - (p3[1]-p1[1]) * t / 3;
+      ctx.bezierCurveTo(c1x,c1y,c2x,c2y,p2[0],p2[1]);
+    }
+  }
+
+  // ---------- layout computation ----------
+  function getVisibleRange(){
+    var n = state.dataset.labels.length;
+    var s = Math.max(0, Math.min(n-2, state.zoomStart));
+    var e = state.zoomEnd == null ? n-1 : Math.max(s+1, Math.min(n-1, state.zoomEnd));
+    return [s, e];
+  }
+
+  function computeLayout(){
+    var w = canvas.width, h = canvas.height;
+    var padL = 18*DPR, padR = 18*DPR, padT = 26*DPR, padB = 30*DPR;
+    var plotW = w - padL - padR, plotH = h - padT - padB;
+    var ds = state.dataset;
+    var range = getVisibleRange();
+    var s = range[0], e = range[1];
+    var count = e - s + 1;
+    var colors = THEMES[state.themeIdx];
+
+    function xAt(i){ return padL + (i - s) / (count - 1) * plotW; }
+
+    var series = ds.series;
+    var nSeries = series.length;
+    var nPoints = ds.labels.length;
+
+    // compute per-x stacked values within visible range depending on mode
+    var layers = []; // for each series, array of {x,yTop,yBottom}
+    var maxTotal = 0;
+    for (var i = s; i <= e; i++){
+      var total = 0;
+      for (var k=0;k<nSeries;k++) total += series[k].values[i];
+      if (total > maxTotal) maxTotal = total;
+    }
+    if (maxTotal <= 0) maxTotal = 1;
+
+    if (state.mode === 'ridge'){
+      var rowH = plotH / nSeries;
+      var scale = (rowH * 1.7) / (maxTotal || 1);
+      for (var k=0;k<nSeries;k++){
+        var pts = [];
+        var baseY = padT + rowH * (k + 1) - rowH*0.28;
+        for (var i = s; i <= e; i++){
+          var v = series[k].values[i];
+          pts.push([xAt(i), baseY - v*scale, baseY]);
+        }
+        layers.push({ name: series[k].name, color: colors[k % colors.length], pts: pts, baseY: baseY });
+      }
+    } else {
+      var scale = (plotH * 0.92) / (maxTotal || 1);
+      var stacks = [];
+      for (var i = s; i <= e; i++){
+        var running = 0;
+        var total = 0;
+        for (var k=0;k<nSeries;k++) total += series[k].values[i];
+        stacks.push({ total: total, running: 0 });
+      }
+      for (var k=0;k<nSeries;k++){
+        var pts = [];
+        var idx = 0;
+        for (var i = s; i <= e; i++){
+          var v = series[k].values[i];
+          var st = stacks[idx];
+          var bottomOffset, topOffset;
+          if (state.mode === 'stream'){
+            var half = st.total * scale / 2;
+            bottomOffset = -half + st.running * scale;
+            topOffset = bottomOffset + v * scale;
+          } else {
+            bottomOffset = st.running * scale;
+            topOffset = bottomOffset + v * scale;
+          }
+          var centerY = padT + plotH/2;
+          pts.push([xAt(i), centerY - topOffset, centerY - bottomOffset]);
+          st.running += v;
+          idx++;
+        }
+        layers.push({ name: series[k].name, color: colors[k % colors.length], pts: pts });
+      }
+    }
+
+    return { padL:padL, padR:padR, padT:padT, padB:padB, plotW:plotW, plotH:plotH,
+      layers: layers, range: range, xAt: xAt, w:w, h:h };
+  }
+
+  var lastLayout = null;
+
+  function draw(){
+    if (!state.dataset) return;
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = '#080a12';
+    ctx.fillRect(0,0,w,h);
+
+    var L = computeLayout();
+    lastLayout = L;
+    var tension = state.smoothing;
+
+    // grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1*DPR;
+    for (var gy=0; gy<=4; gy++){
+      var y = L.padT + L.plotH/4*gy;
+      ctx.beginPath(); ctx.moveTo(L.padL,y); ctx.lineTo(L.padL+L.plotW,y); ctx.stroke();
+    }
+
+    L.layers.forEach(function(layer){
+      ctx.beginPath();
+      var top = layer.pts.map(function(p){ return [p[0], p[1]]; });
+      drawSmoothPath(top, tension);
+      var bottom = layer.pts.slice().reverse().map(function(p){ return [p[0], p[2]]; });
+      appendSmoothPath(bottom, tension);
+      ctx.closePath();
+      var grad = ctx.createLinearGradient(0, L.padT, 0, L.padT+L.plotH);
+      grad.addColorStop(0, layer.color + 'ee');
+      grad.addColorStop(1, layer.color + '99');
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.strokeStyle = layer.color;
+      ctx.lineWidth = 1.4*DPR;
+      ctx.beginPath();
+      drawSmoothPath(top, tension);
+      ctx.stroke();
+    });
+
+    // x-axis labels (first, mid, last of visible range)
+    var ds = state.dataset;
+    var range = L.range;
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = (11*DPR) + 'px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(ds.labels[range[0]], L.padL, L.h - 8*DPR);
+    ctx.textAlign = 'right';
+    ctx.fillText(ds.labels[range[1]], L.padL + L.plotW, L.h - 8*DPR);
+    ctx.textAlign = 'center';
+    var midIdx = Math.round((range[0]+range[1])/2);
+    ctx.fillText(ds.labels[midIdx], L.padL + L.plotW/2, L.h - 8*DPR);
+
+    if (brush.active){
+      ctx.fillStyle = 'rgba(108,140,255,0.18)';
+      ctx.fillRect(Math.min(brush.x0,brush.x1), L.padT, Math.abs(brush.x1-brush.x0), L.plotH);
+      ctx.strokeStyle = 'rgba(108,140,255,0.6)';
+      ctx.lineWidth = 1.5*DPR;
+      ctx.strokeRect(Math.min(brush.x0,brush.x1), L.padT, Math.abs(brush.x1-brush.x0), L.plotH);
+    }
+
+    document.getElementById('zoomBadge').style.display =
+      (state.zoomStart > 0 || (state.zoomEnd != null && state.zoomEnd < ds.labels.length-1)) ? 'block' : 'none';
+  }
+
+  // ---------- legend ----------
+  function renderLegend(){
+    var legend = document.getElementById('legend');
+    legend.innerHTML = '';
+    var colors = THEMES[state.themeIdx];
+    state.dataset.series.forEach(function(s, i){
+      var row = document.createElement('div');
+      row.className = 'lrow';
+      var sw = document.createElement('div');
+      sw.className = 'sw';
+      sw.style.background = colors[i % colors.length];
+      row.appendChild(sw);
+      var label = document.createElement('span');
+      label.textContent = s.name;
+      row.appendChild(label);
+      legend.appendChild(row);
+    });
+  }
+
+  function renderThemeSwatches(){
+    var wrap = document.getElementById('themeSwatches');
+    wrap.innerHTML = '';
+    THEMES.forEach(function(theme, idx){
+      var sw = document.createElement('div');
+      sw.className = 'swatch' + (idx === state.themeIdx ? ' active' : '');
+      theme.slice(0,4).forEach(function(c){
+        var i = document.createElement('i');
+        i.style.background = c;
+        sw.appendChild(i);
+      });
+      sw.addEventListener('click', function(){
+        state.themeIdx = idx;
+        renderThemeSwatches();
+        renderLegend();
+        draw();
+        saveState();
+      });
+      wrap.appendChild(sw);
+    });
+  }
+
+  // ---------- brush / zoom / tooltip ----------
+  var brush = { active:false, x0:0, x1:0, dragging:false, moved:false };
+
+  function pixelToIndex(px){
+    var L = lastLayout;
+    if (!L) return 0;
+    var t = (px - L.padL) / L.plotW;
+    var range = L.range;
+    var count = range[1] - range[0];
+    var idx = range[0] + Math.round(t * count);
+    return Math.max(range[0], Math.min(range[1], idx));
+  }
+
+  function getCanvasPos(evt){
+    var rect = canvas.getBoundingClientRect();
+    var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+    var clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+    return {
+      x: (clientX - rect.left) * DPR,
+      y: (clientY - rect.top) * DPR,
+      cssX: clientX - rect.left,
+      cssY: clientY - rect.top
+    };
+  }
+
+  var tooltip = document.getElementById('tooltip');
+
+  function showTooltip(pos, idx){
+    var ds = state.dataset;
+    var colors = THEMES[state.themeIdx];
+    var html = '<div class="tt-x">' + ds.labels[idx] + '</div>';
+    var items = ds.series.map(function(s,i){ return {name:s.name, v:s.values[idx], c:colors[i%colors.length]}; });
+    items.sort(function(a,b){ return b.v - a.v; });
+    items.slice(0,6).forEach(function(it){
+      html += '<div class="row"><span class="sw" style="background:'+it.c+'"></span>' +
+        it.name + ': ' + it.v.toFixed(1) + '</div>';
+    });
+    tooltip.innerHTML = html;
+    tooltip.style.opacity = '1';
+    var wrapRect = document.getElementById('chartWrap').getBoundingClientRect();
+    var left = Math.min(pos.cssX + 14, wrapRect.width - 210);
+    var top = Math.max(8, Math.min(pos.cssY, wrapRect.height - 140));
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+  }
+  function hideTooltip(){ tooltip.style.opacity = '0'; }
+
+  function onPointerDown(evt){
+    evt.preventDefault();
+    var pos = getCanvasPos(evt);
+    brush.active = true; brush.dragging = true; brush.moved = false;
+    brush.x0 = pos.x; brush.x1 = pos.x;
+    hideTooltip();
+  }
+  function onPointerMove(evt){
+    var pos = getCanvasPos(evt);
+    if (brush.dragging){
+      brush.x1 = pos.x;
+      if (Math.abs(brush.x1 - brush.x0) > 4*DPR) brush.moved = true;
+      draw();
+    } else {
+      var idx = pixelToIndex(pos.x);
+      showTooltip(pos, idx);
+      draw();
+      drawGuideline(pos.x);
+    }
+  }
+  function drawGuideline(px){
+    if (!lastLayout) return;
+    var L = lastLayout;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1*DPR;
+    ctx.beginPath();
+    ctx.moveTo(px, L.padT);
+    ctx.lineTo(px, L.padT + L.plotH);
+    ctx.stroke();
+  }
+  function onPointerUp(evt){
+    if (brush.dragging && brush.moved){
+      var i0 = pixelToIndex(Math.min(brush.x0, brush.x1));
+      var i1 = pixelToIndex(Math.max(brush.x0, brush.x1));
+      if (i1 - i0 >= 1){
+        state.zoomStart = i0; state.zoomEnd = i1;
+      }
+    } else if (brush.dragging && !brush.moved) {
+      // simple click: if already zoomed, treat as no-op; handled via zoom badge
+    }
+    brush.active = false; brush.dragging = false;
+    draw();
+  }
+  function resetZoom(){
+    state.zoomStart = 0; state.zoomEnd = null;
+    draw();
+  }
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointerleave', function(){ if(!brush.dragging) hideTooltip(); });
+  canvas.addEventListener('dblclick', resetZoom);
+  document.getElementById('zoomBadge').addEventListener('click', resetZoom);
+
+  // ---------- toast ----------
+  var toastTimer = null;
+  function toast(msg){
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 1800);
+  }
+
+  // ---------- CSV import/export ----------
+  function parseCSV(text){
+    var lines = text.split(/\r?\n/).filter(function(l){ return l.trim().length; });
+    if (lines.length < 2) return null;
+    var header = lines[0].split(',').map(function(s){ return s.trim().replace(/^"|"$/g,''); });
+    var seriesNames = header.slice(1);
+    var labels = [];
+    var seriesVals = seriesNames.map(function(){ return []; });
+    for (var i=1;i<lines.length;i++){
+      var cols = lines[i].split(',');
+      labels.push(cols[0].trim().replace(/^"|"$/g,''));
+      for (var k=0;k<seriesNames.length;k++){
+        var v = parseFloat(cols[k+1]);
+        seriesVals[k].push(isFinite(v) ? Math.max(0,v) : 0);
+      }
+    }
+    return {
+      labels: labels,
+      series: seriesNames.map(function(name,k){ return { name: name, values: seriesVals[k] }; })
+    };
+  }
+
+  function exportCSV(){
+    var ds = state.dataset;
+    var rows = ['label,' + ds.series.map(function(s){ return s.name; }).join(',')];
+    for (var i=0;i<ds.labels.length;i++){
+      var row = [ds.labels[i]];
+      ds.series.forEach(function(s){ row.push(s.values[i].toFixed(2)); });
+      rows.push(row.join(','));
+    }
+    var blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    downloadBlob(blob, 'rivergraph-data.csv');
+    toast('CSV exported');
+  }
+
+  function exportPNG(){
+    canvas.toBlob(function(blob){
+      if (!blob){ toast('Export failed'); return; }
+      downloadBlob(blob, 'rivergraph-' + state.mode + '.png');
+      toast('PNG exported');
+    }, 'image/png');
+  }
+
+  function downloadBlob(blob, filename){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  }
+
+  // ---------- dataset application ----------
+  function applyDataset(key){
+    state.lastDatasetKey = key;
+    resetZoom();
+    document.getElementById('randomControls').style.display = key === 'random' ? 'block' : 'none';
+    if (key === 'random'){
+      state.dataset = dataset_random(state.seriesCount, state.volatility);
+    } else if (key === 'custom') {
+      // dataset already set externally
+    } else {
+      state.dataset = DATASET_FNS[key]();
+    }
+    renderLegend();
+    renderThemeSwatches();
+    draw();
+    saveState();
+  }
+
+  // ---------- UI wiring ----------
+  document.getElementById('modebar').addEventListener('click', function(e){
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#modebar button'), function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    state.mode = btn.dataset.mode;
+    draw();
+    saveState();
+  });
+
+  document.getElementById('togglePanel').addEventListener('click', function(){
+    document.getElementById('panel').classList.toggle('hidden');
+  });
+
+  document.getElementById('datasetSelect').addEventListener('change', function(e){
+    applyDataset(e.target.value);
+  });
+
+  document.getElementById('smoothing').addEventListener('input', function(e){
+    state.smoothing = parseFloat(e.target.value);
+    document.getElementById('smoothVal').textContent = state.smoothing.toFixed(2);
+    draw();
+  });
+  document.getElementById('smoothing').addEventListener('change', saveState);
+
+  document.getElementById('seriesCount').addEventListener('input', function(e){
+    state.seriesCount = parseInt(e.target.value,10);
+    document.getElementById('seriesCountVal').textContent = state.seriesCount;
+  });
+  document.getElementById('volatility').addEventListener('input', function(e){
+    state.volatility = parseFloat(e.target.value);
+    document.getElementById('volatilityVal').textContent = state.volatility.toFixed(2);
+  });
+  document.getElementById('regenBtn').addEventListener('click', function(){
+    applyDataset('random');
+    toast('Regenerated');
+  });
+
+  document.getElementById('importBtn').addEventListener('click', function(){
+    document.getElementById('fileInput').click();
+  });
+  document.getElementById('fileInput').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var parsed = parseCSV(String(ev.target.result));
+      if (!parsed || !parsed.series.length){
+        toast('Could not parse CSV');
+        return;
+      }
+      state.dataset = parsed;
+      state.lastDatasetKey = 'custom';
+      document.getElementById('randomControls').style.display = 'none';
+      resetZoom();
+      renderLegend();
+      renderThemeSwatches();
+      draw();
+      saveState();
+      toast('CSV imported: ' + parsed.series.length + ' series');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('exportCsvBtn').addEventListener('click', exportCSV);
+  document.getElementById('exportPngBtn').addEventListener('click', exportPNG);
+  document.getElementById('shareBtn').addEventListener('click', function(){
+    var hash = encodeShare();
+    var url = location.origin + location.pathname + '#' + hash;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){
+        toast('Share link copied');
+      }).catch(function(){
+        history.replaceState(null,'','#'+hash);
+        toast('Share link set in URL');
+      });
+    } else {
+      history.replaceState(null,'','#'+hash);
+      toast('Share link set in URL');
+    }
+  });
+
+  // ---------- init ----------
+  function init(){
+    renderThemeSwatches();
+
+    if (window.innerWidth <= 720){
+      document.getElementById('panel').classList.add('hidden');
+    }
+
+    var hash = location.hash.replace(/^#/, '');
+    var shared = hash ? decodeShare(hash) : null;
+
+    if (shared && shared.d){
+      state.dataset = shared.d;
+      state.mode = shared.m || 'stream';
+      state.themeIdx = shared.t || 0;
+      state.smoothing = (typeof shared.s === 'number') ? shared.s : 0.5;
+      state.lastDatasetKey = 'custom';
+      document.getElementById('datasetSelect').value = 'music';
+      syncControlsFromState();
+      renderLegend();
+      renderThemeSwatches();
+      resize();
+      toast('Loaded shared dataset');
+    } else {
+      var saved = loadState();
+      if (saved){
+        state.mode = saved.mode || 'stream';
+        state.themeIdx = saved.themeIdx || 0;
+        state.smoothing = (typeof saved.smoothing === 'number') ? saved.smoothing : 0.5;
+        state.seriesCount = saved.seriesCount || 5;
+        state.volatility = (typeof saved.volatility === 'number') ? saved.volatility : 0.5;
+        syncControlsFromState();
+        if (saved.lastDatasetKey === 'custom' && saved.customData){
+          state.dataset = saved.customData;
+          state.lastDatasetKey = 'custom';
+          renderLegend();
+          resize();
+        } else {
+          document.getElementById('datasetSelect').value = DATASET_FNS[saved.lastDatasetKey] ? saved.lastDatasetKey : 'music';
+          applyDataset(document.getElementById('datasetSelect').value);
+        }
+      } else {
+        applyDataset('music');
+      }
+    }
+  }
+
+  function syncControlsFromState(){
+    Array.prototype.forEach.call(document.querySelectorAll('#modebar button'), function(b){
+      b.classList.toggle('active', b.dataset.mode === state.mode);
+    });
+    document.getElementById('smoothing').value = state.smoothing;
+    document.getElementById('smoothVal').textContent = state.smoothing.toFixed(2);
+    document.getElementById('seriesCount').value = state.seriesCount;
+    document.getElementById('seriesCountVal').textContent = state.seriesCount;
+    document.getElementById('volatility').value = state.volatility;
+    document.getElementById('volatilityVal').textContent = state.volatility.toFixed(2);
+  }
+
+  window.addEventListener('resize', resize);
+  init();
+  resize();
+})();
+</script>
+</body>
+</html>
