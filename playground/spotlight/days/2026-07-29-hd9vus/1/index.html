@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mascot Flipbook Timeline — UI Spotlight</title>
+<style>
+  :root{ --bg:#0a0b14; --card:rgba(255,255,255,0.05); --brd:rgba(150,170,255,0.18); --text:#eef1ff; --muted:#8d96c2; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:20;background:rgba(20,20,32,0.7);backdrop-filter:blur(10px);
+    border:1px solid var(--brd);color:var(--text);text-decoration:none;padding:8px 14px;border-radius:999px;font-size:13px;}
+  header{padding:70px 20px 20px;text-align:center;max-width:700px;margin:0 auto;}
+  header h1{font-size:clamp(24px,5vw,36px);margin:0 0 10px;}
+  header p{color:var(--muted);font-size:14px;line-height:1.6;margin:0;}
+  .stage-row{max-width:1100px;margin:30px auto;padding:0 18px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  .mascot-card{background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:16px;text-align:center;}
+  .mascot-card h3{margin:0 0 6px;font-size:15px;}
+  .mascot-card .desc{color:var(--muted);font-size:11.5px;margin-bottom:10px;}
+  svg.mascot{width:100%;max-width:180px;height:180px;}
+  .row-btns{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap;}
+  button{background:rgba(255,255,255,0.08);border:1px solid var(--brd);color:var(--text);padding:6px 12px;
+    border-radius:8px;font-size:12px;cursor:pointer;}
+  button.active{background:var(--accent);color:#04202e;border-color:var(--accent);}
+  .timeline{display:flex;gap:2px;margin-top:10px;height:26px;align-items:flex-end;justify-content:center;}
+  .tick{width:8px;background:rgba(255,255,255,0.18);border-radius:2px;cursor:pointer;border:1px solid transparent;}
+  .tick.current{background:var(--accent);}
+  #panel{position:fixed;top:16px;right:16px;z-index:20;background:rgba(20,20,32,0.75);backdrop-filter:blur(12px);
+    border:1px solid var(--brd);border-radius:14px;padding:14px 16px;font-size:12px;width:210px;}
+  #panel h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);}
+  #panel label{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;}
+  #panel input[type=range]{flex:1;accent-color:var(--accent);}
+  .toggle-line{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+  footer{text-align:center;color:#5c6382;font-size:11px;padding:20px;}
+  @media (max-width:760px){ .stage-row{grid-template-columns:1fr;} #panel{position:static;width:auto;margin:0 18px 20px;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Flipbook Controls</h4>
+  <label>Speed <input type="range" id="speedSlider" min="0.25" max="2" step="0.05" value="1"></label>
+  <div class="toggle-line"><input type="checkbox" id="equalizeToggle"><span>Equalize hold times (flat, robotic)</span></div>
+  <div class="toggle-line"><input type="checkbox" id="playAll" checked><span>Auto-play all three</span></div>
+</div>
+
+<header>
+  <h1>Mascot Flipbook Timeline</h1>
+  <p>No tweening — each mascot is a sequence of drawn poses whose <b>hold time</b> (not interpolation) creates the sense of weight. Toggle "equalize" to hear the difference silence makes.</p>
+</header>
+
+<div class="stage-row" id="stageRow"></div>
+
+<footer>Inspired by Codrops' "Reverse-Engineering Claude AI's Mascot Animations with SVG and GSAP" (May 2026) — reimplemented in vanilla JS/SVG, no GSAP · UI Spotlight Day 74 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  function pose(o){ return o; }
+
+  var MASCOTS = [
+    {
+      id:"orb", name:"Orb — Weightlifter", color:"#8b5cf6",
+      desc:"Squat, press, lockout.",
+      anchors:{ armL:[70,78], armR:[130,78], legL:[82,150], legR:[118,150] },
+      frames:[
+        { hold:120, body:{ty:0,sy:1}, armL:{r:0}, armR:{r:0} },
+        { hold:90,  body:{ty:6,sy:0.96}, armL:{r:-8}, armR:{r:8} },
+        { hold:90,  body:{ty:16,sy:0.9}, armL:{r:-18}, armR:{r:18} },
+        { hold:260, body:{ty:24,sy:0.84}, armL:{r:-28}, armR:{r:28} },
+        { hold:80,  body:{ty:12,sy:0.92}, armL:{r:-50}, armR:{r:50} },
+        { hold:80,  body:{ty:-4,sy:1.02}, armL:{r:-90}, armR:{r:90} },
+        { hold:80,  body:{ty:-14,sy:1.06}, armL:{r:-130}, armR:{r:130} },
+        { hold:420, body:{ty:-18,sy:1.08}, armL:{r:-170}, armR:{r:170} },
+        { hold:100, body:{ty:-6,sy:1.02}, armL:{r:-100}, armR:{r:100} },
+        { hold:100, body:{ty:4,sy:0.98}, armL:{r:-40}, armR:{r:40} },
+        { hold:140, body:{ty:0,sy:1}, armL:{r:0}, armR:{r:0} }
+      ]
+    },
+    {
+      id:"blip", name:"Blip — Waver", color:"#f472b6",
+      desc:"A friendly, bouncy wave.",
+      anchors:{ armL:[62,84], armR:[138,84], legL:[82,150], legR:[118,150] },
+      frames:[
+        { hold:150, body:{ty:0,sy:1}, armL:{r:0}, armR:{r:0} },
+        { hold:70,  body:{ty:-4,sy:1.03}, armL:{r:6}, armR:{r:-110} },
+        { hold:70,  body:{ty:-8,sy:1.05}, armL:{r:6}, armR:{r:-150} },
+        { hold:300, body:{ty:-8,sy:1.05}, armL:{r:6}, armR:{r:-170} },
+        { hold:70,  body:{ty:-6,sy:1.04}, armL:{r:6}, armR:{r:-140} },
+        { hold:220, body:{ty:-8,sy:1.05}, armL:{r:6}, armR:{r:-175} },
+        { hold:70,  body:{ty:-6,sy:1.04}, armL:{r:6}, armR:{r:-140} },
+        { hold:180, body:{ty:-8,sy:1.05}, armL:{r:6}, armR:{r:-170} },
+        { hold:90,  body:{ty:-2,sy:1.01}, armL:{r:2}, armR:{r:-60} },
+        { hold:160, body:{ty:0,sy:1}, armL:{r:0}, armR:{r:0} }
+      ]
+    },
+    {
+      id:"nimbus", name:"Nimbus — Bouncer", color:"#34d399",
+      desc:"Jump, spin, land.",
+      anchors:{ armL:[64,88], armR:[136,88], legL:[80,150], legR:[120,150] },
+      frames:[
+        { hold:130, body:{ty:0,sy:1,rot:0}, armL:{r:0}, armR:{r:0} },
+        { hold:70,  body:{ty:14,sy:0.88,rot:0}, armL:{r:-20}, armR:{r:20} },
+        { hold:60,  body:{ty:-20,sy:1.1,rot:40}, armL:{r:-60}, armR:{r:60} },
+        { hold:60,  body:{ty:-34,sy:1.06,rot:120}, armL:{r:-90}, armR:{r:90} },
+        { hold:220, body:{ty:-38,sy:1.02,rot:200}, armL:{r:-120}, armR:{r:120} },
+        { hold:60,  body:{ty:-30,sy:1.04,rot:280}, armL:{r:-90}, armR:{r:90} },
+        { hold:60,  body:{ty:-12,sy:1.08,rot:340}, armL:{r:-40}, armR:{r:40} },
+        { hold:80,  body:{ty:10,sy:0.86,rot:360}, armL:{r:0}, armR:{r:0} },
+        { hold:260, body:{ty:0,sy:1,rot:360}, armL:{r:0}, armR:{r:0} }
+      ]
+    }
+  ];
+
+  var speed = 1, equalize = false, autoPlay = true;
+  var runners = [];
+
+  function buildMascotSVG(m){
+    var svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.setAttribute("viewBox","0 0 200 200");
+    svg.setAttribute("class","mascot");
+    svg.dataset.id = m.id;
+    function el(tag, attrs){
+      var e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      for (var k in attrs) e.setAttribute(k, attrs[k]);
+      return e;
+    }
+    var legL = el("ellipse",{cx:m.anchors.legL[0],cy:m.anchors.legL[1],rx:12,ry:16,fill:m.color,opacity:0.55});
+    var legR = el("ellipse",{cx:m.anchors.legR[0],cy:m.anchors.legR[1],rx:12,ry:16,fill:m.color,opacity:0.55});
+    var body = el("g",{"data-part":"body"});
+    var bodyShape = el("ellipse",{cx:100,cy:105,rx:44,ry:48,fill:m.color});
+    var eyeL = el("circle",{cx:84,cy:96,r:6,fill:"#0b0c16"});
+    var eyeR = el("circle",{cx:116,cy:96,r:6,fill:"#0b0c16"});
+    var mouth = el("path",{d:"M84 118 Q100 130 116 118", stroke:"#0b0c16","stroke-width":4,fill:"none","stroke-linecap":"round"});
+    body.appendChild(bodyShape); body.appendChild(eyeL); body.appendChild(eyeR); body.appendChild(mouth);
+    var armL = el("g",{"data-part":"armL"});
+    armL.appendChild(el("rect",{x:m.anchors.armL[0]-6,y:m.anchors.armL[1],width:12,height:44,rx:6,fill:m.color}));
+    var armR = el("g",{"data-part":"armR"});
+    armR.appendChild(el("rect",{x:m.anchors.armR[0]-6,y:m.anchors.armR[1],width:12,height:44,rx:6,fill:m.color}));
+    svg.appendChild(legL); svg.appendChild(legR); svg.appendChild(armL); svg.appendChild(armR); svg.appendChild(body);
+    return svg;
+  }
+
+  function applyFrame(svg, m, frame){
+    var body = svg.querySelector('[data-part="body"]');
+    var armL = svg.querySelector('[data-part="armL"]');
+    var armR = svg.querySelector('[data-part="armR"]');
+    var b = frame.body || {};
+    body.setAttribute("transform", "translate(0," + (b.ty||0) + ") scale(1," + (b.sy!==undefined?b.sy:1) + ") rotate(" + (b.rot||0) + " 100 105)");
+    var al = m.anchors.armL, ar = m.anchors.armR;
+    armL.setAttribute("transform", "rotate(" + (frame.armL.r||0) + " " + al[0] + " " + al[1] + ")");
+    armR.setAttribute("transform", "rotate(" + (frame.armR.r||0) + " " + ar[0] + " " + ar[1] + ")");
+  }
+
+  function buildTimeline(container, m, runner){
+    var maxHold = Math.max.apply(null, m.frames.map(function(f){ return f.hold; }));
+    m.frames.forEach(function(f, i){
+      var tick = document.createElement("div");
+      tick.className = "tick";
+      tick.style.height = Math.max(6, (f.hold/maxHold)*24) + "px";
+      tick.addEventListener("click", function(){
+        runner.pause();
+        runner.goTo(i);
+      });
+      container.appendChild(tick);
+      runner.ticks.push(tick);
+    });
+  }
+
+  function createRunner(m, svg){
+    var idx = 0, timer = null, running = false;
+    var runner = { ticks:[] };
+    function render(){
+      applyFrame(svg, m, m.frames[idx]);
+      runner.ticks.forEach(function(t,i){ t.classList.toggle("current", i===idx); });
+    }
+    function step(){
+      render();
+      var hold = equalize ? 90 : m.frames[idx].hold;
+      timer = setTimeout(function(){
+        idx = (idx+1) % m.frames.length;
+        if (running) step();
+      }, Math.max(16, hold/speed));
+    }
+    runner.play = function(){ if (running) return; running = true; step(); };
+    runner.pause = function(){ running = false; if (timer) clearTimeout(timer); };
+    runner.goTo = function(i){ idx = i; render(); };
+    runner.isRunning = function(){ return running; };
+    render();
+    return runner;
+  }
+
+  function init(){
+    var stageRow = document.getElementById("stageRow");
+    MASCOTS.forEach(function(m){
+      var card = document.createElement("div"); card.className = "mascot-card";
+      var h3 = document.createElement("h3"); h3.textContent = m.name;
+      var desc = document.createElement("div"); desc.className = "desc"; desc.textContent = m.desc;
+      var svg = buildMascotSVG(m);
+      var btnRow = document.createElement("div"); btnRow.className = "row-btns";
+      var playBtn = document.createElement("button"); playBtn.textContent = "▶ Play";
+      var timeline = document.createElement("div"); timeline.className = "timeline";
+
+      card.appendChild(h3); card.appendChild(desc); card.appendChild(svg);
+      card.appendChild(btnRow); btnRow.appendChild(playBtn);
+      card.appendChild(timeline);
+      stageRow.appendChild(card);
+
+      var runner = createRunner(m, svg);
+      buildTimeline(timeline, m, runner);
+      playBtn.addEventListener("click", function(){
+        if (runner.isRunning()){ runner.pause(); playBtn.textContent = "▶ Play"; playBtn.classList.remove("active"); }
+        else { runner.play(); playBtn.textContent = "⏸ Pause"; playBtn.classList.add("active"); }
+      });
+      runners.push({ runner:runner, btn:playBtn });
+      if (autoPlay){ runner.play(); playBtn.textContent = "⏸ Pause"; playBtn.classList.add("active"); }
+    });
+
+    document.getElementById("speedSlider").addEventListener("input", function(e){ speed = parseFloat(e.target.value); });
+    document.getElementById("equalizeToggle").addEventListener("change", function(e){ equalize = e.target.checked; });
+    document.getElementById("playAll").addEventListener("change", function(e){
+      autoPlay = e.target.checked;
+      runners.forEach(function(r){
+        if (autoPlay && !r.runner.isRunning()){ r.runner.play(); r.btn.textContent="⏸ Pause"; r.btn.classList.add("active"); }
+        if (!autoPlay && r.runner.isRunning()){ r.runner.pause(); r.btn.textContent="▶ Play"; r.btn.classList.remove("active"); }
+      });
+    });
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>
+</body>
+</html>

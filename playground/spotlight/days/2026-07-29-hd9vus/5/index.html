@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floating Selection Bubble Menu — UI Spotlight</title>
+<style>
+  :root{ --bg:#0a0b13; --card:rgba(255,255,255,0.05); --brd:rgba(150,170,255,0.18); --text:#eef1ff; --muted:#8d96c2; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:40;background:rgba(20,20,32,0.7);backdrop-filter:blur(10px);
+    border:1px solid var(--brd);color:var(--text);text-decoration:none;padding:8px 14px;border-radius:999px;font-size:13px;}
+  header{padding:70px 20px 16px;text-align:center;max-width:700px;margin:0 auto;}
+  header h1{font-size:clamp(24px,5vw,36px);margin:0 0 10px;}
+  header p{color:var(--muted);font-size:14px;line-height:1.6;margin:0;}
+  #statusMsg{max-width:700px;margin:0 auto 10px;text-align:center;font-size:12.5px;color:var(--accent);min-height:16px;}
+
+  article{ max-width:640px; margin:20px auto 60px; padding:26px 30px; background:var(--card); border:1px solid var(--brd);
+    border-radius:16px; line-height:1.8; font-size:16px; outline:none; }
+  article h2{ margin-top:0; font-size:20px; }
+  article mark{ background:rgba(167,139,250,0.4); color:inherit; border-radius:3px; padding:0 2px; }
+  article a{ color:#7dd3fc; }
+
+  #bubble{ position:absolute; top:0; left:0; z-index:50; display:flex; gap:4px; background:rgba(18,20,30,0.92);
+    backdrop-filter:blur(12px); border:1px solid var(--brd); border-radius:12px; padding:6px; box-shadow:0 12px 30px -10px rgba(0,0,0,0.6);
+    opacity:0; transform:translateY(6px) scale(0.96); pointer-events:none; transition:opacity .18s, transform .18s; }
+  #bubble.visible{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+  #bubble.flipped{ transform:translateY(-6px) scale(0.96); }
+  #bubble.flipped.visible{ transform:translateY(0) scale(1); }
+  #bubble button{ background:transparent; border:none; color:var(--text); font-size:14px; padding:7px 10px;
+    border-radius:8px; cursor:pointer; }
+  #bubble button:hover{ background:rgba(255,255,255,0.12); }
+  #bubble button.b{ font-weight:800; }
+  #bubble button.i{ font-style:italic; }
+  #bubble .sep{ width:1px; background:var(--brd); margin:4px 2px; }
+
+  footer{ text-align:center; color:#5c6382; font-size:11px; padding:0 20px 24px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Floating Selection Bubble Menu</h1>
+  <p>Select any text below — a formatting toolbar appears right above it, flipping below when there's no room, exactly like Medium or Notion's inline editor.</p>
+</header>
+<div id="statusMsg"></div>
+
+<article id="article" contenteditable="true" spellcheck="false">
+  <h2>Try selecting a sentence</h2>
+  <p>The trick almost every clone gets wrong: toolbar buttons must bind to <code>mousedown</code> instead of <code>click</code>, and call <code>preventDefault()</code> — otherwise the browser collapses your text selection before the click handler ever fires, wiping out the very selection you meant to format.</p>
+  <p>This bubble listens for <code>selectionchange</code> on the whole document, reads <code>range.getBoundingClientRect()</code> to find where the selected text actually sits on screen, and positions itself centered above it — flipping below the selection automatically if there isn't enough room near the top of the viewport.</p>
+  <p>Select a phrase, then try bold, italic, highlight, a link, or use "Copy as Markdown" to grab the whole article's formatting as plain-text Markdown.</p>
+</article>
+
+<div id="bubble">
+  <button class="b" data-cmd="bold" title="Bold">B</button>
+  <button class="i" data-cmd="italic" title="Italic">I</button>
+  <button data-cmd="mark" title="Highlight">◆</button>
+  <button data-cmd="link" title="Link">🔗</button>
+  <div class="sep"></div>
+  <button data-cmd="markdown" title="Copy as Markdown">MD</button>
+</div>
+
+<footer>Inspired by Tiptap's (ueberdosis/tiptap) BubbleMenu extension · UI Spotlight Day 74 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+  var article = document.getElementById("article");
+  var bubble = document.getElementById("bubble");
+  var statusMsg = document.getElementById("statusMsg");
+  var lastRange = null;
+
+  function hideBubble(){ bubble.classList.remove("visible"); }
+
+  function positionBubble(rect){
+    var bw = bubble.offsetWidth || 160, bh = bubble.offsetHeight || 40;
+    var top = rect.top - bh - 10;
+    var flipped = false;
+    if (top < 8){ top = rect.bottom + 10; flipped = true; }
+    var left = rect.left + rect.width/2 - bw/2;
+    left = Math.max(8, Math.min(window.innerWidth - bw - 8, left));
+    bubble.style.left = (left + window.scrollX) + "px";
+    bubble.style.top = (top + window.scrollY) + "px";
+    bubble.classList.toggle("flipped", flipped);
+  }
+
+  document.addEventListener("selectionchange", function(){
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount){ hideBubble(); return; }
+    var range = sel.getRangeAt(0);
+    if (!article.contains(range.commonAncestorContainer)){ hideBubble(); return; }
+    var rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0){ hideBubble(); return; }
+    lastRange = range.cloneRange();
+    positionBubble(rect);
+    bubble.classList.add("visible");
+  });
+
+  function wrapSelection(range, tagName, attrs){
+    var frag = range.extractContents();
+    var wrapper = document.createElement(tagName);
+    if (attrs) for (var k in attrs) wrapper.setAttribute(k, attrs[k]);
+    wrapper.appendChild(frag);
+    range.insertNode(wrapper);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    var newRange = document.createRange();
+    newRange.selectNodeContents(wrapper);
+    sel.addRange(newRange);
+  }
+
+  function elementToMarkdown(node){
+    var out = "";
+    node.childNodes.forEach(function(child){
+      if (child.nodeType === Node.TEXT_NODE){ out += child.textContent; return; }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      var tag = child.tagName.toLowerCase();
+      var inner = elementToMarkdown(child);
+      if (tag === "b" || tag === "strong") out += "**" + inner + "**";
+      else if (tag === "i" || tag === "em") out += "_" + inner + "_";
+      else if (tag === "mark") out += "==" + inner + "==";
+      else if (tag === "a") out += "[" + inner + "](" + child.getAttribute("href") + ")";
+      else if (tag === "h2") out += "## " + inner + "\n\n";
+      else if (tag === "p") out += inner + "\n\n";
+      else if (tag === "code") out += "`" + inner + "`";
+      else out += inner;
+    });
+    return out;
+  }
+
+  function showStatus(msg){
+    statusMsg.textContent = msg;
+    setTimeout(function(){ if (statusMsg.textContent === msg) statusMsg.textContent = ""; }, 2200);
+  }
+
+  bubble.addEventListener("mousedown", function(e){
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    e.preventDefault();
+    var cmd = btn.dataset.cmd;
+    if (cmd === "markdown"){
+      var md = elementToMarkdown(article).trim();
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(md).then(function(){ showStatus("Copied article as Markdown ✓"); })
+          .catch(function(){ showStatus("Clipboard blocked — markdown ready in console"); console.log(md); });
+      } else {
+        showStatus("Clipboard unavailable — markdown logged to console");
+        console.log(md);
+      }
+      return;
+    }
+    if (!lastRange) return;
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(lastRange);
+    if (cmd === "bold") wrapSelection(sel.getRangeAt(0), "b");
+    else if (cmd === "italic") wrapSelection(sel.getRangeAt(0), "i");
+    else if (cmd === "mark") wrapSelection(sel.getRangeAt(0), "mark");
+    else if (cmd === "link"){
+      var url = window.prompt("Link URL", "https://");
+      if (url) wrapSelection(sel.getRangeAt(0), "a", { href:url, target:"_blank", rel:"noopener" });
+    }
+  });
+
+  bubble.addEventListener("touchstart", function(e){
+    var btn = e.target.closest("button");
+    if (btn) e.preventDefault();
+  }, { passive:false });
+})();
+</script>
+</body>
+</html>

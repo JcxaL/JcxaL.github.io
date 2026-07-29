@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vector Lasso Select — UI Spotlight</title>
+<style>
+  :root{ --bg:#0a0b13; --card:rgba(255,255,255,0.05); --brd:rgba(150,170,255,0.18); --text:#eef1ff; --muted:#8d96c2; --accent:#fbbf24; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:40;background:rgba(20,20,32,0.7);backdrop-filter:blur(10px);
+    border:1px solid var(--brd);color:var(--text);text-decoration:none;padding:8px 14px;border-radius:999px;font-size:13px;}
+  header{padding:70px 20px 16px;text-align:center;max-width:700px;margin:0 auto;}
+  header h1{font-size:clamp(24px,5vw,36px);margin:0 0 10px;}
+  header p{color:var(--muted);font-size:14px;line-height:1.6;margin:0;}
+  #countBadge{position:fixed;top:16px;right:16px;z-index:40;background:rgba(18,20,30,0.8);backdrop-filter:blur(10px);
+    border:1px solid var(--brd);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;}
+  #countBadge b{color:var(--accent);}
+  .hint{max-width:700px;margin:0 auto 16px;text-align:center;color:var(--muted);font-size:12.5px;padding:0 18px;}
+  #container{ position:relative; max-width:820px; margin:0 auto 40px; padding:16px; max-height:56vh; overflow-y:auto;
+    background:var(--card); border:1px solid var(--brd); border-radius:16px; user-select:none; touch-action:none; }
+  #grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:10px; }
+  .item{ aspect-ratio:1; border-radius:12px; display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:20px; color:#0b0c16; background:var(--swatch,#8b5cf6); cursor:pointer;
+    border:2px solid transparent; transition:transform .12s; }
+  .item.selected{ border-color:#fff; transform:scale(0.94); box-shadow:0 0 0 3px rgba(251,191,36,0.5); }
+  #lasso{ position:fixed; z-index:30; background:rgba(251,191,36,0.14); border:1.5px solid var(--accent);
+    border-radius:4px; pointer-events:none; display:none; }
+  footer{ text-align:center; color:#5c6382; font-size:11px; padding:0 20px 24px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div id="countBadge"><b id="countNum">0</b> selected</div>
+
+<header>
+  <h1>Vector Lasso Select</h1>
+  <p>Drag a rectangle to multi-select — modeled as a vector (origin + signed magnitude) instead of width/height, so it works dragging in any direction.</p>
+</header>
+<p class="hint">Drag to select · Shift/Cmd-drag to add to selection · Click a swatch to toggle it · Esc clears · drag near the edge to auto-scroll</p>
+
+<div id="container">
+  <div id="grid"></div>
+</div>
+<div id="lasso"></div>
+
+<footer>Inspired by Joshua Wootonn's "Drag to Select" (DOMVector technique) · UI Spotlight Day 74 · Drop #4</footer>
+
+<script>
+(function(){
+  "use strict";
+  var container = document.getElementById("container");
+  var grid = document.getElementById("grid");
+  var lasso = document.getElementById("lasso");
+  var countNum = document.getElementById("countNum");
+
+  var COLORS = ["#8b5cf6","#22d3ee","#fbbf24","#f472b6","#34d399","#60a5fa","#f97316","#e879f9"];
+  var N = 60;
+  var selected = new Set();
+  var items = [];
+
+  for (var i=0;i<N;i++){
+    var el = document.createElement("div");
+    el.className = "item";
+    el.dataset.id = i;
+    el.style.setProperty("--swatch", COLORS[i % COLORS.length]);
+    el.textContent = String.fromCharCode(65 + (i % 26));
+    grid.appendChild(el);
+    items.push(el);
+  }
+
+  function updateBadge(){ countNum.textContent = selected.size; }
+  function setSelected(id, on){
+    var el = items[id];
+    if (!el) return;
+    if (on){ selected.add(id); el.classList.add("selected"); }
+    else { selected.delete(id); el.classList.remove("selected"); }
+  }
+  function clearSelection(){
+    selected.forEach(function(id){ setSelected(id, false); });
+    updateBadge();
+  }
+
+  function DOMVector(x, y, mx, my){ this.x=x; this.y=y; this.magnitudeX=mx; this.magnitudeY=my; }
+  DOMVector.prototype.toDOMRect = function(){
+    return new DOMRect(
+      Math.min(this.x, this.x+this.magnitudeX),
+      Math.min(this.y, this.y+this.magnitudeY),
+      Math.abs(this.magnitudeX),
+      Math.abs(this.magnitudeY)
+    );
+  };
+  function intersects(a, b){
+    return !(a.right < b.left || b.right < a.left || a.bottom < b.top || b.bottom < a.top);
+  }
+
+  var dragging = false, additive = false, origin = null, preExisting = [];
+  var autoScrollRaf = null, lastClientY = 0;
+  var CLICK_THRESHOLD = 8;
+
+  function updateLassoVisual(rect){
+    lasso.style.display = "block";
+    lasso.style.left = rect.left + "px";
+    lasso.style.top = rect.top + "px";
+    lasso.style.width = rect.width + "px";
+    lasso.style.height = rect.height + "px";
+  }
+
+  function runSelection(clientX, clientY){
+    var vec = new DOMVector(origin.x, origin.y, clientX-origin.x, clientY-origin.y);
+    var rect = vec.toDOMRect();
+    updateLassoVisual(rect);
+    var moved = Math.abs(vec.magnitudeX) > CLICK_THRESHOLD || Math.abs(vec.magnitudeY) > CLICK_THRESHOLD;
+    if (!moved) return;
+    items.forEach(function(el, id){
+      var r = el.getBoundingClientRect();
+      var hit = intersects(rect, r);
+      var wasPreExisting = preExisting.indexOf(id) !== -1;
+      if (hit) setSelected(id, true);
+      else setSelected(id, additive && wasPreExisting);
+    });
+    updateBadge();
+  }
+
+  function autoScrollTick(){
+    if (!dragging){ autoScrollRaf = null; return; }
+    var crect = container.getBoundingClientRect();
+    var margin = 34, speed = 0;
+    if (lastClientY < crect.top + margin) speed = -(crect.top + margin - lastClientY) * 0.6;
+    else if (lastClientY > crect.bottom - margin) speed = (lastClientY - (crect.bottom - margin)) * 0.6;
+    if (speed !== 0) container.scrollTop += speed;
+    autoScrollRaf = requestAnimationFrame(autoScrollTick);
+  }
+
+  container.addEventListener("pointerdown", function(e){
+    if (e.button !== undefined && e.button !== 0) return;
+    dragging = true;
+    additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    origin = { x:e.clientX, y:e.clientY };
+    lastClientY = e.clientY;
+    preExisting = additive ? Array.from(selected) : [];
+    if (!additive) clearSelection();
+    try { container.setPointerCapture(e.pointerId); } catch(err){}
+    if (!autoScrollRaf) autoScrollRaf = requestAnimationFrame(autoScrollTick);
+  });
+
+  window.addEventListener("pointermove", function(e){
+    if (!dragging) return;
+    lastClientY = e.clientY;
+    runSelection(e.clientX, e.clientY);
+  });
+
+  function endDrag(e){
+    if (!dragging) return;
+    var clientX = e.clientX !== undefined ? e.clientX : origin.x;
+    var clientY = e.clientY !== undefined ? e.clientY : origin.y;
+    var dx = Math.abs(clientX - origin.x), dy = Math.abs(clientY - origin.y);
+    dragging = false;
+    lasso.style.display = "none";
+    if (dx <= CLICK_THRESHOLD && dy <= CLICK_THRESHOLD){
+      var target = document.elementFromPoint(clientX, clientY);
+      var itemEl = target && target.closest ? target.closest(".item") : null;
+      if (itemEl){
+        var id = parseInt(itemEl.dataset.id, 10);
+        setSelected(id, !selected.has(id));
+        updateBadge();
+      }
+    }
+  }
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+
+  window.addEventListener("keydown", function(e){
+    if (e.key === "Escape") clearSelection();
+  });
+
+  updateBadge();
+})();
+</script>
+</body>
+</html>

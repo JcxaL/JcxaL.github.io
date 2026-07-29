@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blend-Mode Canvas Text — UI Spotlight</title>
+<style>
+  :root{ --brd:rgba(150,170,255,0.22); --text:#eef1ff; --muted:#a3abcf; --accent:#f472b6; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:#08080c;color:var(--text);font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:30;background:rgba(20,20,32,0.7);backdrop-filter:blur(10px);
+    border:1px solid var(--brd);color:var(--text);text-decoration:none;padding:8px 14px;border-radius:999px;font-size:13px;}
+  header{padding:70px 20px 16px;text-align:center;max-width:700px;margin:0 auto;}
+  header h1{font-size:clamp(24px,5vw,36px);margin:0 0 10px;}
+  header p{color:var(--muted);font-size:14px;line-height:1.6;margin:0;}
+  .stage{position:relative;width:100%;height:52vh;min-height:280px;overflow:hidden;margin-top:20px;}
+  canvas#bg{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  .blend-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:clamp(40px,11vw,140px);font-weight:900;letter-spacing:0.01em;text-align:center;
+    padding:0 20px;pointer-events:none;user-select:none;}
+  #panel{position:fixed;top:16px;right:16px;z-index:30;background:rgba(18,20,30,0.78);backdrop-filter:blur(12px);
+    border:1px solid var(--brd);border-radius:14px;padding:14px 16px;font-size:12px;width:220px;}
+  #panel h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);}
+  #panel label{display:block;margin-bottom:8px;color:var(--muted);}
+  #panel select, #panel input[type=text]{width:100%;background:rgba(0,0,0,0.35);border:1px solid var(--brd);
+    color:var(--text);padding:6px 8px;border-radius:8px;font-size:12px;margin-top:4px;}
+  #panel input[type=range]{width:100%;accent-color:var(--accent);}
+  footer{text-align:center;color:#5c6382;font-size:11px;padding:24px 20px;}
+  @media (max-width:760px){ #panel{position:static;width:auto;margin:16px 18px 0;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Blend Text</h4>
+  <label>Text
+    <input type="text" id="textInput" value="FLUX" maxlength="14">
+  </label>
+  <label>Pattern
+    <select id="patternSelect">
+      <option value="plasma">Plasma</option>
+      <option value="particles">Particle Swarm</option>
+      <option value="wave">Synthetic Waveform</option>
+    </select>
+  </label>
+  <label>Blend mode
+    <select id="modeSelect">
+      <option value="screen">Screen (dark stage)</option>
+      <option value="multiply">Multiply (light stage)</option>
+      <option value="difference">Difference (invert)</option>
+    </select>
+  </label>
+  <label>Speed
+    <input type="range" id="speedSlider" min="0.2" max="2.5" step="0.1" value="1">
+  </label>
+</div>
+
+<header>
+  <h1>Blend-Mode Canvas Text</h1>
+  <p>Text set in the same color as an animated canvas's base fill, layered with <code>mix-blend-mode</code> — the pattern shows through the glyph shapes with zero masking, video, or <code>background-clip</code>.</p>
+</header>
+
+<div class="stage" id="stage">
+  <canvas id="bg"></canvas>
+  <div class="blend-text" id="blendText">FLUX</div>
+</div>
+
+<footer>Technique popularized by Dudley Storey's classic blend-mode text demo, resurging in 2026's OKLCH/blend-mode design coverage · UI Spotlight Day 74 · Drop #3</footer>
+
+<script>
+(function(){
+  "use strict";
+  var stage = document.getElementById("stage");
+  var canvas = document.getElementById("bg");
+  var ctx = canvas.getContext("2d");
+  var textEl = document.getElementById("blendText");
+  var textInput = document.getElementById("textInput");
+  var patternSelect = document.getElementById("patternSelect");
+  var modeSelect = document.getElementById("modeSelect");
+  var speedSlider = document.getElementById("speedSlider");
+
+  var MODES = {
+    screen:     { bg:"#050505", text:"#050505" },
+    multiply:   { bg:"#f5f5f5", text:"#f5f5f5" },
+    difference: { bg:"#12131c", text:"#ffffff" }
+  };
+
+  var state = { pattern:"plasma", mode:"screen", speed:1, t:0 };
+  var particles = [];
+
+  function resize(){
+    var rect = stage.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(rect.width));
+    canvas.height = Math.max(1, Math.floor(rect.height));
+  }
+  window.addEventListener("resize", resize);
+
+  function initParticles(){
+    particles = [];
+    var n = 46;
+    for (var i=0;i<n;i++){
+      particles.push({
+        x: Math.random(), y: Math.random(),
+        vx: (Math.random()-0.5)*0.0006, vy: (Math.random()-0.5)*0.0006,
+        r: 14 + Math.random()*30, hue: Math.floor(Math.random()*360)
+      });
+    }
+  }
+  initParticles();
+
+  function drawPlasma(w,h,t){
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0,0,w,h);
+    ctx.globalCompositeOperation = "lighter";
+    var blobs = 4;
+    for (var i=0;i<blobs;i++){
+      var ang = t*0.6 + i*(Math.PI*2/blobs);
+      var cx = w/2 + Math.cos(ang)*w*0.28;
+      var cy = h/2 + Math.sin(ang*1.3)*h*0.3;
+      var hue = (t*40 + i*90) % 360;
+      var g = ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(w,h)*0.45);
+      g.addColorStop(0, "hsla(" + hue + ",90%,60%,0.9)");
+      g.addColorStop(1, "hsla(" + hue + ",90%,50%,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,w,h);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function drawParticles(w,h,t){
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0,0,w,h);
+    ctx.globalCompositeOperation = "lighter";
+    particles.forEach(function(p){
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < -0.1) p.x = 1.1; if (p.x > 1.1) p.x = -0.1;
+      if (p.y < -0.1) p.y = 1.1; if (p.y > 1.1) p.y = -0.1;
+      var cx = p.x*w, cy = p.y*h;
+      var hue = (p.hue + t*20) % 360;
+      var g = ctx.createRadialGradient(cx,cy,0,cx,cy,p.r);
+      g.addColorStop(0, "hsla(" + hue + ",95%,65%,0.95)");
+      g.addColorStop(1, "hsla(" + hue + ",95%,55%,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx,cy,p.r,0,Math.PI*2); ctx.fill();
+    });
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function drawWave(w,h,t){
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0,0,w,h);
+    ctx.globalCompositeOperation = "lighter";
+    var bars = 48;
+    var bw = w/bars;
+    for (var i=0;i<bars;i++){
+      var phase = i*0.35;
+      var amp = (Math.sin(t*2 + phase) * 0.5 + 0.5) * (Math.sin(t*0.4 + i*0.12)*0.4 + 0.6);
+      var barH = amp * h * 0.85;
+      var hue = (i/bars)*300 + t*30;
+      ctx.fillStyle = "hsla(" + hue + ",90%,60%,0.85)";
+      ctx.fillRect(i*bw, (h-barH)/2, bw*0.7, barH);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function frame(){
+    requestAnimationFrame(frame);
+    if (canvas.width < 2) return;
+    state.t += 0.016 * state.speed;
+    var w = canvas.width, h = canvas.height;
+    if (state.pattern === "plasma") drawPlasma(w,h,state.t);
+    else if (state.pattern === "particles") drawParticles(w,h,state.t);
+    else drawWave(w,h,state.t);
+  }
+
+  function applyMode(){
+    var m = MODES[state.mode];
+    stage.style.background = m.bg;
+    textEl.style.color = m.text;
+    textEl.style.mixBlendMode = state.mode;
+  }
+
+  textInput.addEventListener("input", function(){ textEl.textContent = textInput.value || "FLUX"; });
+  patternSelect.addEventListener("change", function(){ state.pattern = patternSelect.value; });
+  modeSelect.addEventListener("change", function(){ state.mode = modeSelect.value; applyMode(); });
+  speedSlider.addEventListener("input", function(){ state.speed = parseFloat(speedSlider.value); });
+
+  applyMode();
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
