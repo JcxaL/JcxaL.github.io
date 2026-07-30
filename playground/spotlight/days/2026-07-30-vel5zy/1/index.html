@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 1 — Cursor-Reactive Shader Distortion</title>
+<style>
+  :root{ --sky:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#04070c;color:#eaf4ff;font-family:system-ui,sans-serif;overflow:hidden;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;background:#0a0f18cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#eaf4ff;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  #stage{position:relative;width:100%;height:100dvh;overflow-y:auto;}
+  .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:70px 16px 20px;text-align:center;}
+  .hero h1{margin:0 0 8px;font-size:clamp(20px,4vw,32px);background:linear-gradient(90deg,#38bdf8,#a78bfa);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero p{margin:0;color:#9fb3cc;font-size:13px;max-width:520px;}
+  .panels{display:grid;grid-template-columns:1fr;gap:18px;padding:20px 16px 60px;max-width:1000px;margin:0 auto;}
+  @media(min-width:820px){ .panels{grid-template-columns:1fr 1fr 1fr;} }
+  .panel{position:relative;border-radius:16px;overflow:hidden;aspect-ratio:4/5;box-shadow:0 20px 50px -20px #000;
+    border:1px solid #ffffff14;}
+  .panel canvas{display:block;width:100%;height:100%;}
+  .panel .label{position:absolute;bottom:10px;left:12px;font-size:11px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;color:#fff;text-shadow:0 2px 8px #000;}
+  #debug{position:fixed;top:14px;right:14px;z-index:50;background:#0a0f18cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:10px 12px;font-size:11px;width:180px;}
+  #debug h3{margin:0 0 6px;font-size:11px;color:var(--sky);}
+  #debug label{display:flex;justify-content:space-between;margin:6px 0 2px;color:#9fb3cc;}
+  #debug input[type=range]{width:100%;accent-color:var(--sky);}
+  @media(max-width:640px){ #debug{display:none;} }
+  footer{text-align:center;padding:0 16px 40px;color:#5f7086;font-size:11px;}
+  footer a{color:#7cc4ff;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="debug">
+  <h3>SHADER PARAMS</h3>
+  <label>Radius <span id="vRadius">0.35</span></label>
+  <input type="range" id="radius" min="0.1" max="0.7" step="0.01" value="0.35">
+  <label>Amplitude <span id="vAmp">0.06</span></label>
+  <input type="range" id="amp" min="0" max="0.15" step="0.005" value="0.06">
+  <label>Frequency <span id="vFreq">8</span></label>
+  <input type="range" id="freq" min="2" max="20" step="1" value="8">
+  <label>Momentum <span id="vMom">0.12</span></label>
+  <input type="range" id="mom" min="0.02" max="0.4" step="0.01" value="0.12">
+</div>
+
+<div id="stage">
+  <div class="hero">
+    <h1>Cursor-Reactive Shader Distortion</h1>
+    <p>Move your pointer across any panel — a GLSL fragment shader remaps the surface's UV coordinates using a damped, direction-biased wave instead of a flat overlay. The ripple leans into your motion, then eases back to rest.</p>
+  </div>
+  <div class="panels">
+    <div class="panel" data-hue="200"><canvas></canvas><span class="label">Aurora</span></div>
+    <div class="panel" data-hue="320"><canvas></canvas><span class="label">Ember</span></div>
+    <div class="panel" data-hue="150"><canvas></canvas><span class="label">Verdant</span></div>
+  </div>
+  <footer>Inspired by Codrops — "Magnetic Commerce: Building the Dash Creative Website" · UI Spotlight Day 74 · Drop #1</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var VERT = "attribute vec2 aPos; void main(){ gl_Position = vec4(aPos,0.0,1.0); }";
+  var FRAG =
+    "precision highp float;" +
+    "uniform vec2 uRes; uniform float uTime; uniform vec2 uMouse; uniform vec2 uMotion;" +
+    "uniform float uRadius; uniform float uAmp; uniform float uFreq; uniform float uHue;" +
+    "vec3 palette(float t, float hue){" +
+      "vec3 a = vec3(0.55,0.5,0.55); vec3 b = vec3(0.45,0.45,0.45);" +
+      "vec3 c = vec3(1.0,1.0,1.0); vec3 d = vec3(hue/360.0, hue/360.0+0.33, hue/360.0+0.67);" +
+      "return a + b*cos(6.28318*(c*t+d));" +
+    "}" +
+    "void main(){" +
+      "vec2 uv = gl_FragCoord.xy / uRes;" +
+      "vec2 toMouse = uv - uMouse;" +
+      "float dist = length(toMouse * vec2(uRes.x/uRes.y, 1.0));" +
+      "float falloff = smoothstep(uRadius, 0.0, dist);" +
+      "vec2 dir = normalize(uMotion + vec2(0.0001));" +
+      "float wave = sin(dist*uFreq - uTime*2.2) * uAmp * falloff;" +
+      "vec2 distorted = uv + dir * wave + uMotion*falloff*0.35;" +
+      "float pattern = sin(distorted.x*10.0+uTime*0.6) + sin(distorted.y*10.0-uTime*0.4) + sin((distorted.x+distorted.y)*6.0+uTime*0.3);" +
+      "vec3 col = palette(pattern*0.18 + uTime*0.02, uHue);" +
+      "col += falloff*0.15;" +
+      "gl_FragColor = vec4(col, 1.0);" +
+    "}";
+
+  function initGL(canvas, hue){
+    var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if(!gl) return null;
+    function compile(type, src){
+      var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){ console.error(gl.getShaderInfoLog(s)); }
+      return s;
+    }
+    var prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(prog, 'aPos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    var U = {
+      res: gl.getUniformLocation(prog,'uRes'),
+      time: gl.getUniformLocation(prog,'uTime'),
+      mouse: gl.getUniformLocation(prog,'uMouse'),
+      motion: gl.getUniformLocation(prog,'uMotion'),
+      radius: gl.getUniformLocation(prog,'uRadius'),
+      amp: gl.getUniformLocation(prog,'uAmp'),
+      freq: gl.getUniformLocation(prog,'uFreq'),
+      hue: gl.getUniformLocation(prog,'uHue')
+    };
+    return { gl:gl, U:U, hue:hue };
+  }
+
+  var params = { radius:0.35, amp:0.06, freq:8, momentum:0.12 };
+  ['radius','amp','freq','mom'].forEach(function(id){
+    var el = document.getElementById(id);
+    var label = { radius:'vRadius', amp:'vAmp', freq:'vFreq', mom:'vMom' }[id];
+    el.addEventListener('input', function(){
+      var v = parseFloat(el.value);
+      document.getElementById(label).textContent = v;
+      if(id==='mom') params.momentum = v; else params[id] = v;
+    });
+  });
+
+  var instances = [];
+  document.querySelectorAll('.panel').forEach(function(panelEl){
+    var canvas = panelEl.querySelector('canvas');
+    var hue = parseFloat(panelEl.dataset.hue);
+    var inst = initGL(canvas, hue);
+    if(!inst) return;
+    inst.canvas = canvas; inst.panelEl = panelEl;
+    inst.mouse = [0.5, 0.5]; inst.motionCur = [0,0]; inst.motionTarget = [0,0]; inst.lastPos = null;
+    instances.push(inst);
+
+    function resize(){
+      var rect = panelEl.getBoundingClientRect();
+      var dpr = Math.min(window.devicePixelRatio||1, 2);
+      canvas.width = Math.round(rect.width*dpr);
+      canvas.height = Math.round(rect.height*dpr);
+      inst.gl.viewport(0,0,canvas.width, canvas.height);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function onMove(clientX, clientY){
+      var rect = panelEl.getBoundingClientRect();
+      var x = (clientX-rect.left)/rect.width;
+      var y = 1 - (clientY-rect.top)/rect.height;
+      if(inst.lastPos){
+        inst.motionTarget[0] += (x - inst.lastPos[0]);
+        inst.motionTarget[1] += (y - inst.lastPos[1]);
+      }
+      inst.lastPos = [x,y];
+      inst.mouse = [x,y];
+    }
+    panelEl.addEventListener('pointermove', function(e){ onMove(e.clientX, e.clientY); });
+    panelEl.addEventListener('pointerleave', function(){ inst.lastPos = null; });
+  });
+
+  function loop(t){
+    var time = t*0.001;
+    instances.forEach(function(inst){
+      inst.motionTarget[0] *= 0.9; inst.motionTarget[1] *= 0.9;
+      inst.motionCur[0] += (inst.motionTarget[0]-inst.motionCur[0]) * params.momentum;
+      inst.motionCur[1] += (inst.motionTarget[1]-inst.motionCur[1]) * params.momentum;
+      var gl = inst.gl, U = inst.U;
+      gl.uniform2f(U.res, inst.canvas.width, inst.canvas.height);
+      gl.uniform1f(U.time, time);
+      gl.uniform2f(U.mouse, inst.mouse[0], inst.mouse[1]);
+      gl.uniform2f(U.motion, inst.motionCur[0], inst.motionCur[1]);
+      gl.uniform1f(U.radius, params.radius);
+      gl.uniform1f(U.amp, params.amp);
+      gl.uniform1f(U.freq, params.freq);
+      gl.uniform1f(U.hue, inst.hue);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    });
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

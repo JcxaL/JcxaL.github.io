@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 3 — Particle Text Scatter</title>
+<style>
+  :root{ --red:#f87171; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#0c0708;color:#ffeceb;font-family:system-ui,sans-serif;overflow:hidden;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;background:#0c0708cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#ffeceb;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  #stage{width:100%;height:100dvh;display:flex;flex-direction:column;}
+  .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:70px 16px 6px;text-align:center;}
+  .hero h1{margin:0 0 8px;font-size:clamp(20px,4vw,30px);background:linear-gradient(90deg,var(--red),#f9c80e);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero p{margin:0;color:#c99;font-size:13px;max-width:540px;}
+  #canvasWrap{flex:1;position:relative;min-height:0;}
+  canvas{display:block;width:100%;height:100%;touch-action:none;}
+  .wordbar{display:flex;gap:8px;justify-content:center;padding:14px;flex-wrap:wrap;}
+  .wordbar button{border:1px solid #ffffff22;background:#1a0f10;color:#ffeceb;padding:8px 14px;border-radius:999px;
+    font-size:12px;font-weight:700;cursor:pointer;}
+  .wordbar button.active{background:var(--red);color:#1a0505;border-color:var(--red);}
+  #debug{position:fixed;top:14px;right:14px;z-index:50;background:#0c0708cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:10px 12px;font-size:11px;width:170px;}
+  #debug h3{margin:0 0 6px;font-size:11px;color:var(--red);}
+  #debug label{display:flex;justify-content:space-between;margin:6px 0 2px;color:#c99;}
+  #debug input[type=range]{width:100%;accent-color:var(--red);}
+  @media(max-width:640px){ #debug{display:none;} }
+  footer{text-align:center;padding:0 16px 10px;color:#7a5555;font-size:11px;}
+  footer a{color:#ff9d9d;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="debug">
+  <h3>PARTICLE PARAMS</h3>
+  <label>Gravity <span id="vGrav">0.05</span></label>
+  <input type="range" id="grav" min="0" max="0.2" step="0.01" value="0.05">
+  <label>Scatter speed <span id="vSpeed">7</span></label>
+  <input type="range" id="speed" min="2" max="14" step="1" value="7">
+  <label>Return ease <span id="vEase">0.08</span></label>
+  <input type="range" id="ease" min="0.02" max="0.2" step="0.01" value="0.08">
+</div>
+
+<div id="stage">
+  <div class="hero">
+    <h1>Particle Text Scatter / Reform</h1>
+    <p>Text is sampled into thousands of particles on an offscreen canvas. Move your pointer across it to blast them apart with physics, release to watch them spring back into formation.</p>
+  </div>
+  <div id="canvasWrap"><canvas id="c"></canvas></div>
+  <div class="wordbar">
+    <button data-w="SHATTER" class="active">Shatter</button>
+    <button data-w="REFORM">Reform</button>
+    <button data-w="SPOTLIGHT">Spotlight</button>
+  </div>
+  <footer>Inspired by Gthibaud — "Text particle" (CodePen) via Speckyboy's Text Distortion Effects roundup · UI Spotlight Day 74 · Drop #3</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var DPR = Math.min(window.devicePixelRatio||1, 2);
+  var W=0, H=0;
+  var params = { gravity:0.05, speed:7, ease:0.08 };
+
+  ['grav','speed','ease'].forEach(function(id){
+    var map = { grav:'gravity', speed:'speed', ease:'ease' };
+    var labelMap = { grav:'vGrav', speed:'vSpeed', ease:'vEase' };
+    document.getElementById(id).addEventListener('input', function(){
+      params[map[id]] = parseFloat(this.value);
+      document.getElementById(labelMap[id]).textContent = this.value;
+    });
+  });
+
+  var particles = [];
+  var word = 'SHATTER';
+  var pointer = { x:-9999, y:-9999, active:false };
+
+  function resize(){
+    var wrap = document.getElementById('canvasWrap');
+    W = wrap.clientWidth; H = wrap.clientHeight;
+    canvas.width = W*DPR; canvas.height = H*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    buildParticles();
+  }
+  window.addEventListener('resize', resize);
+
+  function buildParticles(){
+    var off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    var octx = off.getContext('2d');
+    var fontSize = Math.min(W/word.length*1.35, H*0.32);
+    octx.fillStyle = '#fff';
+    octx.font = '900 '+fontSize+'px system-ui, sans-serif';
+    octx.textAlign = 'center'; octx.textBaseline = 'middle';
+    octx.fillText(word, W/2, H/2);
+    var img = octx.getImageData(0,0,W,H).data;
+    var step = Math.max(2, Math.floor(Math.min(W,H)/220));
+    particles = [];
+    for(var y=0;y<H;y+=step){
+      for(var x=0;x<W;x+=step){
+        var idx = (y*W+x)*4+3;
+        if(img[idx] > 128){
+          particles.push({
+            ox:x, oy:y, x:x, y:y, vx:0, vy:0,
+            r: step*0.42,
+            hue: 0 + (x/W)*40
+          });
+        }
+      }
+    }
+  }
+
+  function pointerPos(e){
+    var rect = canvas.getBoundingClientRect();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX-rect.left, y: clientY-rect.top };
+  }
+  canvas.addEventListener('pointermove', function(e){
+    var p = pointerPos(e); pointer.x=p.x; pointer.y=p.y; pointer.active=true;
+  });
+  canvas.addEventListener('pointerdown', function(e){
+    var p = pointerPos(e); pointer.x=p.x; pointer.y=p.y; pointer.active=true;
+  });
+  canvas.addEventListener('pointerleave', function(){ pointer.active=false; pointer.x=-9999; pointer.y=-9999; });
+
+  function step(){
+    ctx.clearRect(0,0,W,H);
+    var repelR = 70;
+    for(var i=0;i<particles.length;i++){
+      var p = particles[i];
+      if(pointer.active){
+        var dx = p.x-pointer.x, dy = p.y-pointer.y;
+        var d = Math.hypot(dx,dy);
+        if(d < repelR && d>0.01){
+          var force = (1-d/repelR) * params.speed;
+          p.vx += (dx/d)*force*0.4;
+          p.vy += (dy/d)*force*0.4;
+        }
+      }
+      p.vy += params.gravity * 0.3;
+      // spring back to origin
+      p.vx += (p.ox-p.x) * params.ease * 0.06;
+      p.vy += (p.oy-p.y) * params.ease * 0.06;
+      p.vx *= 0.9; p.vy *= 0.9;
+      p.x += p.vx; p.y += p.vy;
+
+      ctx.fillStyle = 'hsl('+(4+p.hue*0.5)+', 90%, '+(58+ (p.hue*0.2))+'%)';
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();
+    }
+    requestAnimationFrame(step);
+  }
+
+  document.querySelectorAll('.wordbar button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.wordbar button').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      word = btn.dataset.w;
+      buildParticles();
+    });
+  });
+
+  resize();
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
