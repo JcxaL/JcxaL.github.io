@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 1 — Seed-Driven Gradient Field</title>
+<style>
+  :root{ --sky:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#05070c;color:#eaf4ff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;background:#0a0f18cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#eaf4ff;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  #stage{position:relative;width:100%;height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:70px 16px 20px;text-align:center;}
+  .hero h1{margin:0 0 8px;font-size:clamp(20px,4vw,32px);background:linear-gradient(90deg,#38bdf8,#a78bfa);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero p{margin:0;color:#9fb3cc;font-size:13px;max-width:560px;line-height:1.6;}
+  .panels{display:grid;grid-template-columns:1fr;gap:18px;padding:20px 16px 60px;max-width:1000px;margin:0 auto;}
+  @media(min-width:820px){ .panels{grid-template-columns:1fr 1fr 1fr;} }
+  .panel{position:relative;border-radius:16px;overflow:hidden;aspect-ratio:4/5;box-shadow:0 20px 50px -20px #000;
+    border:1px solid #ffffff14;cursor:pointer;}
+  .panel canvas{display:block;width:100%;height:100%;}
+  .panel .label{position:absolute;bottom:10px;left:12px;right:12px;display:flex;justify-content:space-between;
+    align-items:flex-end;gap:8px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    color:#fff;text-shadow:0 2px 8px #000;}
+  .panel .seed{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;background:#00000066;
+    padding:3px 7px;border-radius:6px;letter-spacing:0;text-transform:none;}
+  .panel .hint{position:absolute;top:10px;right:12px;font-size:9px;font-weight:700;color:#fff9;
+    background:#00000055;padding:3px 7px;border-radius:6px;opacity:0;transition:opacity .2s;}
+  .panel:hover .hint{opacity:1;}
+  #debug{position:fixed;top:14px;right:14px;z-index:50;background:#0a0f18cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:12px 12px;font-size:11px;width:200px;}
+  #debug h3{margin:0 0 8px;font-size:11px;color:var(--sky);}
+  #debug label{display:flex;justify-content:space-between;margin:8px 0 2px;color:#9fb3cc;}
+  #debug input[type=range]{width:100%;accent-color:var(--sky);}
+  #debug input[type=text]{width:100%;font-family:ui-monospace,monospace;background:#00000066;border:1px solid #ffffff22;
+    color:#eaf4ff;border-radius:6px;padding:5px 6px;font-size:11px;margin-top:2px;}
+  #debug select{width:100%;background:#00000066;border:1px solid #ffffff22;color:#eaf4ff;border-radius:6px;
+    padding:5px 6px;font-size:11px;margin-top:2px;}
+  #debug .row{display:flex;gap:6px;margin-top:8px;}
+  #debug button{flex:1;background:#38bdf822;border:1px solid #38bdf855;color:#bfe6ff;border-radius:8px;
+    padding:6px 4px;font-size:10.5px;font-weight:700;cursor:pointer;}
+  #debug button:active{transform:scale(.96);}
+  #copied{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);z-index:60;
+    background:#0a0f18ee;border:1px solid #38bdf855;color:#bfe6ff;padding:8px 16px;border-radius:999px;
+    font-size:12px;font-weight:700;opacity:0;transition:opacity .25s, transform .25s;pointer-events:none;}
+  #copied.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  @media(max-width:640px){ #debug{display:none;} }
+  footer{text-align:center;padding:0 16px 40px;color:#5f7086;font-size:11px;}
+  footer a{color:#7cc4ff;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="debug">
+  <h3>SEED FIELD</h3>
+  <label>Seed <span></span></label>
+  <input type="text" id="seedInput" value="" spellcheck="false" maxlength="7">
+  <label>Variant</label>
+  <select id="variant">
+    <option value="0">Layered Radial</option>
+    <option value="1">Flow Noise</option>
+    <option value="2">Duotone Contrast</option>
+    <option value="3">Wave Interference</option>
+  </select>
+  <label>Speed <span id="vSpeed"></span></label>
+  <input type="range" id="speed" min="0" max="15" step="1" value="6">
+  <label>Hue <span id="vHue"></span></label>
+  <input type="range" id="hue" min="0" max="15" step="1" value="8">
+  <label>Saturation <span id="vSat"></span></label>
+  <input type="range" id="sat" min="0" max="15" step="1" value="10">
+  <div class="row">
+    <button id="randomize">Random</button>
+    <button id="share">Copy link</button>
+  </div>
+</div>
+
+<div id="stage">
+  <div class="hero">
+    <h1>Seed-Driven Gradient Field</h1>
+    <p>Every panel below is generated entirely from a short hex seed — same seed, same motion, forever. Type a new seed in the panel (desktop) or tap any tile to roll a fresh one. Click "Copy link" to save this exact field to the URL.</p>
+  </div>
+  <div class="panels"></div>
+  <footer>Inspired by metaory/gradient-gl — deterministic seed-driven procedural WebGL gradients · UI Spotlight Day 75 · Drop #1</footer>
+</div>
+<div id="copied">Link copied — seed saved to URL</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var VERT = "attribute vec2 aPos; void main(){ gl_Position = vec4(aPos,0.0,1.0); }";
+  var FRAG =
+    "precision highp float;" +
+    "uniform vec2 uRes; uniform float uTime; uniform float uVariant;" +
+    "uniform float uSpeed; uniform float uHue; uniform float uSat; uniform float uLight;" +
+    "float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }" +
+    "float noise(vec2 p){" +
+      "vec2 i = floor(p); vec2 f = fract(p);" +
+      "float a = hash(i); float b = hash(i+vec2(1.0,0.0));" +
+      "float c = hash(i+vec2(0.0,1.0)); float d = hash(i+vec2(1.0,1.0));" +
+      "vec2 u = f*f*(3.0-2.0*f);" +
+      "return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;" +
+    "}" +
+    "float fbm(vec2 p){" +
+      "float v = 0.0; float amp = 0.5;" +
+      "for(int i=0;i<5;i++){ v += amp*noise(p); p *= 2.02; amp *= 0.55; }" +
+      "return v;" +
+    "}" +
+    "vec3 hsl2rgb(vec3 c){" +
+      "vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0);" +
+      "return c.z + c.y*(rgb-0.5)*(1.0-abs(2.0*c.z-1.0));" +
+    "}" +
+    "void main(){" +
+      "vec2 uv = (gl_FragCoord.xy - 0.5*uRes) / min(uRes.x,uRes.y);" +
+      "float t = uTime * (0.06 + uSpeed*0.05);" +
+      "float baseHue = uHue/15.0;" +
+      "float sat = 0.35 + uSat/15.0*0.55;" +
+      "float val = 0.0;" +
+      "if(uVariant < 0.5){" +
+        "float d = length(uv) + 0.25*sin(t*1.3);" +
+        "val = fbm(uv*2.2 + vec2(cos(t),sin(t*0.8))*0.6) - d*0.5;" +
+      "} else if(uVariant < 1.5){" +
+        "vec2 flow = uv + vec2(fbm(uv*1.6+t*0.3), fbm(uv*1.6+t*0.3+5.2))*0.7;" +
+        "val = fbm(flow*2.4 + t*0.4);" +
+      "} else if(uVariant < 2.5){" +
+        "float n = fbm(uv*3.0 + t*0.5);" +
+        "val = smoothstep(0.35,0.65,n) - 0.5;" +
+        "val += 0.15*sin((uv.x+uv.y)*8.0 + t*2.0);" +
+      "} else {" +
+        "float w1 = sin((uv.x*6.0 + t*1.4));" +
+        "float w2 = sin((uv.y*6.0 - t*1.1) + uv.x*3.0);" +
+        "val = (w1+w2)*0.25 + fbm(uv*1.5+t*0.2)*0.5;" +
+      "}" +
+      "float hue = fract(baseHue + val*0.35);" +
+      "float lightness = clamp(0.35 + uLight*0.03 + val*0.28, 0.08, 0.92);" +
+      "vec3 col = hsl2rgb(vec3(hue, sat, lightness));" +
+      "float vig = 1.0 - 0.35*length(uv);" +
+      "gl_FragColor = vec4(col*vig, 1.0);" +
+    "}";
+
+  function compile(gl, type, src){
+    var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){ console.error(gl.getShaderInfoLog(s)); }
+    return s;
+  }
+  function initGL(canvas){
+    var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if(!gl) return null;
+    var prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(prog, 'aPos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    var U = {
+      res: gl.getUniformLocation(prog,'uRes'),
+      time: gl.getUniformLocation(prog,'uTime'),
+      variant: gl.getUniformLocation(prog,'uVariant'),
+      speed: gl.getUniformLocation(prog,'uSpeed'),
+      hue: gl.getUniformLocation(prog,'uHue'),
+      sat: gl.getUniformLocation(prog,'uSat'),
+      light: gl.getUniformLocation(prog,'uLight')
+    };
+    return { gl:gl, U:U };
+  }
+
+  // Seed format: {variant}{speed}{hue}{sat}{light}{light2}  -- 6 hex chars
+  var HEX = "0123456789abcdef";
+  function randHexChar(){ return HEX[Math.floor(Math.random()*16)]; }
+  function randomSeed(){
+    var s = "";
+    for(var i=0;i<6;i++) s += randHexChar();
+    return s;
+  }
+  function parseSeed(seed){
+    seed = (seed || "").toLowerCase().replace(/[^0-9a-f]/g,'').slice(0,6);
+    while(seed.length < 6) seed += "0";
+    var v = parseInt(seed[0],16) % 4;
+    var speed = parseInt(seed[1],16);
+    var hue = parseInt(seed[2],16);
+    var sat = parseInt(seed[3],16);
+    var light = parseInt(seed[4],16);
+    var salt = parseInt(seed[5],16);
+    return { seed:seed, variant:v, speed:speed, hue:hue, sat:sat, light:light, salt:salt };
+  }
+  function buildSeed(params){
+    var v = HEX[Math.max(0,Math.min(3,params.variant))];
+    var sp = HEX[Math.max(0,Math.min(15,params.speed))];
+    var h = HEX[Math.max(0,Math.min(15,params.hue))];
+    var sa = HEX[Math.max(0,Math.min(15,params.sat))];
+    var li = HEX[Math.max(0,Math.min(15,params.light))];
+    var salt = HEX[Math.max(0,Math.min(15,params.salt))];
+    return v+sp+h+sa+li+salt;
+  }
+
+  var instances = [];
+  var panelsEl = document.querySelector('.panels');
+
+  function makePanel(seed){
+    var wrap = document.createElement('div');
+    wrap.className = 'panel';
+    var canvas = document.createElement('canvas');
+    wrap.appendChild(canvas);
+    var label = document.createElement('div');
+    label.className = 'label';
+    label.innerHTML = '<span class="seed"></span><span>tap to reroll</span>';
+    wrap.appendChild(label);
+    var hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = 'click to reroll';
+    wrap.appendChild(hint);
+    panelsEl.appendChild(wrap);
+
+    var inst = initGL(canvas);
+    if(!inst) return null;
+    inst.canvas = canvas; inst.wrap = wrap; inst.seedSpan = label.querySelector('.seed');
+    setSeed(inst, seed);
+
+    function resize(){
+      var rect = wrap.getBoundingClientRect();
+      var dpr = Math.min(window.devicePixelRatio||1, 2);
+      canvas.width = Math.max(1,Math.round(rect.width*dpr));
+      canvas.height = Math.max(1,Math.round(rect.height*dpr));
+      inst.gl.viewport(0,0,canvas.width, canvas.height);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    wrap.addEventListener('click', function(){
+      setSeed(inst, randomSeed());
+      if(inst === instances[0]) syncDebugFromInstance(inst);
+    });
+
+    instances.push(inst);
+    return inst;
+  }
+
+  function setSeed(inst, seed){
+    var p = parseSeed(seed);
+    inst.params = p;
+    inst.seedSpan.textContent = p.seed;
+  }
+
+  // Seed the first (primary) panel from URL hash if present, else a nice default.
+  var initialSeed = "";
+  var hash = window.location.hash.replace('#','');
+  var m = /seed=([0-9a-f]{1,6})/i.exec(hash);
+  if(m) initialSeed = m[1];
+  if(!initialSeed) initialSeed = "16a95b";
+
+  makePanel(initialSeed);
+  makePanel(randomSeed());
+  makePanel(randomSeed());
+  makePanel(randomSeed());
+  makePanel(randomSeed());
+  makePanel(randomSeed());
+
+  function loop(t){
+    var time = t*0.001;
+    instances.forEach(function(inst){
+      if(!inst) return;
+      var gl = inst.gl, U = inst.U, p = inst.params;
+      gl.uniform2f(U.res, inst.canvas.width, inst.canvas.height);
+      gl.uniform1f(U.time, time + p.salt*7.3);
+      gl.uniform1f(U.variant, p.variant);
+      gl.uniform1f(U.speed, p.speed);
+      gl.uniform1f(U.hue, p.hue);
+      gl.uniform1f(U.sat, p.sat);
+      gl.uniform1f(U.light, p.light);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    });
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---- debug panel wired to the FIRST panel ----
+  var seedInput = document.getElementById('seedInput');
+  var variantSel = document.getElementById('variant');
+  var speedRange = document.getElementById('speed');
+  var hueRange = document.getElementById('hue');
+  var satRange = document.getElementById('sat');
+  var vSpeed = document.getElementById('vSpeed');
+  var vHue = document.getElementById('vHue');
+  var vSat = document.getElementById('vSat');
+
+  function syncDebugFromInstance(inst){
+    var p = inst.params;
+    seedInput.value = p.seed;
+    variantSel.value = String(p.variant);
+    speedRange.value = p.speed; vSpeed.textContent = p.speed;
+    hueRange.value = p.hue; vHue.textContent = p.hue;
+    satRange.value = p.sat; vSat.textContent = p.sat;
+  }
+  syncDebugFromInstance(instances[0]);
+
+  function applyFromControls(){
+    var p = instances[0].params;
+    var next = buildSeed({
+      variant: parseInt(variantSel.value,10),
+      speed: parseInt(speedRange.value,10),
+      hue: parseInt(hueRange.value,10),
+      sat: parseInt(satRange.value,10),
+      light: p.light,
+      salt: p.salt
+    });
+    setSeed(instances[0], next);
+    seedInput.value = next;
+  }
+
+  variantSel.addEventListener('change', applyFromControls);
+  speedRange.addEventListener('input', function(){ vSpeed.textContent = speedRange.value; applyFromControls(); });
+  hueRange.addEventListener('input', function(){ vHue.textContent = hueRange.value; applyFromControls(); });
+  satRange.addEventListener('input', function(){ vSat.textContent = satRange.value; applyFromControls(); });
+
+  seedInput.addEventListener('change', function(){
+    setSeed(instances[0], seedInput.value);
+    syncDebugFromInstance(instances[0]);
+  });
+
+  document.getElementById('randomize').addEventListener('click', function(){
+    setSeed(instances[0], randomSeed());
+    syncDebugFromInstance(instances[0]);
+  });
+
+  document.getElementById('share').addEventListener('click', function(){
+    var url = window.location.origin + window.location.pathname + '#seed=' + instances[0].params.seed;
+    window.location.hash = 'seed=' + instances[0].params.seed;
+    var toast = document.getElementById('copied');
+    function flash(){ toast.classList.add('show'); setTimeout(function(){ toast.classList.remove('show'); }, 1600); }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(flash, flash);
+    } else {
+      flash();
+    }
+  });
+})();
+</script>
+</body>
+</html>

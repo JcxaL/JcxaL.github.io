@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drop 2 — Infinite Parallax Gallery</title>
+<style>
+  :root{ --grn:#34d399; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:#060b09;color:#eaf4ee;font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:80;background:#0a140fcc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#eaf4ee;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  .hero{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:70;text-align:center;
+    pointer-events:none;width:min(90vw,520px);}
+  .hero h1{margin:0;font-size:clamp(14px,3vw,18px);font-weight:800;
+    background:linear-gradient(90deg,#34d399,#38bdf8);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero p{margin:4px 0 0;font-size:10.5px;color:#9fd6bd;}
+  #debug{position:fixed;top:14px;right:14px;z-index:80;background:#0a140fcc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:10px 12px;font-size:11px;width:170px;}
+  #debug h3{margin:0 0 6px;font-size:11px;color:var(--grn);}
+  #debug label{display:flex;justify-content:space-between;margin:6px 0 2px;color:#9fd6bd;}
+  #debug input[type=range]{width:100%;accent-color:var(--grn);}
+  @media(max-width:640px){ #debug{display:none;} }
+
+  #wrap{position:relative;height:100dvh;width:100%;overflow:hidden;touch-action:none;
+    background:radial-gradient(circle at 50% 20%,#0e1e16 0%,#060b09 70%);}
+  #track{position:absolute;inset:0;}
+  .col{position:absolute;top:0;width:26%;}
+  .col:nth-child(1){ left:2%; }
+  .col:nth-child(2){ left:28%; }
+  .col:nth-child(3){ left:54%; }
+  .col:nth-child(4){ left:80%; }
+  @media(max-width:720px){
+    .col{width:44%;}
+    .col:nth-child(1){ left:3%; }
+    .col:nth-child(2){ left:53%; }
+    .col:nth-child(3){ left:3%; }
+    .col:nth-child(4){ left:53%; }
+  }
+  .tile{position:absolute;left:0;width:100%;border-radius:14px;overflow:hidden;
+    box-shadow:0 20px 40px -20px #000;cursor:pointer;border:1px solid #ffffff12;}
+  .tile .surf{width:100%;height:100%;display:block;}
+  .tile .cap{position:absolute;bottom:8px;left:10px;right:10px;font-size:10px;font-weight:700;
+    color:#fff;text-shadow:0 2px 6px #000;opacity:.9;letter-spacing:.02em;}
+
+  #detail{position:fixed;inset:0;z-index:60;display:none;background:#000000cc;backdrop-filter:blur(4px);}
+  #detail.open{display:block;}
+  #detail .preview{position:fixed;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px -20px #000;}
+  #detail .preview .surf{width:100%;height:100%;display:block;}
+  #detail .info{position:fixed;left:0;right:0;bottom:0;padding:18px 20px 26px;text-align:center;
+    opacity:0;transition:opacity .25s;}
+  #detail.settled .info{opacity:1;}
+  #detail .info h2{margin:0 0 4px;font-size:16px;}
+  #detail .info p{margin:0;font-size:11.5px;color:#9fd6bd;}
+  #detail .close{position:fixed;top:14px;right:14px;z-index:90;background:#0a140fcc;border:1px solid #ffffff22;
+    color:#eaf4ee;font-size:12px;font-weight:700;padding:8px 14px;border-radius:999px;cursor:pointer;}
+
+  footer{position:fixed;bottom:8px;left:0;right:0;text-align:center;color:#5f8b76;font-size:10px;z-index:70;
+    pointer-events:none;}
+  footer a{color:#7cd6a8;pointer-events:auto;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="hero">
+  <h1>Infinite Parallax Gallery</h1>
+  <p>Drag / scroll to loop forever · tap any tile to zoom into detail</p>
+</div>
+
+<div id="debug">
+  <h3>GALLERY</h3>
+  <label>Parallax spread <span id="vSpread">1.0</span></label>
+  <input type="range" id="spread" min="0" max="2" step="0.05" value="1">
+  <label>Loop speed <span id="vSpeed">1.0</span></label>
+  <input type="range" id="speedMul" min="0.3" max="2.5" step="0.05" value="1">
+</div>
+
+<div id="wrap">
+  <div id="track"></div>
+</div>
+
+<div id="detail">
+  <button class="close" id="closeBtn">✕ Close</button>
+  <div class="preview" id="preview"><div class="surf"></div></div>
+  <div class="info"><h2 id="infoTitle"></h2><p id="infoSub"></p></div>
+</div>
+
+<footer>Inspired by Codrops — &quot;Building an Infinite GSAP Scroll Gallery with Parallax and Flip Transitions&quot; · UI Spotlight Day 75 · Drop #2</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var HUES = [340,20,45,160,200,260,300,10,190,120,60,280];
+  var NAMES = ["Ember","Verdant","Aurora","Cobalt","Blush","Moss","Amber","Violet","Coral","Slate","Citrine","Orchid"];
+
+  function makeSurf(hue, i){
+    var el = document.createElement('div');
+    el.className = 'surf';
+    el.style.background =
+      'radial-gradient(120% 140% at 20% 15%, hsl('+hue+' 80% 62%), hsl('+((hue+40)%360)+' 70% 30%) 60%, hsl('+((hue+80)%360)+' 60% 14%) 100%)';
+    var mark = document.createElement('div');
+    mark.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;'+
+      'font-size:34px;font-weight:900;color:#ffffff26;font-family:ui-monospace,monospace;';
+    mark.textContent = '#' + (i+1);
+    el.style.position = 'relative';
+    el.appendChild(mark);
+    return el;
+  }
+
+  var wrap = document.getElementById('wrap');
+  var track = document.getElementById('track');
+  var COLS = 4;
+  var PER_COL = 5;
+  var GAP = 18;
+  var columns = [];
+  var colEls = [];
+
+  for(var c=0;c<COLS;c++){
+    var colEl = document.createElement('div');
+    colEl.className = 'col';
+    track.appendChild(colEl);
+    colEls.push(colEl);
+    var items = [];
+    for(var i=0;i<PER_COL;i++){
+      var idx = c*PER_COL + i;
+      var hue = HUES[idx % HUES.length];
+      var tile = document.createElement('div');
+      tile.className = 'tile';
+      var surf = makeSurf(hue, idx);
+      tile.appendChild(surf);
+      var cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.textContent = NAMES[idx % NAMES.length] + ' 0' + (idx+1);
+      tile.appendChild(cap);
+      colEl.appendChild(tile);
+      items.push({ el: tile, hue: hue, name: NAMES[idx % NAMES.length], idx: idx });
+    }
+    columns.push({ el: colEl, items: items, speedFactor: (c % 2 === 0) ? 1.25 : 0.75, offset: 0 });
+  }
+
+  var params = { spread: 1.0, speedMul: 1.0 };
+
+  function layoutTile(tile, i, colHeight, tileHeight){
+    tile.style.top = (i * (tileHeight + GAP)) + 'px';
+    tile.style.height = tileHeight + 'px';
+  }
+
+  function relayout(){
+    var rect = wrap.getBoundingClientRect();
+    var isMobile = rect.width < 720;
+    var colWidth = isMobile ? rect.width*0.44 : rect.width*0.26;
+    var tileHeight = colWidth * 1.15;
+    columns.forEach(function(col){
+      col.tileHeight = tileHeight;
+      col.colHeight = PER_COL * (tileHeight + GAP);
+      col.items.forEach(function(item, i){ layoutTile(item.el, i, col.colHeight, tileHeight); });
+    });
+  }
+  relayout();
+  window.addEventListener('resize', relayout);
+
+  var scrollPos = 0;
+  var velocity = 0;
+  var lastY = null;
+  var dragging = false;
+
+  function wrapValue(v, max){
+    v = v % max;
+    if(v < 0) v += max;
+    return v;
+  }
+
+  function render(){
+    columns.forEach(function(col){
+      var base = wrapValue(scrollPos * col.speedFactor, col.colHeight);
+      col.el.style.transform = 'translateY(' + (-base) + 'px)';
+      // duplicate items past the bottom so the loop seam is invisible
+      col.items.forEach(function(item, i){
+        var top = i * (col.tileHeight + GAP);
+        var visualTop = top - base;
+        var wrapOffset = 0;
+        if(visualTop + col.tileHeight < -20) wrapOffset = col.colHeight;
+        if(visualTop > (col.colHeight)) wrapOffset = -col.colHeight;
+        item.el.style.top = (top) + 'px';
+        item.el.style.transform = 'translateY(' + wrapOffset + 'px)';
+        // parallax within column based on distance from viewport center
+        var screenTop = visualTop + wrapOffset;
+        var centerDist = (screenTop + col.tileHeight/2) - (window.innerHeight/2);
+        var norm = centerDist / (window.innerHeight/2);
+        var px = norm * 14 * params.spread;
+        item.el.querySelector('.surf').style.transform = 'translateY(' + px + 'px) scale(1.08)';
+      });
+    });
+  }
+
+  // pointer / wheel drag-scroll (infinite)
+  wrap.addEventListener('wheel', function(e){
+    e.preventDefault();
+    scrollPos += e.deltaY * 0.6 * params.speedMul;
+  }, { passive:false });
+
+  wrap.addEventListener('pointerdown', function(e){
+    dragging = true; lastY = e.clientY; velocity = 0;
+    wrap.setPointerCapture(e.pointerId);
+  });
+  wrap.addEventListener('pointermove', function(e){
+    if(!dragging) return;
+    var dy = e.clientY - lastY;
+    lastY = e.clientY;
+    scrollPos -= dy * params.speedMul;
+    velocity = -dy;
+  });
+  function endDrag(){ dragging = false; }
+  wrap.addEventListener('pointerup', endDrag);
+  wrap.addEventListener('pointercancel', endDrag);
+
+  // gentle constant auto-drift + inertia
+  function tick(){
+    if(!dragging){
+      scrollPos += 0.35 * params.speedMul;
+      scrollPos += velocity * 0.02;
+      velocity *= 0.9;
+    }
+    render();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // ---- FLIP-style detail transition ----
+  var detail = document.getElementById('detail');
+  var preview = document.getElementById('preview');
+  var infoTitle = document.getElementById('infoTitle');
+  var infoSub = document.getElementById('infoSub');
+  var activeTile = null;
+
+  function openDetail(tile, item){
+    activeTile = tile;
+    var rect = tile.getBoundingClientRect();
+    preview.style.left = rect.left + 'px';
+    preview.style.top = rect.top + 'px';
+    preview.style.width = rect.width + 'px';
+    preview.style.height = rect.height + 'px';
+    preview.style.transition = 'none';
+    preview.querySelector('.surf').style.background = tile.querySelector('.surf').style.background;
+    infoTitle.textContent = item.name + ' — Tile 0' + (item.idx+1);
+    infoSub.textContent = 'FLIP-morphed from its grid position — closing returns it exactly where it came from.';
+    detail.classList.add('open');
+    tile.style.visibility = 'hidden';
+
+    // force layout, then animate to the expanded target
+    requestAnimationFrame(function(){
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var targetW = Math.min(vw*0.82, 560);
+      var targetH = targetW * 1.1;
+      var targetX = (vw - targetW)/2;
+      var targetY = (vh - targetH)/2 - 20;
+      preview.style.transition = 'left .5s cubic-bezier(.2,.8,.2,1), top .5s cubic-bezier(.2,.8,.2,1), width .5s cubic-bezier(.2,.8,.2,1), height .5s cubic-bezier(.2,.8,.2,1)';
+      preview.style.left = targetX + 'px';
+      preview.style.top = targetY + 'px';
+      preview.style.width = targetW + 'px';
+      preview.style.height = targetH + 'px';
+      setTimeout(function(){ detail.classList.add('settled'); }, 480);
+    });
+  }
+
+  function closeDetail(){
+    if(!activeTile) return;
+    detail.classList.remove('settled');
+    var rect = activeTile.getBoundingClientRect();
+    preview.style.left = rect.left + 'px';
+    preview.style.top = rect.top + 'px';
+    preview.style.width = rect.width + 'px';
+    preview.style.height = rect.height + 'px';
+    var tileToRestore = activeTile;
+    setTimeout(function(){
+      detail.classList.remove('open');
+      tileToRestore.style.visibility = 'visible';
+      activeTile = null;
+    }, 500);
+  }
+
+  columns.forEach(function(col){
+    col.items.forEach(function(item){
+      item.el.addEventListener('click', function(){
+        if(dragging) return;
+        openDetail(item.el, item);
+      });
+    });
+  });
+  document.getElementById('closeBtn').addEventListener('click', closeDetail);
+  detail.addEventListener('click', function(e){ if(e.target === detail) closeDetail(); });
+
+  // ---- debug panel ----
+  var spreadR = document.getElementById('spread');
+  var speedR = document.getElementById('speedMul');
+  spreadR.addEventListener('input', function(){
+    params.spread = parseFloat(spreadR.value);
+    document.getElementById('vSpread').textContent = params.spread.toFixed(2);
+  });
+  speedR.addEventListener('input', function(){
+    params.speedMul = parseFloat(speedR.value);
+    document.getElementById('vSpeed').textContent = params.speedMul.toFixed(2);
+  });
+})();
+</script>
+</body>
+</html>
