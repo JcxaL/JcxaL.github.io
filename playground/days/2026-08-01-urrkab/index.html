@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Bonsai Grove — Procedural Tree Sculptor</title>
+<style>
+  :root{
+    --panel-bg: rgba(14,16,14,0.62);
+    --panel-border: rgba(255,255,255,0.10);
+    --accent: #7ac47a;
+    --accent2: #f4a6c9;
+    --text: #eef2ee;
+    --text-dim: rgba(238,242,238,0.62);
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{ margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#08090a;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+  canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+
+  #hud{
+    position:fixed; top:0; left:0; right:0; z-index:10;
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+    padding:10px 12px; backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    background: linear-gradient(180deg, rgba(8,9,8,0.72), rgba(8,9,8,0.0));
+    pointer-events:none;
+  }
+  #hud > *{ pointer-events:auto; }
+  .brand{ font-weight:700; font-size:15px; letter-spacing:0.2px; margin-right:6px; white-space:nowrap; }
+  .brand span{ opacity:0.55; font-weight:500; font-size:11px; display:block; margin-top:1px;}
+
+  .group{
+    display:flex; gap:4px; padding:4px; border-radius:14px;
+    background: var(--panel-bg); border:1px solid var(--panel-border);
+  }
+  .pill{
+    border:none; cursor:pointer; background:transparent; color:var(--text-dim);
+    font-size:12.5px; padding:6px 9px; border-radius:10px; font-weight:600;
+    transition: background .15s, color .15s, transform .1s;
+    white-space:nowrap;
+  }
+  .pill:active{ transform: scale(0.94); }
+  .pill.active{ background: rgba(122,196,122,0.28); color:#eafcea; }
+  .pill.iconbtn{ font-size:14px; padding:7px 10px; }
+  .pill.iconbtn.active{ background: rgba(244,166,201,0.28); color:#fff; }
+
+  #windWrap{ display:flex; align-items:center; gap:6px; padding:5px 10px 5px 12px; border-radius:14px;
+    background: var(--panel-bg); border:1px solid var(--panel-border); }
+  #windWrap label{ font-size:11px; color:var(--text-dim); white-space:nowrap; }
+  #wind{ width:70px; accent-color: var(--accent); }
+
+  #hint{
+    position:fixed; left:12px; bottom:12px; z-index:10;
+    background: var(--panel-bg); border:1px solid var(--panel-border);
+    padding:7px 12px; border-radius:12px; font-size:11.5px; color:var(--text-dim);
+    max-width: 62vw; line-height:1.4; pointer-events:none;
+  }
+  #seedInfo{
+    position:fixed; right:12px; bottom:12px; z-index:10;
+    background: var(--panel-bg); border:1px solid var(--panel-border);
+    padding:7px 12px; border-radius:12px; font-size:11px; color:var(--text-dim);
+    font-family: ui-monospace, monospace;
+  }
+
+  #toast{
+    position:fixed; left:50%; top:70px; transform:translateX(-50%) translateY(-10px);
+    background:rgba(20,22,20,0.9); border:1px solid var(--panel-border); color:var(--text);
+    padding:9px 16px; border-radius:12px; font-size:13px; z-index:30;
+    opacity:0; transition: opacity .25s, transform .25s; pointer-events:none;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #groveBtn{ position:relative; }
+  #groveCount{
+    position:absolute; top:-4px; right:-4px; background:var(--accent2); color:#2a0f1a;
+    font-size:9.5px; font-weight:800; border-radius:8px; min-width:15px; height:15px;
+    display:flex; align-items:center; justify-content:center; padding:0 3px;
+  }
+
+  #drawer{
+    position:fixed; top:0; right:0; height:100%; width:min(340px, 88vw); z-index:20;
+    background: rgba(10,11,10,0.86); backdrop-filter: blur(18px);
+    border-left:1px solid var(--panel-border);
+    transform: translateX(100%); transition: transform .3s ease;
+    display:flex; flex-direction:column; padding:16px;
+  }
+  #drawer.open{ transform: translateX(0); }
+  #drawer h3{ margin:0 0 2px; font-size:16px; }
+  #drawer p.sub{ margin:0 0 12px; font-size:11.5px; color:var(--text-dim); }
+  #drawerClose{
+    position:absolute; top:14px; right:14px; background:rgba(255,255,255,0.08); border:none;
+    color:var(--text); width:28px; height:28px; border-radius:9px; cursor:pointer; font-size:14px;
+  }
+  #groveList{ flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+  .groveEmpty{ color:var(--text-dim); font-size:12.5px; text-align:center; margin-top:40px; line-height:1.6; }
+  .groveItem{ display:flex; gap:10px; align-items:center; background:rgba(255,255,255,0.04);
+    border:1px solid var(--panel-border); border-radius:12px; padding:8px; }
+  .groveItem img{ width:64px; height:48px; object-fit:cover; border-radius:8px; background:#000; flex-shrink:0; }
+  .groveMeta{ flex:1; min-width:0; }
+  .groveMeta b{ display:block; font-size:12.5px; }
+  .groveMeta span{ font-size:10.5px; color:var(--text-dim); }
+  .groveActions{ display:flex; flex-direction:column; gap:4px; }
+  .groveActions button{
+    border:none; cursor:pointer; font-size:10.5px; padding:4px 8px; border-radius:7px; font-weight:600;
+  }
+  .btnLoad{ background: rgba(122,196,122,0.28); color:#eafcea; }
+  .btnDel{ background: rgba(244,120,120,0.22); color:#ffd9d9; }
+  #drawerFoot{ display:flex; gap:8px; margin-top:12px; }
+  #drawerFoot button{
+    flex:1; border:none; cursor:pointer; padding:9px; border-radius:10px; font-size:12px; font-weight:700;
+    background: rgba(255,255,255,0.08); color:var(--text);
+  }
+
+  @media (max-width: 620px){
+    .brand{ font-size:13px; }
+    .brand span{ display:none; }
+    .pill{ font-size:11.5px; padding:6px 8px; }
+    #hint{ max-width: 50vw; font-size:10.5px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <div class="brand">🌳 Bonsai Grove<span>procedural tree sculptor</span></div>
+
+  <div class="group" id="speciesGroup"></div>
+  <div class="group" id="seasonGroup"></div>
+
+  <div id="windWrap">
+    <label>💨 Wind</label>
+    <input type="range" id="wind" min="0" max="1" step="0.05" value="0.5">
+  </div>
+
+  <div class="group">
+    <button class="pill iconbtn" id="btnRandom" title="Randomize seed">🎲</button>
+    <button class="pill iconbtn" id="btnReset" title="Reset tree (undo pruning)">↺</button>
+    <button class="pill iconbtn" id="btnCam" title="Reset camera">🎥</button>
+  </div>
+
+  <div class="group">
+    <button class="pill iconbtn" id="btnSave" title="Save to Grove">💾</button>
+    <button class="pill iconbtn" id="btnExport" title="Export PNG">🖼️</button>
+    <button class="pill iconbtn" id="btnShare" title="Copy shareable link">🔗</button>
+    <button class="pill iconbtn" id="groveBtn" title="Open Grove">📚<span id="groveCount" style="display:none;">0</span></button>
+  </div>
+</div>
+
+<div id="hint">Drag to orbit · Scroll / pinch to zoom · Tap a branch to prune it</div>
+<div id="seedInfo">seed —</div>
+<div id="toast"></div>
+
+<div id="drawer">
+  <button id="drawerClose">✕</button>
+  <h3>Your Grove</h3>
+  <p class="sub">Trees you've saved, kept in this browser.</p>
+  <div id="groveList"></div>
+  <div id="drawerFoot">
+    <button id="btnDownloadGrove">⬇ Download JSON</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- tiny vector / matrix math ---------- */
+function vAdd(a,b){return [a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+function vSub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function vScale(a,s){return [a[0]*s,a[1]*s,a[2]*s];}
+function vDot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+function vCross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];}
+function vLen(a){return Math.hypot(a[0],a[1],a[2]);}
+function vNorm(a){const l=vLen(a)||1e-6; return [a[0]/l,a[1]/l,a[2]/l];}
+function vLerp(a,b,t){return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];}
+
+function rotateAroundAxis(v, axis, angle){
+  axis = vNorm(axis);
+  const c=Math.cos(angle), s=Math.sin(angle);
+  const t1 = vScale(v, c);
+  const t2 = vScale(vCross(axis,v), s);
+  const t3 = vScale(axis, vDot(axis,v)*(1-c));
+  return vAdd(vAdd(t1,t2), t3);
+}
+function randomPerpendicular(dir, rng){
+  const ref = Math.abs(dir[1])<0.9 ? [0,1,0] : [1,0,0];
+  let perp = vNorm(vCross(dir, ref));
+  return rotateAroundAxis(perp, dir, rng()*Math.PI*2);
+}
+
+function mat4Perspective(fovy, aspect, near, far){
+  const f = 1/Math.tan(fovy/2), nf = 1/(near-far);
+  return new Float32Array([
+    f/aspect,0,0,0,
+    0,f,0,0,
+    0,0,(far+near)*nf,-1,
+    0,0,2*far*near*nf,0
+  ]);
+}
+function mat4LookAt(eye, center, up){
+  let zx=eye[0]-center[0], zy=eye[1]-center[1], zz=eye[2]-center[2];
+  let len=Math.hypot(zx,zy,zz)||1e-6; zx/=len;zy/=len;zz/=len;
+  let xx=up[1]*zz-up[2]*zy, xy=up[2]*zx-up[0]*zz, xz=up[0]*zy-up[1]*zx;
+  len=Math.hypot(xx,xy,xz); if(len<1e-6){xx=1;xy=0;xz=0;} else {xx/=len;xy/=len;xz/=len;}
+  let yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+  return new Float32Array([
+    xx,yx,zx,0,
+    xy,yy,zy,0,
+    xz,yz,zz,0,
+    -(xx*eye[0]+xy*eye[1]+xz*eye[2]),
+    -(yx*eye[0]+yy*eye[1]+yz*eye[2]),
+    -(zx*eye[0]+zy*eye[1]+zz*eye[2]),
+    1
+  ]);
+}
+function mat4Multiply(a,b){
+  const out = new Float32Array(16);
+  for(let c=0;c<4;c++){
+    for(let r=0;r<4;r++){
+      let sum=0;
+      for(let k=0;k<4;k++) sum += a[k*4+r]*b[c*4+k];
+      out[c*4+r]=sum;
+    }
+  }
+  return out;
+}
+function transformPoint(m,p){
+  const x=p[0],y=p[1],z=p[2];
+  return [
+    m[0]*x+m[4]*y+m[8]*z+m[12],
+    m[1]*x+m[5]*y+m[9]*z+m[13],
+    m[2]*x+m[6]*y+m[10]*z+m[14],
+    m[3]*x+m[7]*y+m[11]*z+m[15]
+  ];
+}
+
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------- species & season presets ---------- */
+const SPECIES = [
+  { key:'juniper', label:'🌲 Juniper', maxDepth:9, trunkLen:0.85, trunkRad:0.055, lenDecay:0.72, radDecay:0.74,
+    branchMin:1, branchMax:2, angleSpread:34, gravityBias:0.2, curl:0.45, leafSize:0.05,
+    barkNear:[0.30,0.20,0.12], barkFar:[0.56,0.44,0.27] },
+  { key:'willow', label:'🍃 Willow', maxDepth:10, trunkLen:1.05, trunkRad:0.065, lenDecay:0.79, radDecay:0.76,
+    branchMin:2, branchMax:3, angleSpread:38, gravityBias:-0.6, curl:0.16, leafSize:0.045,
+    barkNear:[0.24,0.18,0.10], barkFar:[0.46,0.40,0.22] },
+  { key:'sakura', label:'🌸 Sakura', maxDepth:8, trunkLen:0.9, trunkRad:0.06, lenDecay:0.76, radDecay:0.70,
+    branchMin:2, branchMax:3, angleSpread:46, gravityBias:0.08, curl:0.30, leafSize:0.06,
+    barkNear:[0.28,0.18,0.14], barkFar:[0.52,0.36,0.29] },
+  { key:'maple', label:'🍁 Maple', maxDepth:9, trunkLen:1.0, trunkRad:0.07, lenDecay:0.74, radDecay:0.73,
+    branchMin:2, branchMax:3, angleSpread:37, gravityBias:0.22, curl:0.24, leafSize:0.055,
+    barkNear:[0.26,0.18,0.11], barkFar:[0.48,0.36,0.22] },
+  { key:'birch', label:'🌳 Birch', maxDepth:9, trunkLen:1.15, trunkRad:0.048, lenDecay:0.81, radDecay:0.79,
+    branchMin:1, branchMax:2, angleSpread:27, gravityBias:0.38, curl:0.10, leafSize:0.04,
+    barkNear:[0.72,0.72,0.69], barkFar:[0.90,0.88,0.83] }
+];
+const SEASONS = {
+  spring: { label:'🌸 Spring', leafA:[0.97,0.72,0.83], leafB:[0.93,0.55,0.72], ground:[0.20,0.30,0.16], sky:[0.075,0.06,0.09], bare:false },
+  summer: { label:'☀️ Summer', leafA:[0.24,0.55,0.20], leafB:[0.34,0.65,0.26], ground:[0.14,0.24,0.12], sky:[0.04,0.07,0.06], bare:false },
+  autumn: { label:'🍂 Autumn', leafA:[0.86,0.47,0.10], leafB:[0.74,0.24,0.10], ground:[0.24,0.16,0.08], sky:[0.07,0.05,0.04], bare:false },
+  winter: { label:'❄️ Winter', leafA:[0.9,0.92,0.95], leafB:[0.82,0.86,0.9], ground:[0.62,0.65,0.7], sky:[0.05,0.06,0.09], bare:true }
+};
+const SPECIES_KEYS = SPECIES.map(s=>s.key);
+const SEASON_KEYS = Object.keys(SEASONS);
+
+/* ---------- procedural tree generation ---------- */
+function applyBias(dir, gravityBias, curl, rng){
+  const vertical = gravityBias>=0 ? [0,1,0] : [0,-1,0];
+  const blend = Math.min(0.9, Math.abs(gravityBias));
+  let nd = vAdd(vScale(dir, 1-blend*0.35), vScale(vertical, blend*0.35));
+  const jitter = [(rng()-0.5),(rng()-0.5),(rng()-0.5)];
+  nd = vAdd(nd, vScale(jitter, curl*0.22));
+  return vNorm(nd);
+}
+
+function generateTree(speciesKey, seed){
+  const sp = SPECIES.find(s=>s.key===speciesKey) || SPECIES[0];
+  const rng = mulberry32(seed);
+  const segments = [];
+  const leaves = [];
+  let nextId = 0;
+
+  function grow(parentId, origin, dir, length, radius, depth){
+    if(depth > sp.maxDepth || length < 0.035 || radius < 0.0035){
+      const n = 2 + Math.floor(rng()*3);
+      for(let i=0;i<n;i++){
+        const j = [(rng()-0.5)*0.14,(rng()-0.5)*0.14,(rng()-0.5)*0.14];
+        leaves.push({
+          parentId,
+          pos:[origin[0]+j[0], origin[1]+j[1], origin[2]+j[2]],
+          size: sp.leafSize*(0.7+rng()*0.7),
+          phase: rng()*Math.PI*2,
+          colorT: rng()
+        });
+      }
+      return;
+    }
+    dir = applyBias(dir, sp.gravityBias, sp.curl, rng);
+    const end = vAdd(origin, vScale(dir, length));
+    const id = nextId++;
+    segments.push({
+      id, parentId, A:origin, B:end, rA:radius, rB:radius*0.72, depth,
+      swayPhase: rng()*Math.PI*2, sway: Math.min(1, depth/sp.maxDepth)
+    });
+    const nBranches = sp.branchMin + Math.floor(rng()*(sp.branchMax-sp.branchMin+1));
+    for(let i=0;i<nBranches;i++){
+      const axis = randomPerpendicular(dir, rng);
+      const spread = (sp.angleSpread*Math.PI/180) * (0.55+rng()*0.85);
+      const sign = (i%2===0) ? 1 : -1;
+      let childDir = rotateAroundAxis(dir, axis, spread*sign);
+      childDir = rotateAroundAxis(childDir, dir, (rng()-0.5)*1.4);
+      const childLen = length*sp.lenDecay*(0.78+rng()*0.4);
+      const childRad = radius*sp.radDecay;
+      grow(id, end, vNorm(childDir), childLen, childRad, depth+1);
+    }
+  }
+  grow(-1, [0,0,0], [0,1,0], sp.trunkLen, sp.trunkRad, 0);
+
+  // order by depth for a breadth-first growth reveal
+  const order = segments.map((s,i)=>i).sort((a,b)=>segments[a].depth-segments[b].depth);
+  return { segments, leaves, order, maxDepth: sp.maxDepth, barkNear:sp.barkNear, barkFar:sp.barkFar };
+}
+
+/* remove a branch and its descendants (pruning) */
+function pruneBranch(tree, segId){
+  const children = new Map();
+  tree.segments.forEach(s=>{
+    if(!children.has(s.parentId)) children.set(s.parentId, []);
+    children.get(s.parentId).push(s.id);
+  });
+  const toRemove = new Set();
+  const stack = [segId];
+  while(stack.length){
+    const id = stack.pop();
+    toRemove.add(id);
+    (children.get(id)||[]).forEach(c=>stack.push(c));
+  }
+  tree.segments = tree.segments.filter(s=>!toRemove.has(s.id));
+  tree.leaves = tree.leaves.filter(l=>!toRemove.has(l.parentId));
+  tree.order = tree.segments.map((s,i)=>i).sort((a,b)=>tree.segments[a].depth-tree.segments[b].depth);
+}
+
+/* ---------- WebGL setup ---------- */
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', {antialias:true, preserveDrawingBuffer:true, alpha:false}) ||
+           canvas.getContext('experimental-webgl', {antialias:true, preserveDrawingBuffer:true, alpha:false});
+
+function compile(type, src){
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+    console.error(gl.getShaderInfoLog(sh));
+  }
+  return sh;
+}
+function makeProgram(vsSrc, fsSrc){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    console.error(gl.getProgramInfoLog(p));
+  }
+  return p;
+}
+
+const branchVS = `
+attribute vec3 aPosition;
+attribute vec3 aNormal;
+attribute vec3 aColor;
+attribute float aSway;
+attribute float aSwayPhase;
+uniform mat4 uMVP;
+uniform float uTime;
+uniform float uWind;
+varying vec3 vNormal;
+varying vec3 vColor;
+void main(){
+  vec3 pos = aPosition;
+  float s = sin(uTime*1.3 + aSwayPhase) * aSway * uWind * 0.055;
+  pos.x += s;
+  pos.z += s*0.6;
+  gl_Position = uMVP * vec4(pos, 1.0);
+  vNormal = aNormal;
+  vColor = aColor;
+}`;
+const branchFS = `
+precision mediump float;
+varying vec3 vNormal;
+varying vec3 vColor;
+uniform vec3 uLightDir;
+void main(){
+  float diff = max(dot(normalize(vNormal), normalize(uLightDir)), 0.0);
+  vec3 col = vColor * (0.42 + 0.62*diff);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const leafVS = `
+attribute vec3 aCenter;
+attribute vec2 aCorner;
+attribute float aSize;
+attribute float aPhase;
+attribute vec3 aColor;
+uniform mat4 uMVP;
+uniform vec3 uCamRight;
+uniform vec3 uCamUp;
+uniform float uTime;
+uniform float uWind;
+varying vec2 vUV;
+varying vec3 vColor;
+void main(){
+  vec3 sway = (uCamRight * sin(uTime*1.8 + aPhase) * 0.018 + vec3(0.0,1.0,0.0) * sin(uTime*1.1+aPhase)*0.01) * uWind;
+  vec3 center = aCenter + sway;
+  vec3 pos = center + (uCamRight*aCorner.x + uCamUp*aCorner.y) * aSize;
+  gl_Position = uMVP * vec4(pos, 1.0);
+  vUV = aCorner;
+  vColor = aColor;
+}`;
+const leafFS = `
+precision mediump float;
+varying vec2 vUV;
+varying vec3 vColor;
+void main(){
+  float d = dot(vUV, vUV);
+  if(d > 1.0) discard;
+  float shade = 0.75 + 0.25*(1.0-d);
+  gl_FragColor = vec4(vColor*shade, 1.0);
+}`;
+
+const branchProgram = makeProgram(branchVS, branchFS);
+const leafProgram = makeProgram(leafVS, leafFS);
+
+const branchAttribs = {
+  aPosition: gl.getAttribLocation(branchProgram,'aPosition'),
+  aNormal: gl.getAttribLocation(branchProgram,'aNormal'),
+  aColor: gl.getAttribLocation(branchProgram,'aColor'),
+  aSway: gl.getAttribLocation(branchProgram,'aSway'),
+  aSwayPhase: gl.getAttribLocation(branchProgram,'aSwayPhase')
+};
+const branchUniforms = {
+  uMVP: gl.getUniformLocation(branchProgram,'uMVP'),
+  uTime: gl.getUniformLocation(branchProgram,'uTime'),
+  uWind: gl.getUniformLocation(branchProgram,'uWind'),
+  uLightDir: gl.getUniformLocation(branchProgram,'uLightDir')
+};
+const leafAttribs = {
+  aCenter: gl.getAttribLocation(leafProgram,'aCenter'),
+  aCorner: gl.getAttribLocation(leafProgram,'aCorner'),
+  aSize: gl.getAttribLocation(leafProgram,'aSize'),
+  aPhase: gl.getAttribLocation(leafProgram,'aPhase'),
+  aColor: gl.getAttribLocation(leafProgram,'aColor')
+};
+const leafUniforms = {
+  uMVP: gl.getUniformLocation(leafProgram,'uMVP'),
+  uTime: gl.getUniformLocation(leafProgram,'uTime'),
+  uWind: gl.getUniformLocation(leafProgram,'uWind'),
+  uCamRight: gl.getUniformLocation(leafProgram,'uCamRight'),
+  uCamUp: gl.getUniformLocation(leafProgram,'uCamUp')
+};
+
+const branchBuffer = gl.createBuffer();
+const leafBuffer = gl.createBuffer();
+const BRANCH_STRIDE = 11; // pos3 normal3 color3 sway1 swayPhase1
+const LEAF_STRIDE = 11;   // center3 corner2 size1 phase1 color3
+
+let branchVertCount = 0;
+let leafVertCount = 0;
+
+function buildCylinder(seg, colorNear, colorFar, maxDepth, out, sides){
+  const A=seg.A, B=seg.B, rA=seg.rA, rB=seg.rB;
+  const axis = vNorm(vSub(B,A));
+  const ref = Math.abs(axis[1])<0.9 ? [0,1,0] : [1,0,0];
+  const u = vNorm(vCross(axis, ref));
+  const v = vCross(axis, u);
+  const t = Math.min(1, seg.depth/maxDepth);
+  const color = vLerp(colorNear, colorFar, t);
+  const offA = [], offB = [];
+  for(let i=0;i<sides;i++){
+    const ang = i/sides*Math.PI*2;
+    const c=Math.cos(ang), s=Math.sin(ang);
+    offA.push(vAdd(vScale(u,c*rA), vScale(v,s*rA)));
+    offB.push(vAdd(vScale(u,c*rB), vScale(v,s*rB)));
+  }
+  function push(pos, normal){
+    out.push(pos[0],pos[1],pos[2], normal[0],normal[1],normal[2], color[0],color[1],color[2], seg.sway, seg.swayPhase);
+  }
+  for(let i=0;i<sides;i++){
+    const ni=(i+1)%sides;
+    const pA0=vAdd(A,offA[i]), pA1=vAdd(A,offA[ni]);
+    const pB1=vAdd(B,offB[ni]), pB0=vAdd(B,offB[i]);
+    const nA0=vNorm(offA[i]), nA1=vNorm(offA[ni]);
+    const nB1=vNorm(offB[ni]), nB0=vNorm(offB[i]);
+    push(pA0,nA0); push(pA1,nA1); push(pB1,nB1);
+    push(pA0,nA0); push(pB1,nB1); push(pB0,nB0);
+  }
+}
+
+function buildGroundDisc(color, out){
+  const sides=32, R=1.7;
+  const center=[0,-0.002,0];
+  for(let i=0;i<sides;i++){
+    const a0 = i/sides*Math.PI*2, a1=(i+1)/sides*Math.PI*2;
+    const p0=[Math.cos(a0)*R, -0.002, Math.sin(a0)*R];
+    const p1=[Math.cos(a1)*R, -0.002, Math.sin(a1)*R];
+    out.push(center[0],center[1],center[2], 0,1,0, color[0],color[1],color[2], 0,0);
+    out.push(p0[0],p0[1],p0[2], 0,1,0, color[0],color[1],color[2], 0,0);
+    out.push(p1[0],p1[1],p1[2], 0,1,0, color[0],color[1],color[2], 0,0);
+  }
+}
+
+function rebuildBranchBuffer(revealCount, groundColor){
+  const arr = [];
+  const n = Math.min(revealCount, state.tree.order.length);
+  for(let i=0;i<n;i++){
+    const seg = state.tree.segments[state.tree.order[i]];
+    buildCylinder(seg, state.tree.barkNear, state.tree.barkFar, state.tree.maxDepth, arr, 6);
+  }
+  buildGroundDisc(groundColor, arr);
+  const f32 = new Float32Array(arr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, branchBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, f32, gl.DYNAMIC_DRAW);
+  branchVertCount = f32.length / BRANCH_STRIDE;
+}
+
+function rebuildLeafBuffer(revealCount, season){
+  const arr = [];
+  if(!season.bare){
+    const n = Math.min(revealCount, state.tree.leaves.length);
+    const corners = [[-1,-1],[1,-1],[1,1], [-1,-1],[1,1],[-1,1]];
+    for(let i=0;i<n;i++){
+      const lf = state.tree.leaves[i];
+      const col = vLerp(season.leafA, season.leafB, lf.colorT);
+      for(const c of corners){
+        arr.push(lf.pos[0],lf.pos[1],lf.pos[2], c[0],c[1], lf.size, lf.phase, col[0],col[1],col[2], 0);
+      }
+    }
+  }
+  const f32 = new Float32Array(arr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, leafBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, f32, gl.DYNAMIC_DRAW);
+  leafVertCount = f32.length / LEAF_STRIDE;
+}
+
+/* ---------- app state ---------- */
+const state = {
+  species: 'juniper',
+  season: 'spring',
+  seed: 1,
+  wind: 0.5,
+  tree: null,
+  revealFraction: 0,
+  growing: false,
+  growStart: 0,
+  cam: { azimuth: 0.7, elevation: 0.35, distance: 2.6 },
+  camDefault: { azimuth: 0.7, elevation: 0.35, distance: 2.6 }
+};
+
+function regenerate(newSeed, replayGrowth){
+  state.seed = newSeed;
+  state.tree = generateTree(state.species, state.seed);
+  state.revealFraction = replayGrowth ? 0 : 1;
+  state.growing = !!replayGrowth;
+  state.growStart = performance ? performance.now() : 0;
+  syncBuffers(true);
+  updateSeedInfo();
+  saveLastState();
+  updateHash();
+}
+
+function syncBuffers(force){
+  const total = state.tree.segments.length;
+  const totalLeaves = state.tree.leaves.length;
+  const branchCount = force ? Math.max(1, Math.floor(total*Math.min(1,state.revealFraction))) : total;
+  const leafFrac = Math.max(0, (state.revealFraction-0.45)/0.55);
+  const leafCount = Math.floor(totalLeaves*Math.min(1,leafFrac));
+  const season = SEASONS[state.season];
+  rebuildBranchBuffer(state.revealFraction>=1 ? total : branchCount, season.ground);
+  rebuildLeafBuffer(state.revealFraction>=1 ? totalLeaves : leafCount, season);
+}
+
+function updateSeedInfo(){
+  document.getElementById('seedInfo').textContent = 'seed ' + state.seed;
+}
+
+/* ---------- camera ---------- */
+function cameraVectors(){
+  const cam = state.cam;
+  const eye = [
+    Math.cos(cam.elevation)*Math.sin(cam.azimuth)*cam.distance,
+    Math.sin(cam.elevation)*cam.distance + 0.55,
+    Math.cos(cam.elevation)*Math.cos(cam.azimuth)*cam.distance
+  ];
+  const center = [0, 0.55, 0];
+  const forward = vNorm(vSub(center, eye));
+  const worldUp = [0,1,0];
+  let right = vCross(forward, worldUp);
+  if(vLen(right) < 1e-4) right = [1,0,0]; else right = vNorm(right);
+  const up = vNorm(vCross(right, forward));
+  return { eye, center, up, right };
+}
+
+/* ---------- render loop ---------- */
+let lastW=-1, lastH=-1;
+function resizeIfNeeded(){
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const w = Math.floor(canvas.clientWidth*dpr);
+  const h = Math.floor(canvas.clientHeight*dpr);
+  if(w!==lastW || h!==lastH){
+    canvas.width=w; canvas.height=h; lastW=w; lastH=h;
+  }
+}
+
+function render(tMs){
+  const time = tMs/1000;
+  resizeIfNeeded();
+  gl.viewport(0,0,canvas.width,canvas.height);
+  const sky = SEASONS[state.season].sky;
+  gl.clearColor(sky[0],sky[1],sky[2],1);
+  gl.enable(gl.DEPTH_TEST);
+  gl.disable(gl.CULL_FACE);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  if(state.growing){
+    const elapsed = (performance.now() - state.growStart)/1000;
+    state.revealFraction = Math.min(1, elapsed/1.6);
+    syncBuffers(true);
+    if(state.revealFraction>=1) state.growing=false;
+  }
+
+  const { eye, center, up, right } = cameraVectors();
+  const view = mat4LookAt(eye, center, up);
+  const aspect = canvas.width/Math.max(1,canvas.height);
+  const proj = mat4Perspective(45*Math.PI/180, aspect, 0.05, 50);
+  const mvp = mat4Multiply(proj, view);
+  state._mvp = mvp; // used by pruning raycast
+
+  // branches
+  gl.useProgram(branchProgram);
+  gl.bindBuffer(gl.ARRAY_BUFFER, branchBuffer);
+  const bStrideBytes = BRANCH_STRIDE*4;
+  gl.enableVertexAttribArray(branchAttribs.aPosition);
+  gl.vertexAttribPointer(branchAttribs.aPosition, 3, gl.FLOAT, false, bStrideBytes, 0);
+  gl.enableVertexAttribArray(branchAttribs.aNormal);
+  gl.vertexAttribPointer(branchAttribs.aNormal, 3, gl.FLOAT, false, bStrideBytes, 12);
+  gl.enableVertexAttribArray(branchAttribs.aColor);
+  gl.vertexAttribPointer(branchAttribs.aColor, 3, gl.FLOAT, false, bStrideBytes, 24);
+  gl.enableVertexAttribArray(branchAttribs.aSway);
+  gl.vertexAttribPointer(branchAttribs.aSway, 1, gl.FLOAT, false, bStrideBytes, 36);
+  gl.enableVertexAttribArray(branchAttribs.aSwayPhase);
+  gl.vertexAttribPointer(branchAttribs.aSwayPhase, 1, gl.FLOAT, false, bStrideBytes, 40);
+  gl.uniformMatrix4fv(branchUniforms.uMVP, false, mvp);
+  gl.uniform1f(branchUniforms.uTime, time);
+  gl.uniform1f(branchUniforms.uWind, state.wind);
+  gl.uniform3fv(branchUniforms.uLightDir, new Float32Array([0.45,0.9,0.35]));
+  if(branchVertCount>0) gl.drawArrays(gl.TRIANGLES, 0, branchVertCount);
+
+  // leaves
+  if(leafVertCount>0){
+    gl.useProgram(leafProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, leafBuffer);
+    const lStrideBytes = LEAF_STRIDE*4;
+    gl.enableVertexAttribArray(leafAttribs.aCenter);
+    gl.vertexAttribPointer(leafAttribs.aCenter, 3, gl.FLOAT, false, lStrideBytes, 0);
+    gl.enableVertexAttribArray(leafAttribs.aCorner);
+    gl.vertexAttribPointer(leafAttribs.aCorner, 2, gl.FLOAT, false, lStrideBytes, 12);
+    gl.enableVertexAttribArray(leafAttribs.aSize);
+    gl.vertexAttribPointer(leafAttribs.aSize, 1, gl.FLOAT, false, lStrideBytes, 20);
+    gl.enableVertexAttribArray(leafAttribs.aPhase);
+    gl.vertexAttribPointer(leafAttribs.aPhase, 1, gl.FLOAT, false, lStrideBytes, 24);
+    gl.enableVertexAttribArray(leafAttribs.aColor);
+    gl.vertexAttribPointer(leafAttribs.aColor, 3, gl.FLOAT, false, lStrideBytes, 28);
+    gl.uniformMatrix4fv(leafUniforms.uMVP, false, mvp);
+    gl.uniform1f(leafUniforms.uTime, time);
+    gl.uniform1f(leafUniforms.uWind, state.wind);
+    gl.uniform3fv(leafUniforms.uCamRight, new Float32Array(right));
+    gl.uniform3fv(leafUniforms.uCamUp, new Float32Array(up));
+    gl.drawArrays(gl.TRIANGLES, 0, leafVertCount);
+  }
+
+  requestAnimationFrame(render);
+}
+
+/* ---------- pointer interaction: orbit, pinch-zoom, tap-to-prune ---------- */
+const pointers = new Map();
+let dragMoved = 0;
+let pinchStartDist = 0;
+let pinchStartDistance = 0;
+
+function pointDist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+canvas.addEventListener('pointerdown', (e)=>{
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  dragMoved = 0;
+  if(pointers.size===2){
+    const pts = Array.from(pointers.values());
+    pinchStartDist = pointDist(pts[0], pts[1]);
+    pinchStartDistance = state.cam.distance;
+  }
+});
+
+canvas.addEventListener('pointermove', (e)=>{
+  if(!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  const cur = {x:e.clientX, y:e.clientY};
+  const dx = cur.x-prev.x, dy = cur.y-prev.y;
+  pointers.set(e.pointerId, cur);
+
+  if(pointers.size===1){
+    dragMoved += Math.abs(dx)+Math.abs(dy);
+    state.cam.azimuth -= dx*0.008;
+    state.cam.elevation = Math.max(-0.15, Math.min(1.35, state.cam.elevation + dy*0.006));
+  } else if(pointers.size===2){
+    const pts = Array.from(pointers.values());
+    const dist = pointDist(pts[0], pts[1]);
+    if(pinchStartDist>10){
+      const ratio = pinchStartDist/Math.max(10,dist);
+      state.cam.distance = Math.max(1.1, Math.min(6, pinchStartDistance*ratio));
+    }
+    dragMoved += 999; // treat as drag, not a tap
+  }
+});
+
+function endPointer(e){
+  if(pointers.size===1 && dragMoved < 8){
+    tryPrune(e.clientX, e.clientY);
+  }
+  pointers.delete(e.pointerId);
+  if(pointers.size<2) pinchStartDist = 0;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+canvas.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  state.cam.distance = Math.max(1.1, Math.min(6, state.cam.distance + e.deltaY*0.0018*state.cam.distance));
+}, {passive:false});
+
+window.addEventListener('keydown', (e)=>{
+  const step = 0.08;
+  if(e.key==='ArrowLeft') state.cam.azimuth -= step;
+  else if(e.key==='ArrowRight') state.cam.azimuth += step;
+  else if(e.key==='ArrowUp') state.cam.elevation = Math.min(1.35, state.cam.elevation+step*0.6);
+  else if(e.key==='ArrowDown') state.cam.elevation = Math.max(-0.15, state.cam.elevation-step*0.6);
+  else if(e.key==='+' || e.key==='=') state.cam.distance = Math.max(1.1, state.cam.distance-0.15);
+  else if(e.key==='-' || e.key==='_') state.cam.distance = Math.min(6, state.cam.distance+0.15);
+});
+
+function tryPrune(clientX, clientY){
+  if(!state._mvp || state.tree.segments.length < 6) return;
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX-rect.left)/rect.width * canvas.width;
+  const py = (clientY-rect.top)/rect.height * canvas.height;
+  let best = -1, bestDist = 34; // px tolerance
+  for(const seg of state.tree.segments){
+    if(seg.parentId === -1) continue; // never let the root trunk segment be pruned away
+    const mid = vLerp(seg.A, seg.B, 0.5);
+    const clip = transformPoint(state._mvp, mid);
+    if(clip[3] <= 0) continue;
+    const ndcX = clip[0]/clip[3], ndcY = clip[1]/clip[3];
+    const sx = (ndcX*0.5+0.5)*canvas.width;
+    const sy = (1-(ndcY*0.5+0.5))*canvas.height;
+    const d = Math.hypot(sx-px, sy-py);
+    if(d < bestDist){ bestDist = d; best = seg.id; }
+  }
+  if(best>=0){
+    pruneBranch(state.tree, best);
+    state.revealFraction = 1;
+    syncBuffers(true);
+    showToast('✂️ Branch pruned');
+  }
+}
+
+/* ---------- UI wiring ---------- */
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 1600);
+}
+
+function buildPillGroup(containerId, items, activeKey, onPick){
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  items.forEach(it=>{
+    const btn = document.createElement('button');
+    btn.className = 'pill' + (it.key===activeKey ? ' active' : '');
+    btn.textContent = it.label;
+    btn.addEventListener('click', ()=> onPick(it.key));
+    el.appendChild(btn);
+  });
+}
+function refreshPills(){
+  buildPillGroup('speciesGroup', SPECIES.map(s=>({key:s.key,label:s.label})), state.species, (key)=>{
+    state.species = key;
+    regenerate(Math.floor(Math.random()*1e9), true);
+    refreshPills();
+  });
+  buildPillGroup('seasonGroup', SEASON_KEYS.map(k=>({key:k,label:SEASONS[k].label})), state.season, (key)=>{
+    state.season = key;
+    syncBuffers(true);
+    saveLastState();
+    updateHash();
+    refreshPills();
+  });
+}
+
+document.getElementById('wind').addEventListener('input', (e)=>{
+  state.wind = parseFloat(e.target.value);
+  saveLastState();
+});
+document.getElementById('btnRandom').addEventListener('click', ()=>{
+  regenerate(Math.floor(Math.random()*1e9), true);
+});
+document.getElementById('btnReset').addEventListener('click', ()=>{
+  regenerate(state.seed, true);
+  showToast('↺ Tree regrown');
+});
+document.getElementById('btnCam').addEventListener('click', ()=>{
+  state.cam.azimuth = state.camDefault.azimuth;
+  state.cam.elevation = state.camDefault.elevation;
+  state.cam.distance = state.camDefault.distance;
+});
+
+/* ---------- persistence: last state, url hash, grove ---------- */
+const LAST_KEY = 'bonsaiLast_v1';
+const GROVE_KEY = 'bonsaiGrove_v1';
+
+function saveLastState(){
+  try{
+    localStorage.setItem(LAST_KEY, JSON.stringify({
+      species: state.species, season: state.season, seed: state.seed, wind: state.wind
+    }));
+  }catch(e){}
+}
+function loadLastState(){
+  try{
+    const raw = localStorage.getItem(LAST_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+function updateHash(){
+  const h = 's='+state.species+'&se='+state.season+'&seed='+state.seed+'&w='+state.wind;
+  history.replaceState(null, '', '#'+h);
+}
+function parseHash(){
+  if(!location.hash || location.hash.length<2) return null;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const s = params.get('s'), se = params.get('se'), seed = params.get('seed'), w = params.get('w');
+  if(!s || !SPECIES_KEYS.includes(s)) return null;
+  return {
+    species: s,
+    season: SEASON_KEYS.includes(se) ? se : 'spring',
+    seed: parseInt(seed,10) || 1,
+    wind: w!==null ? parseFloat(w) : 0.5
+  };
+}
+
+function loadGrove(){
+  try{
+    const raw = localStorage.getItem(GROVE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+function saveGrove(list){
+  try{ localStorage.setItem(GROVE_KEY, JSON.stringify(list)); }catch(e){}
+}
+function updateGroveBadge(){
+  const list = loadGrove();
+  const badge = document.getElementById('groveCount');
+  if(list.length>0){ badge.style.display='flex'; badge.textContent = list.length; }
+  else badge.style.display='none';
+}
+
+document.getElementById('btnSave').addEventListener('click', ()=>{
+  render(performance.now()); // ensure a fresh frame is on the backbuffer
+  let thumb = '';
+  try{ thumb = canvas.toDataURL('image/png'); }catch(e){}
+  const list = loadGrove();
+  list.unshift({
+    id: Date.now(),
+    species: state.species, season: state.season, seed: state.seed, wind: state.wind,
+    date: new Date().toISOString().slice(0,10),
+    thumb
+  });
+  if(list.length>12) list.length = 12;
+  saveGrove(list);
+  updateGroveBadge();
+  renderGroveList();
+  showToast('💾 Saved to your Grove');
+});
+
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  render(performance.now());
+  canvas.toBlob((blob)=>{
+    if(!blob){ showToast('Export failed'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bonsai-'+state.species+'-'+state.season+'.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    showToast('🖼️ PNG exported');
+  }, 'image/png');
+});
+
+document.getElementById('btnShare').addEventListener('click', async ()=>{
+  updateHash();
+  try{
+    await navigator.clipboard.writeText(location.href);
+    showToast('🔗 Link copied');
+  }catch(e){
+    showToast(location.href);
+  }
+});
+
+const drawer = document.getElementById('drawer');
+document.getElementById('groveBtn').addEventListener('click', ()=>{
+  renderGroveList();
+  drawer.classList.add('open');
+});
+document.getElementById('drawerClose').addEventListener('click', ()=> drawer.classList.remove('open'));
+
+function renderGroveList(){
+  const list = loadGrove();
+  const el = document.getElementById('groveList');
+  el.innerHTML = '';
+  if(list.length===0){
+    el.innerHTML = '<div class="groveEmpty">No saved trees yet.<br>Sculpt one, then hit 💾 Save.</div>';
+    return;
+  }
+  list.forEach(item=>{
+    const row = document.createElement('div');
+    row.className = 'groveItem';
+    const sp = SPECIES.find(s=>s.key===item.species);
+    row.innerHTML =
+      '<img src="'+(item.thumb||'')+'" alt="tree thumbnail">'+
+      '<div class="groveMeta"><b>'+(sp?sp.label:item.species)+' · '+SEASONS[item.season].label+'</b>'+
+      '<span>'+item.date+' · seed '+item.seed+'</span></div>'+
+      '<div class="groveActions"><button class="btnLoad" data-id="'+item.id+'">Load</button>'+
+      '<button class="btnDel" data-id="'+item.id+'">Del</button></div>';
+    el.appendChild(row);
+  });
+  el.querySelectorAll('.btnLoad').forEach(b=>b.addEventListener('click', ()=>{
+    const id = parseInt(b.getAttribute('data-id'),10);
+    const item = loadGrove().find(x=>x.id===id);
+    if(!item) return;
+    state.species = item.species;
+    state.season = item.season;
+    state.wind = item.wind;
+    document.getElementById('wind').value = item.wind;
+    regenerate(item.seed, true);
+    refreshPills();
+    drawer.classList.remove('open');
+    showToast('Loaded from Grove');
+  }));
+  el.querySelectorAll('.btnDel').forEach(b=>b.addEventListener('click', ()=>{
+    const id = parseInt(b.getAttribute('data-id'),10);
+    const list = loadGrove().filter(x=>x.id!==id);
+    saveGrove(list);
+    updateGroveBadge();
+    renderGroveList();
+  }));
+}
+
+document.getElementById('btnDownloadGrove').addEventListener('click', ()=>{
+  const list = loadGrove();
+  const blob = new Blob([JSON.stringify(list,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'bonsai-grove.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+});
+
+/* ---------- boot ---------- */
+function boot(){
+  const fromHash = parseHash();
+  const fromLast = loadLastState();
+  const initial = fromHash || fromLast || { species:'juniper', season:'spring', seed: Math.floor(Math.random()*1e9), wind:0.5 };
+  state.species = initial.species;
+  state.season = initial.season;
+  state.wind = initial.wind;
+  document.getElementById('wind').value = state.wind;
+  refreshPills();
+  updateGroveBadge();
+  regenerate(initial.seed, true);
+  requestAnimationFrame(render);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>
