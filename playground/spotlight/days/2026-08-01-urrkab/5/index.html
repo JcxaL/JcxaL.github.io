@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 5 — Keyboard Tree View</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:#0a0b10;color:#e9ecf5;font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;background:#12141ecc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#e9ecf5;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  header{padding:78px 20px 16px;text-align:center;max-width:640px;margin:0 auto;}
+  header h1{font-size:clamp(20px,4vw,30px);margin:0 0 8px;
+    background:linear-gradient(90deg,#a78bfa,#818cf8);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  header p{margin:0;color:#a7add0;font-size:13.5px;line-height:1.6;}
+
+  #wrap{display:flex;justify-content:center;padding:14px 16px 70px;}
+  #tree{width:min(94vw,480px);background:#11121b;border:1px solid #ffffff14;border-radius:16px;
+    padding:10px;box-shadow:0 20px 50px -22px #000;}
+  #tree:focus-within{ box-shadow:0 20px 50px -22px #000, 0 0 0 2px #818cf855; }
+  ul.tree, ul.tree ul{list-style:none;margin:0;padding-left:18px;}
+  ul.tree{padding-left:0;}
+  li.node{position:relative;}
+  .row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;cursor:pointer;
+    user-select:none; outline:none;}
+  .row:hover{background:#ffffff08;}
+  .row.current{background:#818cf822; outline:2px solid #818cf877;}
+  .row .chev{width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    transition:transform .16s;}
+  .row .chev svg{width:9px;height:9px;fill:#9aa3c7;}
+  li.node.open > .row .chev{ transform:rotate(90deg); }
+  .row .icon{font-size:14px;flex-shrink:0;}
+  .row .label{font-size:13px;}
+  .row .badge{margin-left:auto;font-size:9.5px;color:#7d84ab;background:#ffffff0a;padding:2px 6px;border-radius:6px;}
+  li.node > ul{ display:none; overflow:hidden; }
+  li.node.open > ul{ display:block; }
+
+  #hint{max-width:480px;margin:14px auto 0;text-align:center;color:#7d84ab;font-size:11.5px;}
+  footer{text-align:center;color:#5b6088;font-size:11px;padding:0 20px 40px;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Keyboard Tree View</h1>
+  <p>A file-explorer tree with real roving-tabindex keyboard navigation — one focus stop for the whole tree,
+     and the arrow keys walk, expand, and collapse it the way a native OS sidebar does.</p>
+</header>
+
+<div id="wrap">
+  <div id="tree" role="tree" aria-label="Project files" tabindex="0"></div>
+</div>
+<p id="hint">↑ / ↓ move · → expand (or jump to first child) · ← collapse (or jump to parent) · Home / End · Enter / Space toggles</p>
+
+<footer>Roving-tabindex tree pattern, the same one behind VS Code's / Figma's sidebars · UI Spotlight Day 76 · Drop #5</footer>
+
+<script>
+(function(){
+"use strict";
+
+const DATA = [
+  { name:'src', kind:'folder', open:true, children:[
+    { name:'components', kind:'folder', children:[
+      { name:'Button.tsx', kind:'file', badge:'2.1kb' },
+      { name:'Modal.tsx', kind:'file', badge:'4.4kb' },
+      { name:'icons', kind:'folder', children:[
+        { name:'arrow.svg', kind:'file' },
+        { name:'check.svg', kind:'file' }
+      ]}
+    ]},
+    { name:'hooks', kind:'folder', children:[
+      { name:'useTree.ts', kind:'file', badge:'1.8kb' }
+    ]},
+    { name:'app.tsx', kind:'file', badge:'6.0kb' }
+  ]},
+  { name:'public', kind:'folder', children:[
+    { name:'favicon.ico', kind:'file' }
+  ]},
+  { name:'package.json', kind:'file', badge:'0.6kb' },
+  { name:'README.md', kind:'file', badge:'3.2kb' }
+];
+
+const CHEVRON = '<svg viewBox="0 0 8 8"><path d="M1 0 L7 4 L1 8 Z"/></svg>';
+
+function buildNode(item, depth){
+  const li = document.createElement('li');
+  li.className = 'node' + (item.kind==='folder' && item.open ? ' open' : '');
+  li.setAttribute('role','treeitem');
+  li.dataset.depth = depth;
+  if(item.kind === 'folder') li.setAttribute('aria-expanded', item.open ? 'true':'false');
+
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.tabIndex = -1;
+  const chev = document.createElement('span');
+  chev.className = 'chev';
+  chev.innerHTML = item.kind === 'folder' ? CHEVRON : '';
+  const icon = document.createElement('span');
+  icon.className = 'icon';
+  icon.textContent = item.kind === 'folder' ? '📁' : '📄';
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = item.name;
+  row.appendChild(chev); row.appendChild(icon); row.appendChild(label);
+  if(item.badge){
+    const b = document.createElement('span');
+    b.className='badge'; b.textContent = item.badge;
+    row.appendChild(b);
+  }
+  li.appendChild(row);
+
+  if(item.kind === 'folder' && item.children){
+    const ul = document.createElement('ul');
+    item.children.forEach(child => ul.appendChild(buildNode(child, depth+1)));
+    li.appendChild(ul);
+  }
+  return li;
+}
+
+const treeRoot = document.getElementById('tree');
+const rootUl = document.createElement('ul');
+rootUl.className = 'tree';
+DATA.forEach(item => rootUl.appendChild(buildNode(item, 0)));
+treeRoot.appendChild(rootUl);
+
+function visibleRows(){
+  // rows whose ancestors are all open (i.e. actually rendered/visible), in document order
+  return Array.from(treeRoot.querySelectorAll('li.node')).filter(li => {
+    let p = li.parentElement.closest('li.node');
+    while(p){ if(!p.classList.contains('open')) return false; p = p.parentElement.closest('li.node'); }
+    return true;
+  }).map(li => li.querySelector(':scope > .row'));
+}
+
+let currentIndex = 0;
+
+function setCurrent(idx, focus){
+  const rows = visibleRows();
+  if(idx < 0) idx = 0;
+  if(idx > rows.length-1) idx = rows.length-1;
+  rows.forEach(r => { r.classList.remove('current'); r.tabIndex = -1; });
+  currentIndex = idx;
+  const row = rows[idx];
+  row.classList.add('current');
+  row.tabIndex = 0;
+  if(focus) row.focus();
+}
+
+function toggle(li, forceOpen){
+  if(!li.querySelector(':scope > ul')) return;
+  const willOpen = forceOpen !== undefined ? forceOpen : !li.classList.contains('open');
+  li.classList.toggle('open', willOpen);
+  li.setAttribute('aria-expanded', willOpen ? 'true':'false');
+}
+
+treeRoot.addEventListener('click', (e)=>{
+  const row = e.target.closest('.row');
+  if(!row) return;
+  const li = row.parentElement;
+  const rows = visibleRows();
+  setCurrent(rows.indexOf(row), false);
+  toggle(li);
+});
+
+treeRoot.addEventListener('focus', ()=>{
+  const rows = visibleRows();
+  if(!rows.some(r=>r.classList.contains('current'))) setCurrent(0, false);
+  rows[currentIndex] && rows[currentIndex].focus();
+});
+
+treeRoot.addEventListener('keydown', (e)=>{
+  const rows = visibleRows();
+  const row = rows[currentIndex];
+  const li = row ? row.parentElement : null;
+  switch(e.key){
+    case 'ArrowDown':
+      e.preventDefault(); setCurrent(currentIndex+1, true); break;
+    case 'ArrowUp':
+      e.preventDefault(); setCurrent(currentIndex-1, true); break;
+    case 'Home':
+      e.preventDefault(); setCurrent(0, true); break;
+    case 'End':
+      e.preventDefault(); setCurrent(rows.length-1, true); break;
+    case 'ArrowRight':
+      e.preventDefault();
+      if(li && li.classList.contains('node') && li.querySelector(':scope > ul')){
+        if(!li.classList.contains('open')){ toggle(li, true); }
+        else { setCurrent(currentIndex+1, true); }
+      }
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      if(li && li.classList.contains('open')){ toggle(li, false); }
+      else if(li){
+        const parentLi = li.parentElement.closest('li.node');
+        if(parentLi){ const newRows = visibleRows(); setCurrent(newRows.indexOf(parentLi.querySelector(':scope > .row')), true); }
+      }
+      break;
+    case 'Enter': case ' ':
+      e.preventDefault(); if(li) toggle(li); break;
+  }
+});
+
+setCurrent(0, false);
+})();
+</script>
+</body>
+</html>

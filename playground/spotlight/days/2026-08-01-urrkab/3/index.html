@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 3 — Text-in-Shape Poster</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:#0c0a12;color:#f2edff;font-family:system-ui,-apple-system,sans-serif;overflow-x:hidden;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;background:#15101fcc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#f2edff;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  header{padding:78px 20px 18px;text-align:center;max-width:680px;margin:0 auto;}
+  header h1{font-size:clamp(20px,4vw,30px);margin:0 0 8px;
+    background:linear-gradient(90deg,#f472b6,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  header p{margin:0;color:#c2b3e0;font-size:13.5px;line-height:1.6;}
+  #stage{display:flex;justify-content:center;padding:10px 16px 60px;}
+  #canvasWrap{position:relative;width:min(92vw,560px);}
+  canvas{width:100%;display:block;border-radius:16px;background:#100c1a;box-shadow:0 20px 50px -20px #000;}
+
+  #debug{position:fixed;top:14px;right:14px;z-index:50;background:#15101fcc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:12px 12px;font-size:11px;width:210px;}
+  #debug h3{margin:0 0 8px;font-size:11px;color:#f472b6;}
+  #debug label{display:flex;justify-content:space-between;margin:8px 0 2px;color:#c2b3e0;}
+  #debug select, #debug input[type=range]{width:100%;accent-color:#f472b6;}
+  #debug select{background:#00000066;border:1px solid #ffffff22;color:#f2edff;border-radius:6px;padding:5px 6px;font-size:11px;margin-top:2px;}
+  #debug .row{display:flex;gap:6px;margin-top:8px;}
+  #debug button{flex:1;background:#f472b622;border:1px solid #f472b655;color:#ffd7ea;border-radius:8px;
+    padding:6px 4px;font-size:10.5px;font-weight:700;cursor:pointer;}
+  footer{text-align:center;color:#77678f;font-size:11px;padding:0 20px 40px;}
+  @media(max-width:640px){ #debug{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Text-in-Shape Poster</h1>
+  <p>Not text <em>wrapping around</em> a shape (that's CSS <code>shape-outside</code>) — this pours a whole paragraph
+     <em>inside</em> a silhouette, sampling the mask's width at every text line so each line justifies to fit exactly.</p>
+</header>
+
+<div id="stage">
+  <div id="canvasWrap"><canvas id="c"></canvas></div>
+</div>
+
+<div id="debug">
+  <h3>⚙️ Shape &amp; type</h3>
+  <label>Shape</label>
+  <select id="shape">
+    <option value="heart">Heart</option>
+    <option value="star">Star</option>
+    <option value="circle">Circle</option>
+    <option value="drop">Drop</option>
+  </select>
+  <label>Line height <span id="lhVal">22</span>px</label>
+  <input type="range" id="lineHeight" min="14" max="34" value="22">
+  <label>Font size <span id="fsVal">13</span>px</label>
+  <input type="range" id="fontSize" min="9" max="20" value="13">
+  <div class="row">
+    <button id="btnShuffle">🔀 New text</button>
+  </div>
+</div>
+
+<footer>A classic "text-inside-shape" typesetting trick, rebuilt with per-scanline canvas sampling · UI Spotlight Day 76 · Drop #3</footer>
+
+<script>
+(function(){
+"use strict";
+
+const TEXTS = [
+  "Every silhouette is just a set of constraints. Feed a paragraph enough of them, one scanline at a time, and the words find their own way into the shape, justified edge to edge, line after line, until the outline reads as much through negative space as through ink. No word is ever told which shape it lives inside; it only ever learns how much room the current line has to work with, then gives back exactly that much. Stack enough of those small, blind decisions on top of each other and the paragraph starts to look like it always belonged to the outline, the way a river only ever looks inevitable after it has already carved the valley.",
+  "The mask never sees the words. It only ever answers one question, over and over: at this height, how wide am I. The typesetting is blind to meaning and only obeys geometry, and that is exactly why it can pour any paragraph into any outline without ever being told what either one means. Swap the silhouette and the same sentences rearrange themselves instantly into a completely different rhythm of long and short lines, because the only thing that ever changed was the width available at each height, and the words were always just following that number wherever it led them, line after patient line.",
+  "Long before variable fonts and displacement filters, printers packed type into diamonds and crosses by hand, measuring each line against a template. This is that same trick, just automated: sample the silhouette, measure the words, justify, repeat until the shape fills. What used to take a compositor an afternoon of trial and error now happens sixty times a second, which means the shape can change live, under a cursor, under a slider, and the paragraph will simply re-pour itself into whatever new outline it has been handed, obediently, line by justified line, without ever once needing to be told why."
+];
+let textIndex = 0;
+
+function mulberry32(seed){
+  let a = seed>>>0;
+  return function(){ a|=0; a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a);
+    t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; };
+}
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const SIZE = 560; // internal working resolution
+
+function buildMask(shape){
+  const off = document.createElement('canvas');
+  off.width = SIZE; off.height = SIZE;
+  const octx = off.getContext('2d');
+  octx.fillStyle = '#fff';
+  const cx = SIZE/2, cy = SIZE/2;
+  if(shape === 'circle'){
+    octx.beginPath(); octx.arc(cx, cy, SIZE*0.42, 0, Math.PI*2); octx.fill();
+  } else if(shape === 'heart'){
+    octx.beginPath();
+    const s = SIZE * 0.019;
+    for(let i=0;i<=64;i++){
+      const t = (i/64) * Math.PI*2;
+      const x = 16*Math.pow(Math.sin(t),3);
+      const y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+      const px = cx + x*s, py = cy - y*s + SIZE*0.03;
+      if(i===0) octx.moveTo(px,py); else octx.lineTo(px,py);
+    }
+    octx.closePath(); octx.fill();
+  } else if(shape === 'star'){
+    octx.beginPath();
+    const spikes = 5, outerR = SIZE*0.44, innerR = SIZE*0.19;
+    let rot = -Math.PI/2;
+    const step = Math.PI/spikes;
+    octx.moveTo(cx + Math.cos(rot)*outerR, cy + Math.sin(rot)*outerR);
+    for(let i=0;i<spikes;i++){
+      rot += step; octx.lineTo(cx + Math.cos(rot)*innerR, cy + Math.sin(rot)*innerR);
+      rot += step; octx.lineTo(cx + Math.cos(rot)*outerR, cy + Math.sin(rot)*outerR);
+    }
+    octx.closePath(); octx.fill();
+  } else { // drop
+    octx.beginPath();
+    octx.arc(cx, cy + SIZE*0.08, SIZE*0.30, 0.15*Math.PI, 0.85*Math.PI);
+    octx.quadraticCurveTo(cx - SIZE*0.30, cy - SIZE*0.20, cx, cy - SIZE*0.40);
+    octx.quadraticCurveTo(cx + SIZE*0.30, cy - SIZE*0.20, cx + SIZE*0.28, cy + SIZE*0.02);
+    octx.closePath(); octx.fill();
+  }
+  return octx.getImageData(0,0,SIZE,SIZE).data;
+}
+
+function scanRow(maskData, y){
+  // returns [left,right] of the widest opaque span in this row, or null
+  let left = -1, right = -1;
+  const yy = Math.max(0, Math.min(SIZE-1, Math.round(y)));
+  for(let x=0;x<SIZE;x++){
+    const alpha = maskData[(yy*SIZE + x)*4 + 3];
+    if(alpha > 128){
+      if(left === -1) left = x;
+      right = x;
+    }
+  }
+  if(left === -1) return null;
+  return [left, right];
+}
+
+function render(){
+  const shape = document.getElementById('shape').value;
+  const lineHeight = parseInt(document.getElementById('lineHeight').value, 10);
+  const fontSize = parseInt(document.getElementById('fontSize').value, 10);
+  const mask = buildMask(shape);
+  const words = TEXTS[textIndex].split(/\s+/);
+
+  canvas.width = SIZE; canvas.height = SIZE;
+  ctx.clearRect(0,0,SIZE,SIZE);
+  ctx.fillStyle = '#100c1a';
+  ctx.fillRect(0,0,SIZE,SIZE);
+  ctx.font = fontSize + 'px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+
+  let wordIdx = 0;
+  let y = lineHeight * 0.6;
+  const grad = ctx.createLinearGradient(0,0,SIZE,SIZE);
+  grad.addColorStop(0,'#f9a8d4'); grad.addColorStop(1,'#c4b5fd');
+
+  while(y < SIZE && wordIdx < words.length){
+    const span = scanRow(mask, y);
+    if(!span){ y += lineHeight; continue; }
+    const [left, right] = span;
+    const usableWidth = right - left;
+    if(usableWidth < fontSize*2){ y += lineHeight; continue; }
+
+    // greedily fill this line with words until it would overflow
+    const line = [];
+    let lineWidth = 0;
+    const spaceWidth = ctx.measureText(' ').width;
+    while(wordIdx < words.length){
+      const w = words[wordIdx];
+      const ww = ctx.measureText(w).width;
+      const extra = line.length ? spaceWidth + ww : ww;
+      if(lineWidth + extra > usableWidth && line.length > 0) break;
+      line.push(w); lineWidth += extra; wordIdx++;
+    }
+
+    // justify: distribute leftover space across gaps (last line of paragraph left-aligned)
+    const isLast = wordIdx >= words.length;
+    if(line.length > 1 && !isLast){
+      const naturalWidth = line.reduce((s,w,i)=> s + ctx.measureText(w).width + (i>0?spaceWidth:0), 0);
+      const extraGap = (usableWidth - naturalWidth) / (line.length - 1);
+      let x = left;
+      ctx.fillStyle = grad;
+      line.forEach((w,i)=>{
+        ctx.fillText(w, x, y);
+        x += ctx.measureText(w).width + spaceWidth + extraGap;
+      });
+    } else {
+      ctx.fillStyle = grad;
+      ctx.fillText(line.join(' '), left, y);
+    }
+    y += lineHeight;
+  }
+}
+
+document.getElementById('shape').addEventListener('change', render);
+document.getElementById('lineHeight').addEventListener('input', (e)=>{
+  document.getElementById('lhVal').textContent = e.target.value; render();
+});
+document.getElementById('fontSize').addEventListener('input', (e)=>{
+  document.getElementById('fsVal').textContent = e.target.value; render();
+});
+document.getElementById('btnShuffle').addEventListener('click', ()=>{
+  textIndex = (textIndex + 1) % TEXTS.length;
+  render();
+});
+
+render();
+})();
+</script>
+</body>
+</html>

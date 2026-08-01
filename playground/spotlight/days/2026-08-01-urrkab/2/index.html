@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 2 — Justified Photo Wall</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:#0b0e14;color:#eef2fa;font-family:system-ui,-apple-system,sans-serif;overflow-x:hidden;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;background:#111827cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#eef2fa;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  header{padding:78px 20px 20px;text-align:center;max-width:680px;margin:0 auto;}
+  header h1{font-size:clamp(20px,4vw,30px);margin:0 0 8px;
+    background:linear-gradient(90deg,#34d399,#38bdf8);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  header p{margin:0;color:#9fb0c9;font-size:13.5px;line-height:1.6;}
+  #wall{max-width:1180px;margin:14px auto 0;padding:0 12px;}
+  .row{display:flex;gap:6px;margin-bottom:6px;}
+  .tile{position:relative;border-radius:8px;overflow:hidden;cursor:zoom-in;flex-shrink:0;
+    transition:transform .2s, filter .2s;}
+  .tile:hover{ transform:scale(1.015); filter:brightness(1.08); z-index:2; }
+  .tile canvas{display:block;width:100%;height:100%;}
+  .tile .tag{position:absolute;left:7px;bottom:6px;font-size:9.5px;font-weight:800;color:#fff;
+    text-shadow:0 1px 4px #000; letter-spacing:.03em; text-transform:uppercase; opacity:.85;}
+
+  #debug{position:fixed;top:14px;right:14px;z-index:50;background:#111827cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:12px 12px;font-size:11px;width:190px;}
+  #debug h3{margin:0 0 8px;font-size:11px;color:#38bdf8;}
+  #debug label{display:flex;justify-content:space-between;margin:8px 0 2px;color:#9fb0c9;}
+  #debug input[type=range]{width:100%;accent-color:#38bdf8;}
+
+  #lightbox{position:fixed;inset:0;background:#000000dd;display:none;align-items:center;justify-content:center;
+    z-index:100; padding:30px;}
+  #lightbox.open{display:flex;}
+  #lightbox canvas{max-width:min(90vw,700px);max-height:80vh;border-radius:12px;box-shadow:0 30px 80px -20px #000;}
+  #lightbox .close{position:absolute;top:20px;right:24px;background:#ffffff18;border:none;color:#fff;
+    width:36px;height:36px;border-radius:10px;font-size:16px;cursor:pointer;}
+  footer{text-align:center;color:#6d7b93;font-size:11px;padding:30px 20px 60px;}
+
+  @media(max-width:640px){ #debug{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Justified Photo Wall</h1>
+  <p>The classic Flickr/Google-Photos row-packing algorithm — every row is independently scaled so its photos'
+     <em>real aspect ratios</em> exactly fill the container width at one shared row height. It's a different trick
+     from CSS masonry: the math runs per-row, not per-column.</p>
+</header>
+
+<div id="wall"><div class="row" id="loading" style="justify-content:center;color:#6d7b93;padding:30px;">building rows…</div></div>
+
+<div id="debug">
+  <h3>⚙️ Row packing</h3>
+  <label>Target row height <span id="rhVal">180</span>px</label>
+  <input type="range" id="rowHeight" min="100" max="280" value="180">
+  <label>Gap <span id="gapVal">6</span>px</label>
+  <input type="range" id="gap" min="0" max="20" value="6">
+</div>
+
+<div id="lightbox"><button class="close" id="lbClose">✕</button><canvas id="lbCanvas"></canvas></div>
+
+<footer>Justified-row packing after the classic Flickr / justified-layout algorithm · UI Spotlight Day 76 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+
+function mulberry32(seed){
+  let a = seed>>>0;
+  return function(){
+    a|=0; a=(a+0x6D2B79F5)|0;
+    let t=Math.imul(a^(a>>>15),1|a);
+    t=(t+Math.imul(t^(t>>>7),61|t))^t;
+    return ((t^(t>>>14))>>>0)/4294967296;
+  };
+}
+const rng = mulberry32(20260801);
+
+const PALETTES = [
+  ['#7c3aed','#38bdf8'], ['#f472b6','#7c3aed'], ['#34d399','#065f46'],
+  ['#fbbf24','#ef4444'], ['#38bdf8','#0f172a'], ['#a78bfa','#f472b6'],
+  ['#10b981','#0891b2'], ['#f97316','#7c2d12'], ['#6366f1','#0ea5e9']
+];
+const TAGS = ['#01','#02','#03','#04','#05','#06','#07','#08','#09','#10','#11','#12','#13','#14','#15','#16','#17','#18'];
+
+function makePhoto(i){
+  // real varied aspect ratios, like a genuine photo library
+  const pool = [1.5, 1.33, 1.0, 0.8, 1.78, 0.66, 1.2, 2.0];
+  const ar = pool[Math.floor(rng()*pool.length)] * (0.9+rng()*0.2);
+  const pal = PALETTES[i % PALETTES.length];
+  return { id:i, ar, palA: pal[0], palB: pal[1], seed: rng(), tag: TAGS[i % TAGS.length] };
+}
+const photos = [];
+for(let i=0;i<24;i++) photos.push(makePhoto(i));
+
+function drawPhoto(canvas, photo, w, h){
+  canvas.width = Math.round(w*2); canvas.height = Math.round(h*2); // crisp on retina
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createLinearGradient(0,0,canvas.width,canvas.height);
+  g.addColorStop(0, photo.palA);
+  g.addColorStop(1, photo.palB);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  // simple generative texture so tiles don't look like flat rectangles
+  const rr = mulberry32(Math.floor(photo.seed*1e9));
+  ctx.globalAlpha = 0.16;
+  for(let k=0;k<14;k++){
+    ctx.beginPath();
+    const cx = rr()*canvas.width, cy = rr()*canvas.height, r = 30+rr()*canvas.width*0.35;
+    ctx.fillStyle = '#ffffff';
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// --- the justified-row algorithm ---
+function layoutRows(items, containerWidth, targetHeight, gap){
+  const rows = [];
+  let row = [];
+  let rowAspectSum = 0;
+  items.forEach((item, idx) => {
+    row.push(item);
+    rowAspectSum += item.ar;
+    const rowWidthAtTarget = rowAspectSum * targetHeight + gap*(row.length-1);
+    if(rowWidthAtTarget >= containerWidth || idx === items.length-1){
+      // scale this row's height so total width == containerWidth exactly
+      const availableWidth = containerWidth - gap*(row.length-1);
+      const scaledHeight = availableWidth / rowAspectSum;
+      // clamp so the very last (possibly sparse) row doesn't blow up too tall
+      const finalHeight = Math.min(scaledHeight, targetHeight*1.6);
+      rows.push({ items: row.slice(), height: finalHeight });
+      row = []; rowAspectSum = 0;
+    }
+  });
+  return rows;
+}
+
+const wall = document.getElementById('wall');
+let containerWidth = 0;
+
+function render(){
+  containerWidth = wall.clientWidth;
+  const targetHeight = parseInt(document.getElementById('rowHeight').value, 10);
+  const gap = parseInt(document.getElementById('gap').value, 10);
+  const rows = layoutRows(photos, containerWidth, targetHeight, gap);
+  wall.innerHTML = '';
+  rows.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'row';
+    rowEl.style.gap = gap+'px';
+    row.items.forEach(photo => {
+      const w = photo.ar * row.height;
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.style.width = w+'px';
+      tile.style.height = row.height+'px';
+      const canvas = document.createElement('canvas');
+      drawPhoto(canvas, photo, w, row.height);
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+      tag.textContent = photo.tag;
+      tile.appendChild(canvas);
+      tile.appendChild(tag);
+      tile.addEventListener('click', () => openLightbox(photo));
+      rowEl.appendChild(tile);
+    });
+    wall.appendChild(rowEl);
+  });
+}
+
+function openLightbox(photo){
+  const lb = document.getElementById('lightbox');
+  const canvas = document.getElementById('lbCanvas');
+  const w = 640, h = Math.round(640/photo.ar);
+  drawPhoto(canvas, photo, w, h);
+  canvas.style.aspectRatio = photo.ar;
+  lb.classList.add('open');
+}
+document.getElementById('lbClose').addEventListener('click', ()=>{
+  document.getElementById('lightbox').classList.remove('open');
+});
+document.getElementById('lightbox').addEventListener('click', (e)=>{
+  if(e.target.id==='lightbox') e.currentTarget.classList.remove('open');
+});
+
+document.getElementById('rowHeight').addEventListener('input', (e)=>{
+  document.getElementById('rhVal').textContent = e.target.value;
+  render();
+});
+document.getElementById('gap').addEventListener('input', (e)=>{
+  document.getElementById('gapVal').textContent = e.target.value;
+  render();
+});
+window.addEventListener('resize', render);
+
+render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 4 — Custom Pull-to-Refresh</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#0a0e0c;color:#eaf6ee;font-family:system-ui,-apple-system,sans-serif;overscroll-behavior:none;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;background:#0f1712cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#eaf6ee;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  header{padding:78px 20px 14px;text-align:center;max-width:640px;margin:0 auto;}
+  header h1{font-size:clamp(20px,4vw,30px);margin:0 0 8px;
+    background:linear-gradient(90deg,#34d399,#a7f3d0);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  header p{margin:0;color:#a9c9b6;font-size:13.5px;line-height:1.6;}
+
+  #phoneWrap{display:flex;justify-content:center;padding:14px 16px 60px;}
+  #phone{position:relative;width:min(92vw,360px);height:min(70vh,620px);border-radius:32px;
+    border:1px solid #ffffff1a;background:#0e1512;overflow:hidden;box-shadow:0 30px 70px -25px #000;}
+  #pullZone{position:absolute;top:0;left:0;right:0;height:70px;display:flex;align-items:center;justify-content:center;
+    pointer-events:none;}
+  #spinner{width:26px;height:26px;border-radius:50%;border:3px solid #ffffff22;border-top-color:#34d399;
+    transform:rotate(0deg);}
+  #spinner.spin{animation:spin .7s linear infinite;}
+  @keyframes spin{ to { transform:rotate(360deg); } }
+  #scroller{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    touch-action:pan-y; padding-top:0;}
+  #content{will-change:transform;}
+  .feedItem{margin:12px 14px;padding:14px 16px;border-radius:14px;background:#132019;border:1px solid #ffffff14;
+    display:flex;gap:12px;align-items:center;}
+  .feedItem .avatar{width:36px;height:36px;border-radius:50%;flex-shrink:0;}
+  .feedItem .txt b{display:block;font-size:12.5px;}
+  .feedItem .txt span{font-size:11px;color:#8fae9b;}
+  .feedItem.new{ animation:pop .35s ease; }
+  @keyframes pop{ from{ opacity:0; transform:translateY(-8px) scale(.97);} to{ opacity:1; transform:none;} }
+  #status{position:absolute; top:2px; left:0; right:0; text-align:center; font-size:10.5px; color:#8fae9b;
+    pointer-events:none;}
+
+  #debug{position:fixed;top:14px;right:14px;z-index:50;background:#0f1712cc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:12px 12px;font-size:11px;width:190px;}
+  #debug h3{margin:0 0 8px;font-size:11px;color:#34d399;}
+  #debug label{display:flex;justify-content:space-between;margin:8px 0 2px;color:#a9c9b6;}
+  #debug input[type=range]{width:100%;accent-color:#34d399;}
+  footer{text-align:center;color:#5f7869;font-size:11px;padding:0 20px 40px;}
+  @media(max-width:640px){ #debug{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Custom Pull-to-Refresh</h1>
+  <p>Native apps fake this with an OS-level bounce; on the web it's hand-built: track the drag distance past
+     <code>scrollTop 0</code>, apply elastic resistance so it feels heavy, spin a rotation tied 1:1 to pull distance,
+     and only fire the refresh once you cross a real threshold.</p>
+</header>
+
+<div id="phoneWrap">
+  <div id="phone">
+    <div id="pullZone"><div id="spinner"></div></div>
+    <div id="status"></div>
+    <div id="scroller">
+      <div id="content"></div>
+    </div>
+  </div>
+</div>
+
+<div id="debug">
+  <h3>⚙️ Pull physics</h3>
+  <label>Trigger threshold <span id="thVal">70</span>px</label>
+  <input type="range" id="threshold" min="40" max="120" value="70">
+  <label>Resistance <span id="resVal">0.5</span></label>
+  <input type="range" id="resistance" min="0.2" max="0.9" step="0.05" value="0.5">
+</div>
+
+<footer>A hand-rolled elastic pull-to-refresh, the pattern every native feed app uses · UI Spotlight Day 76 · Drop #4</footer>
+
+<script>
+(function(){
+"use strict";
+
+const scroller = document.getElementById('scroller');
+const content = document.getElementById('content');
+const pullZone = document.getElementById('pullZone');
+const spinner = document.getElementById('spinner');
+const statusEl = document.getElementById('status');
+
+const AVATAR_COLORS = ['#34d399','#38bdf8','#f472b6','#fbbf24','#a78bfa','#f87171'];
+let feedSeq = 0;
+
+function makeItem(label){
+  feedSeq++;
+  const el = document.createElement('div');
+  el.className = 'feedItem';
+  const color = AVATAR_COLORS[feedSeq % AVATAR_COLORS.length];
+  el.innerHTML =
+    '<div class="avatar" style="background:'+color+'"></div>' +
+    '<div class="txt"><b>'+label+'</b><span>just now · pulled refresh #'+feedSeq+'</span></div>';
+  return el;
+}
+function seedFeed(){
+  const titles = ['New route published','Signal received','Build finished','Draft saved','Comment added','Status updated'];
+  for(let i=0;i<8;i++){
+    const el = makeItem(titles[i % titles.length]);
+    el.classList.remove('new');
+    content.appendChild(el);
+  }
+}
+seedFeed();
+
+let startY = 0;
+let pulling = false;
+let currentPull = 0;
+let refreshing = false;
+
+function resistance(){ return parseFloat(document.getElementById('resistance').value); }
+function threshold(){ return parseInt(document.getElementById('threshold').value, 10); }
+
+function setPull(px){
+  currentPull = px;
+  content.style.transform = 'translateY(' + px + 'px)';
+  pullZone.style.height = Math.max(0, px) + 'px';
+  const progress = Math.min(1, px / threshold());
+  spinner.style.transform = 'rotate(' + (progress*320) + 'deg)';
+  spinner.style.opacity = Math.min(1, px/24);
+  if(px >= threshold() && !refreshing){
+    statusEl.textContent = 'Release to refresh';
+  } else if(!refreshing){
+    statusEl.textContent = px > 6 ? 'Pull to refresh' : '';
+  }
+}
+
+scroller.addEventListener('pointerdown', (e)=>{
+  if(refreshing) return;
+  if(scroller.scrollTop > 0) return;
+  startY = e.clientY;
+  pulling = true;
+});
+scroller.addEventListener('pointermove', (e)=>{
+  if(!pulling || refreshing) return;
+  const dy = e.clientY - startY;
+  if(dy <= 0){ setPull(0); return; }
+  if(scroller.scrollTop > 0){ pulling = false; setPull(0); return; }
+  const factor = 1 - resistance(); // higher resistance = stiffer pull
+  const eased = dy * factor;
+  setPull(Math.min(eased, 140));
+});
+function endPull(){
+  if(!pulling) return;
+  pulling = false;
+  if(currentPull >= threshold()){
+    doRefresh();
+  } else {
+    snapBack();
+  }
+}
+scroller.addEventListener('pointerup', endPull);
+scroller.addEventListener('pointercancel', endPull);
+scroller.addEventListener('pointerleave', ()=>{ if(pulling) endPull(); });
+
+function snapBack(){
+  content.style.transition = 'transform .28s cubic-bezier(.2,.8,.2,1)';
+  pullZone.style.transition = 'height .28s';
+  setPull(0);
+  statusEl.textContent = '';
+  setTimeout(()=>{ content.style.transition=''; pullZone.style.transition=''; }, 300);
+}
+
+function doRefresh(){
+  refreshing = true;
+  spinner.classList.add('spin');
+  statusEl.textContent = 'Refreshing…';
+  content.style.transition = 'transform .2s';
+  setPull(threshold());
+  setTimeout(()=>{
+    const titles = ['Fresh update pulled in','New activity synced','Live data refreshed'];
+    const el = makeItem(titles[Math.floor(Math.random()*titles.length)]);
+    content.insertBefore(el, content.firstChild);
+    spinner.classList.remove('spin');
+    refreshing = false;
+    snapBack();
+  }, 900);
+}
+
+document.getElementById('threshold').addEventListener('input', (e)=>{
+  document.getElementById('thVal').textContent = e.target.value;
+});
+document.getElementById('resistance').addEventListener('input', (e)=>{
+  document.getElementById('resVal').textContent = e.target.value;
+});
+})();
+</script>
+</body>
+</html>
