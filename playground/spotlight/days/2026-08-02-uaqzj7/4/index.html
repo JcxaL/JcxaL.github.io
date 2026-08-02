@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Drop 4 — Reorder Lists with the View Transition API</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:#160c1f;color:#f2e9ff;font-family:system-ui,-apple-system,sans-serif;
+    overscroll-behavior:none;}
+  body{background:radial-gradient(circle at 90% 0%,#2b1440 0%,transparent 55%),#160c1f;min-height:100vh;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:80;background:#1e0f2acc;border:1px solid #ffffff22;
+    backdrop-filter:blur(8px);color:#f2e9ff;text-decoration:none;font-size:12px;font-weight:700;
+    padding:8px 14px;border-radius:999px;}
+  .back-link:active{transform:scale(.96);}
+  header{padding:78px 20px 10px;text-align:center;max-width:700px;margin:0 auto;}
+  header h1{font-size:clamp(20px,4vw,30px);margin:0 0 8px;
+    background:linear-gradient(90deg,#fbbf24,#fde68a);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  header p{margin:0;color:#c6b3dd;font-size:13.5px;line-height:1.6;}
+  header code{background:#241234;border:1px solid #ffffff1a;padding:1px 6px;border-radius:5px;font-size:12px;}
+  .fallback-note{max-width:700px;margin:8px auto 0;text-align:center;color:#fbbf24;font-size:12px;padding:0 20px;display:none;}
+
+  main{max-width:640px;margin:0 auto;padding:26px 20px 40px;}
+  .toolbar{display:flex;gap:10px;justify-content:center;margin-bottom:16px;flex-wrap:wrap;}
+  .toolbar button{background:#241234;border:1px solid #fbbf2455;color:#fde9b3;font-weight:700;font-size:12.5px;
+    padding:9px 16px;border-radius:10px;cursor:pointer;}
+  .toolbar button:active{transform:scale(.97);}
+
+  #list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;}
+  #list li{
+    view-transition-name: var(--vt-name);
+    background:#1e0f2a;border:1px solid #ffffff16;border-radius:14px;padding:14px 16px;
+    display:flex;align-items:center;gap:12px;cursor:grab;user-select:none;touch-action:none;
+  }
+  #list li.dragging{ opacity:.5; cursor:grabbing; }
+  #list li .grip{color:#8a76a8;font-size:16px;letter-spacing:2px;display:inline-block;}
+  #list li .grip.kick{ animation: kickflip .5s ease; }
+  @keyframes kickflip{ 50%{ transform:rotate(140deg) scale(1.5); color:#fbbf24; } }
+  #list li .rank{width:24px;height:24px;border-radius:50%;background:#fbbf2422;color:#fbbf24;font-weight:800;
+    font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  #list li .txt{flex:1;font-size:13.5px;}
+  #list li .txt b{display:block;font-size:13px;}
+  #list li .txt span{font-size:11px;color:#9a86b8;}
+
+  ::view-transition-group(*){ animation-duration: var(--vt-dur, 0.45s); }
+  ::view-transition-old(*), ::view-transition-new(*){ animation-duration: var(--vt-dur, 0.45s); }
+
+  #debug{position:fixed;top:14px;right:14px;z-index:60;background:#1e0f2acc;border:1px solid #ffffff22;
+    backdrop-filter:blur(10px);border-radius:12px;padding:12px 12px;font-size:11px;width:200px;}
+  #debug h3{margin:0 0 8px;font-size:11px;color:#fbbf24;}
+  #debug label{display:flex;justify-content:space-between;margin:8px 0 2px;color:#c6b3dd;}
+  #debug input[type=range]{width:100%;accent-color:#fbbf24;}
+  footer{text-align:center;color:#6f5f88;font-size:11px;padding:0 20px 40px;}
+  @media(max-width:640px){ #debug{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Reorder Lists with the View Transition API</h1>
+  <p>Drag row 5 to the top the old way and you'd hand-roll a FLIP transform on every sibling. Wrap the DOM mutation in
+     <code>document.startViewTransition()</code> instead, tag each row with a stable <code>view-transition-name</code>,
+     and the browser snapshots old/new positions and animates every displaced row's transform, width and height for you.</p>
+</header>
+<p class="fallback-note" id="fallbackNote">Your browser doesn't support <code>document.startViewTransition</code> — reordering below still works, just as an instant jump instead of a morph.</p>
+
+<main>
+  <div class="toolbar">
+    <button id="shuffleBtn">Shuffle order</button>
+    <button id="topBtn">Send #1 to bottom</button>
+    <button id="sortBtn">Sort A→Z</button>
+  </div>
+
+  <ul id="list"></ul>
+</main>
+
+<div id="debug">
+  <h3>⚙️ Morph speed</h3>
+  <label>Duration <span id="vtDurVal">0.45</span>s</label>
+  <input type="range" id="vtDur" min="0.15" max="1.2" step="0.05" value="0.45">
+</div>
+
+<footer>Inspired by Chris Coyier · "View Transition List Reordering (with a Kick Flip)" (master.dev) · UI Spotlight Day 77 · Drop #4</footer>
+
+<script>
+(function(){
+"use strict";
+
+const supportsVT = typeof document.startViewTransition === 'function';
+if(!supportsVT){
+  document.getElementById('fallbackNote').style.display = 'block';
+}
+
+const listEl = document.getElementById('list');
+let items = [
+  { id:'a', title:'Inbox zero', sub:'Sweep and triage' },
+  { id:'b', title:'Design review', sub:'Bento layout pass' },
+  { id:'c', title:'Ship changelog', sub:'v4.2 release notes' },
+  { id:'d', title:'Fix flaky test', sub:'CI reorder suite' },
+  { id:'e', title:'Write proposal', sub:'Q3 roadmap draft' },
+];
+
+function render(){
+  listEl.innerHTML = '';
+  items.forEach((it, i) => {
+    const li = document.createElement('li');
+    li.dataset.id = it.id;
+    li.style.setProperty('--vt-name', 'row-' + it.id);
+    li.innerHTML =
+      '<span class="grip">⠿</span>' +
+      '<span class="rank">' + (i+1) + '</span>' +
+      '<span class="txt"><b>' + it.title + '</b><span>' + it.sub + '</span></span>';
+    listEl.appendChild(li);
+  });
+  attachDrag();
+}
+
+function reorder(mutator){
+  if(supportsVT){
+    document.startViewTransition(() => { mutator(); render(); });
+  } else {
+    mutator();
+    render();
+  }
+  // Playful "kick flip" flourish on the grip icons, echoing the source article's
+  // skateboard-trick spin on the moved item's icon.
+  requestAnimationFrame(() => {
+    listEl.querySelectorAll('.grip').forEach(g => {
+      g.classList.remove('kick');
+      void g.offsetWidth;
+      g.classList.add('kick');
+    });
+  });
+}
+
+document.getElementById('shuffleBtn').addEventListener('click', () => {
+  reorder(() => {
+    for(let i = items.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i+1));
+      [items[i], items[j]] = [items[j], items[i]];
+    }
+  });
+});
+document.getElementById('topBtn').addEventListener('click', () => {
+  reorder(() => { items.push(items.shift()); });
+});
+document.getElementById('sortBtn').addEventListener('click', () => {
+  reorder(() => { items.sort((a,b) => a.title.localeCompare(b.title)); });
+});
+
+// ---- Pointer-based drag-to-reorder ----
+let dragId = null;
+let startY = 0;
+let dragging = false;
+
+function attachDrag(){
+  listEl.querySelectorAll('li').forEach(li => {
+    li.addEventListener('pointerdown', onDown);
+  });
+}
+
+function onDown(e){
+  dragId = e.currentTarget.dataset.id;
+  startY = e.clientY;
+  dragging = true;
+  e.currentTarget.classList.add('dragging');
+  e.currentTarget.setPointerCapture(e.pointerId);
+}
+
+listEl.addEventListener('pointermove', (e) => {
+  if(!dragging || !dragId) return;
+  const rows = Array.from(listEl.querySelectorAll('li'));
+  const draggedEl = rows.find(r => r.dataset.id === dragId);
+  if(!draggedEl) return;
+  const overEl = rows.find(r => {
+    if(r === draggedEl) return false;
+    const rect = r.getBoundingClientRect();
+    return e.clientY > rect.top && e.clientY < rect.bottom;
+  });
+  if(overEl){
+    const fromIdx = items.findIndex(it => it.id === dragId);
+    const toIdx = items.findIndex(it => it.id === overEl.dataset.id);
+    if(fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx){
+      reorder(() => {
+        const [moved] = items.splice(fromIdx, 1);
+        items.splice(toIdx, 0, moved);
+      });
+    }
+  }
+});
+
+listEl.addEventListener('pointerup', endDrag);
+listEl.addEventListener('pointercancel', endDrag);
+function endDrag(){
+  dragging = false;
+  dragId = null;
+  listEl.querySelectorAll('li.dragging').forEach(li => li.classList.remove('dragging'));
+}
+
+const vtDur = document.getElementById('vtDur');
+const vtDurVal = document.getElementById('vtDurVal');
+vtDur.addEventListener('input', () => {
+  vtDurVal.textContent = vtDur.value;
+  document.documentElement.style.setProperty('--vt-dur', vtDur.value + 's');
+});
+document.documentElement.style.setProperty('--vt-dur', vtDur.value + 's');
+
+render();
+})();
+</script>
+</body>
+</html>
