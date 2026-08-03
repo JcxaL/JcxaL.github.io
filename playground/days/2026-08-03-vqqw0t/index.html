@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Correlation Explorer — Scatterplot Matrix Studio</title>
+<style>
+  :root{
+    --bg:#090b14; --panel:#10131f; --panel2:#151a2b; --line:#232a42;
+    --ink:#eef2ff; --muted:#8f97b8; --accent1:#7c93ff; --accent2:#2dd4bf;
+    --accent3:#fbbf24; --accent4:#f472b6; --accent5:#34d399; --danger:#f87171;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(ellipse at 20% -10%, #16193a 0%, var(--bg) 55%);
+    color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; height:100vh; display:flex; flex-direction:column;
+  }
+  header.topbar{
+    display:flex; align-items:center; gap:10px; padding:10px 14px;
+    background:rgba(16,19,31,.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line); flex-wrap:wrap; z-index:5;
+  }
+  header.topbar h1{
+    font-size:14.5px; margin:0; font-weight:700; letter-spacing:.2px;
+    background:linear-gradient(90deg,var(--accent1),var(--accent4));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    white-space:nowrap;
+  }
+  .spacer{flex:1;}
+  select, button, input[type=file]::file-selector-button{
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:8px; padding:7px 11px; font-size:12.5px; font-family:inherit;
+    cursor:pointer; transition:.15s border-color, .15s background;
+  }
+  select:hover, button:hover{ border-color:var(--accent1); }
+  button.primary{ background:linear-gradient(135deg,var(--accent1),#5a6fd8); border:none; color:#0a0c18; font-weight:700; }
+  button.primary:hover{ filter:brightness(1.12); }
+  button:active{ transform:scale(.97); }
+  button:disabled{ opacity:.4; cursor:not-allowed; }
+  #csvInput{ display:none; }
+  main{ flex:1; display:flex; min-height:0; }
+  .side{
+    width:230px; flex:none; background:var(--panel); border-right:1px solid var(--line);
+    padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:16px;
+  }
+  .side h2{ font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:0 0 8px; }
+  .varlist label{
+    display:flex; align-items:center; gap:8px; font-size:13px; padding:5px 6px;
+    border-radius:7px; cursor:pointer;
+  }
+  .varlist label:hover{ background:var(--panel2); }
+  .varlist input{ accent-color:var(--accent1); width:15px; height:15px; }
+  .varlist .swatch{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .stat-row{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); padding:3px 0; }
+  .stat-row b{ color:var(--ink); font-weight:600; }
+  #brushStats{ display:flex; flex-direction:column; gap:2px; }
+  #brushStats .empty{ color:var(--muted); font-size:12px; font-style:italic; }
+  .exports{ display:flex; flex-direction:column; gap:7px; margin-top:auto; }
+  .exports button{ width:100%; text-align:left; }
+  .legend{ display:flex; flex-direction:column; gap:5px; }
+  .legend .li{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); }
+  .legend .sw{ width:10px; height:10px; border-radius:3px; flex:none; }
+  .matrix-wrap{ flex:1; position:relative; min-width:0; touch-action:none; }
+  canvas#matrix{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #tip{
+    position:absolute; pointer-events:none; background:rgba(10,12,22,.94);
+    border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:11.5px;
+    color:var(--ink); white-space:nowrap; transform:translate(-50%,-115%); z-index:8;
+    display:none; box-shadow:0 6px 20px rgba(0,0,0,.4);
+  }
+  #toast{
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--panel2); border:1px solid var(--accent1); color:var(--ink);
+    padding:9px 16px; border-radius:10px; font-size:13px; opacity:0; pointer-events:none;
+    transition:.25s; z-index:20; box-shadow:0 10px 30px rgba(0,0,0,.4);
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .hint{ font-size:11px; color:var(--muted); line-height:1.5; }
+  #sideToggle{ display:none; }
+  @media (max-width:760px){
+    header.topbar h1{ display:none; }
+    .side{ position:absolute; left:0; top:49px; bottom:0; z-index:6; transform:translateX(-100%);
+      transition:.25s; width:78vw; max-width:280px; box-shadow:20px 0 40px rgba(0,0,0,.5); }
+    .side.open{ transform:translateX(0); }
+    #sideToggle{ display:inline-flex; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button id="sideToggle" title="Toggle panel">☰</button>
+  <h1>Correlation Explorer</h1>
+  <select id="datasetSel"></select>
+  <select id="colorBySel"></select>
+  <button id="regenBtn" title="Reshuffle data with a new seed">⟳ Regenerate</button>
+  <input type="file" id="csvInput" accept=".csv,text/csv">
+  <button id="importBtn">Import CSV</button>
+  <div class="spacer"></div>
+  <button id="shareBtn" class="primary">Share Link</button>
+</header>
+<main>
+  <aside class="side" id="side">
+    <div>
+      <h2>Variables (2–5)</h2>
+      <div class="varlist" id="varList"></div>
+    </div>
+    <div>
+      <h2>Color legend</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div>
+      <h2>Brush selection</h2>
+      <div id="brushStats"><div class="empty">Drag on any cell to brush-select points.</div></div>
+    </div>
+    <div class="exports">
+      <h2 style="margin-bottom:0">Export</h2>
+      <button id="exportPng">⬇ PNG snapshot</button>
+      <button id="exportCsv">⬇ CSV (selection or all)</button>
+      <p class="hint">Drag to brush · click empty space to clear · Esc clears · pinch/scroll not needed, matrix auto-fits.</p>
+    </div>
+  </aside>
+  <div class="matrix-wrap" id="wrap">
+    <canvas id="matrix"></canvas>
+    <div id="tip"></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- RNG ---------- */
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randn(rng){
+  let u = 0, v = 0;
+  while(u === 0) u = rng();
+  while(v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+/* ---------- Dataset specs (synthetic, procedurally generated & seeded) ---------- */
+const SPECS = {
+  stellar: {
+    label: "Stellar Survey", n: 180,
+    vars: [
+      {key:"mass", label:"Mass (M☉)", mean:5, std:3, w:[0.8,0.1]},
+      {key:"lum", label:"Luminosity (L☉)", mean:8, std:5, w:[0.75,0.2]},
+      {key:"temp", label:"Temp (kK)", mean:6, std:2.5, w:[0.1,0.85]},
+      {key:"radius", label:"Radius (R☉)", mean:4, std:2.5, w:[0.7,-0.3]},
+      {key:"dist", label:"Distance (ly)", mean:250, std:150, w:[0.05,0.05]}
+    ],
+    categories: [
+      {name:"Dwarf", color:"var-accent2", shift:{mass:-2,lum:-3,temp:1,radius:-2,dist:0}},
+      {name:"Giant", color:"var-accent1", shift:{mass:0,lum:0,temp:0,radius:0,dist:0}},
+      {name:"Supergiant", color:"var-accent4", shift:{mass:4,lum:6,temp:-0.5,radius:5,dist:0}}
+    ]
+  },
+  startup: {
+    label: "Startup Metrics", n: 180,
+    vars: [
+      {key:"revenue", label:"Revenue ($k/mo)", mean:120, std:80, w:[0.8,0.1]},
+      {key:"users", label:"Users (k)", mean:40, std:30, w:[0.75,0.05]},
+      {key:"churn", label:"Churn (%)", mean:5, std:2.5, w:[0.1,-0.7]},
+      {key:"nps", label:"NPS", mean:30, std:20, w:[0.15,0.7]},
+      {key:"burn", label:"Burn ($k/mo)", mean:90, std:50, w:[0.6,-0.4]}
+    ],
+    categories: [
+      {name:"Seed", color:"var-accent3", shift:{revenue:-60,users:-25,churn:1,nps:-5,burn:-30}},
+      {name:"Series A", color:"var-accent1", shift:{revenue:0,users:0,churn:0,nps:0,burn:0}},
+      {name:"Series B", color:"var-accent5", shift:{revenue:90,users:45,churn:-1,nps:6,burn:55}}
+    ]
+  },
+  combine: {
+    label: "Athletic Combine", n: 180,
+    vars: [
+      {key:"speed", label:"Sprint score", mean:70, std:15, w:[0.8,0.05]},
+      {key:"strength", label:"Strength", mean:65, std:18, w:[0.6,0.2]},
+      {key:"agility", label:"Agility", mean:68, std:15, w:[0.7,0.1]},
+      {key:"endurance", label:"Endurance", mean:60, std:18, w:[0.1,0.85]},
+      {key:"vertical", label:"Vertical (in)", mean:28, std:6, w:[0.75,-0.1]}
+    ],
+    categories: [
+      {name:"Guard", color:"var-accent2", shift:{speed:12,strength:-8,agility:10,endurance:2,vertical:1}},
+      {name:"Forward", color:"var-accent1", shift:{speed:0,strength:0,agility:0,endurance:0,vertical:0}},
+      {name:"Center", color:"var-accent4", shift:{speed:-14,strength:12,agility:-10,endurance:5,vertical:-2}}
+    ]
+  }
+};
+
+function resolveColorVar(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name.replace("var-","--")).trim();
+}
+
+function generateDataset(specKey, seed){
+  const spec = SPECS[specKey];
+  const rng = mulberry32(seed >>> 0);
+  const perCat = Math.floor(spec.n / spec.categories.length);
+  const rows = [];
+  spec.categories.forEach(cat=>{
+    for(let i=0;i<perCat;i++){
+      const f1 = randn(rng), f2 = randn(rng);
+      const row = {__cat: cat.name};
+      spec.vars.forEach(v=>{
+        const w1=v.w[0], w2=v.w[1];
+        const noiseVar = Math.max(0, 1 - w1*w1 - w2*w2);
+        const noise = Math.sqrt(noiseVar) * randn(rng);
+        const z = w1*f1 + w2*f2 + noise;
+        const shift = (cat.shift && cat.shift[v.key]) || 0;
+        row[v.key] = v.mean + shift + v.std * z;
+      });
+      rows.push(row);
+    }
+  });
+  return {
+    key: specKey, label: spec.label,
+    vars: spec.vars.map(v=>({key:v.key,label:v.label})),
+    categories: spec.categories.map(c=>({name:c.name, color: resolveColorVar(c.color)})),
+    rows
+  };
+}
+
+/* ---------- CSV parsing ---------- */
+function parseCsv(text){
+  const lines = text.replace(/\r\n/g,"\n").split("\n").filter(l=>l.trim().length);
+  if(!lines.length) return null;
+  const splitLine = (l)=>{
+    const out=[]; let cur=""; let q=false;
+    for(let i=0;i<l.length;i++){
+      const c=l[i];
+      if(q){
+        if(c==='"' && l[i+1]==='"'){ cur+='"'; i++; }
+        else if(c==='"'){ q=false; }
+        else cur+=c;
+      } else {
+        if(c==='"') q=true;
+        else if(c===','){ out.push(cur); cur=""; }
+        else cur+=c;
+      }
+    }
+    out.push(cur);
+    return out;
+  };
+  const headers = splitLine(lines[0]).map(h=>h.trim());
+  const raw = lines.slice(1).map(splitLine);
+  const numericCols = headers.map((h,ci)=>{
+    let ok=0, tot=0;
+    raw.forEach(r=>{ if(r[ci]===undefined || r[ci]==="") return; tot++; if(!isNaN(parseFloat(r[ci]))) ok++; });
+    return tot>0 && ok/tot > 0.85;
+  });
+  const numHeaders = headers.filter((h,ci)=>numericCols[ci]);
+  if(numHeaders.length < 2) return null;
+  let catCol = -1;
+  headers.forEach((h,ci)=>{
+    if(numericCols[ci]) return;
+    const set = new Set(raw.map(r=>r[ci]));
+    if(set.size>=2 && set.size<=8 && catCol===-1) catCol = ci;
+  });
+  const rows = raw.map(r=>{
+    const row = {};
+    headers.forEach((h,ci)=>{ if(numericCols[ci]) row[h] = parseFloat(r[ci]); });
+    row.__cat = catCol>=0 ? (r[catCol] || "—") : "All";
+    return row;
+  }).filter(r=> numHeaders.every(h=> !isNaN(r[h])));
+  const catNames = catCol>=0 ? Array.from(new Set(rows.map(r=>r.__cat))) : ["All"];
+  const palette = ["var-accent1","var-accent2","var-accent3","var-accent4","var-accent5","#c084fc","#fb923c","#818cf8"];
+  const categories = catNames.map((n,i)=>({name:n, color: palette[i%palette.length].startsWith("var-")?resolveColorVar(palette[i%palette.length]):palette[i%palette.length]}));
+  return {
+    key: "custom", label: "Imported CSV",
+    vars: numHeaders.map(h=>({key:h,label:h})),
+    categories, rows
+  };
+}
+
+/* ---------- State ---------- */
+const STORAGE_KEY = "splom_state_v1";
+let state = {
+  datasetKey: "stellar",
+  seed: 1337,
+  selectedVars: [],
+  colorBy: true,
+  customDataset: null
+};
+try{
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+  if(saved && typeof saved === "object"){
+    state.datasetKey = saved.datasetKey || state.datasetKey;
+    state.seed = saved.seed || state.seed;
+    state.selectedVars = Array.isArray(saved.selectedVars) ? saved.selectedVars : [];
+    state.colorBy = saved.colorBy !== undefined ? saved.colorBy : true;
+  }
+}catch(e){}
+
+// hash-based share link overrides
+(function applyHash(){
+  if(location.hash.length>1){
+    try{
+      const decoded = JSON.parse(atob(location.hash.slice(1)));
+      if(decoded.d && SPECS[decoded.d]){ state.datasetKey = decoded.d; }
+      if(Array.isArray(decoded.v)) state.selectedVars = decoded.v;
+      if(decoded.s !== undefined) state.seed = decoded.s;
+      if(decoded.c !== undefined) state.colorBy = !!decoded.c;
+    }catch(e){}
+  }
+})();
+
+let dataset = null;
+let brush = null; // {cellR, cellC, x0,y0,x1,y1(data or px)} + selected index Set
+let selectedIdx = null; // Set of row indices, or null = none
+
+function currentDataset(){
+  if(state.datasetKey === "custom" && state.customDataset) return state.customDataset;
+  return generateDataset(state.datasetKey, state.seed);
+}
+
+function ensureSelectedVars(ds){
+  const keys = ds.vars.map(v=>v.key);
+  state.selectedVars = state.selectedVars.filter(k=>keys.includes(k));
+  if(state.selectedVars.length < 2){
+    const maxDefault = window.innerWidth < 760 ? 4 : 5;
+    state.selectedVars = keys.slice(0, Math.min(maxDefault, keys.length));
+  }
+}
+
+function saveState(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      datasetKey: state.datasetKey, seed: state.seed,
+      selectedVars: state.selectedVars, colorBy: state.colorBy
+    }));
+  }catch(e){}
+}
+
+/* ---------- DOM refs ---------- */
+const datasetSel = document.getElementById("datasetSel");
+const colorBySel = document.getElementById("colorBySel");
+const varListEl = document.getElementById("varList");
+const legendEl = document.getElementById("legend");
+const brushStatsEl = document.getElementById("brushStats");
+const canvas = document.getElementById("matrix");
+const ctx = canvas.getContext("2d");
+const wrap = document.getElementById("wrap");
+const tip = document.getElementById("tip");
+const toastEl = document.getElementById("toast");
+const side = document.getElementById("side");
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>toastEl.classList.remove("show"), 2200);
+}
+
+document.getElementById("sideToggle").addEventListener("click", ()=> side.classList.toggle("open"));
+
+/* ---------- Build controls ---------- */
+function rebuildDatasetSelect(){
+  datasetSel.innerHTML = "";
+  Object.keys(SPECS).forEach(k=>{
+    const o = document.createElement("option");
+    o.value = k; o.textContent = SPECS[k].label;
+    datasetSel.appendChild(o);
+  });
+  if(state.customDataset){
+    const o = document.createElement("option");
+    o.value = "custom"; o.textContent = "Imported CSV";
+    datasetSel.appendChild(o);
+  }
+  datasetSel.value = state.datasetKey;
+}
+
+function rebuildVarList(ds){
+  varListEl.innerHTML = "";
+  ds.vars.forEach(v=>{
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = v.key;
+    cb.checked = state.selectedVars.includes(v.key);
+    cb.addEventListener("change", ()=>{
+      const checked = Array.from(varListEl.querySelectorAll("input:checked")).map(i=>i.value);
+      if(checked.length < 2){ cb.checked = true; toast("Pick at least 2 variables"); return; }
+      if(checked.length > 5){ cb.checked = false; toast("Max 5 variables"); return; }
+      state.selectedVars = ds.vars.map(v2=>v2.key).filter(k=>checked.includes(k));
+      clearBrush();
+      saveState(); render();
+    });
+    const sw = document.createElement("span"); sw.className="swatch"; sw.style.background="var(--accent1)";
+    const txt = document.createElement("span"); txt.textContent = v.label;
+    lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(txt);
+    varListEl.appendChild(lab);
+  });
+}
+
+function rebuildLegend(ds){
+  legendEl.innerHTML = "";
+  if(!state.colorBy || ds.categories.length<=1){
+    legendEl.innerHTML = '<div class="li"><span class="sw" style="background:var(--accent1)"></span>all points</div>';
+    return;
+  }
+  ds.categories.forEach(c=>{
+    const li = document.createElement("div"); li.className="li";
+    const sw = document.createElement("span"); sw.className="sw"; sw.style.background=c.color;
+    li.appendChild(sw);
+    li.appendChild(document.createTextNode(c.name));
+    legendEl.appendChild(li);
+  });
+}
+
+/* ---------- Rendering ---------- */
+let DPR = Math.max(1, window.devicePixelRatio || 1);
+let layout = null; // {cell, size, pad, gridN, cssW, cssH}
+
+function resizeCanvas(){
+  DPR = Math.max(1, window.devicePixelRatio || 1);
+  const r = wrap.getBoundingClientRect();
+  canvas.width = Math.round(r.width * DPR);
+  canvas.height = Math.round(r.height * DPR);
+  canvas.style.width = r.width+"px";
+  canvas.style.height = r.height+"px";
+  render();
+}
+
+function pearson(xs, ys){
+  const n = xs.length;
+  let sx=0, sy=0; for(let i=0;i<n;i++){ sx+=xs[i]; sy+=ys[i]; }
+  const mx=sx/n, my=sy/n;
+  let num=0, dx=0, dy=0;
+  for(let i=0;i<n;i++){ const a=xs[i]-mx, b=ys[i]-my; num+=a*b; dx+=a*a; dy+=b*b; }
+  const denom = Math.sqrt(dx*dy);
+  return denom===0 ? 0 : num/denom;
+}
+
+function hexToRgb(hex){
+  hex = hex.trim();
+  if(hex[0]==="#"){
+    const h = hex.length===4 ? hex.replace(/#(.)(.)(.)/,"#$1$1$2$2$3$3") : hex;
+    const n = parseInt(h.slice(1),16);
+    return [(n>>16)&255,(n>>8)&255,n&255];
+  }
+  const m = hex.match(/\d+/g);
+  return m ? [+m[0],+m[1],+m[2]] : [124,147,255];
+}
+function lerp(a,b,t){ return a+(b-a)*t; }
+function rColor(r){
+  const neg = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--accent2"));
+  const pos = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--accent4"));
+  const mid = [21,26,43];
+  const t = Math.abs(r);
+  const base = r < 0 ? neg : pos;
+  const c = [ lerp(mid[0],base[0],t), lerp(mid[1],base[1],t), lerp(mid[2],base[2],t) ];
+  return `rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
+}
+
+function domainOf(rows, key){
+  let min=Infinity, max=-Infinity;
+  for(const r of rows){ const v=r[key]; if(v<min)min=v; if(v>max)max=v; }
+  if(min===max){ min-=1; max+=1; }
+  const pad = (max-min)*0.08;
+  return [min-pad, max+pad];
+}
+
+function render(){
+  if(!dataset) return;
+  const w = canvas.width, h = canvas.height;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,w,h);
+  ctx.save(); ctx.scale(DPR,DPR);
+  const cw = w/DPR, ch = h/DPR;
+
+  const vars = state.selectedVars.map(k=> dataset.vars.find(v=>v.key===k)).filter(Boolean);
+  const N = vars.length;
+  const labelGutter = 74;
+  const size = Math.min(cw - labelGutter, ch - labelGutter);
+  const originX = labelGutter + Math.max(0,(cw-labelGutter-size)/2);
+  const originY = Math.max(0,(ch-labelGutter-size)/2);
+  const cell = size / N;
+
+  const domains = {}; vars.forEach(v=> domains[v.key] = domainOf(dataset.rows, v.key));
+  const catColor = {}; dataset.categories.forEach(c=> catColor[c.name]=c.color);
+  const accent1 = getComputedStyle(document.documentElement).getPropertyValue("--accent1").trim();
+
+  layout = {cell, originX, originY, size, N, vars};
+
+  ctx.font = "10.5px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      const x = originX + c*cell, y = originY + r*cell;
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.beginPath(); ctx.rect(0,0,cell,cell); ctx.clip();
+
+      if(r===c){
+        // diagonal: histogram + label
+        ctx.fillStyle = "#0d0f1a";
+        ctx.fillRect(0,0,cell,cell);
+        drawHistogram(vars[c].key, domains[vars[c].key], cell);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "600 11px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(vars[c].label, cell/2, 14, cell-10);
+      } else {
+        const xs = dataset.rows.map(row=>row[vars[c].key]);
+        const ys = dataset.rows.map(row=>row[vars[r].key]);
+        const rv = pearson(xs, ys);
+        ctx.fillStyle = rColor(rv);
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(0,0,cell,cell);
+        ctx.globalAlpha = 1;
+        drawScatter(vars[c], vars[r], domains, cell, catColor, accent1);
+        ctx.fillStyle = "rgba(9,11,20,.78)";
+        const txt = (rv>=0?"r= ":"r=") + rv.toFixed(2);
+        ctx.font = "700 10px system-ui, sans-serif";
+        const tw = ctx.measureText(txt).width + 8;
+        ctx.fillRect(4,4,tw,14);
+        ctx.fillStyle = "#fff";
+        ctx.textAlign="left";
+        ctx.fillText(txt, 8, 11);
+      }
+      ctx.restore();
+      ctx.strokeStyle = "rgba(35,42,66,.9)";
+      ctx.strokeRect(x+.5,y+.5,cell-1,cell-1);
+    }
+    // row label (left)
+    ctx.save();
+    ctx.fillStyle = "#c7cdec";
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textAlign = "right";
+    ctx.translate(originX-8, originY + r*cell + cell/2);
+    ctx.rotate(0);
+    ctx.fillText(vars[r].label, 0, 0, labelGutter-14);
+    ctx.restore();
+  }
+  // column labels (bottom)
+  for(let c=0;c<N;c++){
+    ctx.save();
+    ctx.fillStyle = "#c7cdec";
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(vars[c].label, originX + c*cell + cell/2, originY+size+16, cell-6);
+    ctx.restore();
+  }
+
+  // brush rectangle overlay
+  if(brush && brush.active){
+    const {r,c} = brush;
+    const x = originX + c*cell, y = originY + r*cell;
+    ctx.save();
+    ctx.strokeStyle = accent1; ctx.lineWidth = 1.5;
+    ctx.setLineDash([4,3]);
+    ctx.strokeRect(
+      x + Math.min(brush.px0,brush.px1),
+      y + Math.min(brush.py0,brush.py1),
+      Math.abs(brush.px1-brush.px0),
+      Math.abs(brush.py1-brush.py0)
+    );
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  function drawHistogram(key, domain, cellSize){
+    const bins = 16;
+    const counts = new Array(bins).fill(0);
+    const [mn,mx] = domain;
+    dataset.rows.forEach(row=>{
+      let idx = Math.floor((row[key]-mn)/(mx-mn)*bins);
+      idx = Math.max(0, Math.min(bins-1, idx));
+      counts[idx]++;
+    });
+    const maxC = Math.max(1,...counts);
+    const plotH = cellSize - 26, plotY = cellSize - 8;
+    const bw = (cellSize-8)/bins;
+    for(let i=0;i<bins;i++){
+      const bh = (counts[i]/maxC) * (plotH-6);
+      ctx.fillStyle = accent1;
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(4+i*bw, plotY-bh, bw-1, bh);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawScatter(vx, vy, domains, cellSize, catColor, accent1){
+    const [xmn,xmx] = domains[vx.key];
+    const [ymn,ymx] = domains[vy.key];
+    const pad = 6;
+    const hasSel = selectedIdx && selectedIdx.size>0;
+    dataset.rows.forEach((row,i)=>{
+      const px = pad + (row[vx.key]-xmn)/(xmx-xmn) * (cellSize-2*pad);
+      const py = (cellSize-pad) - (row[vy.key]-ymn)/(ymx-ymn) * (cellSize-2*pad);
+      const inSel = !hasSel || selectedIdx.has(i);
+      const color = (state.colorBy && catColor[row.__cat]) ? catColor[row.__cat] : accent1;
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = inSel ? 0.9 : 0.12;
+      ctx.arc(px, py, inSel && hasSel ? 2.6 : 2.1, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  }
+}
+
+/* ---------- Brush interaction ---------- */
+function cellAt(px, py){
+  if(!layout) return null;
+  const {cell, originX, originY, N} = layout;
+  const cx = (px-originX)/cell, cy = (py-originY)/cell;
+  if(cx<0||cy<0||cx>=N||cy>=N) return null;
+  return { r: Math.floor(cy), c: Math.floor(cx), px: px-originX-Math.floor(cx)*cell, py: py-originY-Math.floor(cy)*cell };
+}
+
+function clearBrush(){
+  brush = null; selectedIdx = null; updateBrushStats();
+}
+
+function updateBrushStats(){
+  if(!selectedIdx || selectedIdx.size===0){
+    brushStatsEl.innerHTML = '<div class="empty">Drag on any cell to brush-select points.</div>';
+    return;
+  }
+  const idxArr = Array.from(selectedIdx);
+  let html = `<div class="stat-row"><span>Selected</span><b>${idxArr.length} / ${dataset.rows.length}</b></div>`;
+  layout.vars.forEach(v=>{
+    let sum=0; idxArr.forEach(i=> sum += dataset.rows[i][v.key]);
+    const mean = sum/idxArr.length;
+    html += `<div class="stat-row"><span>${v.label}</span><b>${mean.toFixed(1)}</b></div>`;
+  });
+  brushStatsEl.innerHTML = html;
+}
+
+function applyBrush(){
+  if(!brush) return;
+  const {r,c} = brush;
+  const vx = layout.vars[c], vy = layout.vars[r];
+  const cellSize = layout.cell, pad=6;
+  const domains = {}; layout.vars.forEach(v=> domains[v.key]=domainOf(dataset.rows, v.key));
+  const [xmn,xmx] = domains[vx.key], [ymn,ymx] = domains[vy.key];
+  const x0 = Math.min(brush.px0,brush.px1), x1=Math.max(brush.px0,brush.px1);
+  const y0 = Math.min(brush.py0,brush.py1), y1=Math.max(brush.py0,brush.py1);
+  const idx = new Set();
+  dataset.rows.forEach((row,i)=>{
+    const px = pad + (row[vx.key]-xmn)/(xmx-xmn) * (cellSize-2*pad);
+    const py = (cellSize-pad) - (row[vy.key]-ymn)/(ymx-ymn) * (cellSize-2*pad);
+    if(px>=x0 && px<=x1 && py>=y0 && py<=y1) idx.add(i);
+  });
+  selectedIdx = idx.size ? idx : null;
+  updateBrushStats();
+}
+
+let dragging = false;
+function pointerPos(e){
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX-rect.left, y: e.clientY-rect.top };
+}
+
+canvas.addEventListener("pointerdown", (e)=>{
+  const p = pointerPos(e);
+  const hit = cellAt(p.x, p.y);
+  if(!hit || hit.r===hit.c){ clearBrush(); render(); return; }
+  dragging = true;
+  canvas.setPointerCapture(e.pointerId);
+  brush = { r:hit.r, c:hit.c, px0:hit.px, py0:hit.py, px1:hit.px, py1:hit.py, active:true };
+  render();
+});
+canvas.addEventListener("pointermove", (e)=>{
+  const p = pointerPos(e);
+  if(dragging && brush){
+    const {cell, originX, originY} = layout;
+    const cx = originX + brush.c*cell, cy = originY + brush.r*cell;
+    brush.px1 = Math.max(0, Math.min(cell, p.x-cx));
+    brush.py1 = Math.max(0, Math.min(cell, p.y-cy));
+    applyBrush();
+    render();
+  } else {
+    const hit = cellAt(p.x,p.y);
+    if(hit && hit.r!==hit.c){
+      const vx = layout.vars[hit.c], vy = layout.vars[hit.r];
+      tip.style.display = "block";
+      tip.style.left = p.x+"px"; tip.style.top = p.y+"px";
+      tip.innerHTML = `<b>${vx.label}</b> vs <b>${vy.label}</b>`;
+    } else tip.style.display = "none";
+  }
+});
+canvas.addEventListener("pointerup", (e)=>{
+  dragging = false;
+  if(brush) brush.active = Math.abs(brush.px1-brush.px0)>3 || Math.abs(brush.py1-brush.py0)>3;
+  if(brush && !brush.active){ brush=null; selectedIdx=null; updateBrushStats(); }
+  render();
+});
+canvas.addEventListener("pointerleave", ()=>{ tip.style.display="none"; });
+window.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ clearBrush(); render(); } });
+
+/* ---------- Controls wiring ---------- */
+datasetSel.addEventListener("change", ()=>{
+  state.datasetKey = datasetSel.value;
+  const ds = currentDataset();
+  state.selectedVars = [];
+  ensureSelectedVars(ds);
+  clearBrush(); saveState(); loadUiFor(ds);
+});
+colorBySel.addEventListener("change", ()=>{
+  state.colorBy = colorBySel.value === "on";
+  const ds = currentDataset();
+  rebuildLegend(ds); saveState(); render();
+});
+document.getElementById("regenBtn").addEventListener("click", ()=>{
+  state.seed = (Math.floor(Math.random()*1e9));
+  clearBrush(); saveState();
+  const ds = currentDataset();
+  loadUiFor(ds);
+  toast("New random sample generated");
+});
+document.getElementById("importBtn").addEventListener("click", ()=> document.getElementById("csvInput").click());
+document.getElementById("csvInput").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const parsed = parseCsv(String(reader.result));
+    if(!parsed){ toast("Couldn't find 2+ numeric columns in that CSV"); return; }
+    state.customDataset = parsed;
+    state.datasetKey = "custom";
+    state.selectedVars = [];
+    rebuildDatasetSelect();
+    const ds = currentDataset();
+    ensureSelectedVars(ds);
+    clearBrush(); saveState(); loadUiFor(ds);
+    toast(`Imported ${parsed.rows.length} rows, ${parsed.vars.length} numeric columns`);
+  };
+  reader.onerror = ()=> toast("Failed to read file");
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+document.getElementById("exportPng").addEventListener("click", ()=>{
+  canvas.toBlob((blob)=>{
+    if(!blob){ toast("Export failed"); return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `splom-${state.datasetKey}-${Date.now()}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+    toast("PNG exported");
+  }, "image/png");
+});
+
+document.getElementById("exportCsv").addEventListener("click", ()=>{
+  const rowsSrc = (selectedIdx && selectedIdx.size) ? Array.from(selectedIdx).map(i=>dataset.rows[i]) : dataset.rows;
+  const headers = ["category", ...layout.vars.map(v=>v.key)];
+  const lines = [headers.join(",")];
+  rowsSrc.forEach(r=>{
+    lines.push([r.__cat, ...layout.vars.map(v=> r[v.key].toFixed(4))].join(","));
+  });
+  const blob = new Blob([lines.join("\n")], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `splom-${state.datasetKey}-${(selectedIdx&&selectedIdx.size)?"selection":"all"}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  toast(`CSV exported (${rowsSrc.length} rows)`);
+});
+
+document.getElementById("shareBtn").addEventListener("click", async ()=>{
+  const payload = { d: state.datasetKey==="custom"?"stellar":state.datasetKey, v: state.selectedVars, s: state.seed, c: state.colorBy };
+  const hash = btoa(JSON.stringify(payload));
+  const url = location.origin + location.pathname + "#" + hash;
+  try{
+    await navigator.clipboard.writeText(url);
+    toast("Share link copied to clipboard");
+  }catch(e){
+    location.hash = hash;
+    toast("Share link updated in address bar");
+  }
+});
+
+/* ---------- Boot ---------- */
+function loadUiFor(ds){
+  dataset = ds;
+  ensureSelectedVars(ds);
+  rebuildDatasetSelect();
+  colorBySel.innerHTML = '<option value="on">Color by category</option><option value="off">Single color</option>';
+  colorBySel.value = state.colorBy ? "on" : "off";
+  rebuildVarList(ds);
+  rebuildLegend(ds);
+  clearBrush();
+  resizeCanvas();
+}
+
+const ds0 = currentDataset();
+loadUiFor(ds0);
+
+const ro = new ResizeObserver(()=> resizeCanvas());
+ro.observe(wrap);
+window.addEventListener("resize", resizeCanvas);
+
+})();
+</script>
+</body>
+</html>

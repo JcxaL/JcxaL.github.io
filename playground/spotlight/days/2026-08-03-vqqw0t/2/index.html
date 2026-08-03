@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Infinite Chunked Canvas — UI Spotlight Drop 2</title>
+<style>
+  :root{ --bg:#05070d; --panel:#12141f; --ink:#f2f4ff; --muted:#9aa2c4; --accent:#34d399; --line:#232a42; }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; margin:0; overflow:hidden; }
+  body{ background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .back-link{
+    position:fixed; top:16px; left:16px; z-index:20; text-decoration:none; color:var(--ink);
+    background:rgba(18,20,31,.7); backdrop-filter:blur(10px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .back-link:hover{ border-color:var(--accent); }
+  #world{ position:absolute; inset:0; overflow:hidden; touch-action:none; cursor:grab; }
+  #world.dragging{ cursor:grabbing; }
+  #layer{ position:absolute; left:0; top:0; will-change:transform; }
+  .tile{
+    position:absolute; border-radius:18px; display:flex; align-items:flex-end;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+    overflow:hidden;
+  }
+  .tile .shape{ position:absolute; }
+  .tile .coord{
+    position:relative; margin:8px; font:600 10px/1 ui-monospace,Menlo,monospace; color:rgba(255,255,255,.65);
+    background:rgba(0,0,0,.28); padding:3px 6px; border-radius:6px;
+  }
+  .hud{
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:20;
+    background:rgba(18,20,31,.72); backdrop-filter:blur(10px); border:1px solid var(--line);
+    padding:8px 16px; border-radius:999px; font-size:12px; color:var(--muted); display:flex; gap:14px; align-items:center;
+  }
+  .hud b{ color:var(--ink); }
+  .debug{
+    position:fixed; top:16px; right:16px; z-index:20; background:rgba(18,20,31,.78);
+    backdrop-filter:blur(10px); border:1px solid var(--line); border-radius:14px;
+    padding:12px 14px; font-size:11.5px; width:180px; color:var(--muted);
+  }
+  .debug h3{ margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); }
+  .debug label{ display:block; margin-top:9px; }
+  .debug input{ width:100%; margin-top:3px; }
+  .debug button{
+    width:100%; margin-top:9px; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    padding:7px; border-radius:8px; cursor:pointer; font-size:11.5px;
+  }
+  .debug button:hover{ border-color:var(--accent); }
+  @media (max-width:640px){ .debug{ display:none; } }
+  footer{
+    position:fixed; bottom:16px; right:16px; z-index:20; font-size:10.5px; color:var(--muted);
+    background:rgba(18,20,31,.5); padding:5px 10px; border-radius:8px;
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="debug">
+  <h3>World controls</h3>
+  <label>Seed <span id="seedOut">1</span>
+    <input id="seedSlider" type="range" min="1" max="999" step="1" value="1">
+  </label>
+  <label><input id="gridToggle" type="checkbox" style="width:auto;vertical-align:middle;"> show chunk grid</label>
+  <button id="recenter">Recenter to origin</button>
+</div>
+<div id="world">
+  <div id="layer"></div>
+</div>
+<div class="hud">Chunks in DOM: <b id="chunkCount">0</b> · position <b id="posOut">0, 0</b> · drag to pan forever</div>
+<footer>Inspired by Codrops "Infinite Canvas: Pan-Anywhere Image Space" (Jan 2026) · Day 78 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+const CHUNK = 220;
+const BUFFER = 1;
+let seed = 1;
+
+function hash2(x,y){
+  let h = (x*374761393 + y*668265263 + seed*2654435761) | 0;
+  h = (h ^ (h>>>13)) * 1274126177;
+  h = h ^ (h>>>16);
+  return ((h>>>0) % 100000) / 100000;
+}
+function hue(x,y){ return Math.floor(hash2(x,y)*360); }
+
+const world = document.getElementById("world");
+const layer = document.getElementById("layer");
+const chunkCountEl = document.getElementById("chunkCount");
+const posOut = document.getElementById("posOut");
+const gridToggle = document.getElementById("gridToggle");
+
+let camX = 0, camY = 0; // world offset in px, camera-space
+let vx = 0, vy = 0;
+let dragging = false, lastX=0, lastY=0, lastT=0;
+const tiles = new Map(); // "col,row" -> element
+
+function shapeFor(col,row){
+  const r = hash2(col*7+3, row*11+5);
+  if(r < 0.34) return "border-radius:50%;";
+  if(r < 0.67) return "border-radius:6px; transform:rotate(45deg);";
+  return "clip-path:polygon(50% 0,100% 100%,0 100%);";
+}
+
+function makeTile(col,row){
+  const el = document.createElement("div");
+  el.className = "tile";
+  el.style.width = CHUNK+"px";
+  el.style.height = CHUNK+"px";
+  el.style.left = (col*CHUNK)+"px";
+  el.style.top = (row*CHUNK)+"px";
+  const h1 = hue(col,row), h2 = (h1+40)%360;
+  el.style.background = `linear-gradient(145deg, hsl(${h1} 70% 14%), hsl(${h2} 70% 8%))`;
+  el.style.outline = gridToggle.checked ? "1px solid rgba(255,255,255,.08)" : "none";
+  const size = 40 + hash2(col*3,row*9)*90;
+  const shape = document.createElement("div");
+  shape.className = "shape";
+  shape.style.cssText = `width:${size}px;height:${size}px;left:${(CHUNK-size)/2}px;top:${(CHUNK-size)/2 - 14}px;background:hsla(${h1},85%,60%,.55);${shapeFor(col,row)}`;
+  el.appendChild(shape);
+  const coord = document.createElement("div");
+  coord.className = "coord";
+  coord.textContent = `${col}, ${row}`;
+  el.appendChild(coord);
+  return el;
+}
+
+function reconcile(){
+  const w = world.clientWidth, h = world.clientHeight;
+  const minCol = Math.floor(-camX / CHUNK) - BUFFER;
+  const maxCol = Math.ceil((-camX + w) / CHUNK) + BUFFER;
+  const minRow = Math.floor(-camY / CHUNK) - BUFFER;
+  const maxRow = Math.ceil((-camY + h) / CHUNK) + BUFFER;
+
+  const wanted = new Set();
+  for(let c=minCol;c<=maxCol;c++){
+    for(let r=minRow;r<=maxRow;r++){
+      const key = c+","+r;
+      wanted.add(key);
+      if(!tiles.has(key)){
+        const el = makeTile(c,r);
+        layer.appendChild(el);
+        tiles.set(key, el);
+      }
+    }
+  }
+  tiles.forEach((el,key)=>{
+    if(!wanted.has(key)){ el.remove(); tiles.delete(key); }
+  });
+  chunkCountEl.textContent = tiles.size;
+  posOut.textContent = Math.round(-camX)+", "+Math.round(-camY);
+  layer.style.transform = `translate(${camX}px, ${camY}px)`;
+}
+
+function pointerPos(e){ return {x:e.clientX, y:e.clientY}; }
+
+world.addEventListener("pointerdown", (e)=>{
+  dragging = true; vx=0; vy=0;
+  world.classList.add("dragging");
+  world.setPointerCapture(e.pointerId);
+  const p = pointerPos(e); lastX=p.x; lastY=p.y; lastT=performance.now();
+});
+world.addEventListener("pointermove", (e)=>{
+  if(!dragging) return;
+  const p = pointerPos(e);
+  const dx = p.x-lastX, dy = p.y-lastY;
+  const now = performance.now();
+  const dt = Math.max(1, now-lastT);
+  vx = dx/dt; vy = dy/dt;
+  camX += dx; camY += dy;
+  lastX=p.x; lastY=p.y; lastT=now;
+  reconcile();
+});
+function endDrag(){
+  if(!dragging) return;
+  dragging = false;
+  world.classList.remove("dragging");
+  inertiaLoop();
+}
+world.addEventListener("pointerup", endDrag);
+world.addEventListener("pointercancel", endDrag);
+
+function inertiaLoop(){
+  vx *= 0.92; vy *= 0.92;
+  if(Math.abs(vx) < 0.02 && Math.abs(vy) < 0.02) return;
+  camX += vx*16; camY += vy*16;
+  reconcile();
+  requestAnimationFrame(inertiaLoop);
+}
+
+document.getElementById("recenter").addEventListener("click", ()=>{
+  camX = 0; camY = 0; vx=0; vy=0; reconcile();
+});
+document.getElementById("seedSlider").addEventListener("input", (e)=>{
+  seed = +e.target.value;
+  document.getElementById("seedOut").textContent = seed;
+  tiles.forEach(el=>el.remove()); tiles.clear();
+  reconcile();
+});
+gridToggle.addEventListener("change", ()=>{
+  tiles.forEach(el=>el.remove()); tiles.clear();
+  reconcile();
+});
+window.addEventListener("resize", reconcile);
+
+reconcile();
+})();
+</script>
+</body>
+</html>
