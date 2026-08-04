@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kanban Flow Board — UI Spotlight</title>
+<style>
+  :root{ --bg:#090a11; --col:#12141f; --accent:#a78bfa; --accent2:#38bdf8; --text:#e6e5f2; --dim:#8a87a3; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%; background:radial-gradient(ellipse at 50% -10%, #191a2c 0%, var(--bg) 60%);
+    color:var(--text); font-family:system-ui,-apple-system,'Segoe UI',sans-serif;}
+  body{padding:90px 18px 50px;}
+  .glass{background:rgba(255,255,255,0.05); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.09);}
+  .back-link{position:fixed; top:16px; left:16px; z-index:60; padding:9px 16px; border-radius:999px; font-size:13px;
+    color:var(--text); text-decoration:none;}
+  .back-link:hover{background:rgba(255,255,255,0.09);}
+
+  header{max-width:640px; margin:0 auto 30px; text-align:center;}
+  h1{font-size:clamp(24px,4.5vw,34px); margin:0 0 10px; background:linear-gradient(135deg,#a78bfa,#38bdf8);
+    -webkit-background-clip:text; background-clip:text; color:transparent;}
+  header p{color:var(--dim); font-size:14px; line-height:1.6; margin:0;}
+
+  .board{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; max-width:960px; margin:0 auto; }
+  @media (max-width:760px){ .board{ grid-template-columns:1fr; } }
+
+  .column{ border-radius:16px; padding:14px; min-height:200px; display:flex; flex-direction:column; gap:10px; }
+  .column.dragOver{ outline:2px dashed var(--accent2); outline-offset:-4px; background:rgba(56,189,248,0.06); }
+  .colHead{ display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; }
+  .colHead h2{ font-size:13px; margin:0; text-transform:uppercase; letter-spacing:0.06em; color:var(--dim); }
+  .wip{ font-size:11px; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,0.08); color:var(--dim);
+    font-variant-numeric:tabular-nums; }
+  .wip.over{ background:rgba(248,113,113,0.2); color:#f87171; }
+
+  .card{ background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.09); border-radius:11px;
+    padding:11px 12px; font-size:13px; line-height:1.45; cursor:grab; touch-action:none; }
+  .card:active{ cursor:grabbing; }
+  .card.dragging{ opacity:0.35; }
+  .card .del{ float:right; color:var(--dim); cursor:pointer; font-size:12px; margin-left:8px; }
+  .card .del:hover{ color:#f87171; }
+
+  .addRow{ display:flex; gap:6px; margin-top:auto; padding-top:6px; }
+  .addRow input{ flex:1; min-width:0; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px; padding:7px 10px; color:var(--text); font-size:12.5px; font-family:inherit; }
+  .addRow button{ background:rgba(167,139,250,0.2); border:1px solid rgba(167,139,250,0.4); color:var(--accent);
+    border-radius:8px; padding:0 12px; cursor:pointer; font-size:13px; }
+
+  .ghost{ position:fixed; z-index:80; pointer-events:none; opacity:0.9; transform:translate(-50%,-50%);
+    border-radius:11px; padding:11px 12px; font-size:13px; box-shadow:0 10px 30px rgba(0,0,0,0.5); max-width:220px; }
+
+  .debug{position:fixed; top:16px; right:16px; z-index:60; width:200px; border-radius:14px; padding:14px; font-size:12px;}
+  .debug h3{margin:0 0 10px; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--dim);}
+  .debug label{display:flex; justify-content:space-between; margin-bottom:6px; color:var(--dim); font-size:11px;}
+  .debug input[type=range]{width:100%; margin-bottom:10px;}
+  .debug .note{font-size:10.5px; color:var(--dim); line-height:1.5; border-top:1px solid rgba(255,255,255,0.08); padding-top:8px;}
+  @media (max-width:720px){ .debug{display:none;} }
+
+  footer{max-width:960px; margin:26px auto 0; font-size:11px; color:var(--dim); text-align:center;}
+  footer a{color:var(--accent2);}
+
+  ::view-transition-group(*){ animation-duration: var(--vt-dur, 320ms); }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link glass">← All 5 drops</a>
+
+<div class="debug glass">
+  <h3>Debug Panel</h3>
+  <label>Transition dur. <span id="durVal">320ms</span></label>
+  <input type="range" id="durSlider" min="120" max="700" step="10" value="320">
+  <label>WIP limit / column <span id="wipVal">4</span></label>
+  <input type="range" id="wipSlider" min="2" max="8" step="1" value="4">
+  <div class="note" id="supportNote"></div>
+</div>
+
+<header>
+  <h1>Kanban Flow Board</h1>
+  <p>Cards use the native HTML Drag and Drop API on desktop (mouse) and a Pointer-Events fallback on touch. Every move is wrapped in <code>document.startViewTransition()</code> so cards glide to their new slot instead of popping — the whole board persists to <code>localStorage</code>.</p>
+</header>
+
+<div class="board" id="board"></div>
+
+<footer>Inspired by MDN — "HTML Drag and Drop API: Kanban board" tutorial · UI Spotlight Day 79 · Drop #5</footer>
+
+<script>
+(function(){
+'use strict';
+
+const LS_KEY = 'kanban_flow_board_v1';
+const DEFAULT_STATE = {
+  columns: [
+    { id:'todo', title:'To Do', cards:[
+      { id:'c1', text:'Sketch the folio-grid layout' },
+      { id:'c2', text:'Pick 5 UI patterns for today' },
+      { id:'c3', text:'Write the survivor roguelite boss logic' }
+    ]},
+    { id:'doing', title:'In Progress', cards:[
+      { id:'c4', text:'Wire up scoped view transitions demo' },
+      { id:'c5', text:'Tune squiggly-text displacement filter' }
+    ]},
+    { id:'done', title:'Done', cards:[
+      { id:'c6', text:"Research today's 5 spotlight sources" },
+      { id:'c7', text:"Ship yesterday's day-79 build" }
+    ]}
+  ]
+};
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) return JSON.parse(raw);
+  }catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+}
+function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+let state = loadState();
+let idCounter = 100;
+function newId(){ return 'c' + (idCounter++) + '_' + Date.now().toString(36); }
+
+const board = document.getElementById('board');
+const durSlider = document.getElementById('durSlider');
+const durVal = document.getElementById('durVal');
+const wipSlider = document.getElementById('wipSlider');
+const wipVal = document.getElementById('wipVal');
+let wipLimit = 4;
+
+function applyDur(){ document.documentElement.style.setProperty('--vt-dur', durSlider.value+'ms'); durVal.textContent = durSlider.value+'ms'; }
+durSlider.addEventListener('input', applyDur); applyDur();
+wipSlider.addEventListener('input', ()=>{ wipLimit = parseInt(wipSlider.value,10); wipVal.textContent = wipLimit; render(); });
+wipVal.textContent = wipLimit;
+
+const supportsVT = typeof document.startViewTransition === 'function';
+document.getElementById('supportNote').textContent = supportsVT
+  ? '✓ View Transitions supported.'
+  : '⚠ View Transitions unsupported — falling back to instant reflow.';
+
+function findCard(id){
+  for (const col of state.columns){
+    const idx = col.cards.findIndex(c => c.id === id);
+    if (idx >= 0) return { col, idx, card: col.cards[idx] };
+  }
+  return null;
+}
+function moveCard(cardId, toColId, toIndex){
+  const found = findCard(cardId);
+  if (!found) return;
+  const toCol = state.columns.find(c => c.id === toColId);
+  if (!toCol) return;
+  found.col.cards.splice(found.idx, 1);
+  const clampedIndex = Math.max(0, Math.min(toIndex, toCol.cards.length));
+  toCol.cards.splice(clampedIndex, 0, found.card);
+  saveState();
+  doRender();
+}
+
+function doRender(){
+  if (supportsVT){ document.startViewTransition(() => render()); }
+  else { render(); }
+}
+
+const isCoarse = matchMedia('(pointer:coarse)').matches;
+
+function render(){
+  board.innerHTML = '';
+  state.columns.forEach(col => {
+    const colEl = document.createElement('div');
+    colEl.className = 'column glass';
+    colEl.dataset.colId = col.id;
+
+    const over = col.cards.length > wipLimit;
+    colEl.innerHTML = `<div class="colHead"><h2>${col.title}</h2><span class="wip ${over?'over':''}">${col.cards.length}/${wipLimit}</span></div>`;
+
+    col.cards.forEach(card => {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'card';
+      cardEl.draggable = !isCoarse;
+      cardEl.dataset.cardId = card.id;
+      cardEl.style.viewTransitionName = 'kb-' + card.id;
+      cardEl.innerHTML = `<span class="del" title="Delete">✕</span>${escapeHtml(card.text)}`;
+      cardEl.querySelector('.del').addEventListener('click', (e)=>{
+        e.stopPropagation();
+        col.cards = col.cards.filter(c => c.id !== card.id);
+        saveState(); doRender();
+      });
+      wireDrag(cardEl, card.id);
+      colEl.appendChild(cardEl);
+    });
+
+    const addRow = document.createElement('div');
+    addRow.className = 'addRow';
+    addRow.innerHTML = `<input type="text" placeholder="Add a card…" maxlength="80"><button>+</button>`;
+    const input = addRow.querySelector('input');
+    const addBtn = addRow.querySelector('button');
+    function addCard(){
+      const v = input.value.trim();
+      if (!v) return;
+      col.cards.push({ id:newId(), text:v });
+      input.value = '';
+      saveState(); doRender();
+    }
+    addBtn.addEventListener('click', addCard);
+    input.addEventListener('keydown', e=>{ if (e.key==='Enter') addCard(); });
+    colEl.appendChild(addRow);
+
+    wireColumnDropZone(colEl, col.id);
+    board.appendChild(colEl);
+  });
+}
+function escapeHtml(s){
+  const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
+
+/* ---- Desktop: native HTML5 Drag and Drop API ---- */
+function wireColumnDropZone(colEl, colId){
+  colEl.addEventListener('dragover', e => { e.preventDefault(); colEl.classList.add('dragOver'); });
+  colEl.addEventListener('dragleave', () => colEl.classList.remove('dragOver'));
+  colEl.addEventListener('drop', e => {
+    e.preventDefault();
+    colEl.classList.remove('dragOver');
+    const cardId = e.dataTransfer.getData('text/plain');
+    if (!cardId) return;
+    const col = state.columns.find(c => c.id === colId);
+    moveCard(cardId, colId, col.cards.length);
+  });
+}
+function wireDrag(cardEl, cardId){
+  if (!isCoarse){
+    cardEl.addEventListener('dragstart', e => {
+      cardEl.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', cardId);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    cardEl.addEventListener('dragend', () => cardEl.classList.remove('dragging'));
+  } else {
+    wireTouchDrag(cardEl, cardId);
+  }
+}
+
+/* ---- Touch: Pointer Events fallback ---- */
+function wireTouchDrag(cardEl, cardId){
+  let ghost = null, startX=0, startY=0, dragging=false, longPressTimer=null;
+  cardEl.addEventListener('pointerdown', e => {
+    startX = e.clientX; startY = e.clientY;
+    longPressTimer = setTimeout(()=>{
+      dragging = true;
+      cardEl.classList.add('dragging');
+      ghost = cardEl.cloneNode(true);
+      ghost.className = 'ghost glass';
+      ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
+      document.body.appendChild(ghost);
+    }, 160);
+  });
+  cardEl.addEventListener('pointermove', e => {
+    if (!dragging){
+      if (Math.hypot(e.clientX-startX, e.clientY-startY) > 12) clearTimeout(longPressTimer);
+      return;
+    }
+    if (ghost){ ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px'; }
+    document.querySelectorAll('.column').forEach(c => c.classList.remove('dragOver'));
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const col = under && under.closest('.column');
+    if (col) col.classList.add('dragOver');
+  });
+  function finish(e){
+    clearTimeout(longPressTimer);
+    if (dragging){
+      dragging = false;
+      cardEl.classList.remove('dragging');
+      if (ghost){ ghost.remove(); ghost = null; }
+      document.querySelectorAll('.column').forEach(c => c.classList.remove('dragOver'));
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const col = under && under.closest('.column');
+      if (col){
+        const targetCol = state.columns.find(c => c.id === col.dataset.colId);
+        moveCard(cardId, col.dataset.colId, targetCol.cards.length);
+      }
+    }
+  }
+  cardEl.addEventListener('pointerup', finish);
+  cardEl.addEventListener('pointercancel', finish);
+}
+
+render();
+})();
+</script>
+</body>
+</html>

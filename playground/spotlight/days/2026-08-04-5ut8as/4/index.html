@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Presence Pointers — UI Spotlight</title>
+<style>
+  :root{ --bg:#070b12; --accent:#38bdf8; --text:#e6ecf5; --dim:#8794a8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; height:100%; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+    overflow:hidden;}
+  .glass{background:rgba(255,255,255,0.05); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.09);}
+  .back-link{position:fixed; top:16px; left:16px; z-index:60; padding:9px 16px; border-radius:999px; font-size:13px;
+    color:var(--text); text-decoration:none;}
+  .back-link:hover{background:rgba(255,255,255,0.09);}
+
+  #stage{position:fixed; inset:0; cursor:none;}
+  #stage.touchMode{cursor:default;}
+
+  header{position:fixed; top:70px; left:0; right:0; text-align:center; z-index:5; pointer-events:none; padding:0 20px;}
+  header h1{font-size:clamp(22px,4vw,32px); margin:0 0 8px; background:linear-gradient(135deg,#38bdf8,#c084fc);
+    -webkit-background-clip:text; background-clip:text; color:transparent;}
+  header p{color:var(--dim); font-size:13px; max-width:460px; margin:0 auto; line-height:1.6;}
+
+  .board{ position:absolute; inset:100px 30px 30px; border-radius:20px; border:1.5px dashed rgba(255,255,255,0.1);
+    background:
+      radial-gradient(circle at 20% 30%, rgba(56,189,248,0.08), transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(192,132,252,0.08), transparent 40%); }
+  .stickyNote{ position:absolute; width:120px; padding:12px; border-radius:10px; font-size:11.5px; line-height:1.4;
+    color:#1a1a1a; transform:rotate(var(--rot)); box-shadow:0 8px 18px rgba(0,0,0,0.3); user-select:none; }
+
+  .pointer{ position:absolute; top:0; left:0; pointer-events:none; z-index:20; will-change:transform; }
+  .pointer svg{ display:block; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4)); }
+  .pointer .tag{ position:absolute; left:16px; top:18px; padding:4px 10px; border-radius:8px 8px 8px 2px;
+    font-size:11.5px; font-weight:600; white-space:nowrap; color:#0a0a0a; }
+  .pointer.self .tag{ display:none; }
+
+  .controls{position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:60; border-radius:14px;
+    padding:10px 16px; display:flex; gap:10px; align-items:center; font-size:12px;}
+  .controls input[type=text]{ width:100px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15);
+    border-radius:8px; padding:6px 9px; color:var(--text); font-size:12px; font-family:inherit; }
+  .swatches{ display:flex; gap:5px; }
+  .swatch{ width:18px; height:18px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+  .swatch.sel{ border-color:#fff; }
+
+  .debug{position:fixed; top:16px; right:16px; z-index:60; width:190px; border-radius:14px; padding:14px; font-size:12px;}
+  .debug h3{margin:0 0 10px; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--dim);}
+  .debug label{display:flex; justify-content:space-between; margin-bottom:6px; color:var(--dim); font-size:11px;}
+  .debug input[type=range]{width:100%; margin-bottom:10px;}
+  @media (max-width:720px){ .debug{display:none;} }
+
+  footer{position:fixed; bottom:70px; left:50%; transform:translateX(-50%); font-size:10.5px; color:var(--dim); z-index:5; text-align:center;}
+  footer a{color:var(--accent);}
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link glass">← All 5 drops</a>
+
+<div class="debug glass">
+  <h3>Debug Panel</h3>
+  <label>Follow smoothing <span id="lerpVal">0.22</span></label>
+  <input type="range" id="lerpSlider" min="0.05" max="0.6" step="0.01" value="0.22">
+  <label>Peer speed <span id="speedVal">1.0×</span></label>
+  <input type="range" id="speedSlider" min="0.2" max="2.5" step="0.1" value="1">
+</div>
+
+<header>
+  <h1>Presence Pointers</h1>
+  <p>Move your mouse (or drag on touch) over the board. Your name tag follows with spring-lerp smoothing — exactly like Figma, Linear, or a live multiplayer cursor. Two simulated teammates wander the same board.</p>
+</header>
+
+<div id="stage">
+  <div class="board" id="board">
+    <div class="stickyNote" style="left:12%; top:20%; background:#fde68a; --rot:-4deg;">Ship the 5th drop by EOD 🚀</div>
+    <div class="stickyNote" style="left:62%; top:16%; background:#bbf7d0; --rot:3deg;">Presence pointers = real-time feel</div>
+    <div class="stickyNote" style="left:45%; top:58%; background:#bfdbfe; --rot:-2deg;">lerp(pos, target, 0.22) per frame</div>
+    <div class="stickyNote" style="left:18%; top:68%; background:#fbcfe8; --rot:5deg;">Try dragging me — go on</div>
+  </div>
+</div>
+
+<div class="controls glass">
+  <input type="text" id="nameInput" maxlength="12" value="You">
+  <div class="swatches" id="swatches"></div>
+</div>
+
+<footer>Inspired by Aceternity UI — "Following Pointer" component · UI Spotlight Day 79 · Drop #4</footer>
+
+<script>
+(function(){
+'use strict';
+
+const COLORS = ['#38bdf8','#c084fc','#f472b6','#4ade80','#fbbf24','#f87171'];
+const stage = document.getElementById('stage');
+const board = document.getElementById('board');
+const nameInput = document.getElementById('nameInput');
+
+function makePointerEl(cls, color, label){
+  const el = document.createElement('div');
+  el.className = 'pointer ' + cls;
+  el.innerHTML = `
+    <svg width="22" height="26" viewBox="0 0 22 26" fill="none">
+      <path d="M2 2 L20 12 L11.5 14.5 L9 22.5 Z" fill="${color}" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>
+    </svg>
+    <div class="tag" style="background:${color}">${label}</div>`;
+  stage.appendChild(el);
+  return el;
+}
+
+// ---- self pointer ----
+const selfColor = { value: COLORS[0] };
+const selfEl = makePointerEl('self', selfColor.value, 'You');
+let realX = window.innerWidth/2, realY = window.innerHeight/2;
+let selfX = realX, selfY = realY;
+let hasPointer = false;
+
+function setStagePos(clientX, clientY){
+  realX = clientX; realY = clientY; hasPointer = true;
+}
+stage.addEventListener('pointermove', e => setStagePos(e.clientX, e.clientY));
+stage.addEventListener('pointerdown', e => setStagePos(e.clientX, e.clientY));
+stage.addEventListener('touchmove', e => {
+  if (e.touches[0]) setStagePos(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive:true });
+
+const isCoarse = matchMedia('(pointer:coarse)').matches;
+if (isCoarse) stage.classList.add('touchMode');
+
+// ---- swatches ----
+const swatchesEl = document.getElementById('swatches');
+COLORS.forEach((c,i)=>{
+  const sw = document.createElement('div');
+  sw.className = 'swatch' + (i===0 ? ' sel' : '');
+  sw.style.background = c;
+  sw.addEventListener('click', ()=>{
+    document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel'));
+    sw.classList.add('sel');
+    selfColor.value = c;
+    selfEl.querySelector('path').setAttribute('fill', c);
+    selfEl.querySelector('.tag').style.background = c;
+  });
+  swatchesEl.appendChild(sw);
+});
+nameInput.addEventListener('input', ()=>{
+  selfEl.querySelector('.tag').textContent = nameInput.value.trim() || 'You';
+});
+
+// ---- simulated peers ----
+const PEERS = [
+  { name:'Iris', color:COLORS[2], t:0, speed:0.7, radiusX:0.32, radiusY:0.22, phaseX:0.7, phaseY:2.1 },
+  { name:'Kōji', color:COLORS[3], t:2.4, speed:0.5, radiusX:0.4, radiusY:0.3, phaseX:1.6, phaseY:0.3 }
+];
+PEERS.forEach(p => {
+  p.el = makePointerEl('peer', p.color, p.name);
+  p.x = window.innerWidth/2; p.y = window.innerHeight/2;
+});
+
+const lerpSlider = document.getElementById('lerpSlider');
+const lerpVal = document.getElementById('lerpVal');
+const speedSlider = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+lerpSlider.addEventListener('input', ()=> lerpVal.textContent = parseFloat(lerpSlider.value).toFixed(2));
+speedSlider.addEventListener('input', ()=> speedVal.textContent = parseFloat(speedSlider.value).toFixed(1) + '×');
+
+function lerp(a,b,t){ return a + (b-a)*t; }
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min((now-last)/1000, 0.05); last = now;
+  const L = parseFloat(lerpSlider.value);
+  const speedMul = parseFloat(speedSlider.value);
+
+  if (hasPointer){
+    selfX = lerp(selfX, realX, L);
+    selfY = lerp(selfY, realY, L);
+    selfEl.style.transform = `translate(${selfX}px, ${selfY}px)`;
+    selfEl.style.opacity = 1;
+  }
+
+  const rect = stage.getBoundingClientRect();
+  const cx = rect.width/2, cy = rect.height/2;
+  PEERS.forEach(p=>{
+    p.t += dt * p.speed * speedMul;
+    const targetX = cx + Math.sin(p.t*1.3 + p.phaseX) * cx * p.radiusX * 2;
+    const targetY = cy + Math.cos(p.t*0.9 + p.phaseY) * cy * p.radiusY * 2;
+    p.x = lerp(p.x, targetX, 0.06);
+    p.y = lerp(p.y, targetY, 0.06);
+    p.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+  });
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
