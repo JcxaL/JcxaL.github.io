@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Murmuration — Boids Flock Studio</title>
+<style>
+  :root{
+    --bg:#05070d; --panel:rgba(14,18,30,0.86); --panel-brd:rgba(140,170,255,0.16);
+    --sp0:#7dd3fc; --sp1:#f472b6; --sp2:#a3e635; --pred:#ff5f6d; --accent:#7dd3fc;
+    --text:#eef2ff; --muted:#8a93b8;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text);}
+  #app{position:fixed; inset:0;}
+  canvas{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
+
+  .glass{ background:var(--panel); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--panel-brd); border-radius:16px; box-shadow:0 10px 34px rgba(0,0,0,0.45); }
+
+  #topbar{ position:absolute; top:12px; left:12px; right:12px; z-index:10;
+    display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; }
+  #topbar h1{ font-size:15px; margin:0; font-weight:800; letter-spacing:.2px;
+    background:linear-gradient(90deg,#fff,#bfe7ff 60%,#f9a8d4); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #topbar h1 span{ color:var(--muted); font-weight:500; font-size:11.5px; display:block; margin-top:2px; -webkit-text-fill-color:var(--muted); }
+  #topActions{ display:flex; gap:6px; }
+  .iconbtn{ background:rgba(255,255,255,0.06); border:1px solid var(--panel-brd); color:var(--text);
+    border-radius:10px; padding:8px 11px; font-size:16px; line-height:1; cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; gap:5px; transition:background .15s, transform .1s; }
+  .iconbtn:hover{ background:rgba(255,255,255,0.14); }
+  .iconbtn:active{ transform:scale(.93); }
+  .iconbtn.on{ background:linear-gradient(135deg,#3b6fd6,#7dd3fc); color:#07101f; border-color:transparent; }
+
+  #panel{ position:absolute; top:64px; right:12px; z-index:10; width:270px; max-height:calc(100% - 150px);
+    overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:12px; }
+  #panel > *{ flex-shrink:0; }
+  #panel::-webkit-scrollbar{ width:5px; } #panel::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.15); border-radius:3px; }
+  .row{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--muted); }
+  .row label{ white-space:nowrap; }
+  .row output{ color:var(--text); font-variant-numeric:tabular-nums; font-size:11px; min-width:28px; text-align:right; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .sec-title{ font-size:10.5px; text-transform:uppercase; letter-spacing:1.1px; color:var(--muted); font-weight:700; margin:2px 0 0; }
+
+  .tabs{ display:flex; gap:6px; }
+  .tab{ flex:1; padding:7px 0; text-align:center; border-radius:9px; border:1px solid var(--panel-brd);
+    background:rgba(255,255,255,.03); cursor:pointer; font-size:11.5px; font-weight:700; color:var(--muted); }
+  .tab .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px; vertical-align:middle; }
+  .tab.active{ color:#07101f; border-color:transparent; }
+  .tab.active[data-sp="0"]{ background:var(--sp0); }
+  .tab.active[data-sp="1"]{ background:var(--sp1); }
+  .tab.active[data-sp="2"]{ background:var(--sp2); }
+
+  select{ background:rgba(255,255,255,0.08); color:var(--text); border:1px solid var(--panel-brd);
+    border-radius:8px; padding:7px 8px; font-family:inherit; font-size:12px; width:100%; }
+
+  .seg{ display:flex; border-radius:10px; overflow:hidden; border:1px solid var(--panel-brd); }
+  .seg button{ flex:1; border:none; padding:8px 4px; font-family:inherit; font-size:11.5px; font-weight:700; cursor:pointer;
+    background:rgba(255,255,255,0.04); color:var(--muted); }
+  .seg button.active{ background:linear-gradient(135deg,#3b6fd6,#7dd3fc); color:#07101f; }
+
+  .btnrow{ display:flex; gap:6px; }
+  .btn{ flex:1; background:rgba(255,255,255,0.06); border:1px solid var(--panel-brd); color:var(--text);
+    border-radius:9px; padding:9px 6px; font-size:11.5px; font-weight:700; cursor:pointer; font-family:inherit; text-align:center; }
+  .btn:active{ transform:scale(.96); }
+  .btn.primary{ background:linear-gradient(135deg,#3b6fd6,#7dd3fc); color:#07101f; border-color:transparent; }
+  .btn.danger{ color:var(--pred); }
+
+  #hint{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:5;
+    padding:16px 22px; text-align:center; font-size:13px; color:var(--muted); pointer-events:none; max-width:280px;
+    opacity:1; transition:opacity .5s; }
+  #hint b{ color:var(--text); }
+  #hint.hide{ opacity:0; }
+
+  #toast{ position:absolute; bottom:20px; left:50%; transform:translateX(-50%) translateY(10px); z-index:20;
+    padding:9px 16px; font-size:12.5px; border-radius:10px; opacity:0; pointer-events:none; transition:all .25s; white-space:nowrap; }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #stats{ position:absolute; bottom:12px; left:12px; z-index:10; padding:7px 12px; font-size:11px; color:var(--muted); display:flex; gap:12px; }
+  #stats b{ color:var(--text); }
+
+  #panelToggle{ display:none; }
+  @media (max-width:720px){
+    #topbar h1{ font-size:13px; } #topbar h1 span{ display:none; }
+    #panelToggle{ display:flex; }
+    #panel{ display:none; top:60px; right:8px; left:8px; width:auto; max-height:calc(100% - 140px); }
+    #panel.open{ display:flex; }
+    #stats{ font-size:10px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <div id="topbar" class="glass">
+    <h1>Murmuration <span>Boids Flock Studio</span></h1>
+    <div id="topActions">
+      <button class="iconbtn" id="btnPredator" title="Toggle predator">🦅</button>
+      <button class="iconbtn" id="btnPng" title="Export PNG">⬇</button>
+      <button class="iconbtn" id="btnShare" title="Copy share link">🔗</button>
+      <button class="iconbtn" id="panelToggle" title="Controls">⚙</button>
+    </div>
+  </div>
+
+  <div id="panel" class="glass">
+    <div class="sec-title">Preset</div>
+    <select id="preset">
+      <option value="">Custom</option>
+      <option value="calm">Calm Drift</option>
+      <option value="murmuration">Murmuration</option>
+      <option value="school">School of Fish</option>
+      <option value="swarm">Insect Swarm</option>
+      <option value="chaos">Chaos</option>
+    </select>
+
+    <div class="sec-title">Species</div>
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-sp="0"><span class="dot" style="background:#7dd3fc"></span>S1</div>
+      <div class="tab" data-sp="1"><span class="dot" style="background:#f472b6"></span>S2</div>
+      <div class="tab" data-sp="2"><span class="dot" style="background:#a3e635"></span>S3</div>
+    </div>
+    <div class="row"><label>Count</label><output id="oCount">60</output></div>
+    <input type="range" id="sCount" min="0" max="130" value="60">
+    <div class="row"><label>Separation</label><output id="oSep">1.0</output></div>
+    <input type="range" id="sSep" min="0" max="30" value="10">
+    <div class="row"><label>Alignment</label><output id="oAli">1.0</output></div>
+    <input type="range" id="sAli" min="0" max="30" value="10">
+    <div class="row"><label>Cohesion</label><output id="oCoh">1.0</output></div>
+    <input type="range" id="sCoh" min="0" max="30" value="10">
+    <div class="row"><label>Speed</label><output id="oSpd">2.4</output></div>
+    <input type="range" id="sSpd" min="8" max="60" value="24">
+
+    <div class="sec-title">Environment</div>
+    <div class="row"><label>Wind</label><output id="oWind">0</output></div>
+    <input type="range" id="sWind" min="0" max="100" value="0">
+    <div class="row"><label>Trail length</label><output id="oTrail">80</output></div>
+    <input type="range" id="sTrail" min="2" max="95" value="80">
+
+    <div class="sec-title">Cursor tool</div>
+    <div class="seg" id="toolSeg">
+      <button class="active" data-tool="blow">Blow</button>
+      <button data-tool="obstacle">Wall</button>
+    </div>
+
+    <div class="btnrow">
+      <button class="btn" id="btnClearObstacles">Clear walls</button>
+      <button class="btn" id="btnClearTrails">Clear trails</button>
+    </div>
+    <div class="btnrow">
+      <button class="btn primary" id="btnSave">Save</button>
+      <button class="btn danger" id="btnReset">Reset</button>
+    </div>
+  </div>
+
+  <div id="stats" class="glass"><span><b id="statCount">0</b> boids</span><span><b id="statFps">60</b> fps</span></div>
+  <div id="hint">Boids are already flying. <b>Drag</b> to blow them around · <b>🦅</b> unleashes a predator · open <b>⚙</b> to tune the flock.</div>
+  <div id="toast" class="glass"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = '#05070d';
+    ctx.fillRect(0, 0, W, H);
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------- species / state ----------
+  var COLORS = ['#7dd3fc', '#f472b6', '#a3e635'];
+  var species = [
+    { count: 60, sep: 1.0, ali: 1.0, coh: 1.0, speed: 2.4 },
+    { count: 45, sep: 1.0, ali: 1.0, coh: 1.0, speed: 2.4 },
+    { count: 35, sep: 1.0, ali: 1.0, coh: 1.0, speed: 2.4 }
+  ];
+  var env = { wind: 0, windAngle: Math.random() * Math.PI * 2, trailAlpha: 0.06 };
+  var activeSp = 0;
+  var tool = 'blow';
+  var predatorOn = false;
+  var predator = null;
+  var obstacles = [];
+  var boids = [];
+
+  var PERCEPTION = 62, SEP_RADIUS = 24, MAX_FORCE = 0.045;
+
+  function trailFromSlider(v){ // slider 2..95 -> alpha 0.32..0.015 (higher slider = longer trail = lower alpha)
+    return 0.33 - (v / 95) * 0.315;
+  }
+
+  function spawnBoids(){
+    boids = [];
+    for (var s = 0; s < 3; s++){
+      for (var i = 0; i < species[s].count; i++){
+        var ang = Math.random() * Math.PI * 2;
+        boids.push({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: Math.cos(ang) * 1.4, vy: Math.sin(ang) * 1.4,
+          sp: s
+        });
+      }
+    }
+  }
+
+  function syncBoidCounts(){
+    for (var s = 0; s < 3; s++){
+      var have = boids.filter(function(b){ return b.sp === s; }).length;
+      var want = species[s].count;
+      if (have < want){
+        for (var i = have; i < want; i++){
+          var ang = Math.random() * Math.PI * 2;
+          boids.push({ x: Math.random() * W, y: Math.random() * H, vx: Math.cos(ang) * 1.4, vy: Math.sin(ang) * 1.4, sp: s });
+        }
+      } else if (have > want){
+        var toRemove = have - want, removed = 0;
+        for (var j = boids.length - 1; j >= 0 && removed < toRemove; j--){
+          if (boids[j].sp === s){ boids.splice(j, 1); removed++; }
+        }
+      }
+    }
+  }
+
+  // ---------- spatial grid ----------
+  var CELL = PERCEPTION;
+  function buildGrid(){
+    var grid = new Map();
+    for (var i = 0; i < boids.length; i++){
+      var b = boids[i];
+      var cx = Math.floor(b.x / CELL), cy = Math.floor(b.y / CELL);
+      var key = cx + ',' + cy;
+      var arr = grid.get(key);
+      if (!arr){ arr = []; grid.set(key, arr); }
+      arr.push(i);
+    }
+    return grid;
+  }
+  function neighborsOf(grid, b){
+    var cx = Math.floor(b.x / CELL), cy = Math.floor(b.y / CELL);
+    var out = [];
+    for (var dx = -1; dx <= 1; dx++){
+      for (var dy = -1; dy <= 1; dy++){
+        var arr = grid.get((cx + dx) + ',' + (cy + dy));
+        if (arr) for (var k = 0; k < arr.length; k++) out.push(arr[k]);
+      }
+    }
+    return out;
+  }
+
+  // ---------- pointer ----------
+  var pointer = { x: -9999, y: -9999, down: false };
+  function toLocal(e){
+    var t = (e.touches && e.touches[0]) || e;
+    var r = canvas.getBoundingClientRect();
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  }
+  canvas.addEventListener('pointerdown', function(e){
+    var p = toLocal(e);
+    pointer.x = p.x; pointer.y = p.y; pointer.down = true;
+    hideHint();
+    if (tool === 'obstacle') placeObstacle(p.x, p.y);
+  });
+  canvas.addEventListener('pointermove', function(e){
+    var p = toLocal(e);
+    pointer.x = p.x; pointer.y = p.y;
+    if (pointer.down && tool === 'obstacle') placeObstacle(p.x, p.y);
+  });
+  window.addEventListener('pointerup', function(){ pointer.down = false; });
+  window.addEventListener('pointercancel', function(){ pointer.down = false; });
+
+  function placeObstacle(x, y){
+    for (var i = 0; i < obstacles.length; i++){
+      var o = obstacles[i], d = Math.hypot(o.x - x, o.y - y);
+      if (d < 30) return; // avoid stacking
+    }
+    if (obstacles.length >= 60) obstacles.shift();
+    obstacles.push({ x: x, y: y, r: 20 });
+  }
+
+  var hintEl = document.getElementById('hint');
+  var hinted = false;
+  function hideHint(){ if (hinted) return; hinted = true; hintEl.classList.add('hide'); }
+
+  // ---------- predator ----------
+  function spawnPredator(){
+    predator = { x: Math.random() * W, y: Math.random() * H, vx: 0, vy: 0 };
+  }
+
+  // ---------- update ----------
+  function steer(b, sx, sy, maxSpeed){
+    var dx = sx, dy = sy;
+    var m = Math.hypot(dx, dy);
+    if (m < 1e-4) return { x: 0, y: 0 };
+    dx = dx / m * maxSpeed; dy = dy / m * maxSpeed;
+    return { x: dx - b.vx, y: dy - b.vy };
+  }
+  function limit(v, max){
+    var m = Math.hypot(v.x, v.y);
+    if (m > max){ v.x = v.x / m * max; v.y = v.y / m * max; }
+    return v;
+  }
+
+  function update(){
+    var grid = buildGrid();
+    for (var i = 0; i < boids.length; i++){
+      var b = boids[i];
+      var sp = species[b.sp];
+      var nbrs = neighborsOf(grid, b);
+
+      var sepX = 0, sepY = 0, sepN = 0;
+      var aliX = 0, aliY = 0, aliN = 0;
+      var cohX = 0, cohY = 0, cohN = 0;
+
+      for (var k = 0; k < nbrs.length; k++){
+        var j = nbrs[k];
+        if (j === i) continue;
+        var o = boids[j];
+        var dx = b.x - o.x, dy = b.y - o.y;
+        var d = Math.hypot(dx, dy);
+        if (d < SEP_RADIUS && d > 0.0001){
+          sepX += dx / d / d; sepY += dy / d / d; sepN++;
+        }
+        if (o.sp === b.sp && d < PERCEPTION){
+          aliX += o.vx; aliY += o.vy; aliN++;
+          cohX += o.x; cohY += o.y; cohN++;
+        }
+      }
+
+      var fx = 0, fy = 0;
+      if (sepN > 0){
+        var s = steer(b, sepX / sepN, sepY / sepN, sp.speed);
+        fx += s.x * sp.sep * 0.4; fy += s.y * sp.sep * 0.4;
+      }
+      if (aliN > 0){
+        var a = steer(b, aliX / aliN, aliY / aliN, sp.speed);
+        fx += a.x * sp.ali * 0.12; fy += a.y * sp.ali * 0.12;
+      }
+      if (cohN > 0){
+        var c = steer(b, (cohX / cohN) - b.x, (cohY / cohN) - b.y, sp.speed);
+        fx += c.x * sp.coh * 0.06; fy += c.y * sp.coh * 0.06;
+      }
+
+      // predator flee
+      if (predator){
+        var pdx = b.x - predator.x, pdy = b.y - predator.y;
+        var pd = Math.hypot(pdx, pdy);
+        if (pd < 120 && pd > 0.0001){
+          var w = (1 - pd / 120) * 3.2;
+          fx += (pdx / pd) * w; fy += (pdy / pd) * w;
+        }
+      }
+
+      // obstacle avoidance
+      for (var oi = 0; oi < obstacles.length; oi++){
+        var ob = obstacles[oi];
+        var odx = b.x - ob.x, ody = b.y - ob.y;
+        var od = Math.hypot(odx, ody);
+        var influence = ob.r + 40;
+        if (od < influence && od > 0.0001){
+          var ow = (1 - od / influence) * 4.5;
+          fx += (odx / od) * ow; fy += (ody / od) * ow;
+        }
+      }
+
+      // ambient wind
+      if (env.wind > 0){
+        fx += Math.cos(env.windAngle) * env.wind * 0.02;
+        fy += Math.sin(env.windAngle) * env.wind * 0.02;
+      }
+
+      // cursor blow
+      if (pointer.down && tool === 'blow'){
+        var mdx = b.x - pointer.x, mdy = b.y - pointer.y;
+        var md = Math.hypot(mdx, mdy);
+        if (md < 160 && md > 0.0001){
+          var mw = (1 - md / 160) * 6.5;
+          fx += (mdx / md) * mw; fy += (mdy / md) * mw;
+        }
+      }
+
+      limit({ x: fx, y: fy }, MAX_FORCE * 60);
+      b.vx += fx * 0.06; b.vy += fy * 0.06;
+      var sm = Math.hypot(b.vx, b.vy);
+      if (sm > sp.speed){ b.vx = b.vx / sm * sp.speed; b.vy = b.vy / sm * sp.speed; }
+      else if (sm < sp.speed * 0.35){ b.vx = b.vx / (sm || 1) * sp.speed * 0.35; b.vy = b.vy / (sm || 1) * sp.speed * 0.35; }
+
+      b.x += b.vx; b.y += b.vy;
+      if (b.x < -10) b.x = W + 10; if (b.x > W + 10) b.x = -10;
+      if (b.y < -10) b.y = H + 10; if (b.y > H + 10) b.y = -10;
+    }
+
+    if (predator){
+      var nearest = null, nd = Infinity;
+      for (var pi = 0; pi < boids.length; pi++){
+        var db = boids[pi];
+        var dist = (db.x - predator.x) * (db.x - predator.x) + (db.y - predator.y) * (db.y - predator.y);
+        if (dist < nd){ nd = dist; nearest = db; }
+      }
+      if (nearest){
+        var sdx = nearest.x - predator.x, sdy = nearest.y - predator.y;
+        var sm2 = Math.hypot(sdx, sdy) || 1;
+        var predSpeed = 2.9;
+        predator.vx += (sdx / sm2 * predSpeed - predator.vx) * 0.05;
+        predator.vy += (sdy / sm2 * predSpeed - predator.vy) * 0.05;
+      }
+      predator.x += predator.vx; predator.y += predator.vy;
+      if (predator.x < -20) predator.x = W + 20; if (predator.x > W + 20) predator.x = -20;
+      if (predator.y < -20) predator.y = H + 20; if (predator.y > H + 20) predator.y = -20;
+    }
+  }
+
+  // ---------- render ----------
+  function draw(){
+    ctx.fillStyle = 'rgba(5,7,13,' + env.trailAlpha + ')';
+    ctx.fillRect(0, 0, W, H);
+
+    // obstacles (crisp, redrawn every frame)
+    for (var i = 0; i < obstacles.length; i++){
+      var o = obstacles[i];
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(140,150,180,0.28)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(210,220,255,0.4)';
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+    }
+
+    // boids
+    for (var i2 = 0; i2 < boids.length; i2++){
+      var b = boids[i2];
+      var ang = Math.atan2(b.vy, b.vx);
+      var len = 6.5, wid = 3.2;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(len, 0);
+      ctx.lineTo(-len * 0.7, wid);
+      ctx.lineTo(-len * 0.3, 0);
+      ctx.lineTo(-len * 0.7, -wid);
+      ctx.closePath();
+      ctx.fillStyle = COLORS[b.sp];
+      ctx.globalAlpha = 0.92;
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    if (predator){
+      ctx.save();
+      ctx.translate(predator.x, predator.y);
+      ctx.rotate(Math.atan2(predator.vy, predator.vx));
+      ctx.beginPath();
+      ctx.moveTo(13, 0); ctx.lineTo(-9, 7); ctx.lineTo(-3, 0); ctx.lineTo(-9, -7);
+      ctx.closePath();
+      ctx.fillStyle = '#ff5f6d';
+      ctx.shadowColor = '#ff5f6d'; ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // ---------- loop ----------
+  var lastT = performance.now(), frames = 0, fpsAcc = 0;
+  var statCount = document.getElementById('statCount');
+  var statFps = document.getElementById('statFps');
+  function loop(now){
+    var dt = now - lastT; lastT = now;
+    frames++; fpsAcc += dt;
+    if (fpsAcc > 500){
+      statFps.textContent = Math.round(1000 / (fpsAcc / frames));
+      frames = 0; fpsAcc = 0;
+    }
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- UI wiring ----------
+  var elCount = document.getElementById('sCount'), oCount = document.getElementById('oCount');
+  var elSep = document.getElementById('sSep'), oSep = document.getElementById('oSep');
+  var elAli = document.getElementById('sAli'), oAli = document.getElementById('oAli');
+  var elCoh = document.getElementById('sCoh'), oCoh = document.getElementById('oCoh');
+  var elSpd = document.getElementById('sSpd'), oSpd = document.getElementById('oSpd');
+  var elWind = document.getElementById('sWind'), oWind = document.getElementById('oWind');
+  var elTrail = document.getElementById('sTrail'), oTrail = document.getElementById('oTrail');
+
+  function refreshPanel(){
+    var s = species[activeSp];
+    elCount.value = s.count; oCount.textContent = s.count;
+    elSep.value = Math.round(s.sep * 10); oSep.textContent = s.sep.toFixed(1);
+    elAli.value = Math.round(s.ali * 10); oAli.textContent = s.ali.toFixed(1);
+    elCoh.value = Math.round(s.coh * 10); oCoh.textContent = s.coh.toFixed(1);
+    elSpd.value = Math.round(s.speed * 10); oSpd.textContent = s.speed.toFixed(1);
+    elWind.value = env.wind; oWind.textContent = env.wind;
+    elTrail.value = document.getElementById('sTrail').value;
+    oTrail.textContent = elTrail.value;
+  }
+
+  document.getElementById('tabs').addEventListener('click', function(e){
+    var t = e.target.closest('.tab');
+    if (!t) return;
+    activeSp = +t.dataset.sp;
+    document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('active'); });
+    t.classList.add('active');
+    refreshPanel();
+  });
+
+  elCount.addEventListener('input', function(){
+    species[activeSp].count = +elCount.value; oCount.textContent = elCount.value;
+    syncBoidCounts(); scheduleSave();
+  });
+  elSep.addEventListener('input', function(){
+    species[activeSp].sep = +elSep.value / 10; oSep.textContent = species[activeSp].sep.toFixed(1); scheduleSave();
+  });
+  elAli.addEventListener('input', function(){
+    species[activeSp].ali = +elAli.value / 10; oAli.textContent = species[activeSp].ali.toFixed(1); scheduleSave();
+  });
+  elCoh.addEventListener('input', function(){
+    species[activeSp].coh = +elCoh.value / 10; oCoh.textContent = species[activeSp].coh.toFixed(1); scheduleSave();
+  });
+  elSpd.addEventListener('input', function(){
+    species[activeSp].speed = +elSpd.value / 10; oSpd.textContent = species[activeSp].speed.toFixed(1); scheduleSave();
+  });
+  elWind.addEventListener('input', function(){
+    env.wind = +elWind.value; oWind.textContent = env.wind; scheduleSave();
+  });
+  elTrail.addEventListener('input', function(){
+    env.trailAlpha = trailFromSlider(+elTrail.value);
+    oTrail.textContent = elTrail.value; scheduleSave();
+  });
+
+  document.getElementById('toolSeg').addEventListener('click', function(e){
+    var b = e.target.closest('button');
+    if (!b) return;
+    tool = b.dataset.tool;
+    document.querySelectorAll('#toolSeg button').forEach(function(x){ x.classList.remove('active'); });
+    b.classList.add('active');
+  });
+
+  document.getElementById('btnClearObstacles').addEventListener('click', function(){ obstacles = []; scheduleSave(); });
+  document.getElementById('btnClearTrails').addEventListener('click', function(){ ctx.fillStyle = '#05070d'; ctx.fillRect(0, 0, W, H); });
+  document.getElementById('btnReset').addEventListener('click', function(){
+    obstacles = []; predator = null; predatorOn = false;
+    document.getElementById('btnPredator').classList.remove('on');
+    spawnBoids();
+  });
+
+  document.getElementById('btnPredator').addEventListener('click', function(){
+    predatorOn = !predatorOn;
+    this.classList.toggle('on', predatorOn);
+    if (predatorOn) spawnPredator(); else predator = null;
+    hideHint();
+  });
+
+  document.getElementById('panelToggle').addEventListener('click', function(){
+    document.getElementById('panel').classList.toggle('open');
+  });
+
+  var presets = {
+    calm:        { sp: [{count:50,sep:0.9,ali:0.9,coh:0.6,speed:2.0},{count:40,sep:0.9,ali:0.9,coh:0.6,speed:2.0},{count:30,sep:0.9,ali:0.9,coh:0.6,speed:2.0}], wind:0, trail:78 },
+    murmuration: { sp: [{count:130,sep:0.6,ali:1.8,coh:1.3,speed:3.0},{count:40,sep:0.6,ali:1.6,coh:1.2,speed:2.8},{count:20,sep:0.6,ali:1.6,coh:1.2,speed:2.8}], wind:20, trail:88 },
+    school:      { sp: [{count:60,sep:1.1,ali:1.0,coh:1.3,speed:1.6},{count:60,sep:1.1,ali:1.0,coh:1.3,speed:1.6},{count:60,sep:1.1,ali:1.0,coh:1.3,speed:1.6}], wind:5, trail:70 },
+    swarm:       { sp: [{count:40,sep:1.8,ali:0.4,coh:0.5,speed:3.6},{count:40,sep:1.8,ali:0.4,coh:0.5,speed:3.6},{count:40,sep:1.8,ali:0.4,coh:0.5,speed:3.6}], wind:30, trail:25 },
+    chaos:       { sp: [{count:70,sep:0.2,ali:0.2,coh:2.4,speed:4.2},{count:70,sep:2.4,ali:0.2,coh:0.2,speed:4.2},{count:70,sep:0.2,ali:2.4,coh:0.2,speed:4.2}], wind:60, trail:6 }
+  };
+  document.getElementById('preset').addEventListener('change', function(){
+    var p = presets[this.value];
+    if (!p) return;
+    for (var i = 0; i < 3; i++) species[i] = Object.assign({}, p.sp[i]);
+    env.wind = p.wind;
+    env.trailAlpha = trailFromSlider(p.trail);
+    document.getElementById('sTrail').value = p.trail;
+    syncBoidCounts();
+    refreshPanel();
+    scheduleSave();
+  });
+
+  // ---------- export PNG ----------
+  document.getElementById('btnPng').addEventListener('click', function(){
+    canvas.toBlob(function(blob){
+      if (!blob) return;
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'murmuration.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      showToast('PNG saved');
+    }, 'image/png');
+  });
+
+  // ---------- save / share ----------
+  function currentState(){
+    return {
+      species: species,
+      wind: env.wind,
+      trail: +document.getElementById('sTrail').value,
+      obstacles: obstacles.slice(0, 40).map(function(o){ return { x: +(o.x / W).toFixed(4), y: +(o.y / H).toFixed(4) }; })
+    };
+  }
+  function applyState(st){
+    if (!st) return;
+    if (st.species) for (var i = 0; i < 3; i++) if (st.species[i]) species[i] = Object.assign({}, st.species[i]);
+    if (typeof st.wind === 'number') env.wind = st.wind;
+    if (typeof st.trail === 'number'){ env.trailAlpha = trailFromSlider(st.trail); document.getElementById('sTrail').value = st.trail; }
+    if (st.obstacles) obstacles = st.obstacles.map(function(o){ return { x: o.x * W, y: o.y * H, r: 20 }; });
+    syncBoidCounts();
+    refreshPanel();
+  }
+
+  var saveTimer = null;
+  function scheduleSave(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      try { localStorage.setItem('murmuration_v1', JSON.stringify(currentState())); } catch (e) {}
+    }, 400);
+  }
+
+  document.getElementById('btnSave').addEventListener('click', function(){
+    try { localStorage.setItem('murmuration_v1', JSON.stringify(currentState())); showToast('Flock saved'); }
+    catch (e) { showToast('Save failed'); }
+  });
+
+  document.getElementById('btnShare').addEventListener('click', function(){
+    try {
+      var encoded = btoa(encodeURIComponent(JSON.stringify(currentState())));
+      var url = location.origin + location.pathname + '#s=' + encoded;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function(){ showToast('Link copied'); }, function(){ showToast(url); });
+      } else {
+        history.replaceState(null, '', '#s=' + encoded);
+        showToast('Link ready in address bar');
+      }
+    } catch (e) { showToast('Share failed'); }
+  });
+
+  var toastEl = document.getElementById('toast'), toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 1800);
+  }
+
+  // ---------- boot ----------
+  resize();
+  spawnBoids();
+
+  var booted = false;
+  if (location.hash.indexOf('#s=') === 0){
+    try {
+      var st = JSON.parse(decodeURIComponent(atob(location.hash.slice(3))));
+      applyState(st);
+      booted = true;
+    } catch (e) {}
+  }
+  if (!booted){
+    try {
+      var raw = localStorage.getItem('murmuration_v1');
+      if (raw) applyState(JSON.parse(raw));
+    } catch (e) {}
+  }
+  refreshPanel();
+  statCount.textContent = boids.length;
+  setInterval(function(){ statCount.textContent = boids.length; }, 700);
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
