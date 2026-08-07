@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 2 — Grid Lanes &amp; the Tab-Order Trap</title>
+<style>
+  :root{ --bg:#05070a; --text:#e8f2ee; --dim:#82998f; --accent:#34d399; --bad:#f87171; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%; background:radial-gradient(ellipse at 50% -15%, #0d2119 0%, var(--bg) 60%);
+    color:var(--text); font-family:system-ui,-apple-system,'Segoe UI',sans-serif;}
+  body{padding:74px 18px 70px;}
+  .glass{background:rgba(255,255,255,0.05); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.10);}
+  .back-link{position:fixed; top:15px; left:15px; z-index:70; padding:9px 15px; border-radius:999px;
+    font-size:13px; color:var(--text); text-decoration:none;}
+  .back-link:hover{background:rgba(255,255,255,0.10);}
+
+  header{max-width:820px; margin:0 auto 26px; text-align:center;}
+  .kicker{font-size:10.5px; letter-spacing:0.22em; text-transform:uppercase; color:var(--accent); margin-bottom:10px;}
+  h1{font-size:clamp(23px,4.6vw,36px); margin:0 0 12px;}
+  header p{color:var(--dim); font-size:14px; line-height:1.65; margin:0 auto; max-width:660px;}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.92em; color:var(--accent);}
+
+  .support{max-width:820px; margin:0 auto 30px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; font-size:11px;}
+  .chip{padding:5px 11px; border-radius:999px; color:var(--dim);}
+  .chip b{color:var(--text); font-weight:600;}
+
+  h2.sec{max-width:1040px; margin:0 auto 6px; font-size:13px; letter-spacing:0.14em; text-transform:uppercase; color:var(--dim);}
+  p.sub{max-width:1040px; margin:0 auto 16px; font-size:12.5px; color:var(--dim); line-height:1.6;}
+
+  .trio{max-width:1040px; margin:0 auto 40px; display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(250px,1fr));}
+  .miniWrap{border-radius:18px; padding:15px;}
+  .miniWrap h3{margin:0 0 3px; font-size:13px;}
+  .miniWrap .tol{font-size:11px; color:var(--dim); margin:0 0 12px;}
+  .score{font-size:11px; margin-top:11px; color:var(--dim);}
+  .score b{color:var(--accent); font-weight:700;}
+  .score.warn b{color:var(--bad);}
+
+  .board{position:relative; width:100%;}
+  .board .item{position:absolute; top:0; left:0; margin:0; border:1px solid rgba(255,255,255,0.12);
+    border-radius:12px; background:linear-gradient(150deg, rgba(52,211,153,0.16), rgba(56,189,248,0.10));
+    color:var(--text); font:inherit; font-size:12px; font-weight:600; cursor:pointer; padding:8px 10px;
+    text-align:left; display:flex; flex-direction:column; justify-content:space-between;
+    transition:transform .38s cubic-bezier(.4,1.3,.5,1), width .3s ease, height .3s ease;}
+  .board .item:focus-visible{outline:3px solid #fff; outline-offset:2px; z-index:5;}
+  .board .item .vis{font-size:10px; color:var(--dim); font-weight:500;}
+  .board svg.path{position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible;}
+  .board svg.path polyline{fill:none; stroke:rgba(255,255,255,0.35); stroke-width:1.6; stroke-dasharray:4 4;}
+  .board svg.path line.jump{stroke:var(--bad); stroke-width:2.2;}
+
+  .live{max-width:1040px; margin:0 auto;}
+  .liveCard{border-radius:20px; padding:18px;}
+  .toggles{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;}
+  .tg{font-size:11.5px; padding:7px 13px; border-radius:999px; border:1px solid rgba(255,255,255,0.14);
+    background:rgba(255,255,255,0.05); color:var(--dim); cursor:pointer; font-family:inherit;}
+  .tg[aria-pressed=true]{background:rgba(52,211,153,0.18); color:var(--accent); border-color:rgba(52,211,153,0.45);}
+  .readout{font-size:12px; color:var(--dim); margin:14px 0 0; line-height:1.6;}
+  .readout b{color:var(--text);}
+
+  .panel{position:fixed; top:14px; right:14px; z-index:65; width:216px; border-radius:16px; padding:14px; font-size:11.5px;}
+  .panel h3{margin:0 0 11px; font-size:10px; letter-spacing:0.18em; text-transform:uppercase; color:var(--dim); font-weight:700;}
+  .row{margin-bottom:11px;}
+  .row label{display:flex; justify-content:space-between; color:var(--dim); margin-bottom:5px;}
+  .row label b{color:var(--text); font-weight:600; font-variant-numeric:tabular-nums;}
+  input[type=range]{width:100%; accent-color:var(--accent); height:16px;}
+  .panel .hint{color:var(--dim); font-size:10px; line-height:1.5; margin:6px 0 0;}
+  @media (max-width:900px){ .panel{display:none;} }
+
+  footer{max-width:820px; margin:44px auto 0; text-align:center; font-size:11px; color:var(--dim); line-height:1.7;}
+  footer a{color:var(--accent);}
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link glass">← All 5 drops</a>
+
+<header>
+  <div class="kicker">Drop 02 · Layout</div>
+  <h1>Grid Lanes &amp; the Tab-Order Trap</h1>
+  <p><code>display: grid-lanes</code> drops each item into whichever lane brings it closest to the start edge — gorgeous
+  packing, wrecked focus order. <code>flow-tolerance</code> is the dial that trades density for a tab path a keyboard
+  user can actually follow. Every board below runs the real placement algorithm, tie-breaks included.</p>
+</header>
+
+<div class="support" id="support"></div>
+
+<h2 class="sec">Same six items, three tolerances</h2>
+<p class="sub">Numbers are DOM order. The dashed line is the tab path; red segments are the jumps that fail WCAG 2.4.3.</p>
+<div class="trio" id="trio"></div>
+
+<h2 class="sec">Live board</h2>
+<p class="sub">Tune the lanes, then click a card and press <b>Tab</b>: focus follows the DOM, not your eyes.</p>
+<div class="live">
+  <div class="liveCard glass">
+    <div class="toggles">
+      <button class="tg" id="tgPath" aria-pressed="true">tab path</button>
+      <button class="tg" id="tgInf" aria-pressed="false">flow-tolerance: infinite</button>
+      <button class="tg" id="tgSafe" aria-pressed="false">unpack while focused</button>
+      <button class="tg" id="tgShuffle" aria-pressed="false">shuffle heights</button>
+    </div>
+    <div class="board" id="live"></div>
+    <p class="readout" id="readout"></p>
+  </div>
+</div>
+
+<div class="panel glass">
+  <h3>Lane parameters</h3>
+  <div class="row"><label for="pCols">columns <b id="vCols">4</b></label><input id="pCols" type="range" min="2" max="6" value="4"></div>
+  <div class="row"><label for="pTol">flow-tolerance <b id="vTol">16px</b></label><input id="pTol" type="range" min="0" max="320" value="16"></div>
+  <div class="row"><label for="pItems">items <b id="vItems">14</b></label><input id="pItems" type="range" min="6" max="24" value="14"></div>
+  <div class="row"><label for="pGap">gap <b id="vGap">12px</b></label><input id="pGap" type="range" min="4" max="28" value="12"></div>
+  <p class="hint">Tolerance is the threshold for calling two lanes "the same height". At <code>infinite</code> items simply
+  round-robin in source order.</p>
+</div>
+
+<footer>
+  Inspired by <a href="https://matuzo.at/blog/2026/grid-lanes-accessibility" target="_blank" rel="noopener">Manuel Matuzovic — “Your Grid Lanes will likely fail WCAG 2.4.3”</a>
+  · placement algorithm re-derived from the post<br>UI Spotlight Day 82 · Drop #2
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- the grid-lanes placement algorithm -----------------------------
+  // Each item goes into the lane that brings it closest to the start edge.
+  // Lanes within `tol` of the shortest count as "the same height"; ties are
+  // resolved by continuing from the lane we last used.
+  function pack(heights, itemHeights, tol, gap){
+    var lanes = heights.length, cursor = 0, out = [];
+    for (var i = 0; i < itemHeights.length; i++){
+      var min = Infinity, l;
+      for (l = 0; l < lanes; l++) if (heights[l] < min) min = heights[l];
+      var chosen = cursor;
+      for (var k = 0; k < lanes; k++){
+        var c = (cursor + k) % lanes;
+        if (heights[c] <= min + tol + 0.001){ chosen = c; break; }
+      }
+      out.push({ lane: chosen, top: heights[chosen] });
+      heights[chosen] += itemHeights[i] + gap;
+      cursor = (chosen + 1) % lanes;   // ties resume from the lane after the one we just filled
+    }
+    return out;
+  }
+
+  // Visual reading order = top-to-bottom, then left-to-right (row tolerance).
+  function mismatches(placed, laneW, gap, rowTol){
+    var idx = placed.map(function(p, i){ return { i:i, x:p.lane*(laneW+gap), y:p.top }; });
+    var sorted = idx.slice().sort(function(a,b){
+      if (Math.abs(a.y - b.y) > rowTol) return a.y - b.y;   // items roughly level count as one row
+      return a.x - b.x;
+    });
+    var visualRank = [];
+    sorted.forEach(function(o, rank){ visualRank[o.i] = rank; });
+    var jumps = [];
+    for (var i = 1; i < visualRank.length; i++){
+      if (visualRank[i] < visualRank[i-1]) jumps.push(i);
+    }
+    return { jumps: jumps, rank: visualRank };
+  }
+
+  // ---- board renderer --------------------------------------------------
+  function Board(el, opts){
+    this.el = el;
+    this.opts = opts;
+    this.items = [];
+    this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svg.setAttribute('class', 'path');
+    el.appendChild(this.svg);
+  }
+  Board.prototype.setData = function(heights){
+    var self = this;
+    this.heights = heights;
+    while (this.items.length > heights.length){
+      this.el.removeChild(this.items.pop());
+    }
+    while (this.items.length < heights.length){
+      var b = document.createElement('button');
+      b.className = 'item';
+      b.type = 'button';
+      b.innerHTML = '<span class="dom"></span><span class="vis"></span>';
+      this.el.appendChild(b);
+      this.items.push(b);
+    }
+    this.items.forEach(function(b, i){
+      b.querySelector('.dom').textContent = (i + 1);
+      b.style.setProperty('--h', heights[i] + 'px');
+    });
+    return this;
+  };
+  Board.prototype.layout = function(cols, tol, gap, showPath, inOrder){
+    var w = this.el.clientWidth || 300;
+    var laneW = (w - gap * (cols - 1)) / cols;
+    var lanes = new Array(cols).fill(0);
+    var placed;
+    if (inOrder){
+      // strict source order: row-by-row, each row as tall as its tallest item
+      var y = 0, rowH = 0;
+      placed = this.heights.map(function(h, i){
+        var lane = i % cols;
+        if (lane === 0 && i > 0){ y += rowH + gap; rowH = 0; }
+        rowH = Math.max(rowH, h);
+        return { lane: lane, top: y };
+      });
+    } else {
+      placed = pack(lanes, this.heights, tol, gap);
+    }
+
+    var self = this;
+    placed.forEach(function(p, i){
+      var b = self.items[i];
+      b.style.width = laneW + 'px';
+      b.style.height = self.heights[i] + 'px';
+      b.style.transform = 'translate(' + (p.lane * (laneW + gap)) + 'px,' + p.top + 'px)';
+    });
+
+    var avgH = this.heights.reduce(function(a, b){ return a + b; }, 0) / this.heights.length;
+    var m = mismatches(placed, laneW, gap, avgH * 0.5);
+    this.items.forEach(function(b, i){
+      b.querySelector('.vis').textContent = 'sees #' + (m.rank[i] + 1);
+      b.style.borderColor = m.jumps.indexOf(i) >= 0 ? 'rgba(248,113,113,0.65)' : 'rgba(255,255,255,0.12)';
+    });
+
+    // container height
+    var bottom = 0;
+    placed.forEach(function(p, i){ bottom = Math.max(bottom, p.top + self.heights[i]); });
+    this.el.style.height = bottom + 'px';
+
+    // tab path
+    while (this.svg.firstChild) this.svg.removeChild(this.svg.firstChild);
+    if (showPath){
+      var pts = placed.map(function(p, i){
+        return [p.lane * (laneW + gap) + laneW / 2, p.top + self.heights[i] / 2];
+      });
+      var poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      poly.setAttribute('points', pts.map(function(p){ return p[0] + ',' + p[1]; }).join(' '));
+      this.svg.appendChild(poly);
+      m.jumps.forEach(function(i){
+        var ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        ln.setAttribute('class', 'jump');
+        ln.setAttribute('x1', pts[i-1][0]); ln.setAttribute('y1', pts[i-1][1]);
+        ln.setAttribute('x2', pts[i][0]);   ln.setAttribute('y2', pts[i][1]);
+        this.svg.appendChild(ln);
+      }, this);
+    }
+    this.lastJumps = m.jumps.length;
+    return m.jumps.length;
+  };
+
+  // ---- support chips ---------------------------------------------------
+  var sup = document.getElementById('support');
+  function chip(label, ok){
+    var d = document.createElement('div');
+    d.className = 'chip glass';
+    d.innerHTML = label + ' <b style="color:' + (ok ? '#34d399' : '#f87171') + '">' + (ok ? 'native' : 'emulated in JS') + '</b>';
+    sup.appendChild(d);
+  }
+  var hasLanes = window.CSS && CSS.supports && CSS.supports('display', 'grid-lanes');
+  var hasFlow = window.CSS && CSS.supports && CSS.supports('reading-flow', 'grid-rows');
+  chip('display: grid-lanes', !!hasLanes);
+  chip('reading-flow: grid-rows', !!hasFlow);
+  window.__laneSupport = { lanes: !!hasLanes, readingFlow: !!hasFlow };
+
+  // ---- the three fixed boards ------------------------------------------
+  var DEMO = [96, 62, 96, 62, 62, 34];
+  var TRIO = [
+    { name: 'flow-tolerance: 0', tol: 0, note: 'Densest packing. The browser will hop lanes over a 1px difference.' },
+    { name: 'flow-tolerance: 1em', tol: 16, note: 'The initial value — “close enough” lanes count as equal.' },
+    { name: 'flow-tolerance: infinite', tol: 1e9, note: 'Source order wins outright; lanes just take turns.' }
+  ];
+  var trioBoards = [];
+  var trio = document.getElementById('trio');
+  TRIO.forEach(function(t){
+    var wrap = document.createElement('div');
+    wrap.className = 'miniWrap glass';
+    wrap.innerHTML = '<h3>' + t.name + '</h3><p class="tol">' + t.note + '</p>' +
+                     '<div class="board"></div><p class="score">focus jumps: <b>0</b></p>';
+    trio.appendChild(wrap);
+    var b = new Board(wrap.querySelector('.board'), {});
+    b.setData(DEMO.slice());
+    trioBoards.push({ b: b, tol: t.tol, score: wrap.querySelector('.score') });
+  });
+
+  function drawTrio(){
+    trioBoards.forEach(function(t){
+      var n = t.b.layout(3, t.tol, 10, true, false);
+      t.score.innerHTML = 'focus jumps: <b>' + n + '</b>';
+      t.score.classList.toggle('warn', n > 0);
+    });
+  }
+
+  // ---- live board -------------------------------------------------------
+  var live = new Board(document.getElementById('live'), {});
+  var S = { cols: 4, tol: 16, items: 14, gap: 12, path: true, inf: false, safe: false, focused: false };
+  var seed = 7;
+  function rnd(){ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  var heights = [];
+  function regen(n){
+    seed = 7; heights = [];
+    for (var i = 0; i < n; i++) heights.push(Math.round(52 + rnd() * 108));
+  }
+  regen(S.items);
+
+  function renderLive(){
+    live.setData(heights.slice(0, S.items));
+    var tol = S.inf ? 1e9 : S.tol;
+    var unpacked = S.safe && S.focused;
+    var n = live.layout(S.cols, tol, S.gap, S.path, unpacked);
+    var ro = document.getElementById('readout');
+    ro.innerHTML = unpacked
+      ? '<b>Unpacked.</b> Focus entered the board so it fell back to a plain in-order grid — the trick Matuzovic files under “not sure I recommend this”: <code>.lanes:has(:focus-visible){ display:grid }</code>.'
+      : '<b>' + n + '</b> focus jump' + (n === 1 ? '' : 's') + ' across ' + S.items + ' items — every red edge is a place where the tab order runs backwards up the page.';
+    window.__liveJumps = n;
+  }
+
+  function tg(id, key, after){
+    var el = document.getElementById(id);
+    el.addEventListener('click', function(){
+      var next = el.getAttribute('aria-pressed') !== 'true';
+      el.setAttribute('aria-pressed', String(next));
+      if (key) S[key] = next;
+      if (after) after(next);
+      renderLive();
+    });
+  }
+  tg('tgPath', 'path');
+  tg('tgInf', 'inf');
+  tg('tgSafe', 'safe');
+  tg('tgShuffle', null, function(on){
+    seed = on ? 31 : 7;
+    heights = [];
+    for (var i = 0; i < 24; i++) heights.push(Math.round(52 + rnd() * 108));
+  });
+
+  document.getElementById('live').addEventListener('focusin', function(){ S.focused = true; renderLive(); });
+  document.getElementById('live').addEventListener('focusout', function(e){
+    if (!document.getElementById('live').contains(e.relatedTarget)){ S.focused = false; renderLive(); }
+  });
+
+  function bind(id, out, fn){
+    var el = document.getElementById(id), lab = document.getElementById(out);
+    function apply(){ lab.textContent = fn(parseFloat(el.value)); renderLive(); }
+    el.addEventListener('input', apply);
+    lab.textContent = fn(parseFloat(el.value));
+  }
+  bind('pCols', 'vCols', function(v){ S.cols = Math.round(v); return S.cols; });
+  bind('pTol', 'vTol', function(v){ S.tol = Math.round(v); return S.tol + 'px'; });
+  bind('pItems', 'vItems', function(v){ S.items = Math.round(v); if (heights.length < S.items) regen(S.items); return S.items; });
+  bind('pGap', 'vGap', function(v){ S.gap = Math.round(v); return S.gap + 'px'; });
+
+  regen(24);
+  function renderAll(){ drawTrio(); renderLive(); }
+  renderAll();
+  var rt;
+  window.addEventListener('resize', function(){ clearTimeout(rt); rt = setTimeout(renderAll, 90); });
+  window.__renderAll = renderAll;
+})();
+</script>
+</body>
+</html>
