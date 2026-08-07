@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Siege Lab — Trebuchet &amp; Catapult Sandbox</title>
+<style>
+  :root{
+    --bg:#0c0a08;
+    --panel:#18130f;
+    --panel2:#211a13;
+    --line:rgba(255,255,255,0.09);
+    --text:#f4ece1;
+    --sub:#a9927d;
+    --wood:#d97a3f;
+    --stone:#7c8a99;
+    --danger:#c94f4f;
+    --gold:#f2c14e;
+    --good:#6fce8f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; overscroll-behavior:none;}
+  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
+
+  /* ---------- top bar ---------- */
+  #topbar{
+    display:flex; align-items:center; gap:10px; padding:9px 12px;
+    background:linear-gradient(180deg, rgba(24,19,15,0.98), rgba(24,19,15,0.9));
+    border-bottom:1px solid var(--line); z-index:40; flex-wrap:wrap;
+  }
+  #brand{display:flex; align-items:center; gap:8px; font-weight:800; font-size:15px; margin-right:auto;}
+  #brand .dot{width:9px;height:9px;border-radius:50%;background:var(--wood); box-shadow:0 0 8px var(--wood);}
+  #brand small{color:var(--sub); font-weight:500; font-size:10.5px; display:block;}
+
+  .pill-toggle{
+    position:relative; display:flex; background:var(--panel2); border-radius:999px; padding:3px;
+    border:1px solid var(--line); width:206px; height:36px; flex-shrink:0;
+  }
+  .pill-toggle button{
+    flex:1; z-index:2; background:none; border:none; color:var(--sub); font-size:12.5px; font-weight:700;
+    border-radius:999px; cursor:pointer; letter-spacing:.02em;
+  }
+  .pill-toggle button.active{color:#1a1208;}
+  .pill-toggle button:disabled{cursor:default;}
+  .pill-thumb{
+    position:absolute; top:3px; left:3px; width:calc(50% - 3px); height:calc(100% - 6px);
+    background:linear-gradient(135deg,var(--wood),var(--gold)); border-radius:999px;
+    transition:transform .32s cubic-bezier(.34,1.56,.64,1); box-shadow:0 2px 10px rgba(217,122,63,.4);
+  }
+  .pill-toggle.on .pill-thumb{transform:translateX(100%);}
+
+  .iconBtn{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:10px;
+    width:36px; height:36px; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .iconBtn:active{transform:scale(.94);}
+
+  /* ---------- stage ---------- */
+  #stage{position:relative; flex:1; min-height:0; background:var(--bg); overflow:hidden; display:flex; flex-direction:column;}
+  #canvasWrap{position:relative; flex:1; min-height:0;}
+  #canvas{position:absolute; inset:0; width:100%; height:100%; display:block;}
+
+  #hint{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    background:rgba(12,10,8,.74); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:7px 14px; border-radius:999px; font-size:12px; color:var(--sub); pointer-events:none;
+    transition:opacity .5s; z-index:10; text-align:center; max-width:90%;
+  }
+  #hint b{color:var(--gold);}
+  #hint.hide{opacity:0;}
+
+  #scoreBanner{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%) translateY(-160%);
+    background:linear-gradient(135deg,#241a12,#171009); border:1px solid rgba(242,193,78,.4);
+    color:var(--text); padding:12px 22px; border-radius:14px; font-weight:700; font-size:14px;
+    box-shadow:0 10px 32px rgba(0,0,0,.55); z-index:25; transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+    text-align:center; pointer-events:none; max-width:92%;
+  }
+  #scoreBanner.show{transform:translateX(-50%) translateY(0);}
+  #scoreBanner .sb-title{font-size:16px; margin-bottom:3px;}
+  #scoreBanner .sb-row b{color:var(--gold); font-size:17px;}
+  #scoreBanner .sb-best{color:var(--good); font-weight:800; margin-left:4px;}
+
+  #toast{
+    position:absolute; bottom:18px; left:50%; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:rgba(12,10,8,.94); border:1px solid var(--line); color:var(--text); padding:9px 16px; border-radius:999px;
+    font-size:12.5px; z-index:60; transition:all .28s; pointer-events:none; white-space:nowrap;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  /* ---------- control panel ----------
+     Mobile-first: a normal flex child docked at the bottom of #stage, so it
+     shares space with (pushes up) the canvas instead of covering it.
+     Desktop overrides it to a floating top-right glass card (see media query). */
+  #panel{
+    width:100%; flex-shrink:0;
+    background:rgba(24,19,15,.92); backdrop-filter:blur(14px); border:1px solid var(--line);
+    border-top:1px solid var(--line); border-radius:16px 16px 0 0; z-index:30; box-shadow:0 -8px 30px rgba(0,0,0,.4);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  #panelHandle{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:10px 12px; cursor:pointer; border-bottom:1px solid var(--line); user-select:none;
+  }
+  #panelHandle .ph-title{font-size:12.5px; font-weight:800; letter-spacing:.03em; color:var(--sub);}
+  #panelHandle .ph-chevron{font-size:12px; color:var(--sub); transition:transform .25s;}
+  #panel.collapsed #panelHandle .ph-chevron{transform:rotate(-90deg);}
+
+  #panelBody{max-height:520px; overflow-y:auto; transition:max-height .3s ease, opacity .25s ease; padding:12px; display:flex; flex-direction:column; gap:14px;}
+  #panel.collapsed #panelBody{max-height:0; opacity:0; padding-top:0; padding-bottom:0; overflow:hidden;}
+
+  .sec-title{font-size:10.5px; font-weight:800; letter-spacing:.06em; color:var(--sub); text-transform:uppercase; margin-bottom:6px;}
+
+  #levelRow{display:flex; gap:6px;}
+  .levelBtn{
+    flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--sub);
+    border-radius:10px; padding:8px 4px; font-size:11px; font-weight:700; cursor:pointer; text-align:center;
+    line-height:1.3;
+  }
+  .levelBtn.active{border-color:var(--wood); background:rgba(217,122,63,.18); color:var(--text);}
+  .levelBtn:disabled{opacity:.5; cursor:default;}
+
+  .ctrlRow{display:flex; flex-direction:column; gap:5px;}
+  .ctrlLabel{display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--sub); font-weight:600;}
+  .ctrlLabel .ctrlVal{color:var(--gold); font-weight:800; font-variant-numeric:tabular-nums;}
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; width:100%; height:30px; background:transparent; margin:0; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:6px; border-radius:4px; background:linear-gradient(90deg,var(--wood),var(--gold));}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:#fff;
+    border:3px solid var(--wood); margin-top:-8px; box-shadow:0 2px 6px rgba(0,0,0,.5);
+  }
+  input[type=range]::-moz-range-track{height:6px; border-radius:4px; background:linear-gradient(90deg,var(--wood),var(--gold));}
+  input[type=range]::-moz-range-thumb{width:22px; height:22px; border-radius:50%; background:#fff; border:3px solid var(--wood); box-shadow:0 2px 6px rgba(0,0,0,.5);}
+  input[type=range]:disabled{opacity:.45;}
+
+  #bestRow{display:flex; align-items:center; justify-content:space-between; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:8px 10px;}
+  #bestRow span{font-size:11.5px; color:var(--sub); font-weight:700;}
+  #bestScoreVal{font-size:15px; font-weight:800; color:var(--gold);}
+
+  #actionBar{display:flex; gap:6px; padding:10px 12px; border-top:1px solid var(--line); background:rgba(18,14,10,.5);}
+  .actionBtn{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    border:none; border-radius:11px; padding:9px 4px; font-size:10.5px; font-weight:800; cursor:pointer;
+    min-height:48px; color:var(--text); background:var(--panel2); border:1px solid var(--line);
+  }
+  .actionBtn .ic{font-size:16px;}
+  .actionBtn.primary{background:linear-gradient(135deg,var(--wood),#c65f2c); border-color:transparent; color:#fff;}
+  .actionBtn:active{transform:scale(.95);}
+  .actionBtn:disabled{opacity:.5; cursor:default; transform:none;}
+
+  @media (max-width:860px){
+    #panelBody{max-height:34vh;}
+    #panel.collapsed #panelBody{max-height:0;}
+    #hint{top:8px; font-size:11px;}
+  }
+  @media (min-width:861px){
+    #panel{
+      position:absolute; top:14px; right:14px; width:280px; max-width:88vw;
+      border-radius:16px; border-top:1px solid var(--line); box-shadow:0 14px 40px rgba(0,0,0,.5);
+    }
+    #panel.collapsed #panelBody{max-height:520px; opacity:1; padding:12px; overflow-y:auto;}
+    #panel.collapsed #panelHandle .ph-chevron{transform:none;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div id="brand"><span class="dot"></span><div>Siege Lab<small>trebuchet &amp; catapult sandbox</small></div></div>
+    <div class="pill-toggle" id="weaponToggle" role="tablist" aria-label="Weapon">
+      <div class="pill-thumb"></div>
+      <button id="btnWeaponTreb" class="active" type="button">Trebuchet</button>
+      <button id="btnWeaponCat" type="button">Catapult</button>
+    </div>
+    <button class="iconBtn" id="btnMute" title="Mute / unmute">🔊</button>
+    <button class="iconBtn" id="btnPanelToggle" title="Toggle controls">⚙</button>
+  </div>
+
+  <div id="stage">
+    <div id="canvasWrap">
+      <canvas id="canvas"></canvas>
+      <div id="hint">Tune your weapon below, then hit <b>🔥 Fire</b> — first shot's free.</div>
+      <div id="scoreBanner"></div>
+      <div id="toast"></div>
+    </div>
+
+    <div id="panel">
+      <div id="panelHandle">
+        <span class="ph-title" id="levelNameVal">LOW WALL</span>
+        <span class="ph-chevron">▾</span>
+      </div>
+      <div id="panelBody">
+        <div>
+          <div class="sec-title">Target</div>
+          <div id="levelRow">
+            <button class="levelBtn active" type="button" data-level="0">Low<br>Wall</button>
+            <button class="levelBtn" type="button" data-level="1">Tower</button>
+            <button class="levelBtn" type="button" data-level="2">Pyramid</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="sec-title">Weapon Tuning</div>
+          <div class="ctrlRow">
+            <div class="ctrlLabel"><span id="lblPowerName">Counterweight Mass</span><span class="ctrlVal" id="valPower">450 kg</span></div>
+            <input type="range" id="sldPower" min="150" max="900" step="10" value="450">
+          </div>
+          <div class="ctrlRow" style="margin-top:12px;">
+            <div class="ctrlLabel"><span id="lblArmName">Arm Ratio (Long:Short)</span><span class="ctrlVal" id="valArm">3.0:1</span></div>
+            <input type="range" id="sldArm" min="1.5" max="5.0" step="0.1" value="3.0">
+          </div>
+          <div class="ctrlRow" id="rowSling" style="margin-top:12px;">
+            <div class="ctrlLabel"><span>Sling Length</span><span class="ctrlVal" id="valSling">110 u</span></div>
+            <input type="range" id="sldSling" min="60" max="220" step="5" value="110">
+          </div>
+          <div class="ctrlRow" style="margin-top:12px;">
+            <div class="ctrlLabel"><span>Release Angle</span><span class="ctrlVal" id="valAngle">45°</span></div>
+            <input type="range" id="sldAngle" min="10" max="70" step="1" value="45">
+          </div>
+        </div>
+
+        <div id="bestRow">
+          <span>BEST SCORE</span>
+          <span id="bestScoreVal">0</span>
+        </div>
+      </div>
+
+      <div id="actionBar">
+        <button class="actionBtn primary" id="btnFire" type="button"><span class="ic">🔥</span>Fire</button>
+        <button class="actionBtn" id="btnReset" type="button"><span class="ic">↺</span>Reset</button>
+        <button class="actionBtn" id="btnScreenshot" type="button"><span class="ic">📸</span>Snap</button>
+        <button class="actionBtn" id="btnShare" type="button"><span class="ic">🔗</span>Share</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================= constants ============================= */
+var LOGICAL_W = 1400, LOGICAL_H = 720;
+var GROUND_Y = 640;
+var GRAVITY = 1250;
+var PROJ_MASS = 12;
+var PROJ_RADIUS = 11;
+var ARM_DT = 1/240;
+var ARM_SUBSTEPS = 4;
+var ARM_DAMPING = 0.12;
+var MAX_THETA = 100 * Math.PI / 180;
+
+var TREB_TOTAL_BEAM = 260;
+var TREB_THETA_START = -80 * Math.PI / 180;
+var TREB_BEAM_K = 2.0;
+var TREB_PIVOT = { x: 190, y: 500 };
+
+var CAT_THETA_START = -78 * Math.PI / 180;
+var CAT_BEAM_K = 3.0;
+var CAT_TORQUE_K = 185000;
+var CAT_PIVOT = { x: 190, y: 585 };
+
+var CRATE_SIZE = 46;
+var CRATE_GAP = 6;
+var PARTICLE_SKIN = 3;
+var CONSTRAINT_ITERS = 4;
+var VERLET_DAMP = 0.98;
+var GROUND_FRICTION = 0.35;
+var CRATE_PRESETTLE_STEPS = 90;
+var DRAG_FLIGHT = 0.0022;
+
+var SETTINGS_KEY = 'SIEGE_LAB_SETTINGS_V1';
+var BEST_KEY = 'SIEGE_LAB_BEST_V1';
+
+var CRATE_TINTS = [
+  { light:'#e0954f', dark:'#8a5225' },
+  { light:'#c9b184', dark:'#6f5c39' },
+  { light:'#9aa7b3', dark:'#4b5560' },
+  { light:'#d9a15c', dark:'#7a4a20' }
+];
+
+/* ============================= dom refs ============================= */
+var stage = document.getElementById('stage');
+var canvasWrap = document.getElementById('canvasWrap');
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var hintEl = document.getElementById('hint');
+var scoreBanner = document.getElementById('scoreBanner');
+var toastEl = document.getElementById('toast');
+
+var btnWeaponTreb = document.getElementById('btnWeaponTreb');
+var btnWeaponCat = document.getElementById('btnWeaponCat');
+var weaponToggleEl = document.getElementById('weaponToggle');
+var btnMute = document.getElementById('btnMute');
+var btnPanelToggle = document.getElementById('btnPanelToggle');
+
+var panelEl = document.getElementById('panel');
+var levelNameVal = document.getElementById('levelNameVal');
+var lblPowerName = document.getElementById('lblPowerName');
+var lblArmName = document.getElementById('lblArmName');
+var valPower = document.getElementById('valPower');
+var valArm = document.getElementById('valArm');
+var valSling = document.getElementById('valSling');
+var valAngle = document.getElementById('valAngle');
+var sldPower = document.getElementById('sldPower');
+var sldArm = document.getElementById('sldArm');
+var sldSling = document.getElementById('sldSling');
+var sldAngle = document.getElementById('sldAngle');
+var rowSling = document.getElementById('rowSling');
+var bestScoreVal = document.getElementById('bestScoreVal');
+
+var btnFire = document.getElementById('btnFire');
+var btnReset = document.getElementById('btnReset');
+var btnScreenshot = document.getElementById('btnScreenshot');
+var btnShare = document.getElementById('btnShare');
+
+/* ============================= utils ============================= */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function clampNum(v,min,max,fallback){ v=parseFloat(v); if(!isFinite(v)) return fallback; return clamp(v,min,max); }
+function polarPoint(pivot, theta, r){ return { x: pivot.x + r*Math.cos(theta), y: pivot.y - r*Math.sin(theta) }; }
+function longArmOf(cfg){ var Lshort = TREB_TOTAL_BEAM/(1+cfg.ratio); return TREB_TOTAL_BEAM - Lshort; }
+function shortArmOf(cfg){ return TREB_TOTAL_BEAM/(1+cfg.ratio); }
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 2000);
+}
+
+/* ============================= level defs ============================= */
+function makeWall(baseX){
+  var step = CRATE_SIZE+CRATE_GAP, cols=6, rows=2, list=[];
+  for(var r=0;r<rows;r++){
+    for(var c=0;c<cols;c++){
+      var isTarget = (r===rows-1 && c===Math.floor(cols/2));
+      list.push({ cx: baseX+(c-(cols-1)/2)*step, cy: GROUND_Y-CRATE_SIZE/2-r*step, isTarget: isTarget });
+    }
+  }
+  return list;
+}
+function makeTower(baseX){
+  var step = CRATE_SIZE+CRATE_GAP, rows=6, list=[];
+  for(var r=0;r<rows;r++){
+    list.push({ cx: baseX, cy: GROUND_Y-CRATE_SIZE/2-r*step, isTarget: r===rows-1 });
+  }
+  return list;
+}
+function makePyramid(baseX){
+  var step = CRATE_SIZE+CRATE_GAP, rowsCounts=[5,4,3,2,1], list=[];
+  for(var r=0;r<rowsCounts.length;r++){
+    var cols = rowsCounts[r];
+    for(var c=0;c<cols;c++){
+      list.push({ cx: baseX+(c-(cols-1)/2)*step, cy: GROUND_Y-CRATE_SIZE/2-r*step, isTarget: r===rowsCounts.length-1 });
+    }
+  }
+  return list;
+}
+var LEVELS = [
+  { name:'Low Wall', baseX:660, build:makeWall },
+  { name:'Tower', baseX:780, build:makeTower },
+  { name:'Pyramid', baseX:840, build:makePyramid }
+];
+
+/* ============================= state ============================= */
+var params = {
+  trebuchet: { cw:450, ratio:3.0, sling:110, release:45 },
+  catapult:  { power:55, arm:230, release:45 }
+};
+var audioMuted = false;
+
+var state = {
+  weaponType: 'trebuchet',
+  levelIdx: 0,
+  phase: 'idle', // idle | swinging | flight | settled
+  theta: TREB_THETA_START,
+  omega: 0,
+  releaseTheta: 0,
+  activeCfg: null,
+  armAtRest: false,
+  crates: [],
+  projectile: null,
+  particles: [],
+  shake: 0,
+  settleTimer: 0,
+  shotElapsed: 0,
+  lastScore: null
+};
+
+/* ============================= crate factory ============================= */
+function makeCrate(cx, cy, isTarget, tint){
+  var hw = CRATE_SIZE/2, hh = CRATE_SIZE/2;
+  var corners = [
+    { x:cx-hw, y:cy-hh, px:cx-hw, py:cy-hh },
+    { x:cx+hw, y:cy-hh, px:cx+hw, py:cy-hh },
+    { x:cx+hw, y:cy+hh, px:cx+hw, py:cy+hh },
+    { x:cx-hw, y:cy+hh, px:cx-hw, py:cy+hh }
+  ];
+  var diag = Math.sqrt(2)*CRATE_SIZE;
+  var edges = [ [0,1,CRATE_SIZE],[1,2,CRATE_SIZE],[2,3,CRATE_SIZE],[3,0,CRATE_SIZE],[0,2,diag],[1,3,diag] ];
+  return { corners:corners, edges:edges, cx0:cx, cy0:cy, isTarget:!!isTarget, tint:tint||0, hitCooldown:0, wasHit:false, knocked:false };
+}
+function centroidOf(cr){
+  var sx=0, sy=0;
+  for(var i=0;i<4;i++){ sx+=cr.corners[i].x; sy+=cr.corners[i].y; }
+  return { x:sx/4, y:sy/4 };
+}
+function crateAABB(cr){
+  var minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(var i=0;i<4;i++){
+    var p=cr.corners[i];
+    if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x;
+    if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y;
+  }
+  return { minX:minX, maxX:maxX, minY:minY, maxY:maxY };
+}
+
+function buildLevel(idx){
+  var def = LEVELS[idx];
+  var specs = def.build(def.baseX);
+  state.crates = specs.map(function(s,i){ return makeCrate(s.cx, s.cy, s.isTarget, i%4); });
+  for(var k=0;k<CRATE_PRESETTLE_STEPS;k++){ stepCrates(1/60); }
+}
+
+/* ============================= crate physics (verlet) ============================= */
+function stepCrates(dt){
+  var i, cr, p;
+  for(i=0;i<state.crates.length;i++){
+    cr = state.crates[i];
+    for(var k=0;k<4;k++){
+      p = cr.corners[k];
+      var vx = clamp((p.x-p.px)*VERLET_DAMP, -60, 60);
+      var vy = clamp((p.y-p.py)*VERLET_DAMP, -60, 60);
+      var nx = p.x+vx, ny = p.y+vy+GRAVITY*dt*dt;
+      p.px = p.x; p.py = p.y;
+      p.x = nx; p.y = ny;
+    }
+  }
+  for(var iter=0; iter<CONSTRAINT_ITERS; iter++){
+    for(i=0;i<state.crates.length;i++){
+      cr = state.crates[i];
+      for(var e=0;e<cr.edges.length;e++){
+        var edge = cr.edges[e];
+        var a = cr.corners[edge[0]], b = cr.corners[edge[1]], rest = edge[2];
+        var dx = b.x-a.x, dy = b.y-a.y;
+        var dist = Math.sqrt(dx*dx+dy*dy) || 0.0001;
+        var diff = (dist-rest)/dist*0.5;
+        var ox = dx*diff, oy = dy*diff;
+        a.x += ox; a.y += oy;
+        b.x -= ox; b.y -= oy;
+      }
+      for(var k2=0;k2<4;k2++){
+        p = cr.corners[k2];
+        if(p.y > GROUND_Y){
+          var fx = p.x - p.px;
+          p.y = GROUND_Y;
+          p.py = p.y;
+          p.px = p.x - fx*(1-GROUND_FRICTION);
+        }
+        if(p.x < 8) p.x = 8;
+        if(p.x > LOGICAL_W-8) p.x = LOGICAL_W-8;
+      }
+    }
+    for(i=0;i<state.crates.length;i++){
+      for(var j=i+1;j<state.crates.length;j++){
+        var c1 = state.crates[i], c2 = state.crates[j];
+        var cen1 = centroidOf(c1), cen2 = centroidOf(c2);
+        var cdx = cen2.x-cen1.x, cdy = cen2.y-cen1.y;
+        var cdist = Math.sqrt(cdx*cdx+cdy*cdy) || 0.0001;
+        if(cdist > CRATE_SIZE*2.3) continue;
+        for(var m=0;m<4;m++){
+          for(var n=0;n<4;n++){
+            var p1 = c1.corners[m], p2 = c2.corners[n];
+            var dx2 = p2.x-p1.x, dy2 = p2.y-p1.y;
+            var d2 = Math.sqrt(dx2*dx2+dy2*dy2) || 0.0001;
+            if(d2 < PARTICLE_SKIN){
+              var diff2 = (PARTICLE_SKIN-d2)/d2*0.5;
+              var ox2 = dx2*diff2, oy2 = dy2*diff2;
+              p1.x -= ox2; p1.y -= oy2;
+              p2.x += ox2; p2.y += oy2;
+            }
+          }
+        }
+        // point-vs-edge support: catches contacts that land mid-edge (e.g. a
+        // pyramid's nested/offset stacking) which corner-vs-corner alone misses.
+        resolvePointVsCrateEdges(c1, c2, PARTICLE_SKIN+2);
+        resolvePointVsCrateEdges(c2, c1, PARTICLE_SKIN+2);
+        if(cdist < CRATE_SIZE*0.92){
+          var push = (CRATE_SIZE*0.92-cdist)/cdist*0.5;
+          var pox = cdx*push, poy = cdy*push;
+          for(var q=0;q<4;q++){ c1.corners[q].x -= pox; c1.corners[q].y -= poy; }
+          for(var q2=0;q2<4;q2++){ c2.corners[q2].x += pox; c2.corners[q2].y += poy; }
+        }
+      }
+    }
+  }
+}
+var CRATE_SIDES = [[0,1],[1,2],[2,3],[3,0]];
+function resolvePointVsCrateEdges(pointCrate, edgeCrate, skin){
+  var ec = edgeCrate.corners;
+  for(var k=0;k<4;k++){
+    var p = pointCrate.corners[k];
+    for(var s=0;s<4;s++){
+      var a = ec[CRATE_SIDES[s][0]], b = ec[CRATE_SIDES[s][1]];
+      var dx = b.x-a.x, dy = b.y-a.y;
+      var len2 = dx*dx+dy*dy || 1;
+      var t = ((p.x-a.x)*dx+(p.y-a.y)*dy)/len2;
+      t = clamp(t, 0, 1);
+      var cx = a.x+dx*t, cy = a.y+dy*t;
+      var ndx = p.x-cx, ndy = p.y-cy;
+      var dist = Math.sqrt(ndx*ndx+ndy*ndy) || 0.0001;
+      if(dist < skin){
+        var nx = ndx/dist, ny = ndy/dist;
+        var pen = (skin-dist)*0.6;
+        p.x += nx*pen*0.5; p.y += ny*pen*0.5;
+        var wA = (1-t)*0.5, wB = t*0.5;
+        a.x -= nx*pen*wA; a.y -= ny*pen*wA;
+        b.x -= nx*pen*wB; b.y -= ny*pen*wB;
+      }
+    }
+  }
+}
+function crateMotionEnergy(){
+  var e=0, n=0;
+  for(var i=0;i<state.crates.length;i++){
+    var cr = state.crates[i];
+    for(var k=0;k<4;k++){
+      var p = cr.corners[k];
+      var vx = p.x-p.px, vy = p.y-p.py;
+      e += vx*vx+vy*vy; n++;
+    }
+  }
+  return n ? e/n : 0;
+}
+
+/* ============================= arm physics ============================= */
+function integrateArm(dt, cfg, projAttached){
+  var torque, I;
+  if(state.weaponType==='trebuchet'){
+    var Lshort = shortArmOf(cfg), Llong = longArmOf(cfg);
+    var R = Llong + cfg.sling;
+    var projTerm = projAttached ? PROJ_MASS*R : 0;
+    var projInertia = projAttached ? PROJ_MASS*R*R : 0;
+    I = cfg.cw*Lshort*Lshort + projInertia + TREB_BEAM_K*(Lshort*Lshort+Llong*Llong);
+    torque = GRAVITY*Math.cos(state.theta)*(cfg.cw*Lshort - projTerm) - ARM_DAMPING*state.omega*Math.abs(state.omega);
+  } else {
+    var armLen = cfg.arm;
+    var projInertia2 = projAttached ? PROJ_MASS*armLen*armLen : 0;
+    I = projInertia2 + CAT_BEAM_K*armLen*armLen + 30*armLen;
+    var projWeightTerm = projAttached ? PROJ_MASS*armLen : 0;
+    var driveTorque = cfg.power*CAT_TORQUE_K*(projAttached?1:0.12);
+    torque = driveTorque - GRAVITY*Math.cos(state.theta)*projWeightTerm - ARM_DAMPING*state.omega*Math.abs(state.omega);
+  }
+  var acc = torque/I;
+  state.omega += acc*dt;
+  state.theta += state.omega*dt;
+}
+
+function updateArm(dt){
+  if(state.phase==='swinging'){
+    for(var i=0;i<ARM_SUBSTEPS;i++){
+      integrateArm(ARM_DT, state.activeCfg, true);
+      if(state.theta >= state.releaseTheta){ doRelease(); break; }
+    }
+  } else if(state.phase==='flight' && !state.armAtRest){
+    for(var j=0;j<ARM_SUBSTEPS;j++){
+      integrateArm(ARM_DT, state.activeCfg, false);
+      if(state.theta >= MAX_THETA){ state.theta = MAX_THETA; state.omega = 0; state.armAtRest = true; break; }
+    }
+    if(Math.abs(state.omega) < 0.015) state.armAtRest = true;
+  }
+}
+
+function currentArmGeom(){
+  if(state.phase==='idle' || state.phase==='settled'){
+    var p = params[state.weaponType];
+    if(state.weaponType==='trebuchet'){
+      var Lshort = shortArmOf(p), Llong = longArmOf(p);
+      return { theta:TREB_THETA_START, Lshort:Lshort, Llong:Llong, sling:p.sling, attached:true };
+    }
+    return { theta:CAT_THETA_START, armLen:p.arm, attached:true };
+  }
+  var cfg = state.activeCfg;
+  var attached = state.phase==='swinging';
+  if(state.weaponType==='trebuchet'){
+    var Ls2 = shortArmOf(cfg), Ll2 = longArmOf(cfg);
+    return { theta:state.theta, Lshort:Ls2, Llong:Ll2, sling:cfg.sling, attached:attached };
+  }
+  return { theta:state.theta, armLen:cfg.arm, attached:attached };
+}
+
+function doRelease(){
+  var pivot = state.weaponType==='trebuchet' ? TREB_PIVOT : CAT_PIVOT;
+  var cfg = state.activeCfg;
+  var R = state.weaponType==='trebuchet' ? (longArmOf(cfg)+cfg.sling) : cfg.arm;
+  var tip = polarPoint(pivot, state.theta, R);
+  var v = state.omega*R;
+  var vx = -v*Math.sin(state.theta);
+  var vyCanvas = -(v*Math.cos(state.theta));
+  state.projectile = { x:tip.x, y:tip.y, vx:vx, vy:vyCanvas, active:true, embedded:false, trail:[], maxX:tip.x };
+  state.phase = 'flight';
+  state.armAtRest = false;
+  playThwack(clamp(Math.abs(v)/2200, 0, 1));
+}
+
+/* ============================= projectile physics ============================= */
+function stepProjectile(dt){
+  var pr = state.projectile;
+  if(!pr || !pr.active) return;
+  pr.vy += GRAVITY*dt;
+  pr.vx *= (1-DRAG_FLIGHT);
+  pr.vy *= (1-DRAG_FLIGHT);
+  pr.x += pr.vx*dt;
+  pr.y += pr.vy*dt;
+  if(pr.x > pr.maxX) pr.maxX = pr.x;
+  pr.trail.push({ x:pr.x, y:pr.y });
+  if(pr.trail.length > 16) pr.trail.shift();
+
+  if(pr.y > GROUND_Y - PROJ_RADIUS){
+    pr.y = GROUND_Y - PROJ_RADIUS;
+    if(Math.abs(pr.vy) > 60){
+      pr.vy *= -0.3;
+      pr.vx *= 0.7;
+      addShake(clamp(Math.abs(pr.vy)*0.05, 0, 12));
+      playThud(clamp(Math.abs(pr.vy)/900, 0, 1));
+    } else {
+      pr.vy = 0;
+      pr.vx *= 0.9;
+      pr.embedded = true;
+    }
+  }
+  if(pr.x > LOGICAL_W+40 || pr.x < -40){ pr.active = false; }
+
+  for(var i=0;i<state.crates.length;i++){
+    var cr = state.crates[i];
+    if(cr.hitCooldown > 0) cr.hitCooldown -= dt;
+    var bb = crateAABB(cr);
+    var closestX = clamp(pr.x, bb.minX, bb.maxX);
+    var closestY = clamp(pr.y, bb.minY, bb.maxY);
+    var dx = pr.x-closestX, dy = pr.y-closestY;
+    var dist = Math.sqrt(dx*dx+dy*dy);
+    if(dist < PROJ_RADIUS+2){
+      var nx, ny;
+      if(dist > 0.001){ nx = dx/dist; ny = dy/dist; } else { nx = 0; ny = -1; }
+      pr.x = closestX + nx*(PROJ_RADIUS+2);
+      pr.y = closestY + ny*(PROJ_RADIUS+2);
+      var speed = Math.sqrt(pr.vx*pr.vx+pr.vy*pr.vy);
+      if(cr.hitCooldown <= 0 && speed > 40){
+        applyImpulseToCrate(cr, closestX, closestY, pr.vx, pr.vy);
+        cr.hitCooldown = 0.12;
+        cr.wasHit = true;
+        pr.vx *= 0.5; pr.vy *= 0.45;
+        addShake(clamp(speed*0.012, 0, 16));
+        spawnDebris(closestX, closestY, cr.tint, clamp(4+speed*0.01, 4, 10));
+        playCrash(clamp(speed/1200, 0, 1));
+      }
+    }
+  }
+}
+function applyImpulseToCrate(cr, hitX, hitY, vx, vy){
+  var speed = Math.sqrt(vx*vx+vy*vy) || 1;
+  var dirx = vx/speed, diry = vy/speed;
+  var kick = clamp(speed*0.05, 4, 60);
+  for(var k=0;k<4;k++){
+    var p = cr.corners[k];
+    var dx = p.x-hitX, dy = p.y-hitY;
+    var d = Math.sqrt(dx*dx+dy*dy);
+    var w = 1/(1+d*0.03);
+    p.px -= dirx*kick*w;
+    p.py -= diry*kick*w;
+  }
+}
+
+/* ============================= particles / shake ============================= */
+function spawnDebris(x,y,tint,count){
+  for(var i=0;i<count;i++){
+    state.particles.push({
+      x:x, y:y,
+      vx:(Math.random()-0.5)*400,
+      vy:-Math.random()*300-60,
+      life:0, maxLife:0.5+Math.random()*0.4,
+      size:3+Math.random()*4,
+      tint:tint,
+      rot:Math.random()*Math.PI*2,
+      vr:(Math.random()-0.5)*10
+    });
+  }
+  if(state.particles.length > 140){ state.particles.splice(0, state.particles.length-140); }
+}
+function updateParticles(dt){
+  for(var i=state.particles.length-1;i>=0;i--){
+    var p = state.particles[i];
+    p.vy += GRAVITY*dt;
+    p.x += p.vx*dt; p.y += p.vy*dt; p.rot += p.vr*dt;
+    p.life += dt;
+    if(p.y > GROUND_Y){ p.y = GROUND_Y; p.vy *= -0.3; p.vx *= 0.6; }
+    if(p.life > p.maxLife){ state.particles.splice(i,1); }
+  }
+}
+function addShake(m){ state.shake = Math.min(28, state.shake+m); }
+function updateShake(dt){
+  state.shake *= Math.pow(0.0008, dt);
+  if(state.shake < 0.05) state.shake = 0;
+}
+
+/* ============================= scoring ============================= */
+function launchPivotX(){ return state.weaponType==='trebuchet' ? TREB_PIVOT.x : CAT_PIVOT.x; }
+function computeScore(){
+  var knocked = 0, targetKnocked = false;
+  for(var i=0;i<state.crates.length;i++){
+    var cr = state.crates[i];
+    var cen = centroidOf(cr);
+    var dx = cen.x-cr.cx0, dy = cen.y-cr.cy0;
+    var disp = Math.sqrt(dx*dx+dy*dy);
+    var top = cr.corners[0], topR = cr.corners[1], bot = cr.corners[3], botR = cr.corners[2];
+    var topMidX = (top.x+topR.x)/2, topMidY = (top.y+topR.y)/2;
+    var botMidX = (bot.x+botR.x)/2, botMidY = (bot.y+botR.y)/2;
+    var vx = topMidX-botMidX, vy = topMidY-botMidY;
+    var ang = Math.atan2(vx, -vy) * 180/Math.PI;
+    var tilt = Math.abs(ang);
+    var isKnocked = tilt > 32 || disp > CRATE_SIZE*0.9;
+    cr.knocked = isKnocked;
+    if(isKnocked){ knocked++; if(cr.isTarget) targetKnocked = true; }
+  }
+  var pr = state.projectile;
+  var distancePx = pr ? Math.max(0, pr.maxX - launchPivotX()) : 0;
+  var distanceM = Math.round(distancePx/9);
+  var score = knocked*120 + (targetKnocked?600:0) + distanceM*3;
+  return { knocked:knocked, targetKnocked:targetKnocked, distanceM:distanceM, score:score, totalCrates:state.crates.length };
+}
+function loadBest(){
+  try{ return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; }catch(e){ return {}; }
+}
+function saveBestIfHigher(levelIdx, newScore){
+  var best = loadBest();
+  var key = String(levelIdx);
+  if(!best[key] || newScore > best[key]){
+    best[key] = newScore;
+    try{ localStorage.setItem(BEST_KEY, JSON.stringify(best)); }catch(e){}
+  }
+  return best[key];
+}
+function getBest(levelIdx){
+  var b = loadBest();
+  return b[String(levelIdx)] || 0;
+}
+function updateBestDisplay(){ bestScoreVal.textContent = getBest(state.levelIdx); }
+
+/* ============================= settle & shot flow ============================= */
+function checkSettle(dt){
+  if(state.phase !== 'flight') return;
+  state.shotElapsed += dt;
+  var pr = state.projectile;
+  var calmProjectile = !pr || !pr.active || (Math.abs(pr.vx) < 25 && Math.abs(pr.vy) < 25);
+  var calmCrates = crateMotionEnergy() < 4;
+  state.settleTimer = (calmProjectile && calmCrates) ? state.settleTimer+dt : 0;
+  if(state.settleTimer > 0.5 || state.shotElapsed > 7){
+    finishShot();
+  }
+}
+function finishShot(){
+  state.phase = 'settled';
+  var result = computeScore();
+  state.lastScore = result;
+  var best = saveBestIfHigher(state.levelIdx, result.score);
+  showScoreBanner(result, best);
+  disableSlidersAndLevel(false);
+  btnFire.disabled = false;
+  updateBestDisplay();
+}
+function showScoreBanner(r, best){
+  var titleTxt = r.targetKnocked ? '🎯 Direct Hit!' : (r.knocked>0 ? '💥 Structure Damaged' : '🌾 Clean Miss');
+  var bestTag = (r.score >= best) ? ' <span class="sb-best">NEW BEST!</span>' : '';
+  scoreBanner.innerHTML = '<div class="sb-title">'+titleTxt+'</div>'+
+    '<div class="sb-row"><b>'+r.score+'</b> pts &middot; '+r.knocked+'/'+r.totalCrates+' crates down &middot; '+r.distanceM+'m'+bestTag+'</div>';
+  scoreBanner.classList.add('show');
+}
+function hideScoreBanner(){ scoreBanner.classList.remove('show'); }
+
+function fireWeapon(){
+  if(state.phase==='swinging' || state.phase==='flight') return;
+  ensureAudio();
+  var cfg = state.weaponType==='trebuchet' ? Object.assign({}, params.trebuchet) : Object.assign({}, params.catapult);
+  state.activeCfg = cfg;
+  state.theta = state.weaponType==='trebuchet' ? TREB_THETA_START : CAT_THETA_START;
+  state.omega = 0;
+  state.releaseTheta = -cfg.release*Math.PI/180;
+  state.armAtRest = false;
+  state.projectile = null;
+  state.particles = [];
+  state.shake = 0;
+  state.settleTimer = 0;
+  state.shotElapsed = 0;
+  buildLevel(state.levelIdx);
+  state.phase = 'swinging';
+  hideScoreBanner();
+  disableSlidersAndLevel(true);
+  btnFire.disabled = true;
+  hintEl.classList.add('hide');
+  playCreak();
+}
+function resetShot(){
+  state.phase = 'idle';
+  state.projectile = null;
+  state.particles = [];
+  state.shake = 0;
+  state.theta = state.weaponType==='trebuchet' ? TREB_THETA_START : CAT_THETA_START;
+  state.omega = 0;
+  state.armAtRest = false;
+  buildLevel(state.levelIdx);
+  hideScoreBanner();
+  disableSlidersAndLevel(false);
+  btnFire.disabled = false;
+}
+function switchWeapon(type){
+  if(state.phase==='swinging' || state.phase==='flight') return;
+  if(state.weaponType === type) return;
+  state.weaponType = type;
+  state.phase = 'idle';
+  state.projectile = null;
+  state.theta = type==='trebuchet' ? TREB_THETA_START : CAT_THETA_START;
+  saveSettings();
+  updateWeaponUI();
+}
+function selectLevel(idx){
+  if(state.phase==='swinging' || state.phase==='flight') return;
+  if(state.levelIdx === idx) return;
+  state.levelIdx = idx;
+  buildLevel(idx);
+  state.phase = 'idle';
+  state.projectile = null;
+  hideScoreBanner();
+  saveSettings();
+  updateLevelUI();
+  updateBestDisplay();
+}
+function disableSlidersAndLevel(disabled){
+  sldPower.disabled = disabled;
+  sldArm.disabled = disabled;
+  sldSling.disabled = disabled;
+  sldAngle.disabled = disabled;
+  btnWeaponTreb.disabled = disabled;
+  btnWeaponCat.disabled = disabled;
+  var btns = document.querySelectorAll('.levelBtn');
+  for(var i=0;i<btns.length;i++){ btns[i].disabled = disabled; }
+}
+
+/* ============================= persistence ============================= */
+function saveSettings(){
+  var s = { weapon: state.weaponType, level: state.levelIdx, params: params, muted: audioMuted };
+  try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }catch(e){}
+}
+function loadSettingsRaw(){
+  try{
+    var raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function encodeShareHash(){
+  var payload = { w: state.weaponType, l: state.levelIdx, p: params };
+  try{ return btoa(JSON.stringify(payload)); }catch(e){ return ''; }
+}
+function decodeShareHash(hash){
+  try{ return JSON.parse(atob(hash)); }catch(e){ return null; }
+}
+function applyLoaded(s){
+  if(!s) return;
+  if(s.weapon || s.w) state.weaponType = s.weapon || s.w;
+  var lvl = (typeof s.level==='number') ? s.level : (typeof s.l==='number' ? s.l : null);
+  if(lvl!==null) state.levelIdx = lvl;
+  var p = s.params || s.p;
+  if(p){
+    if(p.trebuchet) Object.assign(params.trebuchet, p.trebuchet);
+    if(p.catapult) Object.assign(params.catapult, p.catapult);
+  }
+  if(typeof s.muted === 'boolean') audioMuted = s.muted;
+}
+function sanitizeParams(){
+  params.trebuchet.cw = clampNum(params.trebuchet.cw, 150, 900, 450);
+  params.trebuchet.ratio = clampNum(params.trebuchet.ratio, 1.5, 5.0, 3.0);
+  params.trebuchet.sling = clampNum(params.trebuchet.sling, 60, 220, 110);
+  params.trebuchet.release = clampNum(params.trebuchet.release, 10, 70, 45);
+  params.catapult.power = clampNum(params.catapult.power, 20, 100, 55);
+  params.catapult.arm = clampNum(params.catapult.arm, 150, 320, 230);
+  params.catapult.release = clampNum(params.catapult.release, 10, 70, 45);
+  if(state.weaponType!=='trebuchet' && state.weaponType!=='catapult') state.weaponType='trebuchet';
+  if(!(state.levelIdx>=0) || state.levelIdx>=LEVELS.length) state.levelIdx = 0;
+}
+
+/* ============================= audio ============================= */
+var audioCtx = null;
+var masterGain = null;
+var lastCrashSoundT = -1;
+function ensureAudio(){
+  if(audioCtx){
+    if(audioCtx.state==='suspended'){ audioCtx.resume(); }
+    return;
+  }
+  try{
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = audioMuted ? 0 : 0.85;
+    masterGain.connect(audioCtx.destination);
+  }catch(e){ audioCtx = null; }
+}
+function playCreak(){
+  if(!audioCtx) return;
+  var t0 = audioCtx.currentTime;
+  var o = audioCtx.createOscillator();
+  var g = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(110, t0);
+  o.frequency.exponentialRampToValueAtTime(55, t0+0.5);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.32, t0+0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+0.55);
+  o.connect(g); g.connect(masterGain);
+  o.start(t0); o.stop(t0+0.6);
+}
+function playThwack(intensity){
+  if(!audioCtx) return;
+  var t0 = audioCtx.currentTime;
+  var bufferSize = Math.floor(audioCtx.sampleRate*0.25);
+  var buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  var data = buffer.getChannelData(0);
+  for(var i=0;i<bufferSize;i++){ data[i] = (Math.random()*2-1) * Math.pow(1-i/bufferSize, 2); }
+  var noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  var nf = audioCtx.createBiquadFilter(); nf.type='highpass'; nf.frequency.value=800;
+  var ng = audioCtx.createGain(); ng.gain.value = 0.5*intensity+0.15;
+  noise.connect(nf); nf.connect(ng); ng.connect(masterGain);
+  noise.start(t0);
+
+  var o = audioCtx.createOscillator();
+  var og = audioCtx.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(220, t0);
+  o.frequency.exponentialRampToValueAtTime(70, t0+0.2);
+  og.gain.setValueAtTime(0.5*intensity+0.1, t0);
+  og.gain.exponentialRampToValueAtTime(0.0001, t0+0.25);
+  o.connect(og); og.connect(masterGain);
+  o.start(t0); o.stop(t0+0.3);
+}
+function playCrash(intensity){
+  if(!audioCtx) return;
+  var now = audioCtx.currentTime;
+  if(now-lastCrashSoundT < 0.08) return;
+  lastCrashSoundT = now;
+  var t0 = now;
+  var bufferSize = Math.floor(audioCtx.sampleRate*0.3);
+  var buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  var data = buffer.getChannelData(0);
+  for(var i=0;i<bufferSize;i++){ data[i] = (Math.random()*2-1) * Math.pow(1-i/bufferSize, 1.5); }
+  var noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  var lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1800;
+  var ng = audioCtx.createGain(); ng.gain.value = Math.min(0.8, 0.25+intensity*0.6);
+  noise.connect(lp); lp.connect(ng); ng.connect(masterGain);
+  noise.start(t0);
+
+  var o = audioCtx.createOscillator();
+  var og = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(90, t0);
+  o.frequency.exponentialRampToValueAtTime(40, t0+0.3);
+  og.gain.setValueAtTime(Math.min(0.7, 0.2+intensity*0.5), t0);
+  og.gain.exponentialRampToValueAtTime(0.0001, t0+0.35);
+  o.connect(og); og.connect(masterGain);
+  o.start(t0); o.stop(t0+0.4);
+}
+function playThud(intensity){ playCrash(intensity*0.6); }
+
+/* ============================= rendering ============================= */
+var DPR = 1, viewScale = 1, viewOffX = 0, viewOffY = 0;
+var EMBER_POS = (function(){
+  var a = [];
+  for(var i=0;i<24;i++){ a.push({ x:Math.random()*LOGICAL_W, y:Math.random()*(GROUND_Y-40), r:0.6+Math.random()*1.6, seed:Math.random()*10 }); }
+  return a;
+})();
+
+function drawBackground(){
+  var g = ctx.createLinearGradient(0,0,0,GROUND_Y);
+  g.addColorStop(0,'#241a14'); g.addColorStop(0.6,'#171009'); g.addColorStop(1,'#0c0a08');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,LOGICAL_W,GROUND_Y);
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(60,45,35,0.4)';
+  ctx.beginPath();
+  ctx.moveTo(0,GROUND_Y);
+  ctx.lineTo(0,GROUND_Y-70);
+  for(var x=0;x<=LOGICAL_W;x+=140){
+    ctx.lineTo(x+70, GROUND_Y-70-Math.sin(x*0.01)*30-20);
+  }
+  ctx.lineTo(LOGICAL_W,GROUND_Y-60);
+  ctx.lineTo(LOGICAL_W,GROUND_Y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  var now = performance.now();
+  for(var i=0;i<EMBER_POS.length;i++){
+    var e = EMBER_POS[i];
+    var alpha = 0.15 + 0.15*Math.sin(now/900+e.seed);
+    ctx.fillStyle = 'rgba(255,140,80,'+Math.max(0,alpha).toFixed(3)+')';
+    ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
+  }
+}
+function drawGround(){
+  var g = ctx.createLinearGradient(0,GROUND_Y,0,LOGICAL_H);
+  g.addColorStop(0,'#3a2c1e'); g.addColorStop(1,'#181009');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,GROUND_Y,LOGICAL_W,LOGICAL_H-GROUND_Y);
+  ctx.strokeStyle = 'rgba(242,193,78,0.25)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0,GROUND_Y); ctx.lineTo(LOGICAL_W,GROUND_Y); ctx.stroke();
+
+  ctx.font = '11px system-ui,-apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  for(var x=TREB_PIVOT.x; x<LOGICAL_W; x+=150){
+    ctx.setLineDash([3,5]);
+    ctx.beginPath(); ctx.moveTo(x,GROUND_Y); ctx.lineTo(x,GROUND_Y-14); ctx.stroke();
+    ctx.setLineDash([]);
+    var m = Math.round((x-TREB_PIVOT.x)/9);
+    if(m>0) ctx.fillText(m+'m', x-10, GROUND_Y+16);
+  }
+}
+function clampArmPoint(pt){
+  // Render-only safety clamp: at steep load angles a long beam+sling can
+  // mathematically swing below the ground plane before the frame is tall
+  // enough to clear it. This never touches physics (theta/omega/release
+  // velocity) — it only keeps the drawn rope/beam tip resting visually on
+  // the ground instead of poking through it.
+  if(pt.y > GROUND_Y-6){ pt.y = GROUND_Y-6; }
+  return pt;
+}
+function drawCannonball(x,y){
+  ctx.save();
+  ctx.translate(x,y);
+  var g = ctx.createRadialGradient(-4,-4,2,0,0,PROJ_RADIUS);
+  g.addColorStop(0,'#5a5f66'); g.addColorStop(1,'#15161a');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0,0,PROJ_RADIUS,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+}
+function drawTrebuchet(pivot, geom){
+  var theta = geom.theta, Lshort = geom.Lshort, Llong = geom.Llong, sling = geom.sling;
+  ctx.save();
+  var legSpread = 64, legTopY = pivot.y-6;
+  var gradWood = ctx.createLinearGradient(pivot.x-legSpread,GROUND_Y,pivot.x+legSpread,legTopY);
+  gradWood.addColorStop(0,'#5a3a20'); gradWood.addColorStop(1,'#a0673a');
+  ctx.strokeStyle = gradWood; ctx.lineWidth = 16; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(pivot.x-legSpread,GROUND_Y); ctx.lineTo(pivot.x,legTopY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pivot.x+legSpread,GROUND_Y); ctx.lineTo(pivot.x,legTopY); ctx.stroke();
+  ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(pivot.x-legSpread*0.62,GROUND_Y-90); ctx.lineTo(pivot.x+legSpread*0.62,GROUND_Y-90); ctx.stroke();
+  ctx.restore();
+
+  var shortTip = polarPoint(pivot, theta, -Lshort);
+  var longTip = clampArmPoint(polarPoint(pivot, theta, Llong));
+  var slingTip = clampArmPoint(polarPoint(pivot, theta, Llong+sling));
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#7a4423'; ctx.lineWidth = 14;
+  ctx.beginPath(); ctx.moveTo(shortTip.x,shortTip.y); ctx.lineTo(longTip.x,longTip.y); ctx.stroke();
+  ctx.strokeStyle = '#c97a3f'; ctx.lineWidth = 9;
+  ctx.beginPath(); ctx.moveTo(shortTip.x,shortTip.y); ctx.lineTo(longTip.x,longTip.y); ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = '#2a2016';
+  ctx.beginPath(); ctx.arc(pivot.x,pivot.y,10,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+
+  var cfgForSize = (state.phase==='idle'||state.phase==='settled') ? params.trebuchet : state.activeCfg;
+  var boxSize = 22 + (cfgForSize.cw/900)*42;
+  ctx.save();
+  ctx.translate(shortTip.x, shortTip.y);
+  var cwGrad = ctx.createLinearGradient(-boxSize/2,-boxSize/2,boxSize/2,boxSize/2);
+  cwGrad.addColorStop(0,'#8a8f96'); cwGrad.addColorStop(1,'#454b52');
+  ctx.fillStyle = cwGrad;
+  ctx.fillRect(-boxSize/2,-boxSize/2,boxSize,boxSize);
+  ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 2; ctx.strokeRect(-boxSize/2,-boxSize/2,boxSize,boxSize);
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = '#caa46a'; ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.moveTo(longTip.x,longTip.y); ctx.lineTo(slingTip.x,slingTip.y); ctx.stroke();
+  ctx.restore();
+
+  if(geom.attached){ drawCannonball(slingTip.x, slingTip.y); }
+}
+function drawCatapult(pivot, geom){
+  var theta = geom.theta, armLen = geom.armLen;
+  ctx.save();
+  var baseW = 110, baseTopY = pivot.y+18;
+  var gradWood = ctx.createLinearGradient(pivot.x-baseW/2,GROUND_Y,pivot.x+baseW/2,baseTopY);
+  gradWood.addColorStop(0,'#5a3a20'); gradWood.addColorStop(1,'#8a5a30');
+  ctx.fillStyle = gradWood;
+  ctx.beginPath();
+  ctx.moveTo(pivot.x-baseW/2,GROUND_Y); ctx.lineTo(pivot.x-baseW/3,baseTopY);
+  ctx.lineTo(pivot.x+baseW/3,baseTopY); ctx.lineTo(pivot.x+baseW/2,GROUND_Y);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+
+  var cfgForSize = (state.phase==='idle'||state.phase==='settled') ? params.catapult : state.activeCfg;
+  var coilR = 12 + (cfgForSize.power/100)*10;
+  ctx.save();
+  ctx.strokeStyle = '#3a2a1e'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(pivot.x,pivot.y,coilR,0,Math.PI*1.6); ctx.stroke();
+  ctx.restore();
+
+  var armTip = clampArmPoint(polarPoint(pivot, theta, armLen));
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#7a4423'; ctx.lineWidth = 11;
+  ctx.beginPath(); ctx.moveTo(pivot.x,pivot.y); ctx.lineTo(armTip.x,armTip.y); ctx.stroke();
+  ctx.strokeStyle = '#d9924f'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(pivot.x,pivot.y); ctx.lineTo(armTip.x,armTip.y); ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(armTip.x,armTip.y);
+  ctx.rotate(theta);
+  ctx.fillStyle = '#4a3320';
+  ctx.beginPath(); ctx.arc(0,6,13,0,Math.PI,false); ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = '#2a2016';
+  ctx.beginPath(); ctx.arc(pivot.x,pivot.y,8,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+
+  if(geom.attached){ drawCannonball(armTip.x, armTip.y-6); }
+}
+function drawWeapon(){
+  var geom = currentArmGeom();
+  var pivot = state.weaponType==='trebuchet' ? TREB_PIVOT : CAT_PIVOT;
+  if(state.weaponType==='trebuchet'){ drawTrebuchet(pivot, geom); }
+  else{ drawCatapult(pivot, geom); }
+}
+function drawCrate(cr){
+  var c = cr.corners;
+  var tint = CRATE_TINTS[cr.tint % CRATE_TINTS.length];
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(c[0].x,c[0].y);
+  ctx.lineTo(c[1].x,c[1].y);
+  ctx.lineTo(c[2].x,c[2].y);
+  ctx.lineTo(c[3].x,c[3].y);
+  ctx.closePath();
+  var grad = ctx.createLinearGradient(c[0].x,c[0].y,c[2].x,c[2].y);
+  grad.addColorStop(0, tint.light);
+  grad.addColorStop(1, tint.dark);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  var midLx=(c[0].x+c[3].x)/2, midLy=(c[0].y+c[3].y)/2;
+  var midRx=(c[1].x+c[2].x)/2, midRy=(c[1].y+c[2].y)/2;
+  ctx.moveTo(midLx,midLy); ctx.lineTo(midRx,midRy);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(20,14,10,0.55)';
+  for(var i=0;i<4;i++){ ctx.fillRect(c[i].x-3,c[i].y-3,6,6); }
+  ctx.restore();
+
+  if(cr.isTarget){
+    var topMidX=(c[0].x+c[1].x)/2, topMidY=(c[0].y+c[1].y)/2;
+    var botMidX=(c[3].x+c[2].x)/2, botMidY=(c[3].y+c[2].y)/2;
+    var ux = topMidX-botMidX, uy = topMidY-botMidY;
+    var ulen = Math.sqrt(ux*ux+uy*uy) || 1;
+    ux/=ulen; uy/=ulen;
+    var poleLen = 34;
+    var tipX = topMidX+ux*poleLen, tipY = topMidY+uy*poleLen;
+    ctx.save();
+    ctx.strokeStyle = '#8a6a4a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(topMidX,topMidY); ctx.lineTo(tipX,tipY); ctx.stroke();
+    var perpx = -uy, perpy = ux;
+    var sway = Math.sin(performance.now()/260 + cr.cx0*0.01)*0.25;
+    ctx.fillStyle = cr.knocked ? 'rgba(140,140,140,0.6)' : '#c94f4f';
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX+perpx*24+ux*sway*10, tipY+perpy*24+uy*sway*10);
+    ctx.lineTo(tipX+ux*12+perpx*10, tipY+uy*12+perpy*10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+function drawCrates(){
+  for(var i=0;i<state.crates.length;i++){ drawCrate(state.crates[i]); }
+}
+function drawProjectile(){
+  var pr = state.projectile;
+  if(!pr) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(242,193,78,0.35)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for(var i=0;i<pr.trail.length;i++){
+    var t = pr.trail[i];
+    if(i===0) ctx.moveTo(t.x,t.y); else ctx.lineTo(t.x,t.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+  drawCannonball(pr.x,pr.y);
+}
+function drawParticles(){
+  for(var i=0;i<state.particles.length;i++){
+    var p = state.particles[i];
+    var tint = CRATE_TINTS[p.tint % CRATE_TINTS.length];
+    var alpha = clamp(1-p.life/p.maxLife, 0, 1);
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    ctx.rotate(p.rot);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = tint.dark;
+    ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size);
+    ctx.restore();
+  }
+}
+function render(){
+  ctx.clearRect(0,0,LOGICAL_W,LOGICAL_H);
+  drawBackground();
+  ctx.save();
+  var sx = (Math.random()-0.5)*state.shake;
+  var sy = (Math.random()-0.5)*state.shake*0.6;
+  ctx.translate(sx,sy);
+  drawGround();
+  drawWeapon();
+  drawCrates();
+  drawProjectile();
+  drawParticles();
+  ctx.restore();
+}
+
+/* ============================= resize ============================= */
+function resize(){
+  var r = canvasWrap.getBoundingClientRect();
+  var cw = Math.max(280, r.width), ch = Math.max(200, r.height);
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+  canvas.width = Math.round(cw*DPR);
+  canvas.height = Math.round(ch*DPR);
+  canvas.style.width = cw+'px';
+  canvas.style.height = ch+'px';
+  viewScale = Math.min(cw/LOGICAL_W, ch/LOGICAL_H);
+  viewOffX = (cw-LOGICAL_W*viewScale)/2;
+  viewOffY = (ch-LOGICAL_H*viewScale)/2;
+  ctx.setTransform(DPR*viewScale,0,0,DPR*viewScale,DPR*viewOffX,DPR*viewOffY);
+  render();
+}
+
+/* ============================= main loop ============================= */
+var rafId = null;
+var lastTime = null;
+function frame(t){
+  if(lastTime===null) lastTime = t;
+  var dt = Math.min(0.033, (t-lastTime)/1000);
+  lastTime = t;
+  updateArm(dt);
+  stepCrates(1/60);
+  stepProjectile(1/60);
+  updateParticles(1/60);
+  updateShake(dt);
+  checkSettle(dt);
+  render();
+  rafId = requestAnimationFrame(frame);
+}
+function startLoop(){
+  if(rafId===null){ lastTime = null; rafId = requestAnimationFrame(frame); }
+}
+function stopLoop(){
+  if(rafId!==null){ cancelAnimationFrame(rafId); rafId = null; }
+}
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden){ stopLoop(); } else { startLoop(); }
+});
+
+/* ============================= UI sync ============================= */
+function updateWeaponUI(){
+  var isTreb = state.weaponType==='trebuchet';
+  rowSling.style.display = isTreb ? '' : 'none';
+  lblPowerName.textContent = isTreb ? 'Counterweight Mass' : 'Spring Power';
+  lblArmName.textContent = isTreb ? 'Arm Ratio (Long:Short)' : 'Arm Length';
+  var p = params[state.weaponType];
+  if(isTreb){
+    sldPower.min = 150; sldPower.max = 900; sldPower.step = 10; sldPower.value = p.cw;
+    sldArm.min = 1.5; sldArm.max = 5.0; sldArm.step = 0.1; sldArm.value = p.ratio;
+    sldSling.min = 60; sldSling.max = 220; sldSling.step = 5; sldSling.value = p.sling;
+    sldAngle.min = 10; sldAngle.max = 70; sldAngle.step = 1; sldAngle.value = p.release;
+  } else {
+    sldPower.min = 20; sldPower.max = 100; sldPower.step = 1; sldPower.value = p.power;
+    sldArm.min = 150; sldArm.max = 320; sldArm.step = 5; sldArm.value = p.arm;
+    sldAngle.min = 10; sldAngle.max = 70; sldAngle.step = 1; sldAngle.value = p.release;
+  }
+  updateSliderLabels();
+  btnWeaponTreb.classList.toggle('active', isTreb);
+  btnWeaponCat.classList.toggle('active', !isTreb);
+  weaponToggleEl.classList.toggle('on', !isTreb);
+}
+function updateSliderLabels(){
+  var isTreb = state.weaponType==='trebuchet';
+  valPower.textContent = isTreb ? (params.trebuchet.cw+' kg') : (params.catapult.power+'%');
+  valArm.textContent = isTreb ? params.trebuchet.ratio.toFixed(1)+':1' : params.catapult.arm+' u';
+  valSling.textContent = params.trebuchet.sling+' u';
+  valAngle.textContent = (isTreb ? params.trebuchet.release : params.catapult.release)+'°';
+}
+function updateLevelUI(){
+  var btns = document.querySelectorAll('.levelBtn');
+  for(var i=0;i<btns.length;i++){ btns[i].classList.toggle('active', i===state.levelIdx); }
+  levelNameVal.textContent = LEVELS[state.levelIdx].name.toUpperCase();
+}
+
+/* ============================= wire events ============================= */
+function wireEvents(){
+  btnWeaponTreb.addEventListener('click', function(){ switchWeapon('trebuchet'); });
+  btnWeaponCat.addEventListener('click', function(){ switchWeapon('catapult'); });
+  btnPanelToggle.addEventListener('click', function(){ panelEl.classList.toggle('collapsed'); });
+  document.getElementById('panelHandle').addEventListener('click', function(){ panelEl.classList.toggle('collapsed'); });
+
+  btnMute.addEventListener('click', function(){
+    audioMuted = !audioMuted;
+    if(masterGain){ masterGain.gain.value = audioMuted ? 0 : 0.85; }
+    btnMute.textContent = audioMuted ? '🔇' : '🔊';
+    saveSettings();
+  });
+
+  var levelBtns = document.querySelectorAll('.levelBtn');
+  for(var i=0;i<levelBtns.length;i++){
+    (function(idx){
+      levelBtns[idx].addEventListener('click', function(){ selectLevel(idx); });
+    })(i);
+  }
+
+  sldPower.addEventListener('input', function(){
+    var v = parseFloat(sldPower.value);
+    if(state.weaponType==='trebuchet'){ params.trebuchet.cw = v; } else { params.catapult.power = v; }
+    updateSliderLabels(); saveSettings(); render();
+  });
+  sldArm.addEventListener('input', function(){
+    var v = parseFloat(sldArm.value);
+    if(state.weaponType==='trebuchet'){ params.trebuchet.ratio = v; } else { params.catapult.arm = v; }
+    updateSliderLabels(); saveSettings(); render();
+  });
+  sldSling.addEventListener('input', function(){
+    params.trebuchet.sling = parseFloat(sldSling.value);
+    updateSliderLabels(); saveSettings(); render();
+  });
+  sldAngle.addEventListener('input', function(){
+    var v = parseFloat(sldAngle.value);
+    if(state.weaponType==='trebuchet'){ params.trebuchet.release = v; } else { params.catapult.release = v; }
+    updateSliderLabels(); saveSettings(); render();
+  });
+
+  btnFire.addEventListener('click', fireWeapon);
+  btnReset.addEventListener('click', resetShot);
+  btnScreenshot.addEventListener('click', doScreenshot);
+  btnShare.addEventListener('click', doShare);
+
+  if(window.ResizeObserver){
+    var ro = new ResizeObserver(function(){ resize(); });
+    ro.observe(canvasWrap);
+  } else {
+    window.addEventListener('resize', resize);
+  }
+  window.addEventListener('orientationchange', function(){ setTimeout(resize, 100); });
+}
+
+function doScreenshot(){
+  try{
+    canvas.toBlob(function(blob){
+      if(!blob){ showToast('Screenshot failed'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'siege-lab-'+Date.now()+'.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      showToast('Screenshot saved!');
+    }, 'image/png');
+  }catch(e){ showToast('Screenshot failed'); }
+}
+function copyToClipboard(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ showToast('Link copied!'); }).catch(function(){ fallbackCopy(text); });
+  } else {
+    fallbackCopy(text);
+  }
+}
+function fallbackCopy(text){
+  try{
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Link copied!');
+  }catch(e){ showToast('Long-press the address bar to copy'); }
+}
+function doShare(){
+  var hash = encodeShareHash();
+  if(!hash){ showToast('Share failed'); return; }
+  location.hash = hash;
+  copyToClipboard(location.href);
+}
+
+/* ============================= init ============================= */
+function init(){
+  var s = loadSettingsRaw();
+  applyLoaded(s);
+  if(location.hash && location.hash.length>1){
+    var payload = decodeShareHash(location.hash.slice(1));
+    if(payload){ applyLoaded(payload); }
+  }
+  sanitizeParams();
+  state.theta = state.weaponType==='trebuchet' ? TREB_THETA_START : CAT_THETA_START;
+  buildLevel(state.levelIdx);
+  updateWeaponUI();
+  updateLevelUI();
+  updateBestDisplay();
+  btnMute.textContent = audioMuted ? '🔇' : '🔊';
+  wireEvents();
+  resize();
+  startLoop();
+  setTimeout(function(){ hintEl.classList.add('hide'); }, 6500);
+}
+
+/* Lightweight read-only debug hook — used only by automated verification,
+   exposes no mutation surface, safe to leave in production. */
+window.__siegeDebug = function(){
+  return { phase: state.phase, weapon: state.weaponType, level: state.levelIdx,
+    audioState: audioCtx ? audioCtx.state : 'none', lastScore: state.lastScore };
+};
+
+init();
+})();
+</script>
+</body>
+</html>
