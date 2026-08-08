@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Vector Putt — Physics Mini-Golf & Course Editor</title>
+<style>
+  :root{
+    --bg:#0b1210; --panel:#0f1c17; --panel2:#132821; --line:#1f6b3a33;
+    --green:#173a24; --green2:#1f6b3a; --sand:#d9b26a; --water:#3aa0c8;
+    --wall:#4a4a52; --ramp:#f2c14e; --accent:#34d399; --accent2:#38bdf8;
+    --text:#eaf3ee; --sub:#9db3a9; --danger:#f87171;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+  #hud{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:linear-gradient(180deg,#0f1c17,#0c1613);border-bottom:1px solid #1f6b3a3d;
+    z-index:5;}
+  #hud .title{font-weight:700;font-size:14px;letter-spacing:.3px;flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #hud .stat{font-size:12px;color:var(--sub);background:#0c1a15;border:1px solid #1f6b3a3d;
+    border-radius:8px;padding:5px 9px;white-space:nowrap;}
+  #hud .stat b{color:var(--text);font-weight:700;}
+  .iconbtn{appearance:none;border:1px solid #1f6b3a55;background:#0c1a15;color:var(--text);
+    border-radius:9px;padding:7px 10px;font-size:13px;cursor:pointer;display:flex;align-items:center;
+    gap:5px;line-height:1;transition:.15s transform,.15s background;}
+  .iconbtn:active{transform:scale(.94);}
+  .iconbtn:hover{background:#123023;}
+  .iconbtn.primary{background:var(--accent);color:#04140c;border-color:transparent;font-weight:700;}
+  .iconbtn.primary:hover{background:#3fe6ac;}
+  .iconbtn.danger{color:var(--danger);}
+  #stage{flex:1 1 auto;position:relative;display:flex;align-items:center;justify-content:center;
+    overflow:hidden;background:
+      radial-gradient(ellipse at 50% 0%, #10241a 0%, #070d0a 72%);}
+  canvas{display:block;touch-action:none;border-radius:14px;box-shadow:0 20px 60px #000a,
+    0 0 0 1px #1f6b3a3d;}
+  .screen{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,#0b1210f0,#080e0bf7);backdrop-filter:blur(6px);
+    padding:16px;overflow-y:auto;}
+  .screen.hidden{display:none;}
+  .screen h1{font-size:20px;margin:6px 2px 2px;}
+  .screen p.sub{color:var(--sub);font-size:13px;margin:0 2px 14px;}
+  #levelGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;
+    max-width:720px;margin:0 auto;width:100%;}
+  .card{background:var(--panel2);border:1px solid #1f6b3a3d;border-radius:14px;padding:12px;
+    cursor:pointer;transition:.15s transform,.15s border-color;text-align:left;color:var(--text);
+    font-family:inherit;display:flex;flex-direction:column;gap:6px;}
+  .card:hover{border-color:var(--accent);transform:translateY(-2px);}
+  .card:active{transform:scale(.97);}
+  .card .swatch{height:44px;border-radius:9px;background:
+      repeating-linear-gradient(45deg, var(--green) 0 8px, var(--green2) 8px 16px);}
+  .card .name{font-weight:700;font-size:14px;}
+  .card .meta{font-size:11px;color:var(--sub);display:flex;justify-content:space-between;}
+  .card.newcard{align-items:center;justify-content:center;border-style:dashed;color:var(--accent);
+    font-weight:700;font-size:14px;min-height:110px;}
+  .section-label{max-width:720px;margin:22px auto 8px;width:100%;font-size:12px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--sub);}
+  .footer-note{max-width:720px;margin:26px auto 10px;width:100%;text-align:center;font-size:11px;
+    color:#557064;}
+  #editorBar{position:absolute;left:0;right:0;bottom:0;z-index:11;display:flex;flex-wrap:wrap;
+    gap:6px;align-items:center;padding:10px;background:linear-gradient(0deg,#0c1613f5,#0c161300);
+    justify-content:center;}
+  #editorBar.hidden{display:none;}
+  .tool{appearance:none;border:1px solid #1f6b3a55;background:#0c1a15;color:var(--text);
+    border-radius:10px;width:40px;height:40px;font-size:16px;cursor:pointer;display:flex;
+    align-items:center;justify-content:center;}
+  .tool.active{outline:2px solid var(--accent);background:#123023;}
+  #editorTopBar{position:absolute;top:8px;left:8px;right:8px;z-index:11;display:flex;gap:8px;
+    align-items:center;}
+  #editorTopBar input{flex:1;min-width:0;background:#0c1a15;border:1px solid #1f6b3a55;
+    color:var(--text);border-radius:9px;padding:8px 10px;font-size:13px;font-family:inherit;}
+  #winPanel{position:absolute;inset:0;z-index:12;display:flex;align-items:center;justify-content:center;
+    background:#080e0be0;backdrop-filter:blur(4px);}
+  #winPanel.hidden{display:none;}
+  #winCard{background:var(--panel2);border:1px solid #1f6b3a55;border-radius:18px;padding:26px 30px;
+    text-align:center;max-width:320px;box-shadow:0 20px 60px #000c;}
+  #winCard .big{font-size:34px;font-weight:800;margin:6px 0 2px;color:var(--accent);}
+  #winCard .rating{font-size:15px;color:var(--sub);margin-bottom:14px;}
+  #winCard .row{display:flex;gap:8px;margin-top:16px;}
+  #toast{position:absolute;top:64px;left:50%;transform:translateX(-50%) translateY(-8px);
+    background:#0f1c17ee;border:1px solid #1f6b3a66;padding:9px 16px;border-radius:999px;
+    font-size:13px;z-index:20;opacity:0;pointer-events:none;transition:.25s opacity,.25s transform;
+    white-space:nowrap;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  select{background:#0c1a15;border:1px solid #1f6b3a55;color:var(--text);border-radius:8px;
+    padding:8px;font-family:inherit;font-size:13px;}
+  @media (max-width:520px){
+    #hud .title{font-size:12.5px;}
+    .iconbtn{padding:7px 8px;font-size:12px;}
+    #hud .stat{padding:5px 7px;font-size:11px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <button class="iconbtn" id="btnMenu" title="Menu (M)">☰ Menu</button>
+    <div class="title" id="hudTitle">Vector Putt</div>
+    <div class="stat" id="hudStrokes">Strokes <b>0</b></div>
+    <div class="stat" id="hudPar">Par <b>–</b></div>
+    <button class="iconbtn" id="btnRestart" title="Restart hole (R)">↺</button>
+    <button class="iconbtn" id="btnMute" title="Mute">🔊</button>
+  </div>
+  <div id="stage">
+    <canvas id="game" width="360" height="504"></canvas>
+    <div id="toast"></div>
+
+    <!-- MENU SCREEN -->
+    <div class="screen" id="screenMenu">
+      <h1>⛳ Vector Putt</h1>
+      <p class="sub">Pull back from the ball to aim, release to putt. Sand slows you, water sends you back, ramps give you a boost.</p>
+      <div class="section-label">Built-in Courses</div>
+      <div id="levelGrid"></div>
+      <div class="section-label">Your Courses</div>
+      <div id="customGrid" style="max-width:720px;margin:0 auto;width:100%;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;"></div>
+      <div class="footer-note">Built entirely with Canvas 2D + Web Audio — no libraries, no network calls.</div>
+    </div>
+
+    <!-- EDITOR TOP BAR -->
+    <div id="editorTopBar" class="screen hidden" style="position:absolute;background:none;backdrop-filter:none;padding:0;inset:auto;top:8px;left:8px;right:8px;">
+      <input id="editorName" maxlength="28" placeholder="Course name">
+      <select id="editorPar">
+        <option value="2">Par 2</option><option value="3" selected>Par 3</option>
+        <option value="4">Par 4</option><option value="5">Par 5</option><option value="6">Par 6</option>
+      </select>
+      <button class="iconbtn" id="btnEditorBack">✕</button>
+    </div>
+
+    <!-- EDITOR BOTTOM TOOLBAR -->
+    <div id="editorBar" class="hidden">
+      <button class="tool" data-tool="0" title="Eraser">▢</button>
+      <button class="tool" data-tool="1" title="Wall">■</button>
+      <button class="tool" data-tool="2" title="Sand">▨</button>
+      <button class="tool" data-tool="3" title="Water">≈</button>
+      <button class="tool" data-tool="4" title="Ramp up">↑</button>
+      <button class="tool" data-tool="5" title="Ramp right">→</button>
+      <button class="tool" data-tool="6" title="Ramp down">↓</button>
+      <button class="tool" data-tool="7" title="Ramp left">←</button>
+      <button class="tool" data-tool="8" title="Start">S</button>
+      <button class="tool" data-tool="9" title="Hole">H</button>
+      <button class="iconbtn danger" id="btnClear">Clear</button>
+      <button class="iconbtn" id="btnTest">▶ Test</button>
+      <button class="iconbtn" id="btnShare">🔗 Share</button>
+      <button class="iconbtn primary" id="btnSave">💾 Save</button>
+    </div>
+
+    <!-- WIN PANEL -->
+    <div id="winPanel" class="hidden">
+      <div id="winCard">
+        <div style="font-size:13px;color:var(--sub);">HOLE COMPLETE</div>
+        <div class="big" id="winStrokes">3</div>
+        <div class="rating" id="winRating">Par</div>
+        <div id="winBest" style="font-size:12px;color:var(--accent);"></div>
+        <div class="row">
+          <button class="iconbtn" id="btnWinMenu" style="flex:1;">Menu</button>
+          <button class="iconbtn primary" id="btnWinNext" style="flex:1;">Next ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- constants ---------- */
+var CELL = 36, IW = 8, IH = 12;
+var GW = IW + 2, GH = IH + 2;
+var WORLD_W = GW * CELL, WORLD_H = GH * CELL;
+var T = { EMPTY:0, WALL:1, SAND:2, WATER:3, RAMP_UP:4, RAMP_RIGHT:5, RAMP_DOWN:6, RAMP_LEFT:7 };
+var BALL_R = 7, HOLE_R = 11;
+var FRICTION_GREEN = 0.988, FRICTION_SAND = 0.90;
+var REST_EPS = 4;          // world units/sec below which ball is "at rest"
+var RESTITUTION = 0.62;
+var MAX_DRAG = 100, MAX_SPEED = 420;
+var RAMP_ACCEL = 260;
+
+/* ---------- level data (built-in) ---------- */
+/* rows: IH strings of length IW. '.' empty '#' wall 's' sand 'w' water
+   '^','>','v','<' ramps, 'S' start, 'H' hole */
+var BUILTIN = [
+  { id:'l1', name:'Warm-Up', par:2, rows:[
+    "..H.....","........","........","........","........","........",
+    "........","........","........","........","........","..S....."
+  ]},
+  { id:'l2', name:'The Bend', par:3, rows:[
+    "..H.....","........","........","....####","....####","....####",
+    "........","........","........","........","........","..S....."
+  ]},
+  { id:'l3', name:'Sandtrap', par:3, rows:[
+    "..H.....","........","........","........","ssssssss","ssssssss",
+    "........","........","........","........","........","..S....."
+  ]},
+  { id:'l4', name:'Water Hazard', par:3, rows:[
+    ".H......","........","........","........","..wwwwww","..wwwwww",
+    "........","........","........","........","........",".S......"
+  ]},
+  { id:'l5', name:'Ramp Run', par:3, rows:[
+    "..H.....","........","ssssssss","........","........","........",
+    "^^^^^^^^","........","........","........","........","..S....."
+  ]},
+  { id:'l6', name:'The Gauntlet', par:5, rows:[
+    ".H......","........","..######","..######","........","wwwwww..",
+    "........","ssssssss","........","^^^^^^^^","........",".S......"
+  ]}
+];
+
+/* ---------- persistence ---------- */
+var LS_BEST = 'vp_best_v1', LS_CUSTOM = 'vp_custom_v1', LS_MUTE = 'vp_mute_v1';
+function loadBest(){ try{ return JSON.parse(localStorage.getItem(LS_BEST))||{}; }catch(e){ return {}; } }
+function saveBest(o){ try{ localStorage.setItem(LS_BEST, JSON.stringify(o)); }catch(e){} }
+function loadCustom(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM))||[]; }catch(e){ return []; } }
+function saveCustom(a){ try{ localStorage.setItem(LS_CUSTOM, JSON.stringify(a)); }catch(e){} }
+var muted = (function(){ try{ return localStorage.getItem(LS_MUTE)==='1'; }catch(e){ return false; } })();
+
+/* ---------- DOM ---------- */
+var canvas = document.getElementById('game');
+var ctx = canvas.getContext('2d');
+var stage = document.getElementById('stage');
+var hudTitle = document.getElementById('hudTitle');
+var hudStrokes = document.getElementById('hudStrokes');
+var hudPar = document.getElementById('hudPar');
+var screenMenu = document.getElementById('screenMenu');
+var editorTopBar = document.getElementById('editorTopBar');
+var editorBar = document.getElementById('editorBar');
+var winPanel = document.getElementById('winPanel');
+var levelGrid = document.getElementById('levelGrid');
+var customGrid = document.getElementById('customGrid');
+var toastEl = document.getElementById('toast');
+var editorNameInput = document.getElementById('editorName');
+var editorParSelect = document.getElementById('editorPar');
+
+/* ---------- state ---------- */
+var state = {
+  mode: 'menu',           // menu | play | editor
+  scaleCss: 1,
+  level: null,            // {id,name,par,grid(2D array w/ border), startX,startY(world), holeX,holeY}
+  ball: { x:0, y:0, vx:0, vy:0, moving:false, lastRestX:0, lastRestY:0, sinking:0 },
+  strokes: 0,
+  aiming:false, aimStart:{x:0,y:0}, aimNow:{x:0,y:0},
+  editorGrid: null, editorStart:null, editorHole:null, editorTool:1,
+  editorHoverCell:null,
+  shared:null
+};
+
+function toast(msg, ms){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, ms||1600);
+}
+
+/* ---------- grid helpers ---------- */
+function rowsToGrid(rows){
+  var g = [];
+  for (var y=0; y<GH; y++){
+    var row = [];
+    for (var x=0; x<GW; x++){
+      row.push(T.WALL); // border default
+    }
+    g.push(row);
+  }
+  var start=null, hole=null;
+  for (var iy=0; iy<IH; iy++){
+    var line = rows[iy] || '';
+    for (var ix=0; ix<IW; ix++){
+      var ch = line.charAt(ix) || '.';
+      var gx = ix+1, gy = iy+1;
+      var v = T.EMPTY;
+      if (ch==='#') v=T.WALL;
+      else if (ch==='s') v=T.SAND;
+      else if (ch==='w') v=T.WATER;
+      else if (ch==='^') v=T.RAMP_UP;
+      else if (ch==='>') v=T.RAMP_RIGHT;
+      else if (ch==='v') v=T.RAMP_DOWN;
+      else if (ch==='<') v=T.RAMP_LEFT;
+      else if (ch==='S'){ v=T.EMPTY; start={x:gx,y:gy}; }
+      else if (ch==='H'){ v=T.EMPTY; hole={x:gx,y:gy}; }
+      g[gy][gx] = v;
+    }
+  }
+  if (!start) start = {x:1,y:IH};
+  if (!hole) hole = {x:IW,y:1};
+  return { grid:g, start:start, hole:hole };
+}
+
+function gridToRows(grid, start, hole){
+  var rows = [];
+  for (var iy=0; iy<IH; iy++){
+    var s='';
+    for (var ix=0; ix<IW; ix++){
+      var gx=ix+1, gy=iy+1;
+      if (start && start.x===gx && start.y===gy){ s+='S'; continue; }
+      if (hole && hole.x===gx && hole.y===gy){ s+='H'; continue; }
+      var v = grid[gy][gx];
+      s += (v===T.WALL?'#':v===T.SAND?'s':v===T.WATER?'w':v===T.RAMP_UP?'^':
+            v===T.RAMP_RIGHT?'>':v===T.RAMP_DOWN?'v':v===T.RAMP_LEFT?'<':'.');
+    }
+    rows.push(s);
+  }
+  return rows;
+}
+
+function cellWorldCenter(gx, gy){ return { x:(gx+0.5)*CELL, y:(gy+0.5)*CELL }; }
+function cellAtWorld(x,y){
+  var gx = Math.floor(x/CELL), gy = Math.floor(y/CELL);
+  if (gx<0||gy<0||gx>=GW||gy>=GH) return T.WALL;
+  return state.level.grid[gy][gx];
+}
+
+/* ---------- level loading ---------- */
+function loadLevelFromDef(def){
+  var parsed = rowsToGrid(def.rows);
+  var startC = cellWorldCenter(parsed.start.x, parsed.start.y);
+  var holeC = cellWorldCenter(parsed.hole.x, parsed.hole.y);
+  state.level = { id:def.id, name:def.name, par:def.par, grid:parsed.grid,
+    startX:startC.x, startY:startC.y, holeX:holeC.x, holeY:holeC.y };
+  resetBallToStart();
+  state.strokes = 0;
+  hudTitle.textContent = def.name;
+  hudPar.innerHTML = 'Par <b>'+def.par+'</b>';
+  updateStrokesHud();
+  setMode('play');
+}
+
+function resetBallToStart(){
+  var b = state.ball;
+  b.x = state.level.startX; b.y = state.level.startY;
+  b.vx = 0; b.vy = 0; b.moving = false; b.sinking = 0;
+  b.lastRestX = b.x; b.lastRestY = b.y;
+}
+
+function updateStrokesHud(){ hudStrokes.innerHTML = 'Strokes <b>'+state.strokes+'</b>'; }
+
+/* ---------- menu ---------- */
+function renderMenu(){
+  var best = loadBest();
+  levelGrid.innerHTML = '';
+  BUILTIN.forEach(function(def){
+    var b = best[def.id];
+    var card = document.createElement('button');
+    card.className = 'card';
+    card.innerHTML = '<div class="swatch"></div><div class="name">'+def.name+'</div>'+
+      '<div class="meta"><span>Par '+def.par+'</span><span>'+(b?('Best '+b):'—')+'</span></div>';
+    card.onclick = function(){ loadLevelFromDef(def); };
+    levelGrid.appendChild(card);
+  });
+
+  var custom = loadCustom();
+  customGrid.innerHTML = '';
+  custom.forEach(function(def, idx){
+    var b = best[def.id];
+    var card = document.createElement('button');
+    card.className = 'card';
+    card.innerHTML = '<div class="swatch" style="background:repeating-linear-gradient(45deg,#2a1f3a 0 8px,#3a2a4a 8px 16px);"></div>'+
+      '<div class="name">'+escapeHtml(def.name)+'</div>'+
+      '<div class="meta"><span>Par '+def.par+'</span><span>'+(b?('Best '+b):'—')+'</span></div>';
+    card.onclick = function(){ loadLevelFromDef(def); };
+    var del = document.createElement('div');
+    del.style.cssText = 'font-size:10px;color:#f87171;text-align:right;';
+    del.textContent = 'delete';
+    del.onclick = function(e){ e.stopPropagation(); custom.splice(idx,1); saveCustom(custom); renderMenu(); };
+    card.appendChild(del);
+    customGrid.appendChild(card);
+  });
+  var addCard = document.createElement('button');
+  addCard.className = 'card newcard';
+  addCard.textContent = '+ New Course';
+  addCard.onclick = function(){ enterEditor(null); };
+  customGrid.appendChild(addCard);
+}
+
+function escapeHtml(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+/* ---------- editor ---------- */
+function enterEditor(existingDef){
+  var parsed;
+  if (existingDef){
+    parsed = rowsToGrid(existingDef.rows);
+    editorNameInput.value = existingDef.name;
+    editorParSelect.value = String(existingDef.par);
+    state.editingId = existingDef.id;
+  } else {
+    var blankRows = [];
+    for (var i=0;i<IH;i++) blankRows.push(i===0?"...H....":(i===IH-1?"...S....":"........"));
+    parsed = rowsToGrid(blankRows);
+    editorNameInput.value = 'My Course';
+    editorParSelect.value = '3';
+    state.editingId = null;
+  }
+  state.editorGrid = parsed.grid;
+  state.editorStart = parsed.start;
+  state.editorHole = parsed.hole;
+  state.editorTool = 1;
+  syncToolButtons();
+  setMode('editor');
+}
+
+function syncToolButtons(){
+  document.querySelectorAll('.tool').forEach(function(b){
+    b.classList.toggle('active', Number(b.dataset.tool)===state.editorTool);
+  });
+}
+
+function paintCell(gx, gy, tool){
+  if (gx<1||gy<1||gx>IW||gy>IH) return;
+  if (tool===8){ state.editorStart = {x:gx,y:gy}; state.editorGrid[gy][gx]=T.EMPTY; return; }
+  if (tool===9){ state.editorHole = {x:gx,y:gy}; state.editorGrid[gy][gx]=T.EMPTY; return; }
+  if (state.editorStart && state.editorStart.x===gx && state.editorStart.y===gy) state.editorStart=null;
+  if (state.editorHole && state.editorHole.x===gx && state.editorHole.y===gy) state.editorHole=null;
+  state.editorGrid[gy][gx] = tool;
+}
+
+function buildLevelDefFromEditor(){
+  var start = state.editorStart || {x:1,y:IH};
+  var hole = state.editorHole || {x:IW,y:1};
+  var rows = gridToRows(state.editorGrid, start, hole);
+  return { id: state.editingId || ('custom_'+Math.random().toString(36).slice(2,9)),
+    name: (editorNameInput.value||'My Course').slice(0,28), par: Number(editorParSelect.value)||3, rows: rows };
+}
+
+/* ---------- mode switching ---------- */
+function setMode(m){
+  state.mode = m;
+  screenMenu.classList.toggle('hidden', m!=='menu');
+  editorTopBar.classList.toggle('hidden', m!=='editor');
+  editorBar.classList.toggle('hidden', m!=='editor');
+  winPanel.classList.add('hidden');
+  if (m==='menu') renderMenu();
+  fitCanvas();
+}
+
+/* ---------- physics ---------- */
+function startAimVisual(){ /* handled in draw loop via state.aiming */ }
+
+function launchShot(vx, vy){
+  var b = state.ball;
+  b.lastRestX = b.x; b.lastRestY = b.y;
+  b.vx = vx; b.vy = vy; b.moving = true;
+  state.strokes++; updateStrokesHud();
+  ensureAudio(); playPutt(Math.min(1, Math.hypot(vx,vy)/MAX_SPEED));
+}
+
+function stepPhysics(dt){
+  var b = state.ball;
+  if (b.sinking>0){
+    b.sinking += dt;
+    if (b.sinking > 0.5) onHoleCaptured();
+    return;
+  }
+  if (!b.moving) return;
+  var sub = 4, sdt = dt/sub;
+  for (var i=0;i<sub;i++){
+    integrateStep(sdt);
+    if (!b.moving) break;
+  }
+}
+
+function integrateStep(dt){
+  var b = state.ball, lvl = state.level;
+  var cell = cellAtWorld(b.x, b.y);
+
+  if (cell===T.WATER){
+    handleHazard('splash');
+    return;
+  }
+
+  var friction = (cell===T.SAND) ? FRICTION_SAND : FRICTION_GREEN;
+  var decay = Math.pow(friction, dt*60);
+  b.vx *= decay; b.vy *= decay;
+
+  if (cell===T.RAMP_UP) b.vy -= RAMP_ACCEL*dt;
+  else if (cell===T.RAMP_DOWN) b.vy += RAMP_ACCEL*dt;
+  else if (cell===T.RAMP_LEFT) b.vx -= RAMP_ACCEL*dt;
+  else if (cell===T.RAMP_RIGHT) b.vx += RAMP_ACCEL*dt;
+
+  var speed = Math.hypot(b.vx,b.vy);
+  if (speed > MAX_SPEED){ var s = MAX_SPEED/speed; b.vx*=s; b.vy*=s; }
+
+  b.x += b.vx*dt; b.y += b.vy*dt;
+  resolveWallCollision();
+
+  // hole capture
+  var dHole = Math.hypot(b.x-lvl.holeX, b.y-lvl.holeY);
+  if (dHole < HOLE_R){
+    b.moving = false; b.vx=0; b.vy=0; b.sinking = 0.0001;
+    return;
+  }
+
+  var newSpeed = Math.hypot(b.vx,b.vy);
+  if (newSpeed < REST_EPS){
+    b.vx=0; b.vy=0; b.moving=false;
+    b.lastRestX = b.x; b.lastRestY = b.y;
+  }
+}
+
+function resolveWallCollision(){
+  var b = state.ball, lvl = state.level;
+  var minGx = Math.max(0, Math.floor((b.x-BALL_R)/CELL)-1);
+  var maxGx = Math.min(GW-1, Math.floor((b.x+BALL_R)/CELL)+1);
+  var minGy = Math.max(0, Math.floor((b.y-BALL_R)/CELL)-1);
+  var maxGy = Math.min(GH-1, Math.floor((b.y+BALL_R)/CELL)+1);
+  var bounced = false;
+  for (var gy=minGy; gy<=maxGy; gy++){
+    for (var gx=minGx; gx<=maxGx; gx++){
+      if (lvl.grid[gy][gx] !== T.WALL) continue;
+      var left=gx*CELL, top=gy*CELL, right=left+CELL, bottom=top+CELL;
+      var cx = Math.max(left, Math.min(b.x, right));
+      var cy = Math.max(top, Math.min(b.y, bottom));
+      var dx = b.x-cx, dy = b.y-cy;
+      var distSq = dx*dx+dy*dy;
+      if (distSq < BALL_R*BALL_R){
+        var dist = Math.sqrt(distSq) || 0.0001;
+        var nx = dx/dist, ny = dy/dist;
+        var overlap = BALL_R - dist;
+        b.x += nx*overlap; b.y += ny*overlap;
+        var vn = b.vx*nx + b.vy*ny;
+        if (vn < 0){
+          b.vx -= (1+RESTITUTION)*vn*nx;
+          b.vy -= (1+RESTITUTION)*vn*ny;
+          bounced = true;
+        }
+      }
+    }
+  }
+  if (bounced) playBounce();
+}
+
+function handleHazard(kind){
+  var b = state.ball;
+  b.x = b.lastRestX; b.y = b.lastRestY; b.vx=0; b.vy=0; b.moving=false;
+  state.strokes++; updateStrokesHud();
+  toast(kind==='splash' ? '💦 Splash! +1 stroke' : 'Out of bounds! +1 stroke');
+  playSplash();
+}
+
+function onHoleCaptured(){
+  var lvl = state.level;
+  var best = loadBest();
+  var prevBest = best[lvl.id];
+  var isNewBest = !prevBest || state.strokes < prevBest;
+  if (isNewBest){ best[lvl.id] = state.strokes; saveBest(best); }
+  playHoleIn();
+  var diff = state.strokes - lvl.par;
+  var rating = diff<=-2?'Eagle!':diff===-1?'Birdie!':diff===0?'Par':diff===1?'Bogey':'Double Bogey+';
+  document.getElementById('winStrokes').textContent = state.strokes;
+  document.getElementById('winRating').textContent = rating + ' (Par '+lvl.par+')';
+  document.getElementById('winBest').textContent = isNewBest ? '🏆 New best score!' : ('Best: '+best[lvl.id]);
+  winPanel.classList.remove('hidden');
+}
+
+/* ---------- input: play mode aiming ---------- */
+function worldFromEvent(e){
+  var rect = canvas.getBoundingClientRect();
+  var cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+  var cy = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+  var scaleCss = rect.width / WORLD_W;
+  return { x:(cx-rect.left)/scaleCss, y:(cy-rect.top)/scaleCss };
+}
+
+function onPointerDown(e){
+  ensureAudio();
+  var w = worldFromEvent(e);
+  if (state.mode==='play'){
+    if (state.ball.moving || state.ball.sinking>0) return;
+    var d = Math.hypot(w.x-state.ball.x, w.y-state.ball.y);
+    if (d > 60) return; // must grab near the ball
+    state.aiming = true;
+    state.aimStart = { x: state.ball.x, y: state.ball.y };
+    state.aimNow = w;
+    e.preventDefault();
+  } else if (state.mode==='editor'){
+    state.painting = true;
+    var g = worldToGrid(w);
+    paintCell(g.x, g.y, state.editorTool);
+    e.preventDefault();
+  }
+}
+function onPointerMove(e){
+  if (state.mode==='play' && state.aiming){
+    state.aimNow = worldFromEvent(e);
+    e.preventDefault();
+  } else if (state.mode==='editor' && state.painting){
+    var w = worldFromEvent(e);
+    var g = worldToGrid(w);
+    paintCell(g.x, g.y, state.editorTool);
+    e.preventDefault();
+  }
+}
+function onPointerUp(e){
+  if (state.mode==='play' && state.aiming){
+    state.aiming = false;
+    var dx = state.aimStart.x - state.aimNow.x;
+    var dy = state.aimStart.y - state.aimNow.y;
+    var dragDist = Math.hypot(dx,dy);
+    if (dragDist > 8){
+      var clamped = Math.min(dragDist, MAX_DRAG);
+      var power = clamped / MAX_DRAG;
+      var nx = dx/dragDist, ny = dy/dragDist;
+      launchShot(nx*power*MAX_SPEED, ny*power*MAX_SPEED);
+    }
+  }
+  state.painting = false;
+}
+function worldToGrid(w){ return { x: Math.floor(w.x/CELL), y: Math.floor(w.y/CELL) }; }
+
+canvas.addEventListener('pointerdown', onPointerDown);
+window.addEventListener('pointermove', onPointerMove);
+window.addEventListener('pointerup', onPointerUp);
+canvas.addEventListener('touchstart', function(e){ e.preventDefault(); }, {passive:false});
+
+/* ---------- editor tool buttons ---------- */
+document.querySelectorAll('.tool').forEach(function(b){
+  b.addEventListener('click', function(){
+    state.editorTool = Number(b.dataset.tool);
+    syncToolButtons();
+  });
+});
+document.getElementById('btnClear').onclick = function(){
+  for (var y=1;y<=IH;y++) for (var x=1;x<=IW;x++) state.editorGrid[y][x]=T.EMPTY;
+  state.editorStart = {x:1,y:IH}; state.editorHole = {x:IW,y:1};
+};
+document.getElementById('btnTest').onclick = function(){
+  var def = buildLevelDefFromEditor();
+  loadLevelFromDef(def);
+  state.testingFromEditor = true;
+};
+document.getElementById('btnSave').onclick = function(){
+  var def = buildLevelDefFromEditor();
+  var custom = loadCustom();
+  var idx = custom.findIndex(function(c){ return c.id===def.id; });
+  if (idx>=0) custom[idx]=def; else custom.push(def);
+  saveCustom(custom);
+  state.editingId = def.id;
+  toast('💾 Course saved!');
+};
+document.getElementById('btnShare').onclick = function(){
+  var def = buildLevelDefFromEditor();
+  var payload = JSON.stringify({ n:def.name, p:def.par, r:def.rows });
+  var b64 = btoa(unescape(encodeURIComponent(payload)));
+  var url = location.origin + location.pathname + '#lvl=' + b64;
+  history.replaceState(null,'',url);
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){ toast('🔗 Link copied to clipboard!'); })
+      .catch(function(){ toast('🔗 Link ready in address bar'); });
+  } else {
+    toast('🔗 Link ready in address bar');
+  }
+};
+document.getElementById('btnEditorBack').onclick = function(){ setMode('menu'); };
+
+/* ---------- HUD buttons ---------- */
+document.getElementById('btnMenu').onclick = function(){ setMode('menu'); };
+document.getElementById('btnRestart').onclick = function(){
+  if (state.mode==='play'){ resetBallToStart(); state.strokes=0; updateStrokesHud(); }
+};
+document.getElementById('btnMute').onclick = function(e){
+  muted = !muted;
+  try{ localStorage.setItem(LS_MUTE, muted?'1':'0'); }catch(err){}
+  e.target.textContent = muted ? '🔇' : '🔊';
+};
+document.getElementById('btnMute').textContent = muted ? '🔇' : '🔊';
+document.getElementById('btnWinMenu').onclick = function(){ setMode('menu'); };
+document.getElementById('btnWinNext').onclick = function(){
+  winPanel.classList.add('hidden');
+  var curId = state.level.id;
+  var i = BUILTIN.findIndex(function(d){ return d.id===curId; });
+  if (i>=0 && i<BUILTIN.length-1){ loadLevelFromDef(BUILTIN[i+1]); }
+  else { resetBallToStart(); state.strokes=0; updateStrokesHud(); }
+};
+
+document.addEventListener('keydown', function(e){
+  if (e.key==='r'||e.key==='R'){ if (state.mode==='play'){ resetBallToStart(); state.strokes=0; updateStrokesHud(); } }
+  if (e.key==='m'||e.key==='M'){ setMode('menu'); }
+  if (e.key==='Escape'){ state.aiming=false; }
+});
+
+/* ---------- audio (procedural, created on first gesture) ---------- */
+var actx = null;
+function ensureAudio(){
+  if (actx) return;
+  try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=null; }
+}
+function playPutt(power){
+  if (muted || !actx) return;
+  var t = actx.currentTime;
+  var osc = actx.createOscillator(); var g = actx.createGain();
+  osc.type='triangle'; osc.frequency.setValueAtTime(160+power*90, t);
+  osc.frequency.exponentialRampToValueAtTime(70, t+0.09);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.25+power*0.2, t+0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+0.14);
+  osc.connect(g); g.connect(actx.destination);
+  osc.start(t); osc.stop(t+0.16);
+}
+function noiseBurst(dur, filterFreq, filterType, gainPeak){
+  if (muted || !actx) return;
+  var t = actx.currentTime;
+  var bufferSize = Math.floor(actx.sampleRate*dur);
+  var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+  var data = buffer.getChannelData(0);
+  for (var i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferSize);
+  var src = actx.createBufferSource(); src.buffer = buffer;
+  var filt = actx.createBiquadFilter(); filt.type = filterType; filt.frequency.value = filterFreq;
+  var g = actx.createGain(); g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(gainPeak, t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  src.connect(filt); filt.connect(g); g.connect(actx.destination);
+  src.start(t); src.stop(t+dur);
+}
+function playBounce(){ noiseBurst(0.06, 1800, 'highpass', 0.18); }
+function playSplash(){ noiseBurst(0.4, 900, 'lowpass', 0.22); }
+function playHoleIn(){
+  if (muted || !actx) return;
+  var t = actx.currentTime;
+  [523.25,659.25,783.99].forEach(function(f,i){
+    var osc = actx.createOscillator(); var g = actx.createGain();
+    osc.type='sine'; osc.frequency.value = f;
+    var st = t + i*0.09;
+    g.gain.setValueAtTime(0.0001, st);
+    g.gain.exponentialRampToValueAtTime(0.22, st+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, st+0.3);
+    osc.connect(g); g.connect(actx.destination);
+    osc.start(st); osc.stop(st+0.32);
+  });
+}
+
+/* ---------- rendering ---------- */
+var TILE_COLORS = {};
+TILE_COLORS[T.EMPTY]='';
+TILE_COLORS[T.WALL]='#3d3d46';
+TILE_COLORS[T.SAND]='#d9b26a';
+TILE_COLORS[T.WATER]='#3aa0c8';
+
+function fitCanvas(){
+  var availW = stage.clientWidth, availH = stage.clientHeight;
+  var pad = 16;
+  var scale = Math.max(0.1, Math.min((availW-pad)/WORLD_W, (availH-pad)/WORLD_H));
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(WORLD_W*scale*dpr);
+  canvas.height = Math.round(WORLD_H*scale*dpr);
+  canvas.style.width = Math.round(WORLD_W*scale)+'px';
+  canvas.style.height = Math.round(WORLD_H*scale)+'px';
+  state.dpr = dpr; state.scale = scale;
+}
+window.addEventListener('resize', fitCanvas);
+window.addEventListener('orientationchange', fitCanvas);
+
+function drawGrid(grid, start, hole, isEditor){
+  ctx.save();
+  ctx.scale(state.scale*state.dpr, state.scale*state.dpr);
+  ctx.clearRect(0,0,WORLD_W,WORLD_H);
+
+  for (var gy=0; gy<GH; gy++){
+    for (var gx=0; gx<GW; gx++){
+      var v = grid[gy][gx];
+      var x=gx*CELL, y=gy*CELL;
+      var checker = (gx+gy)%2===0;
+      ctx.fillStyle = checker ? '#173a24' : '#1a4028';
+      ctx.fillRect(x,y,CELL,CELL);
+      if (v===T.WALL){ ctx.fillStyle='#3d3d46'; ctx.fillRect(x,y,CELL,CELL);
+        ctx.strokeStyle='#00000055'; ctx.strokeRect(x+1,y+1,CELL-2,CELL-2); }
+      else if (v===T.SAND){ ctx.fillStyle='#d9b26a'; ctx.fillRect(x,y,CELL,CELL); }
+      else if (v===T.WATER){ ctx.fillStyle='#3aa0c8'; ctx.fillRect(x,y,CELL,CELL); }
+      else if (v>=T.RAMP_UP && v<=T.RAMP_LEFT){
+        ctx.fillStyle='#2a5a38'; ctx.fillRect(x,y,CELL,CELL);
+        ctx.fillStyle='#f2c14e'; ctx.save(); ctx.translate(x+CELL/2,y+CELL/2);
+        var rot = v===T.RAMP_UP?0 : v===T.RAMP_RIGHT?Math.PI/2 : v===T.RAMP_DOWN?Math.PI : -Math.PI/2;
+        ctx.rotate(rot);
+        ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(7,6); ctx.lineTo(-7,6); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      if (isEditor){ ctx.strokeStyle='#ffffff10'; ctx.strokeRect(x,y,CELL,CELL); }
+    }
+  }
+  if (isEditor && state.editorHoverCell){
+    var hc = state.editorHoverCell;
+    ctx.strokeStyle = '#34d399'; ctx.lineWidth=2;
+    ctx.strokeRect(hc.x*CELL+1, hc.y*CELL+1, CELL-2, CELL-2);
+  }
+
+  if (start){
+    var sc = cellWorldCenter(start.x, start.y);
+    ctx.fillStyle='#38bdf8aa'; ctx.beginPath(); ctx.arc(sc.x,sc.y,10,0,7); ctx.fill();
+    ctx.fillStyle='#0b1210'; ctx.font='bold 11px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('S', sc.x, sc.y+1);
+  }
+  if (hole){
+    var hcc = cellWorldCenter(hole.x, hole.y);
+    ctx.fillStyle='#08110d'; ctx.beginPath(); ctx.arc(hcc.x,hcc.y,HOLE_R,0,7); ctx.fill();
+    ctx.strokeStyle='#f2c14e'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(hcc.x,hcc.y,HOLE_R+2,0,7); ctx.stroke();
+    // flag
+    ctx.strokeStyle='#c9c9c9'; ctx.beginPath(); ctx.moveTo(hcc.x, hcc.y-6); ctx.lineTo(hcc.x, hcc.y-34); ctx.stroke();
+    ctx.fillStyle='#f87171'; ctx.beginPath();
+    ctx.moveTo(hcc.x, hcc.y-34); ctx.lineTo(hcc.x+16, hcc.y-29); ctx.lineTo(hcc.x, hcc.y-24); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBall(){
+  var b = state.ball;
+  ctx.save();
+  ctx.scale(state.scale*state.dpr, state.scale*state.dpr);
+  var scaleFactor = b.sinking>0 ? Math.max(0, 1-b.sinking*2.4) : 1;
+  ctx.beginPath();
+  ctx.arc(b.x, b.y+2, BALL_R*scaleFactor, 0, 7);
+  ctx.fillStyle='#00000040'; ctx.fill();
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, BALL_R*scaleFactor, 0, 7);
+  var grad = ctx.createRadialGradient(b.x-2,b.y-2,1,b.x,b.y,BALL_R);
+  grad.addColorStop(0,'#ffffff'); grad.addColorStop(1,'#c9d6d0');
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.restore();
+}
+
+function drawAim(){
+  if (!state.aiming) return;
+  var b = state.ball;
+  var dx = state.aimStart.x - state.aimNow.x;
+  var dy = state.aimStart.y - state.aimNow.y;
+  var dist = Math.hypot(dx,dy);
+  var clamped = Math.min(dist, MAX_DRAG);
+  var power = clamped/MAX_DRAG;
+  if (dist < 2) return;
+  var nx = dx/dist, ny = dy/dist;
+  ctx.save();
+  ctx.scale(state.scale*state.dpr, state.scale*state.dpr);
+  // pull-back line (to cursor)
+  ctx.setLineDash([5,4]);
+  ctx.strokeStyle = '#ffffff66'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-nx*clamped, b.y-ny*clamped); ctx.stroke();
+  ctx.setLineDash([]);
+  // shot direction line
+  var col = power<0.5 ? '#34d399' : power<0.85 ? '#f2c14e' : '#f87171';
+  ctx.strokeStyle = col; ctx.lineWidth=3;
+  var shotLen = 26+power*70;
+  ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x+nx*shotLen, b.y+ny*shotLen); ctx.stroke();
+  ctx.beginPath(); ctx.arc(b.x+nx*shotLen, b.y+ny*shotLen, 3.5, 0, 7); ctx.fillStyle=col; ctx.fill();
+  ctx.restore();
+}
+
+function draw(){
+  if (state.mode==='play'){
+    drawGrid(state.level.grid, null, null, false);
+    var hcc = cellWorldCenter.bind(null);
+    // draw hole + ball marker directly (start not shown during play)
+    ctx.save(); ctx.scale(state.scale*state.dpr, state.scale*state.dpr);
+    var hx=state.level.holeX, hy=state.level.holeY;
+    ctx.fillStyle='#08110d'; ctx.beginPath(); ctx.arc(hx,hy,HOLE_R,0,7); ctx.fill();
+    ctx.strokeStyle='#f2c14e'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(hx,hy,HOLE_R+2,0,7); ctx.stroke();
+    ctx.strokeStyle='#c9c9c9'; ctx.beginPath(); ctx.moveTo(hx,hy-6); ctx.lineTo(hx,hy-34); ctx.stroke();
+    ctx.fillStyle='#f87171'; ctx.beginPath();
+    ctx.moveTo(hx,hy-34); ctx.lineTo(hx+16,hy-29); ctx.lineTo(hx,hy-24); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    drawBall();
+    drawAim();
+  } else if (state.mode==='editor'){
+    drawGrid(state.editorGrid, state.editorStart, state.editorHole, true);
+  } else {
+    ctx.save(); ctx.scale(state.scale*state.dpr, state.scale*state.dpr);
+    ctx.clearRect(0,0,WORLD_W,WORLD_H);
+    ctx.restore();
+  }
+}
+
+/* editor hover highlight */
+canvas.addEventListener('pointermove', function(e){
+  if (state.mode!=='editor') return;
+  var w = worldFromEvent(e);
+  var g = worldToGrid(w);
+  if (g.x>=1 && g.x<=IW && g.y>=1 && g.y<=IH) state.editorHoverCell = g;
+  else state.editorHoverCell = null;
+});
+
+/* ---------- main loop ---------- */
+var lastT = null;
+function loop(ts){
+  if (lastT==null) lastT = ts;
+  var dt = Math.min(0.032, (ts-lastT)/1000);
+  lastT = ts;
+  if (state.mode==='play') stepPhysics(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- shared level from URL hash ---------- */
+function tryLoadSharedFromHash(){
+  var h = location.hash;
+  if (h.indexOf('#lvl=') !== 0) return false;
+  try{
+    var b64 = h.slice(5);
+    var json = decodeURIComponent(escape(atob(b64)));
+    var obj = JSON.parse(json);
+    var def = { id:'shared_'+Math.random().toString(36).slice(2,8), name:obj.n||'Shared Course',
+      par: obj.p||3, rows: obj.r };
+    loadLevelFromDef(def);
+    toast('🔗 Loaded shared course');
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------- boot ---------- */
+fitCanvas();
+if (!tryLoadSharedFromHash()) setMode('menu');
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
