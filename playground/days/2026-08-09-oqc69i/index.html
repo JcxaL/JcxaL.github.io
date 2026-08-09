@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Orrery Workshop</title>
+<style>
+  :root{
+    --bg0:#03040a; --bg1:#080b18; --panel:rgba(14,17,32,0.72); --panel-b:rgba(255,255,255,0.09);
+    --ink:#eef0fb; --ink-dim:#9aa1c4; --accent:#ffb347; --accent2:#7dd3fc; --danger:#f87171; --good:#4ade80;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%; overflow:hidden; background:var(--bg0); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink);}
+  #scene{position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab;}
+  #scene.dragging{cursor:grabbing;}
+  .glass{background:var(--panel); border:1px solid var(--panel-b); border-radius:14px; backdrop-filter:blur(16px) saturate(140%); -webkit-backdrop-filter:blur(16px) saturate(140%); box-shadow:0 8px 30px rgba(0,0,0,0.35);}
+  #hud{position:fixed; top:10px; left:10px; right:10px; display:flex; align-items:center; gap:8px; padding:8px 10px; z-index:20; flex-wrap:wrap;}
+  #hud h1{font-size:14px; margin:0 10px 0 4px; font-weight:700; letter-spacing:0.2px; white-space:nowrap; color:var(--ink);}
+  #hud h1 span{color:var(--accent);}
+  .btn{appearance:none; border:1px solid var(--panel-b); background:rgba(255,255,255,0.06); color:var(--ink); border-radius:9px; padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .15s,transform .1s;}
+  .btn:hover{background:rgba(255,255,255,0.14);}
+  .btn:active{transform:scale(0.96);}
+  .btn.primary{background:var(--accent); color:#1a1000; border-color:transparent;}
+  .btn.primary:hover{background:#ffc670;}
+  .btn.small{padding:6px 9px; font-size:12px; border-radius:7px;}
+  .btn.icon{width:34px; height:34px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:15px;}
+  select, input[type=text]{appearance:none; border:1px solid var(--panel-b); background:rgba(255,255,255,0.06); color:var(--ink); border-radius:9px; padding:7px 9px; font-size:13px; font-family:inherit;}
+  #speedWrap{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-dim);}
+  #speedSlider{width:80px; accent-color:var(--accent);}
+  .spacer{flex:1;}
+  #hint{position:fixed; left:50%; bottom:18px; transform:translateX(-50%); font-size:12px; color:var(--ink-dim); padding:7px 14px; z-index:15; pointer-events:none; opacity:1; animation:hintFade 6s ease forwards;}
+  @keyframes hintFade{0%{opacity:1;}70%{opacity:1;}100%{opacity:0;}}
+  #panelToggle{position:fixed; right:10px; bottom:10px; z-index:25; width:44px; height:44px; font-size:18px; display:none;}
+  #panel{position:fixed; top:58px; right:10px; bottom:10px; width:290px; z-index:20; display:flex; flex-direction:column; overflow:hidden;}
+  #panelScroll{overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:14px;}
+  .section h3{margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--ink-dim); display:flex; align-items:center; justify-content:space-between;}
+  #bodyList{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px; max-height:150px; overflow-y:auto;}
+  #bodyList li{display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:12.5px; border:1px solid transparent;}
+  #bodyList li:hover{background:rgba(255,255,255,0.06);}
+  #bodyList li.selected{background:rgba(125,211,252,0.14); border-color:rgba(125,211,252,0.4);}
+  .swatch{width:12px; height:12px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 6px 1px currentColor;}
+  #bodyList li span.nm{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .row{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+  .row label{width:66px; font-size:11.5px; color:var(--ink-dim); flex:0 0 auto;}
+  .row input[type=range]{flex:1; accent-color:var(--accent2);}
+  .row input[type=color]{width:30px; height:26px; padding:0; border:1px solid var(--panel-b); border-radius:6px; background:none; cursor:pointer;}
+  .row output{width:38px; text-align:right; font-size:11px; color:var(--ink-dim); font-variant-numeric:tabular-nums;}
+  .row input[type=text]{width:100%;}
+  .btnrow{display:flex; gap:6px; flex-wrap:wrap;}
+  #editorEmpty{font-size:12px; color:var(--ink-dim); padding:6px 2px;}
+  #toast{position:fixed; left:50%; top:60px; transform:translateX(-50%) translateY(-12px); z-index:40; padding:9px 16px; font-size:12.5px; font-weight:600; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;}
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  #saveNameInput{flex:1; min-width:0;}
+  select#loadSelect{width:100%;}
+  #hud .btn[data-view="top"].active, #hud .btn.playing{outline:2px solid var(--accent); outline-offset:-2px;}
+  @media (max-width:760px){
+    #hud h1{display:none;}
+    #hud{top:8px; left:8px; right:8px; padding:7px 8px;}
+    #speedWrap{display:none;}
+    #panel{transform:translateY(120%); transition:transform .28s cubic-bezier(.2,.9,.3,1); top:auto; bottom:0; left:0; right:0; width:auto; height:62vh; border-radius:16px 16px 0 0;}
+    #panel.open{transform:translateY(0);}
+    #panelToggle{display:flex; align-items:center; justify-content:center;}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud" class="glass">
+  <h1>🪐 Orrery <span>Workshop</span></h1>
+  <select id="presetSelect" title="Load a preset system">
+    <option value="solar">Solar System</option>
+    <option value="binary">Binary Chaos</option>
+    <option value="random">Randomize</option>
+    <option value="empty">Empty Space</option>
+  </select>
+  <button class="btn icon" id="playBtn" title="Play / pause">⏸</button>
+  <div id="speedWrap">
+    <span>speed</span>
+    <input type="range" id="speedSlider" min="0" max="4" step="0.01" value="1">
+    <output id="speedOut">1.0×</output>
+  </div>
+  <button class="btn small" id="viewToggleBtn" data-view="free" title="Toggle top-down view">Top View</button>
+  <div class="spacer"></div>
+  <button class="btn small" id="shareBtn" title="Copy shareable link">🔗 Share</button>
+  <button class="btn small" id="exportPngBtn" title="Save a PNG screenshot">📷 PNG</button>
+</div>
+
+<div id="hint">Drag to orbit camera · scroll / pinch to zoom · tap a planet to edit it</div>
+<div id="toast" class="glass"></div>
+
+<button class="btn icon glass" id="panelToggle" title="Show controls">⚙</button>
+
+<aside id="panel" class="glass">
+  <div id="panelScroll">
+    <div class="section">
+      <h3>Star</h3>
+      <div class="row"><label>Color</label><input type="color" id="sunColor" value="#ffb347"><label style="width:auto;margin-left:8px;">Size</label><input type="range" id="sunSize" min="1.2" max="3.6" step="0.05" value="2.1"></div>
+    </div>
+
+    <div class="section">
+      <h3>Bodies <button class="btn small" id="addBodyBtn">+ Add planet</button></h3>
+      <ul id="bodyList"></ul>
+    </div>
+
+    <div class="section" id="editorSection">
+      <h3>Selected body</h3>
+      <div id="editorEmpty">Select a planet from the list, or tap one in the scene, to edit its orbit.</div>
+      <div id="editorFields" style="display:none;">
+        <div class="row"><input type="text" id="fName" placeholder="Name" maxlength="18"><input type="color" id="fColor" value="#7dd3fc"></div>
+        <div class="row"><label>Distance</label><input type="range" id="fDistance" min="3" max="42" step="0.1"><output id="oDistance"></output></div>
+        <div class="row"><label>Eccentric.</label><input type="range" id="fEcc" min="0" max="0.85" step="0.01"><output id="oEcc"></output></div>
+        <div class="row"><label>Tilt</label><input type="range" id="fIncl" min="-60" max="60" step="1"><output id="oIncl"></output></div>
+        <div class="row"><label>Size</label><input type="range" id="fSize" min="0.15" max="1.6" step="0.01"><output id="oSize"></output></div>
+        <div class="row"><label>Speed</label><input type="range" id="fSpeed" min="-1.5" max="1.5" step="0.01"><output id="oSpeed"></output></div>
+        <div class="btnrow">
+          <button class="btn small" id="randomizeBtn">🎲 Randomize</button>
+          <button class="btn small" id="deleteBodyBtn" style="color:var(--danger);">🗑 Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Save system</h3>
+      <div class="row"><input type="text" id="saveNameInput" placeholder="Name this system…"><button class="btn small" id="saveBtn">Save</button></div>
+      <div class="row"><select id="loadSelect"><option value="">— saved systems —</option></select></div>
+      <div class="btnrow">
+        <button class="btn small" id="loadBtn">Load</button>
+        <button class="btn small" id="deleteSaveBtn" style="color:var(--danger);">Delete save</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Export</h3>
+      <div class="btnrow">
+        <button class="btn small" id="exportJsonBtn">⬇ JSON</button>
+        <label class="btn small" style="cursor:pointer;">⬆ Import<input type="file" id="importJsonInput" accept="application/json" style="display:none;"></label>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<script>
+(function(){
+"use strict";
+
+var canvas = document.getElementById("scene");
+var gl = canvas.getContext("webgl", {antialias:true, preserveDrawingBuffer:true}) ||
+         canvas.getContext("experimental-webgl", {antialias:true, preserveDrawingBuffer:true});
+if(!gl){
+  document.body.innerHTML = '<div style="padding:40px;font-family:system-ui;color:#eee;background:#111;height:100%;">Your browser does not support WebGL, which this experience requires.</div>';
+  return;
+}
+
+/* ---------- mat4 / mat3 helpers (column-major, matches WebGL) ---------- */
+function m4Identity(){ return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; }
+function m4Mul(a,b){
+  var o = new Array(16);
+  for(var c=0;c<4;c++){
+    for(var r=0;r<4;r++){
+      var s=0;
+      for(var k=0;k<4;k++) s += a[k*4+r]*b[c*4+k];
+      o[c*4+r]=s;
+    }
+  }
+  return o;
+}
+function m4Perspective(fovy, aspect, near, far){
+  var f = 1/Math.tan(fovy/2), nf = 1/(near-far);
+  return [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,(2*far*near)*nf,0];
+}
+function m4LookAt(eye, tgt, up){
+  var zx=eye[0]-tgt[0], zy=eye[1]-tgt[1], zz=eye[2]-tgt[2];
+  var zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
+  var xx=up[1]*zz-up[2]*zy, xy=up[2]*zx-up[0]*zz, xz=up[0]*zy-up[1]*zx;
+  var xl=Math.hypot(xx,xy,xz)||1; xx/=xl; xy/=xl; xz/=xl;
+  var yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+  return [
+    xx,yx,zx,0,
+    xy,yy,zy,0,
+    xz,yz,zz,0,
+    -(xx*eye[0]+xy*eye[1]+xz*eye[2]), -(yx*eye[0]+yy*eye[1]+yz*eye[2]), -(zx*eye[0]+zy*eye[1]+zz*eye[2]), 1
+  ];
+}
+function m4Translate(x,y,z){ return [1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1]; }
+function m4Scale(s){ return [s,0,0,0, 0,s,0,0, 0,0,s,0, 0,0,0,1]; }
+function m4MulVec4(m, v){
+  var o=[0,0,0,0];
+  for(var r=0;r<4;r++){
+    o[r] = m[0*4+r]*v[0] + m[1*4+r]*v[1] + m[2*4+r]*v[2] + m[3*4+r]*v[3];
+  }
+  return o;
+}
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function hexToRgb(hex){
+  var h = hex.replace("#","");
+  if(h.length===3) h = h.split("").map(function(c){return c+c;}).join("");
+  var n = parseInt(h,16);
+  return [((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255];
+}
+function rgbToHex(r,g,b){
+  function h(v){ var s=Math.round(clamp(v,0,1)*255).toString(16); return s.length<2? "0"+s : s; }
+  return "#"+h(r)+h(g)+h(b);
+}
+
+/* ---------- geometry ---------- */
+function buildSphere(latBands, lonBands){
+  var positions=[], indices=[];
+  for(var lat=0; lat<=latBands; lat++){
+    var theta = lat*Math.PI/latBands, sinT=Math.sin(theta), cosT=Math.cos(theta);
+    for(var lon=0; lon<=lonBands; lon++){
+      var phi = lon*2*Math.PI/lonBands, sinP=Math.sin(phi), cosP=Math.cos(phi);
+      var x=cosP*sinT, y=cosT, z=sinP*sinT;
+      positions.push(x,y,z);
+    }
+  }
+  for(lat=0; lat<latBands; lat++){
+    for(lon=0; lon<lonBands; lon++){
+      var first = lat*(lonBands+1)+lon, second = first+lonBands+1;
+      indices.push(first, second, first+1);
+      indices.push(second, second+1, first+1);
+    }
+  }
+  return {positions:new Float32Array(positions), indices:new Uint16Array(indices)};
+}
+function makeBuffer(target, data){
+  var b = gl.createBuffer();
+  gl.bindBuffer(target, b);
+  gl.bufferData(target, data, gl.STATIC_DRAW);
+  return b;
+}
+
+var sphereGeo = buildSphere(16, 24);
+var sphereVBO = makeBuffer(gl.ARRAY_BUFFER, sphereGeo.positions);
+var sphereIBO = makeBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereGeo.indices);
+var sphereIndexCount = sphereGeo.indices.length;
+
+var glowQuad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+var glowVBO = makeBuffer(gl.ARRAY_BUFFER, glowQuad);
+
+var starCount = 900;
+var starPositions = new Float32Array(starCount*3);
+(function(){
+  for(var i=0;i<starCount;i++){
+    var u = Math.random()*2-1, t = Math.random()*Math.PI*2, r = Math.sqrt(1-u*u);
+    var rad = 140 + Math.random()*60;
+    starPositions[i*3]   = r*Math.cos(t)*rad;
+    starPositions[i*3+1] = u*rad;
+    starPositions[i*3+2] = r*Math.sin(t)*rad;
+  }
+})();
+var starVBO = makeBuffer(gl.ARRAY_BUFFER, starPositions);
+
+/* ---------- shaders ---------- */
+function compile(type, src){
+  var s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    console.error(gl.getShaderInfoLog(s));
+    throw new Error("shader compile failed");
+  }
+  return s;
+}
+function program(vsSrc, fsSrc){
+  var p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    console.error(gl.getProgramInfoLog(p));
+    throw new Error("program link failed");
+  }
+  return p;
+}
+
+var sphereProg = program(
+  "attribute vec3 aPosition;" +
+  "uniform mat4 uModel, uView, uProj;" +
+  "varying vec3 vNormal; varying vec3 vWorldPos;" +
+  "void main(){" +
+  "  vec4 wp = uModel * vec4(aPosition,1.0);" +
+  "  vWorldPos = wp.xyz;" +
+  "  vNormal = normalize(aPosition);" +
+  "  gl_Position = uProj * uView * wp;" +
+  "}",
+  "precision mediump float;" +
+  "varying vec3 vNormal; varying vec3 vWorldPos;" +
+  "uniform vec3 uColor, uLightPos, uCamPos;" +
+  "uniform float uEmissive, uIsSun, uTime;" +
+  "void main(){" +
+  "  vec3 N = normalize(vNormal);" +
+  "  if(uIsSun > 0.5){" +
+  "    float pulse = 1.0 + 0.12*sin(uTime*1.6);" +
+  "    gl_FragColor = vec4(uColor * (uEmissive*pulse), 1.0);" +
+  "    return;" +
+  "  }" +
+  "  vec3 L = normalize(uLightPos - vWorldPos);" +
+  "  vec3 V = normalize(uCamPos - vWorldPos);" +
+  "  vec3 H = normalize(L+V);" +
+  "  float diff = max(dot(N,L), 0.0);" +
+  "  float spec = pow(max(dot(N,H), 0.0), 28.0);" +
+  "  vec3 col = uColor*0.16 + uColor*diff*0.88 + vec3(1.0)*spec*0.35;" +
+  "  gl_FragColor = vec4(col, 1.0);" +
+  "}"
+);
+
+var lineProg = program(
+  "attribute vec3 aPosition;" +
+  "uniform mat4 uMVP;" +
+  "void main(){ gl_Position = uMVP * vec4(aPosition,1.0); }",
+  "precision mediump float;" +
+  "uniform vec4 uColor;" +
+  "void main(){ gl_FragColor = uColor; }"
+);
+
+var starProg = program(
+  "attribute vec3 aPosition;" +
+  "uniform mat4 uVP;" +
+  "void main(){ gl_Position = uVP * vec4(aPosition,1.0); gl_PointSize = 1.6; }",
+  "precision mediump float;" +
+  "void main(){ gl_FragColor = vec4(1.0,1.0,1.0,0.75); }"
+);
+
+var glowProg = program(
+  "attribute vec2 aPos;" +
+  "uniform mat4 uView, uProj; uniform vec3 uCenter, uRight, uUp; uniform float uSize;" +
+  "varying vec2 vUV;" +
+  "void main(){" +
+  "  vUV = aPos;" +
+  "  vec3 world = uCenter + uRight*aPos.x*uSize + uUp*aPos.y*uSize;" +
+  "  gl_Position = uProj * uView * vec4(world,1.0);" +
+  "}",
+  "precision mediump float;" +
+  "varying vec2 vUV; uniform vec3 uColor;" +
+  "void main(){" +
+  "  float d = length(vUV);" +
+  "  float a = smoothstep(1.0, 0.0, d);" +
+  "  gl_FragColor = vec4(uColor*a, a*0.5);" +
+  "}"
+);
+
+/* ---------- state ---------- */
+var NAMES = ["Aster","Boreal","Corvus","Drift","Ember","Fenn","Gloss","Halcyon","Isolde","Juno","Kai","Lyric","Mira","Nyx","Orin","Petra","Quill","Rune","Solace","Talon"];
+var COLORS = ["#7dd3fc","#f472b6","#a3e635","#c084fc","#fb923c","#34d399","#f87171","#93c5fd","#fde047","#fca5a5"];
+var nextId = 1;
+
+function newBody(overrides){
+  var b = {
+    id: "b"+(nextId++),
+    name: NAMES[Math.floor(Math.random()*NAMES.length)],
+    color: COLORS[Math.floor(Math.random()*COLORS.length)],
+    distance: 8, eccentricity: 0.1, inclination: 0, size: 0.5, speed: 0.4, phase: Math.random()*Math.PI*2
+  };
+  for(var k in overrides) b[k] = overrides[k];
+  b.ringVBO = null; b.ringCount = 0; b.screenX = -999; b.screenY = -999; b.screenVisible = false;
+  updateRing(b);
+  return b;
+}
+
+function updateRing(b){
+  var N = 96, pts = new Float32Array((N+1)*3);
+  var inc = b.inclination*Math.PI/180;
+  var a = b.distance, e = clamp(b.eccentricity,0,0.9), bb = a*Math.sqrt(1-e*e);
+  for(var i=0;i<=N;i++){
+    var ang = i/N*Math.PI*2;
+    var x = a*Math.cos(ang) - a*e, z = bb*Math.sin(ang);
+    var y2 = -z*Math.sin(inc), z2 = z*Math.cos(inc);
+    pts[i*3]=x; pts[i*3+1]=y2; pts[i*3+2]=z2;
+  }
+  if(!b.ringVBO) b.ringVBO = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, b.ringVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, pts, gl.DYNAMIC_DRAW);
+  b.ringCount = N+1;
+}
+
+function bodyPosition(b, t){
+  var ang = b.phase + t*b.speed;
+  var a = b.distance, e = clamp(b.eccentricity,0,0.9), bb = a*Math.sqrt(1-e*e);
+  var x = a*Math.cos(ang) - a*e, z = bb*Math.sin(ang);
+  var inc = b.inclination*Math.PI/180;
+  var y2 = -z*Math.sin(inc), z2 = z*Math.cos(inc);
+  return [x,y2,z2];
+}
+
+var state = {
+  sun: {color:"#ffb347", size:2.1},
+  bodies: [],
+  selectedId: null,
+  playing: true,
+  speed: 1,
+  simTime: 0,
+  viewMode: "free",
+  camera: {az: 0.6, el: 0.45, dist: 24, targetDist: 24}
+};
+
+function presetSolar(){
+  return [
+    newBody({name:"Cindra", color:"#f2a65a", distance:5.5, eccentricity:0.03, inclination:1, size:0.32, speed:0.9}),
+    newBody({name:"Verdan", color:"#7dd3fc", distance:8.5, eccentricity:0.06, inclination:3, size:0.46, speed:0.62}),
+    newBody({name:"Rubelle", color:"#f87171", distance:12, eccentricity:0.14, inclination:-4, size:0.4, speed:0.44}),
+    newBody({name:"Ozymar", color:"#c084fc", distance:17.5, eccentricity:0.2, inclination:6, size:0.85, speed:0.27}),
+    newBody({name:"Talos", color:"#34d399", distance:24, eccentricity:0.1, inclination:-8, size:0.6, speed:0.19})
+  ];
+}
+function presetBinary(){
+  return [
+    newBody({name:"Rook", color:"#fca5a5", distance:6, eccentricity:0.55, inclination:12, size:0.4, speed:0.9}),
+    newBody({name:"Vane", color:"#93c5fd", distance:9, eccentricity:0.4, inclination:-20, size:0.5, speed:-0.6}),
+    newBody({name:"Ashen", color:"#fde047", distance:14, eccentricity:0.65, inclination:28, size:0.35, speed:0.75}),
+    newBody({name:"Umbra", color:"#a3e635", distance:19, eccentricity:0.3, inclination:-14, size:0.7, speed:-0.35})
+  ];
+}
+function presetRandom(){
+  var n = 3 + Math.floor(Math.random()*5), arr=[], maxD=6;
+  for(var i=0;i<n;i++){
+    maxD += 3 + Math.random()*5;
+    arr.push(newBody({
+      distance: maxD, eccentricity: Math.random()*0.6, inclination: (Math.random()*80-40),
+      size: 0.2+Math.random()*0.9, speed: (Math.random()*1.4+0.15)*(Math.random()<0.5?-1:1)
+    }));
+  }
+  return arr;
+}
+
+function loadPreset(name, skipToast){
+  state.bodies = name==="solar" ? presetSolar() : name==="binary" ? presetBinary() : name==="random" ? presetRandom() : [];
+  state.selectedId = null;
+  state.simTime = 0;
+  refreshBodyList();
+  refreshEditor();
+  if(!skipToast) toast("Loaded: " + (name==="solar"?"Solar System":name==="binary"?"Binary Chaos":name==="random"?"Randomized system":"Empty space"));
+  autosave();
+}
+
+/* ---------- persistence ---------- */
+var AUTOSAVE_KEY = "orrery_autosave_v1";
+var SAVES_KEY = "orrery_saves_v1";
+
+function serialize(){
+  return {
+    sun: state.sun,
+    bodies: state.bodies.map(function(b){
+      return {name:b.name,color:b.color,distance:b.distance,eccentricity:b.eccentricity,inclination:b.inclination,size:b.size,speed:b.speed,phase:b.phase};
+    }),
+    speed: state.speed
+  };
+}
+function deserialize(data){
+  state.sun = data.sun || state.sun;
+  state.bodies = (data.bodies||[]).map(function(d){ return newBody(d); });
+  state.speed = typeof data.speed === "number" ? data.speed : 1;
+  state.selectedId = null;
+  state.simTime = 0;
+  document.getElementById("speedSlider").value = state.speed;
+  document.getElementById("speedOut").textContent = state.speed.toFixed(2)+"×";
+  document.getElementById("sunColor").value = state.sun.color;
+  document.getElementById("sunSize").value = state.sun.size;
+  refreshBodyList();
+  refreshEditor();
+}
+function autosave(){
+  try{ localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(serialize())); }catch(e){}
+}
+function loadAutosave(){
+  try{
+    var raw = localStorage.getItem(AUTOSAVE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+function getSaves(){
+  try{ return JSON.parse(localStorage.getItem(SAVES_KEY)||"{}"); }catch(e){ return {}; }
+}
+function setSaves(obj){
+  try{ localStorage.setItem(SAVES_KEY, JSON.stringify(obj)); }catch(e){}
+}
+function refreshSaveList(){
+  var sel = document.getElementById("loadSelect");
+  var saves = getSaves();
+  sel.innerHTML = '<option value="">— saved systems —</option>';
+  Object.keys(saves).forEach(function(name){
+    var opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
+/* ---------- UI wiring ---------- */
+function toast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._h);
+  toast._h = setTimeout(function(){ t.classList.remove("show"); }, 2200);
+}
+
+function refreshBodyList(){
+  var ul = document.getElementById("bodyList");
+  ul.innerHTML = "";
+  state.bodies.forEach(function(b){
+    var li = document.createElement("li");
+    li.className = b.id === state.selectedId ? "selected" : "";
+    var sw = document.createElement("span");
+    sw.className = "swatch"; sw.style.background = b.color; sw.style.color = b.color;
+    var nm = document.createElement("span");
+    nm.className = "nm"; nm.textContent = b.name;
+    li.appendChild(sw); li.appendChild(nm);
+    li.addEventListener("click", function(){ selectBody(b.id); });
+    ul.appendChild(li);
+  });
+}
+
+function selectBody(id){
+  state.selectedId = id;
+  refreshBodyList();
+  refreshEditor();
+}
+
+function getSelected(){
+  return state.bodies.find(function(b){ return b.id === state.selectedId; }) || null;
+}
+
+function refreshEditor(){
+  var b = getSelected();
+  var empty = document.getElementById("editorEmpty");
+  var fields = document.getElementById("editorFields");
+  if(!b){ empty.style.display = "block"; fields.style.display = "none"; return; }
+  empty.style.display = "none"; fields.style.display = "block";
+  document.getElementById("fName").value = b.name;
+  document.getElementById("fColor").value = b.color;
+  document.getElementById("fDistance").value = b.distance; document.getElementById("oDistance").textContent = b.distance.toFixed(1);
+  document.getElementById("fEcc").value = b.eccentricity; document.getElementById("oEcc").textContent = b.eccentricity.toFixed(2);
+  document.getElementById("fIncl").value = b.inclination; document.getElementById("oIncl").textContent = b.inclination.toFixed(0)+"°";
+  document.getElementById("fSize").value = b.size; document.getElementById("oSize").textContent = b.size.toFixed(2);
+  document.getElementById("fSpeed").value = b.speed; document.getElementById("oSpeed").textContent = b.speed.toFixed(2);
+}
+
+function bindEditorField(id, prop, isFloat, ringDirty){
+  var el = document.getElementById(id);
+  el.addEventListener("input", function(){
+    var b = getSelected(); if(!b) return;
+    b[prop] = isFloat ? parseFloat(el.value) : el.value;
+    var out = document.getElementById("o"+id.slice(1));
+    if(out){
+      if(prop === "inclination") out.textContent = b[prop].toFixed(0)+"°";
+      else if(prop === "eccentricity") out.textContent = b[prop].toFixed(2);
+      else out.textContent = b[prop].toFixed(2);
+    }
+    if(ringDirty) updateRing(b);
+    refreshBodyList();
+    autosave();
+  });
+}
+bindEditorField("fDistance","distance",true,true);
+bindEditorField("fEcc","eccentricity",true,true);
+bindEditorField("fIncl","inclination",true,true);
+bindEditorField("fSize","size",true,false);
+bindEditorField("fSpeed","speed",true,false);
+document.getElementById("fName").addEventListener("input", function(){
+  var b = getSelected(); if(!b) return;
+  b.name = document.getElementById("fName").value || "Unnamed";
+  refreshBodyList(); autosave();
+});
+document.getElementById("fColor").addEventListener("input", function(){
+  var b = getSelected(); if(!b) return;
+  b.color = document.getElementById("fColor").value;
+  refreshBodyList(); autosave();
+});
+
+document.getElementById("sunColor").addEventListener("input", function(e){ state.sun.color = e.target.value; autosave(); });
+document.getElementById("sunSize").addEventListener("input", function(e){ state.sun.size = parseFloat(e.target.value); autosave(); });
+
+document.getElementById("addBodyBtn").addEventListener("click", function(){
+  var maxD = state.bodies.reduce(function(m,b){ return Math.max(m,b.distance); }, 4);
+  var b = newBody({distance: Math.min(40, maxD + 4 + Math.random()*3)});
+  state.bodies.push(b);
+  selectBody(b.id);
+  toast("Added " + b.name);
+  autosave();
+});
+document.getElementById("randomizeBtn").addEventListener("click", function(){
+  var b = getSelected(); if(!b) return;
+  b.distance = 3 + Math.random()*38;
+  b.eccentricity = Math.random()*0.7;
+  b.inclination = Math.random()*80-40;
+  b.size = 0.15 + Math.random()*1.3;
+  b.speed = (Math.random()*1.3+0.1) * (Math.random()<0.5?-1:1);
+  updateRing(b);
+  refreshEditor(); refreshBodyList(); autosave();
+});
+document.getElementById("deleteBodyBtn").addEventListener("click", function(){
+  var b = getSelected(); if(!b) return;
+  state.bodies = state.bodies.filter(function(x){ return x.id !== b.id; });
+  state.selectedId = null;
+  refreshBodyList(); refreshEditor(); autosave();
+  toast("Deleted " + b.name);
+});
+
+document.getElementById("presetSelect").addEventListener("change", function(e){ loadPreset(e.target.value); });
+
+var playBtn = document.getElementById("playBtn");
+playBtn.addEventListener("click", function(){
+  state.playing = !state.playing;
+  playBtn.textContent = state.playing ? "⏸" : "▶";
+  playBtn.classList.toggle("playing", state.playing);
+});
+var speedSlider = document.getElementById("speedSlider");
+speedSlider.addEventListener("input", function(){
+  state.speed = parseFloat(speedSlider.value);
+  document.getElementById("speedOut").textContent = state.speed.toFixed(2)+"×";
+  autosave();
+});
+
+var viewBtn = document.getElementById("viewToggleBtn");
+viewBtn.addEventListener("click", function(){
+  state.viewMode = state.viewMode === "free" ? "top" : "free";
+  viewBtn.textContent = state.viewMode === "top" ? "Free View" : "Top View";
+});
+
+document.getElementById("saveBtn").addEventListener("click", function(){
+  var name = document.getElementById("saveNameInput").value.trim();
+  if(!name){ toast("Give it a name first"); return; }
+  var saves = getSaves();
+  saves[name] = serialize();
+  setSaves(saves);
+  refreshSaveList();
+  toast("Saved “" + name + "”");
+});
+document.getElementById("loadBtn").addEventListener("click", function(){
+  var name = document.getElementById("loadSelect").value;
+  if(!name){ toast("Pick a saved system first"); return; }
+  var saves = getSaves();
+  if(saves[name]){ deserialize(saves[name]); toast("Loaded “" + name + "”"); autosave(); }
+});
+document.getElementById("deleteSaveBtn").addEventListener("click", function(){
+  var name = document.getElementById("loadSelect").value;
+  if(!name) return;
+  var saves = getSaves();
+  delete saves[name];
+  setSaves(saves);
+  refreshSaveList();
+  toast("Deleted save");
+});
+
+document.getElementById("shareBtn").addEventListener("click", function(){
+  try{
+    var json = JSON.stringify(serialize());
+    var hash = btoa(unescape(encodeURIComponent(json)));
+    var url = location.origin + location.pathname + "#s=" + hash;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){ toast("Link copied to clipboard"); }).catch(function(){ toast(url); });
+    } else {
+      window.prompt("Copy this link:", url);
+    }
+    history.replaceState(null, "", "#s=" + hash);
+  }catch(e){ toast("Could not build link"); }
+});
+
+document.getElementById("exportJsonBtn").addEventListener("click", function(){
+  var blob = new Blob([JSON.stringify(serialize(), null, 2)], {type:"application/json"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "orrery-system.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+  toast("Exported JSON");
+});
+document.getElementById("importJsonInput").addEventListener("change", function(e){
+  var file = e.target.files[0]; if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    try{
+      var data = JSON.parse(reader.result);
+      deserialize(data);
+      autosave();
+      toast("Imported system");
+    }catch(err){ toast("Invalid file"); }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+document.getElementById("exportPngBtn").addEventListener("click", function(){
+  canvas.toBlob(function(blob){
+    if(!blob){ toast("Export failed"); return; }
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "orrery.png";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+    toast("Screenshot saved");
+  }, "image/png");
+});
+
+var panelToggle = document.getElementById("panelToggle");
+var panel = document.getElementById("panel");
+panelToggle.addEventListener("click", function(){
+  panel.classList.toggle("open");
+  panelToggle.textContent = panel.classList.contains("open") ? "✕" : "⚙";
+});
+
+/* ---------- camera + input ---------- */
+var pointer = {down:false, id:null, sx:0, sy:0, lx:0, ly:0, moved:false, t0:0};
+var pinch = {active:false, startDist:0, startCamDist:0};
+
+function canvasPoint(e){
+  var r = canvas.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+
+canvas.addEventListener("pointerdown", function(e){
+  if(e.pointerType === "touch" && pointer.down && pointer.id !== e.pointerId){
+    return;
+  }
+  pointer.down = true; pointer.id = e.pointerId; pointer.moved = false; pointer.t0 = performance.now();
+  var p = canvasPoint(e);
+  pointer.sx = pointer.lx = p[0]; pointer.sy = pointer.ly = p[1];
+  canvas.classList.add("dragging");
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", function(e){
+  if(!pointer.down || e.pointerId !== pointer.id) return;
+  var p = canvasPoint(e);
+  var dx = p[0]-pointer.lx, dy = p[1]-pointer.ly;
+  pointer.lx = p[0]; pointer.ly = p[1];
+  if(Math.abs(p[0]-pointer.sx) + Math.abs(p[1]-pointer.sy) > 4) pointer.moved = true;
+  if(pointer.moved && state.viewMode === "free"){
+    state.camera.az -= dx*0.0055;
+    state.camera.el = clamp(state.camera.el - dy*0.0055, -1.4, 1.4);
+  } else if(pointer.moved){
+    state.camera.az -= dx*0.0055;
+  }
+});
+function endPointer(e){
+  if(e.pointerId !== pointer.id) return;
+  var dt = performance.now() - pointer.t0;
+  if(!pointer.moved && dt < 450){
+    tryPick(pointer.lx, pointer.ly);
+  }
+  pointer.down = false;
+  canvas.classList.remove("dragging");
+}
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+
+canvas.addEventListener("wheel", function(e){
+  e.preventDefault();
+  state.camera.targetDist = clamp(state.camera.targetDist * (1 + e.deltaY*0.0012), 6, 90);
+}, {passive:false});
+
+canvas.addEventListener("touchstart", function(e){
+  if(e.touches.length === 2){
+    pinch.active = true;
+    var dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinch.startDist = Math.hypot(dx,dy);
+    pinch.startCamDist = state.camera.targetDist;
+  }
+}, {passive:true});
+canvas.addEventListener("touchmove", function(e){
+  if(pinch.active && e.touches.length === 2){
+    var dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+    var d = Math.hypot(dx,dy);
+    state.camera.targetDist = clamp(pinch.startCamDist * (pinch.startDist / Math.max(1,d)), 6, 90);
+  }
+}, {passive:true});
+canvas.addEventListener("touchend", function(e){ if(e.touches.length < 2) pinch.active = false; }, {passive:true});
+
+function tryPick(x, y){
+  var best = null, bestD = 30*30;
+  state.bodies.forEach(function(b){
+    if(!b.screenVisible) return;
+    var dx = b.screenX - x, dy = b.screenY - y, d2 = dx*dx+dy*dy;
+    if(d2 < bestD){ bestD = d2; best = b; }
+  });
+  if(best) selectBody(best.id);
+}
+
+/* ---------- render ---------- */
+function resize(){
+  var dpr = Math.min(window.devicePixelRatio||1, 2);
+  var w = canvas.clientWidth, h = canvas.clientHeight;
+  var W = Math.round(w*dpr), H = Math.round(h*dpr);
+  if(canvas.width !== W || canvas.height !== H){ canvas.width = W; canvas.height = H; }
+}
+window.addEventListener("resize", resize);
+
+var aPositionSphere = gl.getAttribLocation(sphereProg, "aPosition");
+var aPositionLine = gl.getAttribLocation(lineProg, "aPosition");
+var aPositionStar = gl.getAttribLocation(starProg, "aPosition");
+var aPosGlow = gl.getAttribLocation(glowProg, "aPos");
+
+gl.enable(gl.DEPTH_TEST);
+gl.clearColor(0.01,0.015,0.03,1);
+
+var lastFrame = null;
+
+function frame(now){
+  if(lastFrame === null) lastFrame = now;
+  var dt = Math.min(0.05, (now-lastFrame)/1000);
+  lastFrame = now;
+
+  if(state.playing) state.simTime += dt*state.speed;
+  state.camera.dist += (state.camera.targetDist - state.camera.dist) * 0.15;
+  if(state.viewMode === "top"){
+    state.camera.el += (1.45 - state.camera.el) * 0.12;
+  }
+
+  resize();
+  gl.viewport(0,0,canvas.width, canvas.height);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  var aspect = canvas.width / Math.max(1,canvas.height);
+  var proj = m4Perspective(55*Math.PI/180, aspect, 0.1, 400);
+  var cam = state.camera;
+  var eye = [
+    cam.dist*Math.cos(cam.el)*Math.sin(cam.az),
+    cam.dist*Math.sin(cam.el),
+    cam.dist*Math.cos(cam.el)*Math.cos(cam.az)
+  ];
+  var view = m4LookAt(eye, [0,0,0], [0,1,0]);
+  var vp = m4Mul(proj, view);
+
+  drawStars(vp);
+  drawRings(vp);
+  drawSun(view, proj, eye);
+  drawBodies(view, proj, eye, vp);
+  drawGlow(view, proj);
+
+  requestAnimationFrame(frame);
+}
+
+function drawStars(vp){
+  gl.useProgram(starProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, starVBO);
+  gl.enableVertexAttribArray(aPositionStar);
+  gl.vertexAttribPointer(aPositionStar, 3, gl.FLOAT, false, 0, 0);
+  gl.uniformMatrix4fv(gl.getUniformLocation(starProg,"uVP"), false, vp);
+  gl.drawArrays(gl.POINTS, 0, starCount);
+}
+
+function drawRings(vp){
+  gl.useProgram(lineProg);
+  gl.enableVertexAttribArray(aPositionLine);
+  var loc = gl.getUniformLocation(lineProg,"uMVP");
+  var colLoc = gl.getUniformLocation(lineProg,"uColor");
+  state.bodies.forEach(function(b){
+    gl.bindBuffer(gl.ARRAY_BUFFER, b.ringVBO);
+    gl.vertexAttribPointer(aPositionLine, 3, gl.FLOAT, false, 0, 0);
+    gl.uniformMatrix4fv(loc, false, vp);
+    var rgb = hexToRgb(b.color);
+    var isSel = b.id === state.selectedId;
+    gl.uniform4f(colLoc, rgb[0], rgb[1], rgb[2], isSel ? 0.85 : 0.28);
+    gl.lineWidth(isSel ? 2 : 1);
+    gl.drawArrays(gl.LINE_STRIP, 0, b.ringCount);
+  });
+}
+
+function drawSun(view, proj, eye){
+  gl.useProgram(sphereProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, sphereVBO);
+  gl.enableVertexAttribArray(aPositionSphere);
+  gl.vertexAttribPointer(aPositionSphere, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIBO);
+  var model = m4Mul(m4Translate(0,0,0), m4Scale(state.sun.size));
+  gl.uniformMatrix4fv(gl.getUniformLocation(sphereProg,"uModel"), false, model);
+  gl.uniformMatrix4fv(gl.getUniformLocation(sphereProg,"uView"), false, view);
+  gl.uniformMatrix4fv(gl.getUniformLocation(sphereProg,"uProj"), false, proj);
+  var rgb = hexToRgb(state.sun.color);
+  gl.uniform3f(gl.getUniformLocation(sphereProg,"uColor"), rgb[0], rgb[1], rgb[2]);
+  gl.uniform3f(gl.getUniformLocation(sphereProg,"uLightPos"), 0,0,0);
+  gl.uniform3f(gl.getUniformLocation(sphereProg,"uCamPos"), eye[0],eye[1],eye[2]);
+  gl.uniform1f(gl.getUniformLocation(sphereProg,"uEmissive"), 1.3);
+  gl.uniform1f(gl.getUniformLocation(sphereProg,"uIsSun"), 1.0);
+  gl.uniform1f(gl.getUniformLocation(sphereProg,"uTime"), state.simTime);
+  gl.drawElements(gl.TRIANGLES, sphereIndexCount, gl.UNSIGNED_SHORT, 0);
+}
+
+function drawBodies(view, proj, eye, vp){
+  gl.useProgram(sphereProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, sphereVBO);
+  gl.enableVertexAttribArray(aPositionSphere);
+  gl.vertexAttribPointer(aPositionSphere, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIBO);
+  gl.uniformMatrix4fv(gl.getUniformLocation(sphereProg,"uView"), false, view);
+  gl.uniformMatrix4fv(gl.getUniformLocation(sphereProg,"uProj"), false, proj);
+  gl.uniform3f(gl.getUniformLocation(sphereProg,"uLightPos"), 0,0,0);
+  gl.uniform3f(gl.getUniformLocation(sphereProg,"uCamPos"), eye[0],eye[1],eye[2]);
+  gl.uniform1f(gl.getUniformLocation(sphereProg,"uIsSun"), 0.0);
+  gl.uniform1f(gl.getUniformLocation(sphereProg,"uEmissive"), 0.0);
+
+  state.bodies.forEach(function(b){
+    var pos = bodyPosition(b, state.simTime);
+    var model = m4Mul(m4Translate(pos[0],pos[1],pos[2]), m4Scale(b.size));
+    gl.uniformMatrix4fv(gl.getUniformLocation(sphereProg,"uModel"), false, model);
+    var rgb = hexToRgb(b.color);
+    gl.uniform3f(gl.getUniformLocation(sphereProg,"uColor"), rgb[0], rgb[1], rgb[2]);
+    gl.drawElements(gl.TRIANGLES, sphereIndexCount, gl.UNSIGNED_SHORT, 0);
+
+    var clip = m4MulVec4(vp, [pos[0],pos[1],pos[2],1]);
+    if(clip[3] > 0.001){
+      var ndcX = clip[0]/clip[3], ndcY = clip[1]/clip[3];
+      b.screenX = (ndcX*0.5+0.5) * canvas.clientWidth;
+      b.screenY = (1-(ndcY*0.5+0.5)) * canvas.clientHeight;
+      b.screenVisible = true;
+    } else {
+      b.screenVisible = false;
+    }
+  });
+}
+
+function drawGlow(view, proj){
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.depthMask(false);
+  gl.useProgram(glowProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, glowVBO);
+  gl.enableVertexAttribArray(aPosGlow);
+  gl.vertexAttribPointer(aPosGlow, 2, gl.FLOAT, false, 0, 0);
+  var right = [view[0], view[4], view[8]];
+  var up = [view[1], view[5], view[9]];
+  gl.uniformMatrix4fv(gl.getUniformLocation(glowProg,"uView"), false, view);
+  gl.uniformMatrix4fv(gl.getUniformLocation(glowProg,"uProj"), false, proj);
+  gl.uniform3f(gl.getUniformLocation(glowProg,"uCenter"), 0,0,0);
+  gl.uniform3f(gl.getUniformLocation(glowProg,"uRight"), right[0],right[1],right[2]);
+  gl.uniform3f(gl.getUniformLocation(glowProg,"uUp"), up[0],up[1],up[2]);
+  gl.uniform1f(gl.getUniformLocation(glowProg,"uSize"), state.sun.size*2.6);
+  var rgb = hexToRgb(state.sun.color);
+  gl.uniform3f(gl.getUniformLocation(glowProg,"uColor"), rgb[0], rgb[1], rgb[2]);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  var hashMatch = location.hash.match(/^#s=(.+)$/);
+  if(hashMatch){
+    try{
+      var json = decodeURIComponent(escape(atob(hashMatch[1])));
+      deserialize(JSON.parse(json));
+      toast("Loaded shared system");
+    }catch(e){
+      var saved = loadAutosave();
+      if(saved) deserialize(saved); else loadPreset("solar", true);
+    }
+  } else {
+    var saved = loadAutosave();
+    if(saved && saved.bodies && saved.bodies.length) deserialize(saved);
+    else loadPreset("solar", true);
+  }
+  refreshSaveList();
+  resize();
+  requestAnimationFrame(frame);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Dotted Network Map — UI Spotlight</title>
+<style>
+  :root{ --bg0:#040611; --ink:#f2f2fa; --ink-dim:#9aa1c4; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg0);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:60;text-decoration:none;color:var(--ink);font-size:13px;font-weight:600;padding:9px 14px;border-radius:999px;background:rgba(20,20,32,0.6);border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(12px);}
+  .back-link:hover{background:rgba(40,40,60,0.75);}
+  #stage{position:fixed;inset:0;}
+  canvas{display:block;width:100%;height:100%;}
+  .cityLabel{position:absolute;transform:translate(-50%,-140%);font-size:11px;font-weight:700;color:rgba(255,255,255,0.85);background:rgba(0,0,0,0.4);padding:3px 8px;border-radius:999px;pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .15s;}
+  .cityLabel.show{opacity:1;}
+  .hitzone{position:absolute;width:26px;height:26px;margin-left:-13px;margin-top:-13px;border-radius:50%;cursor:pointer;}
+
+  header{position:fixed;top:70px;left:0;right:0;text-align:center;z-index:5;pointer-events:none;}
+  header h1{margin:0 0 6px;font-size:clamp(20px,3.6vw,28px);}
+  header p{margin:0;color:var(--ink-dim);font-size:13px;}
+
+  #list{position:fixed;left:14px;bottom:14px;z-index:50;background:rgba(14,17,32,0.72);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:12px 14px;backdrop-filter:blur(14px);font-size:12px;width:220px;max-height:40vh;overflow-y:auto;}
+  #list h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:var(--ink-dim);}
+  #list .route{display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:8px;cursor:pointer;margin-bottom:3px;}
+  #list .route:hover, #list .route.active{background:rgba(255,255,255,0.08);}
+  #list .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto;}
+
+  #panelCtl{position:fixed;top:14px;right:14px;z-index:60;background:rgba(14,17,32,0.72);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:12px 14px;backdrop-filter:blur(14px);font-size:12px;width:190px;}
+  #panelCtl h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:var(--ink-dim);}
+  #panelCtl .row2{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  #panelCtl label{width:60px;flex:0 0 auto;color:var(--ink-dim);}
+  #panelCtl input[type=range]{flex:1;accent-color:var(--accent);}
+  @media (max-width:760px){ #panelCtl{display:none;} #list{width:180px;max-height:34vh;} header{top:64px;} }
+
+  footer.credit{position:fixed;left:50%;bottom:6px;transform:translateX(-50%);font-size:10.5px;color:rgba(255,255,255,0.35);z-index:10;text-align:center;pointer-events:none;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<header>
+  <h1>Dotted Network Map</h1>
+  <p>Pulsing nodes, flowing connections — click a route or a node to spotlight it.</p>
+</header>
+<div id="stage"><canvas id="cv"></canvas></div>
+<div id="list"><h4>Routes</h4><div id="routes"></div></div>
+<div id="panelCtl">
+  <h4>Tune</h4>
+  <div class="row2"><label>Density</label><input type="range" id="pDensity" min="6" max="16" step="1" value="10"></div>
+  <div class="row2"><label>Speed</label><input type="range" id="pSpeed" min="0.2" max="2.5" step="0.1" value="0.9"></div>
+  <div class="row2"><label>Glow</label><input type="range" id="pGlow" min="0.3" max="1.6" step="0.05" value="1"></div>
+</div>
+<footer class="credit">Inspired by Aceternity UI's "World Map" component · UI Spotlight Day 84 · Drop #5</footer>
+
+<script>
+(function(){
+"use strict";
+
+var canvas = document.getElementById("cv");
+var ctx = canvas.getContext("2d");
+var stage = document.getElementById("stage");
+var params = { density: 10, speed: 0.9, glow: 1 };
+
+document.getElementById("pDensity").addEventListener("input", function(e){ params.density = parseInt(e.target.value,10); buildDots(); });
+document.getElementById("pSpeed").addEventListener("input", function(e){ params.speed = parseFloat(e.target.value); });
+document.getElementById("pGlow").addEventListener("input", function(e){ params.glow = parseFloat(e.target.value); });
+
+var BLOBS = [
+  { cx:0.16, cy:0.30, r:0.145, seed:1.3 },
+  { cx:0.13, cy:0.64, r:0.10, seed:3.1 },
+  { cx:0.47, cy:0.24, r:0.155, seed:5.7 },
+  { cx:0.52, cy:0.58, r:0.135, seed:2.2 },
+  { cx:0.74, cy:0.30, r:0.12, seed:4.4 },
+  { cx:0.82, cy:0.60, r:0.09, seed:0.6 }
+];
+function isLand(nx, ny){
+  for(var i=0;i<BLOBS.length;i++){
+    var b = BLOBS[i];
+    var dx = nx-b.cx, dy = (ny-b.cy)*1.6;
+    var dist = Math.hypot(dx,dy);
+    var ang = Math.atan2(dy,dx);
+    var effR = b.r * (1 + 0.32*Math.sin(ang*3+b.seed) + 0.18*Math.cos(ang*5+b.seed*1.7));
+    if(dist < effR) return true;
+  }
+  return false;
+}
+
+var CITIES = [
+  { x:0.16, y:0.30, name:"Aster Hub" },
+  { x:0.13, y:0.63, name:"Verdan Point" },
+  { x:0.47, y:0.23, name:"Cindra Core" },
+  { x:0.51, y:0.58, name:"Rubelle Node" },
+  { x:0.74, y:0.29, name:"Ozymar Relay" },
+  { x:0.82, y:0.60, name:"Talos Gate" }
+];
+var ROUTES = [
+  { a:0, b:2, label:"Aster ⇄ Cindra" },
+  { a:2, b:4, label:"Cindra ⇄ Ozymar" },
+  { a:1, b:3, label:"Verdan ⇄ Rubelle" },
+  { a:3, b:5, label:"Rubelle ⇄ Talos" },
+  { a:0, b:3, label:"Aster ⇄ Rubelle" }
+];
+
+var W=0, H=0, dpr=1, dots=[];
+function resize(){
+  dpr = Math.min(window.devicePixelRatio||1, 2);
+  W = Math.round(stage.clientWidth*dpr); H = Math.round(stage.clientHeight*dpr);
+  canvas.width = W; canvas.height = H;
+  buildDots();
+  layoutMarkers();
+}
+function buildDots(){
+  dots = [];
+  var step = params.density * dpr;
+  for(var y=0; y<H; y+=step){
+    for(var x=0; x<W; x+=step){
+      var nx = x/W, ny = y/H;
+      if(isLand(nx, ny)) dots.push({ x:x, y:y, r: (0.9+Math.random()*0.7)*dpr });
+    }
+  }
+}
+window.addEventListener("resize", resize);
+
+var routesEl = document.getElementById("routes");
+var activeRoute = -1;
+ROUTES.forEach(function(r, i){
+  var el = document.createElement("div");
+  el.className = "route";
+  el.innerHTML = '<span class="dot"></span><span>'+r.label+'</span>';
+  el.addEventListener("click", function(){
+    activeRoute = (activeRoute === i) ? -1 : i;
+    Array.prototype.forEach.call(routesEl.children, function(c,ci){ c.classList.toggle("active", ci===activeRoute); });
+  });
+  routesEl.appendChild(el);
+});
+
+var labelsWrap = document.createElement("div");
+labelsWrap.style.position = "absolute"; labelsWrap.style.inset = "0"; labelsWrap.style.pointerEvents = "none"; labelsWrap.style.zIndex = "5";
+stage.appendChild(labelsWrap);
+var markerEls = [];
+function layoutMarkers(){
+  labelsWrap.innerHTML = "";
+  markerEls = CITIES.map(function(c, i){
+    var label = document.createElement("div");
+    label.className = "cityLabel";
+    label.textContent = c.name;
+    label.style.left = (c.x*100)+"%"; label.style.top = (c.y*100)+"%";
+    labelsWrap.appendChild(label);
+    var hit = document.createElement("div");
+    hit.className = "hitzone";
+    hit.style.left = (c.x*100)+"%"; hit.style.top = (c.y*100)+"%";
+    hit.style.pointerEvents = "auto";
+    hit.addEventListener("pointerenter", function(){ label.classList.add("show"); });
+    hit.addEventListener("pointerleave", function(){ label.classList.remove("show"); });
+    hit.addEventListener("click", function(){
+      var idx = ROUTES.findIndex(function(r){ return r.a===i || r.b===i; });
+      if(idx>-1){
+        activeRoute = (activeRoute === idx) ? -1 : idx;
+        Array.prototype.forEach.call(routesEl.children, function(c2,ci){ c2.classList.toggle("active", ci===activeRoute); });
+      }
+    });
+    labelsWrap.appendChild(hit);
+    return { label: label, hit: hit };
+  });
+}
+resize();
+
+function arcPoint(a, b, t){
+  var ax=a.x*W, ay=a.y*H, bx=b.x*W, by=b.y*H;
+  var mx=(ax+bx)/2, my=(ay+by)/2;
+  var dx=bx-ax, dy=by-ay;
+  var bow = -Math.min(H,W)*0.16;
+  var cx = mx + (dy/Math.hypot(dx,dy||1))*bow;
+  var cy = my - (dx/Math.hypot(dx,dy||1))*bow;
+  var u = 1-t;
+  return {
+    x: u*u*ax + 2*u*t*cx + t*t*bx,
+    y: u*u*ay + 2*u*t*cy + t*t*by,
+    cx: cx, cy: cy, ax: ax, ay: ay, bx: bx, by: by
+  };
+}
+
+function frame(t){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = "#04050c";
+  ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle = "rgba(125,211,252,0.55)";
+  for(var i=0;i<dots.length;i++){
+    var d = dots[i];
+    ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI*2); ctx.fill();
+  }
+
+  ROUTES.forEach(function(r, ri){
+    var A = CITIES[r.a], B = CITIES[r.b];
+    var isActive = (activeRoute === -1) || (activeRoute === ri);
+    var alphaBoost = (activeRoute === ri) ? 1.6 : (activeRoute===-1 ? 1 : 0.15);
+
+    var p0 = arcPoint(A,B,0);
+    ctx.beginPath();
+    ctx.moveTo(p0.ax, p0.ay);
+    ctx.quadraticCurveTo(p0.cx, p0.cy, p0.bx, p0.by);
+    ctx.strokeStyle = "rgba(56,189,248,"+(0.22*alphaBoost)+")";
+    ctx.lineWidth = 1.2*dpr;
+    ctx.setLineDash([4*dpr,5*dpr]);
+    ctx.lineDashOffset = -t*0.02*params.speed;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    var tt = ((t*0.00035*params.speed) + ri*0.21) % 1;
+    var pt = arcPoint(A,B,tt);
+    var glow = params.glow * alphaBoost;
+    var grad = ctx.createRadialGradient(pt.x,pt.y,0,pt.x,pt.y,10*dpr*glow);
+    grad.addColorStop(0,"rgba(224,242,254,"+(0.95*glow)+")");
+    grad.addColorStop(1,"rgba(56,189,248,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, 10*dpr*glow, 0, Math.PI*2); ctx.fill();
+  });
+
+  CITIES.forEach(function(c, i){
+    var cx = c.x*W, cy = c.y*H;
+    var pulse = (t*0.0012*params.speed + i*0.37) % 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, (4 + pulse*20)*dpr, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(56,189,248,"+((1-pulse)*0.5)+")";
+    ctx.lineWidth = 1.4*dpr;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.4*dpr, 0, Math.PI*2);
+    ctx.fillStyle = "#e0f2fe";
+    ctx.fill();
+  });
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

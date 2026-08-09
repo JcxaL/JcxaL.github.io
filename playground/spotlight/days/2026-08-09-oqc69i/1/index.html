@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Flip Gallery Sweep — UI Spotlight</title>
+<style>
+  :root{ --bg0:#07070d; --ink:#f2f2fa; --ink-dim:#9aa1c4; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg0);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;text-decoration:none;color:var(--ink);font-size:13px;font-weight:600;padding:9px 14px;border-radius:999px;background:rgba(20,20,32,0.6);border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(12px);}
+  .back-link:hover{background:rgba(40,40,60,0.75);}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;overflow:hidden;touch-action:none;cursor:grab;}
+  #stage.dragging{cursor:grabbing;}
+  #bg{position:absolute;inset:-10%;z-index:0;filter:blur(60px);opacity:0.55;}
+  .blob{position:absolute;border-radius:50%;}
+  #track{position:relative;z-index:2;display:flex;gap:26px;will-change:transform;padding:0 8vw;}
+  .card{position:relative;flex:0 0 auto;width:min(46vw,320px);height:min(60vh,420px);border-radius:18px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.5);background-size:cover;background-position:center;cursor:pointer;user-select:none;}
+  .card::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.55),transparent 45%);}
+  .card .cap{position:absolute;left:16px;bottom:14px;z-index:2;font-size:13px;font-weight:700;letter-spacing:0.3px;text-shadow:0 2px 8px rgba(0,0,0,0.6);}
+  .card .idx{position:absolute;right:14px;top:12px;z-index:2;font-size:11px;font-weight:700;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.35);padding:3px 8px;border-radius:999px;}
+  #hint{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);font-size:12px;color:var(--ink-dim);z-index:10;animation:hf 5s ease forwards;pointer-events:none;}
+  @keyframes hf{0%{opacity:1;}70%{opacity:1;}100%{opacity:0;}}
+
+  #panel{position:fixed;top:14px;right:14px;z-index:50;background:rgba(14,17,32,0.72);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:12px 14px;backdrop-filter:blur(14px);font-size:12px;width:190px;}
+  #panel h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:var(--ink-dim);}
+  #panel .row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  #panel label{width:64px;flex:0 0 auto;color:var(--ink-dim);}
+  #panel input[type=range]{flex:1;accent-color:var(--accent);}
+  @media (max-width:760px){ #panel{display:none;} .card{width:66vw;height:52vh;} }
+
+  #flipLayer{position:fixed;inset:0;z-index:100;pointer-events:none;}
+  .flipCard{position:fixed;border-radius:18px;overflow:hidden;background-size:cover;background-position:center;box-shadow:0 30px 80px rgba(0,0,0,0.6);pointer-events:auto;}
+  .flipCard .capBig{position:absolute;left:22px;bottom:20px;font-size:clamp(18px,3vw,30px);font-weight:800;text-shadow:0 4px 16px rgba(0,0,0,0.7);}
+  .flipCard .closeBtn{position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  #scrim{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:99;pointer-events:none;transition:background .3s;}
+
+  footer.credit{position:fixed;left:50%;bottom:6px;transform:translateX(-50%);font-size:10.5px;color:rgba(255,255,255,0.35);z-index:10;text-align:center;pointer-events:none;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div id="panel">
+  <h4>Tune</h4>
+  <div class="row"><label>Parallax</label><input type="range" id="pParallax" min="0" max="1" step="0.01" value="0.4"></div>
+  <div class="row"><label>Friction</label><input type="range" id="pFriction" min="0.82" max="0.97" step="0.005" value="0.92"></div>
+  <div class="row"><label>Card size</label><input type="range" id="pSize" min="220" max="420" step="10" value="320"></div>
+</div>
+<div id="scrim"></div>
+<div id="stage">
+  <div id="bg"></div>
+  <div id="track"></div>
+</div>
+<div id="flipLayer"></div>
+<div id="hint">Drag to browse · tap a card to flip fullscreen</div>
+<footer class="credit">Inspired by Codrops — "Infinite GSAP Scroll Gallery with Parallax &amp; Flip Transitions" · UI Spotlight Day 84 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+
+var PALETTES = [
+  ["#38bdf8","#0ea5e9"], ["#f472b6","#db2777"], ["#a3e635","#4d7c0f"], ["#fb923c","#c2410c"],
+  ["#a78bfa","#6d28d9"], ["#34d399","#047857"], ["#f87171","#b91c1c"], ["#fde047","#ca8a04"],
+  ["#22d3ee","#0891b2"], ["#f472b6","#7c3aed"], ["#4ade80","#16a34a"], ["#fca5a5","#ef4444"]
+];
+var CAPTIONS = ["Drift","Cinder","Nocturne","Halo","Fathom","Ember","Verge","Wisp","Solace","Cascade","Aurora","Relic"];
+
+function makePoster(seed){
+  var c = document.createElement("canvas");
+  c.width = 480; c.height = 640;
+  var ctx = c.getContext("2d");
+  var pal = PALETTES[seed % PALETTES.length];
+  var g = ctx.createLinearGradient(0,0,480,640);
+  g.addColorStop(0, pal[0]); g.addColorStop(1, pal[1]);
+  ctx.fillStyle = g; ctx.fillRect(0,0,480,640);
+  var rnd = mulberry32(seed*97+13);
+  for(var i=0;i<5;i++){
+    ctx.beginPath();
+    var cx = rnd()*480, cy = rnd()*640, r = 60+rnd()*160;
+    ctx.fillStyle = "rgba(255,255,255,"+(0.05+rnd()*0.08)+")";
+    ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.beginPath(); ctx.ellipse(240, 620, 260, 90, 0, 0, Math.PI*2); ctx.fill();
+  return c.toDataURL("image/png");
+}
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+var N = 10;
+var posters = [];
+for(var i=0;i<N;i++) posters.push({ url: makePoster(i), caption: CAPTIONS[i % CAPTIONS.length], idx: i+1 });
+
+var track = document.getElementById("track");
+var LOOPS = 3;
+var cardEls = [];
+for(var l=0;l<LOOPS;l++){
+  posters.forEach(function(p, i){
+    var el = document.createElement("div");
+    el.className = "card";
+    el.style.backgroundImage = "url(" + p.url + ")";
+    el.dataset.idx = i;
+    var cap = document.createElement("div"); cap.className="cap"; cap.textContent = p.caption;
+    var idxTag = document.createElement("div"); idxTag.className="idx"; idxTag.textContent = "#"+p.idx;
+    el.appendChild(cap); el.appendChild(idxTag);
+    track.appendChild(el);
+    cardEls.push(el);
+  });
+}
+
+var bg = document.getElementById("bg");
+for(var b=0;b<6;b++){
+  var blob = document.createElement("div");
+  blob.className = "blob";
+  var pal = PALETTES[(b*3) % PALETTES.length];
+  blob.style.background = pal[0];
+  blob.style.width = blob.style.height = (200+b*40)+"px";
+  blob.style.left = (b*17)%100 + "%";
+  blob.style.top = (b*29)%100 + "%";
+  bg.appendChild(blob);
+}
+
+var stage = document.getElementById("stage");
+var offset = 0, velocity = 0, dragging = false, dragged = false, lastX = 0, lastT = 0;
+var params = { parallax: 0.4, friction: 0.92, size: 320 };
+
+document.getElementById("pParallax").addEventListener("input", function(e){ params.parallax = parseFloat(e.target.value); });
+document.getElementById("pFriction").addEventListener("input", function(e){ params.friction = parseFloat(e.target.value); });
+document.getElementById("pSize").addEventListener("input", function(e){
+  params.size = parseFloat(e.target.value);
+  cardEls.forEach(function(el){ el.style.width = params.size+"px"; el.style.height = Math.round(params.size*1.3)+"px"; });
+});
+
+var loopWidth = 0;
+function measure(){ loopWidth = (track.scrollWidth) / LOOPS; }
+
+stage.addEventListener("pointerdown", function(e){
+  dragging = true; dragged = false; lastX = e.clientX; lastT = performance.now();
+  velocity = 0;
+  stage.classList.add("dragging");
+  stage.setPointerCapture(e.pointerId);
+});
+stage.addEventListener("pointermove", function(e){
+  if(!dragging) return;
+  var dx = e.clientX - lastX;
+  if(Math.abs(dx) > 2) dragged = true;
+  offset += dx;
+  var now = performance.now(), dt = Math.max(1, now-lastT);
+  velocity = dx/dt*16;
+  lastX = e.clientX; lastT = now;
+});
+function endDrag(e){
+  dragging = false;
+  stage.classList.remove("dragging");
+  if(!dragged && e.clientX !== undefined){
+    var hit = document.elementFromPoint(e.clientX, e.clientY);
+    var card = hit && hit.closest(".card");
+    if(card) openFlip(card, posters[parseInt(card.dataset.idx,10)]);
+  }
+  setTimeout(function(){ dragged = false; }, 30);
+}
+stage.addEventListener("pointerup", endDrag);
+stage.addEventListener("pointercancel", endDrag);
+stage.addEventListener("wheel", function(e){ offset -= e.deltaY; e.preventDefault(); }, {passive:false});
+
+function tick(){
+  if(!dragging){
+    offset += velocity;
+    velocity *= params.friction;
+    if(Math.abs(velocity) < 0.02) velocity = 0;
+  }
+  if(loopWidth > 0){
+    while(offset > 0) offset -= loopWidth;
+    while(offset < -loopWidth) offset += loopWidth;
+  }
+  track.style.transform = "translateX(" + offset + "px)";
+  bg.style.transform = "translateX(" + (offset*params.parallax) + "px)";
+  requestAnimationFrame(tick);
+}
+window.addEventListener("resize", measure);
+setTimeout(function(){ measure(); offset = -loopWidth; track.style.transform = "translateX("+offset+"px)"; }, 50);
+requestAnimationFrame(tick);
+
+/* ---------- FLIP fullscreen ---------- */
+var flipLayer = document.getElementById("flipLayer");
+var scrim = document.getElementById("scrim");
+var openEl = null;
+
+function openFlip(sourceEl, data){
+  if(openEl) return;
+  var startRect = sourceEl.getBoundingClientRect();
+  var vw = window.innerWidth, vh = window.innerHeight;
+  var pad = Math.min(vw,vh) * 0.06;
+  var endRect = { left: pad, top: pad*1.4, width: vw - pad*2, height: vh - pad*2.8 };
+
+  document.getElementById("panel").style.visibility = "hidden";
+
+  var clone = document.createElement("div");
+  clone.className = "flipCard";
+  clone.style.backgroundImage = sourceEl.style.backgroundImage;
+  clone.style.left = endRect.left+"px"; clone.style.top = endRect.top+"px";
+  clone.style.width = endRect.width+"px"; clone.style.height = endRect.height+"px";
+  var cap = document.createElement("div"); cap.className="capBig"; cap.textContent = data.caption;
+  var closeBtn = document.createElement("div"); closeBtn.className="closeBtn"; closeBtn.textContent="✕";
+  clone.appendChild(cap); clone.appendChild(closeBtn);
+  flipLayer.appendChild(clone);
+  scrim.style.background = "rgba(0,0,0,0.6)";
+
+  var dx = startRect.left - endRect.left, dy = startRect.top - endRect.top;
+  var sx = startRect.width/endRect.width, sy = startRect.height/endRect.height;
+  var anim = clone.animate([
+    { transform: "translate("+dx+"px,"+dy+"px) scale("+sx+","+sy+")" },
+    { transform: "translate(0,0) scale(1,1)" }
+  ], { duration: 420, easing: "cubic-bezier(.22,.9,.28,1)", fill: "both" });
+
+  openEl = { clone: clone, startRect: startRect, endRect: endRect };
+
+  function doClose(){
+    var a2 = clone.animate([
+      { transform: "translate(0,0) scale(1,1)" },
+      { transform: "translate("+dx+"px,"+dy+"px) scale("+sx+","+sy+")" }
+    ], { duration: 340, easing: "cubic-bezier(.4,0,.2,1)", fill: "both" });
+    scrim.style.background = "rgba(0,0,0,0)";
+    a2.onfinish = function(){ clone.remove(); openEl = null; document.getElementById("panel").style.visibility = "visible"; };
+  }
+  closeBtn.addEventListener("click", doClose);
+  scrim.style.pointerEvents = "auto";
+  scrim.addEventListener("click", doClose, { once: true });
+}
+})();
+</script>
+</body>
+</html>

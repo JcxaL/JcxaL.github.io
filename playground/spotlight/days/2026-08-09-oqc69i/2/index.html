@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Bento Depth Stack — UI Spotlight</title>
+<style>
+  :root{ --bg0:#07080f; --ink:#f2f2fa; --ink-dim:#9aa1c4; --accent:#34d399; --recede:120px; --blur:6px; --dim:0.45; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:radial-gradient(circle at 30% 0%,#0e1424,#05060b 65%);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .back-link{position:fixed;top:14px;left:14px;z-index:60;text-decoration:none;color:var(--ink);font-size:13px;font-weight:600;padding:9px 14px;border-radius:999px;background:rgba(20,20,32,0.6);border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(12px);}
+  .back-link:hover{background:rgba(40,40,60,0.75);}
+  header{padding:90px 22px 24px;text-align:center;}
+  header h1{margin:0 0 8px;font-size:clamp(22px,4vw,32px);}
+  header p{margin:0;color:var(--ink-dim);font-size:14px;}
+
+  #scene{perspective:1400px; padding:8px 22px 80px; max-width:980px; margin:0 auto;}
+  #grid{display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:130px; gap:14px; transform-style:preserve-3d;}
+  .tile{position:relative;border-radius:18px;overflow:hidden;cursor:pointer;padding:16px;display:flex;flex-direction:column;justify-content:flex-end;transition:transform .5s cubic-bezier(.2,.8,.2,1), filter .5s, opacity .5s;transform-style:preserve-3d;}
+  .tile .ico{font-size:26px;position:absolute;top:14px;left:16px;opacity:0.85;}
+  .tile h3{margin:0 0 3px;font-size:15px;}
+  .tile p{margin:0;font-size:11.5px;color:rgba(255,255,255,0.75);}
+  .tile.span2{grid-column:span 2;}
+  .tile.rowspan2{grid-row:span 2;}
+  #grid.receded .tile:not(.active){ transform: translateZ(calc(-1*var(--recede))) scale(0.94); filter: blur(var(--blur)); opacity: var(--dim); }
+  .tile.active{ box-shadow:0 30px 70px rgba(0,0,0,0.55); z-index:5; }
+
+  #panel{position:fixed;top:14px;right:14px;z-index:60;background:rgba(14,17,32,0.72);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:12px 14px;backdrop-filter:blur(14px);font-size:12px;width:190px;}
+  #panel h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:var(--ink-dim);}
+  #panel .row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  #panel label{width:60px;flex:0 0 auto;color:var(--ink-dim);}
+  #panel input[type=range]{flex:1;accent-color:var(--accent);}
+  @media (max-width:760px){
+    #panel{display:none;}
+    #grid{grid-template-columns:repeat(2,1fr); grid-auto-rows:110px;}
+    .tile.span2{grid-column:span 2;}
+  }
+
+  #detailScrim{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:40;transition:background .4s;pointer-events:none;}
+  #detail{position:fixed;left:6%;top:8%;width:88%;height:84%;z-index:50;border-radius:22px;padding:30px;display:none;flex-direction:column;justify-content:flex-end;box-shadow:0 40px 100px rgba(0,0,0,0.6);}
+  #detail.show{display:flex;}
+  #detail .closeBtn{position:absolute;top:16px;right:16px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.25);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;}
+  #detail h2{margin:0 0 8px;font-size:clamp(22px,4vw,34px);}
+  #detail p{margin:0;max-width:560px;font-size:14px;color:rgba(255,255,255,0.85);line-height:1.5;}
+
+  footer.credit{padding:20px;text-align:center;font-size:10.5px;color:rgba(255,255,255,0.35);}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<header>
+  <h1>Bento Depth Stack</h1>
+  <p>Tap any tile — the grid recedes into the dark and your tile lifts forward to fill the stage.</p>
+</header>
+
+<div id="panel">
+  <h4>Tune</h4>
+  <div class="row"><label>Recede</label><input type="range" id="pRecede" min="20" max="260" step="5" value="120"></div>
+  <div class="row"><label>Blur</label><input type="range" id="pBlur" min="0" max="16" step="1" value="6"></div>
+  <div class="row"><label>Dim</label><input type="range" id="pDim" min="0.1" max="0.9" step="0.05" value="0.45"></div>
+</div>
+
+<div id="scene"><div id="grid"></div></div>
+<div id="detailScrim"></div>
+<div id="detail"><div class="closeBtn" id="closeDetail">✕</div><h2 id="detailTitle"></h2><p id="detailDesc"></p></div>
+
+<footer class="credit">Inspired by the 2026 "bento evolution" Z-axis stacking trend — Mockuuups Studio, "Best Bento Grid Design Examples" · UI Spotlight Day 84 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+
+var DATA = [
+  { icon:"◆", title:"Signal", desc:"A live pulse of everything happening across your workspace, distilled into one glanceable card.", span:2, row:2, grad:["#38bdf8","#0c4a6e"] },
+  { icon:"✦", title:"Drift", desc:"Ambient background tasks quietly finishing themselves while you work on something else entirely.", grad:["#a78bfa","#3730a3"] },
+  { icon:"◐", title:"Cadence", desc:"The rhythm of your week, visualized — busy days glow brighter, quiet ones fade to the edges.", grad:["#f472b6","#831843"] },
+  { icon:"▲", title:"Ledger", desc:"Every change tracked, every version kept — a paper trail you never have to think about.", span:2, grad:["#34d399","#065f46"] },
+  { icon:"◈", title:"Compass", desc:"Suggestions that actually know where you're headed, not just what you clicked last.", grad:["#fb923c","#7c2d12"] },
+  { icon:"●", title:"Echo", desc:"A quiet second opinion on your work, delivered before you even ask for one.", grad:["#fde047","#854d0e"] },
+  { icon:"■", title:"Anchor", desc:"The one card that never moves — pin what matters and build the rest of your day around it.", row:2, grad:["#f87171","#7f1d1d"] }
+];
+
+var grid = document.getElementById("grid");
+var params = { recede: 120, blur: 6, dim: 0.45 };
+
+DATA.forEach(function(d, i){
+  var el = document.createElement("div");
+  el.className = "tile" + (d.span?" span2":"") + (d.row?" rowspan2":"");
+  el.style.background = "linear-gradient(155deg,"+d.grad[0]+","+d.grad[1]+")";
+  el.innerHTML = '<span class="ico">'+d.icon+'</span><h3>'+d.title+'</h3><p>'+d.desc.slice(0,46)+(d.desc.length>46?"…":"")+'</p>';
+  el.addEventListener("click", function(){ openDetail(el, d); });
+  grid.appendChild(el);
+});
+
+document.getElementById("pRecede").addEventListener("input", function(e){
+  params.recede = e.target.value; document.documentElement.style.setProperty("--recede", params.recede+"px");
+});
+document.getElementById("pBlur").addEventListener("input", function(e){
+  params.blur = e.target.value; document.documentElement.style.setProperty("--blur", params.blur+"px");
+});
+document.getElementById("pDim").addEventListener("input", function(e){
+  params.dim = e.target.value; document.documentElement.style.setProperty("--dim", params.dim);
+});
+
+var detail = document.getElementById("detail");
+var scrim = document.getElementById("detailScrim");
+var titleEl = document.getElementById("detailTitle");
+var descEl = document.getElementById("detailDesc");
+var closeBtn = document.getElementById("closeDetail");
+var activeTile = null;
+
+function openDetail(tile, d){
+  if(activeTile) return;
+  activeTile = tile;
+  tile.classList.add("active");
+  grid.classList.add("receded");
+  document.getElementById("panel").style.visibility = "hidden";
+  detail.style.background = "linear-gradient(155deg,"+d.grad[0]+","+d.grad[1]+")";
+  titleEl.textContent = d.title;
+  descEl.textContent = d.desc;
+  requestAnimationFrame(function(){
+    detail.classList.add("show");
+    scrim.style.background = "rgba(0,0,0,0.55)";
+  });
+}
+function closeDetail(){
+  if(!activeTile) return;
+  detail.classList.remove("show");
+  scrim.style.background = "rgba(0,0,0,0)";
+  grid.classList.remove("receded");
+  activeTile.classList.remove("active");
+  activeTile = null;
+  document.getElementById("panel").style.visibility = "visible";
+}
+closeBtn.addEventListener("click", closeDetail);
+scrim.addEventListener("click", closeDetail);
+document.addEventListener("keydown", function(e){ if(e.key === "Escape") closeDetail(); });
+})();
+</script>
+</body>
+</html>
