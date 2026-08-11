@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GlyphStage — Kinetic Type Timeline Studio</title>
+<style>
+  :root{
+    --bg0:#0b0713; --bg1:#160d24; --panel:rgba(20,13,32,0.72); --panel-brd:rgba(255,255,255,0.09);
+    --ink:#f3ecff; --ink-dim:#a99fc2; --accent:#f0abfc; --accent2:#38bdf8; --accent3:#facc15; --accent4:#34d399;
+    --danger:#fb7185;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%; background:var(--bg0); color:var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior:none;}
+  body{
+    display:flex; flex-direction:column; min-height:100vh;
+    background:
+      radial-gradient(circle at 15% 8%, rgba(240,171,252,0.14), transparent 45%),
+      radial-gradient(circle at 85% 92%, rgba(56,189,248,0.13), transparent 50%),
+      linear-gradient(160deg, var(--bg0), var(--bg1));
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:12px 16px; flex-wrap:wrap; position:relative; z-index:5;
+  }
+  .brand{display:flex; align-items:baseline; gap:8px;}
+  .brand h1{font-size:17px; margin:0; font-weight:700; letter-spacing:0.01em;}
+  .brand span{font-size:11px; color:var(--ink-dim);}
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap;}
+  button, select, input[type=text]{
+    font-family:inherit; color:var(--ink); background:rgba(255,255,255,0.06);
+    border:1px solid var(--panel-brd); border-radius:10px; padding:8px 12px; font-size:13px;
+    cursor:pointer; transition:background .15s, transform .1s, border-color .15s;
+  }
+  button:hover{background:rgba(255,255,255,0.12);}
+  button:active{transform:scale(0.96);}
+  button.primary{background:linear-gradient(135deg, var(--accent), var(--accent2)); color:#160d24; font-weight:700; border:none;}
+  button.primary:hover{filter:brightness(1.08);}
+  button.ghost{background:transparent;}
+  button:disabled{opacity:0.4; cursor:not-allowed; transform:none;}
+  main{flex:1; display:flex; flex-direction:column; gap:12px; padding:0 16px 16px; max-width:1180px; margin:0 auto; width:100%;}
+  .stage-wrap{position:relative; border-radius:18px; overflow:hidden; border:1px solid var(--panel-brd);
+    box-shadow:0 20px 60px rgba(0,0,0,0.45); background:#050308;}
+  canvas#stage{display:block; width:100%; height:auto; aspect-ratio:16/9; touch-action:none;}
+  .stage-overlay{position:absolute; top:10px; right:10px; display:flex; gap:6px; z-index:3;}
+  .pill-btn{background:rgba(10,6,16,0.55); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.14);
+    border-radius:999px; width:38px; height:38px; display:flex; align-items:center; justify-content:center; padding:0; font-size:16px;}
+  .transport{display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--panel);
+    border:1px solid var(--panel-brd); border-radius:14px; backdrop-filter:blur(10px);}
+  .transport button{padding:8px 10px;}
+  #scrubber{flex:1; position:relative; height:40px; border-radius:10px; background:rgba(255,255,255,0.05);
+    overflow:hidden; cursor:pointer;}
+  #scrubTrack{position:absolute; inset:0; display:flex;}
+  .scene-block{height:100%; border-right:1px solid rgba(0,0,0,0.35); position:relative; display:flex; align-items:center;
+    justify-content:center; font-size:10px; color:rgba(255,255,255,0.75); overflow:hidden; white-space:nowrap;}
+  .scene-block.active-block{outline:2px solid #fff; outline-offset:-2px;}
+  #playhead{position:absolute; top:0; bottom:0; width:2px; background:#fff; box-shadow:0 0 8px #fff; pointer-events:none;}
+  .time-label{font-size:11px; color:var(--ink-dim); min-width:74px; text-align:center; font-variant-numeric:tabular-nums;}
+  .panels{display:grid; grid-template-columns:1.3fr 1fr; gap:12px;}
+  @media (max-width:820px){ .panels{grid-template-columns:1fr;} }
+  .card{background:var(--panel); border:1px solid var(--panel-brd); border-radius:14px; padding:14px; backdrop-filter:blur(10px);}
+  .card h2{font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-dim); margin:0 0 10px;}
+  .scene-list{display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; margin-bottom:10px;}
+  .scene-row{display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:10px; background:rgba(255,255,255,0.03);
+    border:1px solid transparent; cursor:pointer;}
+  .scene-row.sel{border-color:var(--accent); background:rgba(240,171,252,0.08);}
+  .scene-row .swatch{width:12px; height:12px; border-radius:4px; flex:none;}
+  .scene-row .lbl{flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .scene-row .mini{font-size:10px; color:var(--ink-dim); flex:none;}
+  .scene-row .row-btns{display:flex; gap:2px;}
+  .scene-row .row-btns button{padding:2px 6px; font-size:11px; border-radius:6px;}
+  .row{display:flex; gap:8px; align-items:center; margin-bottom:9px; flex-wrap:wrap;}
+  .row label{font-size:11px; color:var(--ink-dim); min-width:78px;}
+  .row input[type=text]{flex:1; min-width:120px;}
+  .row select{flex:1;}
+  .row input[type=range]{flex:1; accent-color:var(--accent);}
+  .row input[type=color]{width:38px; height:30px; padding:2px; border-radius:8px; background:none;}
+  .num{font-size:11px; color:var(--ink-dim); min-width:34px; text-align:right; font-variant-numeric:tabular-nums;}
+  .swatches{display:flex; gap:6px;}
+  .swatches button{width:24px; height:24px; border-radius:50%; padding:0; border:2px solid rgba(255,255,255,0.2);}
+  footer{text-align:center; padding:10px; font-size:11px; color:var(--ink-dim);}
+  footer a{color:var(--accent2);}
+  .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:#171025; border:1px solid var(--panel-brd); padding:10px 16px; border-radius:10px; font-size:13px;
+    pointer-events:none; transition:opacity .25s, transform .25s; z-index:50; box-shadow:0 10px 30px rgba(0,0,0,0.5);}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  .rec-dot{width:8px; height:8px; border-radius:50%; background:var(--danger); display:inline-block; margin-right:6px;
+    animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:0.25;}}
+  ::-webkit-scrollbar{width:6px; height:6px;} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15); border-radius:4px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>🎬 GlyphStage</h1>
+    <span>kinetic type timeline studio</span>
+  </div>
+  <div class="toolbar">
+    <button id="btnSave" title="Save composition to browser storage">💾 Save</button>
+    <button id="btnLoad" title="Load a saved composition">📂 Load</button>
+    <button id="btnShare" title="Copy shareable link">🔗 Share</button>
+    <button id="btnPng" title="Export current frame as PNG">🖼 PNG</button>
+    <button id="btnRec" class="primary" title="Record full loop as WebM video">⏺ Export WebM</button>
+  </div>
+</header>
+
+<main>
+  <div class="stage-wrap">
+    <canvas id="stage" width="1280" height="720"></canvas>
+    <div class="stage-overlay">
+      <button class="pill-btn" id="btnFull" title="Fullscreen">⛶</button>
+    </div>
+  </div>
+
+  <div class="transport">
+    <button id="btnPlay" title="Play / Pause">▶</button>
+    <button id="btnLoopToggle" title="Toggle loop">🔁</button>
+    <span class="time-label" id="timeLabel">0.0s / 0.0s</span>
+    <div id="scrubber">
+      <div id="scrubTrack"></div>
+      <div id="playhead"></div>
+    </div>
+  </div>
+
+  <div class="panels">
+    <div class="card">
+      <h2>Timeline · Scenes</h2>
+      <div class="scene-list" id="sceneList"></div>
+      <div class="row">
+        <button id="btnAddScene">➕ Add scene</button>
+        <button id="btnDupScene">⧉ Duplicate</button>
+        <button id="btnDelScene">🗑 Delete</button>
+        <button id="btnUp">↑</button>
+        <button id="btnDown">↓</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Edit Scene</h2>
+      <div class="row">
+        <label>Text</label>
+        <input type="text" id="fText" maxlength="24" placeholder="Type something…">
+      </div>
+      <div class="row">
+        <label>Preset</label>
+        <select id="fPreset">
+          <option value="typewriter">Typewriter</option>
+          <option value="wave">Wave</option>
+          <option value="shatter">Shatter Assemble</option>
+          <option value="glitch">Glitch Pop</option>
+          <option value="drip">Liquid Drip</option>
+          <option value="orbit">Orbit In</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Duration</label>
+        <input type="range" id="fDuration" min="0.6" max="6" step="0.1">
+        <span class="num" id="fDurationVal"></span>
+      </div>
+      <div class="row">
+        <label>Font size</label>
+        <input type="range" id="fSize" min="36" max="160" step="2">
+        <span class="num" id="fSizeVal"></span>
+      </div>
+      <div class="row">
+        <label>Letter gap</label>
+        <input type="range" id="fSpacing" min="-4" max="30" step="1">
+        <span class="num" id="fSpacingVal"></span>
+      </div>
+      <div class="row">
+        <label>Font</label>
+        <select id="fFont">
+          <option value="sans">Sans (system-ui)</option>
+          <option value="serif">Serif</option>
+          <option value="mono">Mono</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Text color</label>
+        <input type="color" id="fColor">
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <div class="row">
+        <label>Background</label>
+        <select id="fBg">
+          <option value="nebula">Nebula</option>
+          <option value="ink">Ink</option>
+          <option value="sunset">Sunset</option>
+          <option value="mint">Mint</option>
+          <option value="mono">Mono</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>Day 87 · Playground · GlyphStage — compose a kinetic type sequence, scrub the timeline, export it as a real video.</footer>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- constants ----------
+  var PRESETS = ["typewriter","wave","shatter","glitch","drip","orbit"];
+  var BG_MODES = {
+    nebula:["#0b0713","#2a1740","#3d1e52"],
+    ink:["#050308","#0d0d14","#000000"],
+    sunset:["#1a0b18","#4a1942","#7a2f3f"],
+    mint:["#04120f","#0a2e26","#0f3d31"],
+    mono:["#050505","#101010","#1a1a1a"]
+  };
+  var FONT_STACK = {
+    sans: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    serif: "Georgia, 'Times New Roman', serif",
+    mono: "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace"
+  };
+  var SWATCH_COLORS = ["#f0abfc","#38bdf8","#facc15","#34d399","#fb7185","#f3ecff"];
+  var STORE_KEY = "glyphstage_presets_v1";
+  var AUTOSAVE_KEY = "glyphstage_autosave_v1";
+
+  // ---------- state ----------
+  function makeScene(text, preset, opts){
+    opts = opts || {};
+    return {
+      id: "s" + Math.floor(Math.random()*1e9),
+      text: text,
+      preset: preset,
+      duration: opts.duration || 2.2,
+      fontSize: opts.fontSize || 92,
+      spacing: opts.spacing != null ? opts.spacing : 4,
+      font: opts.font || "sans",
+      color: opts.color || "#f0abfc",
+      bg: opts.bg || "nebula"
+    };
+  }
+
+  var state = {
+    scenes: [
+      makeScene("GLYPHSTAGE", "typewriter", {color:"#f0abfc", bg:"nebula"}),
+      makeScene("MAKE IT MOVE", "wave", {color:"#38bdf8", bg:"ink"}),
+      makeScene("BUILD A SCENE", "shatter", {color:"#facc15", bg:"sunset"}),
+      makeScene("EXPORT IT", "orbit", {color:"#34d399", bg:"mint"})
+    ],
+    selected: 0
+  };
+
+  var playhead = 0;        // seconds into full composition
+  var playing = false;
+  var loop = true;
+  var lastFrameTime = null;
+  var rafId = null;
+  var recorder = null;
+  var recChunks = [];
+
+  // ---------- dom ----------
+  var canvas = document.getElementById("stage");
+  var ctx = canvas.getContext("2d");
+  var sceneListEl = document.getElementById("sceneList");
+  var scrubTrack = document.getElementById("scrubTrack");
+  var scrubber = document.getElementById("scrubber");
+  var playheadEl = document.getElementById("playhead");
+  var timeLabel = document.getElementById("timeLabel");
+  var toastEl = document.getElementById("toast");
+
+  var fText = document.getElementById("fText");
+  var fPreset = document.getElementById("fPreset");
+  var fDuration = document.getElementById("fDuration");
+  var fDurationVal = document.getElementById("fDurationVal");
+  var fSize = document.getElementById("fSize");
+  var fSizeVal = document.getElementById("fSizeVal");
+  var fSpacing = document.getElementById("fSpacing");
+  var fSpacingVal = document.getElementById("fSpacingVal");
+  var fFont = document.getElementById("fFont");
+  var fColor = document.getElementById("fColor");
+  var fBg = document.getElementById("fBg");
+  var swatchesEl = document.getElementById("swatches");
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ toastEl.classList.remove("show"); }, 1800);
+  }
+
+  // ---------- layout helpers ----------
+  function totalDuration(){
+    var t = 0;
+    for (var i=0;i<state.scenes.length;i++) t += state.scenes[i].duration;
+    return Math.max(t, 0.001);
+  }
+
+  function sceneAtTime(t){
+    var acc = 0;
+    for (var i=0;i<state.scenes.length;i++){
+      var d = state.scenes[i].duration;
+      if (t < acc + d || i === state.scenes.length-1){
+        var local = Math.min(Math.max((t-acc)/d, 0), 1);
+        return {scene: state.scenes[i], index:i, localT: local};
+      }
+      acc += d;
+    }
+    return {scene: state.scenes[0], index:0, localT:0};
+  }
+
+  function layoutLetters(text, fontSize, spacing, fontKey){
+    ctx.save();
+    ctx.font = "700 " + fontSize + "px " + FONT_STACK[fontKey];
+    var chars = text.split("");
+    var widths = chars.map(function(c){ return ctx.measureText(c).width; });
+    var total = widths.reduce(function(a,b){return a+b;},0) + spacing*(chars.length-1);
+    var x = -total/2;
+    var letters = [];
+    for (var i=0;i<chars.length;i++){
+      letters.push({ch:chars[i], x:x+widths[i]/2, w:widths[i], i:i});
+      x += widths[i] + spacing;
+    }
+    ctx.restore();
+    return letters;
+  }
+
+  // ---------- easing ----------
+  function easeOutCubic(t){ return 1-Math.pow(1-t,3); }
+  function easeOutBack(t){ var c1=1.70158, c3=c1+1; return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2); }
+  function easeInOutSine(t){ return -(Math.cos(Math.PI*t)-1)/2; }
+  function clamp01(t){ return Math.min(Math.max(t,0),1); }
+
+  // ---------- background ----------
+  function paintBackground(bgKey, w, h, time){
+    var cols = BG_MODES[bgKey] || BG_MODES.nebula;
+    var g = ctx.createLinearGradient(0,0,w,h);
+    g.addColorStop(0, cols[0]);
+    g.addColorStop(0.55, cols[1]);
+    g.addColorStop(1, cols[2]);
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,w,h);
+    // subtle drifting glow
+    var gx = w*0.5 + Math.sin(time*0.4)*w*0.22;
+    var gy = h*0.5 + Math.cos(time*0.33)*h*0.18;
+    var rg = ctx.createRadialGradient(gx,gy,0,gx,gy,Math.max(w,h)*0.5);
+    rg.addColorStop(0,"rgba(255,255,255,0.06)");
+    rg.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.fillStyle = rg;
+    ctx.fillRect(0,0,w,h);
+  }
+
+  // ---------- draw presets ----------
+  function drawScene(sc, t, time){
+    var w = canvas.width, h = canvas.height;
+    paintBackground(sc.bg, w, h, time);
+
+    var letters = layoutLetters(sc.text || " ", sc.fontSize, sc.spacing, sc.font);
+    ctx.save();
+    ctx.translate(w/2, h/2);
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.font = "700 " + sc.fontSize + "px " + FONT_STACK[sc.font];
+
+    var draw = PRESET_FN[sc.preset] || PRESET_FN.typewriter;
+    draw(letters, t, sc.color, time, sc.fontSize);
+    ctx.restore();
+  }
+
+  var PRESET_FN = {
+    typewriter: function(letters, t, color, time){
+      var n = letters.length;
+      var shown = Math.floor(clamp01(t*1.08) * n);
+      ctx.fillStyle = color;
+      for (var i=0;i<letters.length;i++){
+        if (i > shown) continue;
+        ctx.save();
+        ctx.translate(letters[i].x, 0);
+        ctx.globalAlpha = i === shown ? clamp01((t*1.08*n) - shown) : 1;
+        ctx.fillText(letters[i].ch, 0, 0);
+        ctx.restore();
+      }
+      // blinking cursor
+      if (shown < n && Math.floor(time*4)%2===0){
+        var lastLetter = letters[Math.min(shown,n-1)];
+        var cx = lastLetter ? lastLetter.x + lastLetter.w/2 + 6 : 0;
+        ctx.fillStyle = color;
+        ctx.fillRect(cx, -30, 4, 60);
+      }
+    },
+    wave: function(letters, t, color, time){
+      var e = clamp01(t/0.25);
+      ctx.fillStyle = color;
+      for (var i=0;i<letters.length;i++){
+        var phase = time*4 - i*0.4;
+        var amp = 16 * easeOutCubic(e);
+        var y = Math.sin(phase) * amp;
+        var scale = 0.7 + 0.3*easeOutBack(clamp01((t*3 - i*0.05)));
+        ctx.save();
+        ctx.translate(letters[i].x, y);
+        ctx.scale(scale, scale);
+        ctx.globalAlpha = clamp01(t*4 - i*0.08);
+        ctx.fillText(letters[i].ch, 0, 0);
+        ctx.restore();
+      }
+    },
+    shatter: function(letters, t, color, time){
+      ctx.fillStyle = color;
+      var prog = easeOutCubic(clamp01(t*1.3));
+      for (var i=0;i<letters.length;i++){
+        var seed = i*137.13;
+        var rx = (Math.sin(seed)*260);
+        var ry = (Math.cos(seed*1.7)*260);
+        var rot = Math.sin(seed*3.1)*2.4;
+        var ix = rx*(1-prog) ;
+        var iy = ry*(1-prog);
+        var irot = rot*(1-prog);
+        ctx.save();
+        ctx.translate(letters[i].x + ix, iy);
+        ctx.rotate(irot);
+        ctx.globalAlpha = clamp01(prog*2);
+        ctx.fillText(letters[i].ch, 0, 0);
+        ctx.restore();
+      }
+    },
+    glitch: function(letters, t, color, time){
+      var prog = easeOutBack(clamp01(t*1.6));
+      ctx.textAlign = "center";
+      for (var i=0;i<letters.length;i++){
+        var appearAt = i*0.05;
+        var lt = clamp01((t - appearAt) * 3.2);
+        if (lt <= 0) continue;
+        var pop = easeOutBack(lt);
+        var jitter = (lt < 1 && Math.random() < 0.12) ? (Math.random()*10-5) : 0;
+        var hueShift = lt < 0.4;
+        ctx.save();
+        ctx.translate(letters[i].x + jitter, 0);
+        ctx.scale(pop, pop);
+        if (hueShift){
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = "#38bdf8";
+          ctx.fillText(letters[i].ch, -3, 0);
+          ctx.fillStyle = "#fb7185";
+          ctx.fillText(letters[i].ch, 3, 0);
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = color;
+        ctx.fillText(letters[i].ch, 0, 0);
+        ctx.restore();
+      }
+    },
+    drip: function(letters, t, color, time){
+      ctx.fillStyle = color;
+      for (var i=0;i<letters.length;i++){
+        var delay = i*0.06;
+        var lt = clamp01((t-delay)*1.6);
+        var fall = (1-easeOutBack(lt)) * -160;
+        var squash = 1 + (1-lt)*0.9*Math.sin(lt*Math.PI);
+        ctx.save();
+        ctx.translate(letters[i].x, fall);
+        ctx.scale(1/Math.max(squash,0.4), squash);
+        ctx.globalAlpha = clamp01(lt*3);
+        ctx.fillText(letters[i].ch, 0, 0);
+        // drip trail
+        if (lt < 1){
+          ctx.globalAlpha *= 0.35;
+          ctx.fillRect(-2, -6, 4, 26*(1-lt));
+        }
+        ctx.restore();
+      }
+    },
+    orbit: function(letters, t, color, time, fontSize){
+      ctx.fillStyle = color;
+      var n = letters.length;
+      for (var i=0;i<letters.length;i++){
+        var delay = i/(n+1) * 0.35;
+        var lt = easeOutCubic(clamp01((t-delay)/0.65));
+        var ang = -Math.PI*1.6*(1-lt) + (i*0.3);
+        var radius = (1-lt) * (fontSize*1.6);
+        var ox = Math.cos(ang)*radius;
+        var oy = Math.sin(ang)*radius;
+        ctx.save();
+        ctx.translate(letters[i].x + ox, oy);
+        ctx.rotate((1-lt)*1.2);
+        ctx.globalAlpha = clamp01(lt*2.2);
+        ctx.fillText(letters[i].ch, 0, 0);
+        ctx.restore();
+      }
+    }
+  };
+
+  // ---------- render ----------
+  function render(time){
+    var total = totalDuration();
+    var t = ((playhead % total) + total) % total;
+    var info = sceneAtTime(t);
+    drawScene(info.scene, info.localT, time || 0);
+    timeLabel.textContent = t.toFixed(1) + "s / " + total.toFixed(1) + "s";
+    var pct = total > 0 ? (t/total)*100 : 0;
+    playheadEl.style.left = pct + "%";
+    highlightSceneBlock(info.index);
+  }
+
+  function loopFrame(now){
+    if (!lastFrameTime) lastFrameTime = now;
+    var dt = (now - lastFrameTime)/1000;
+    lastFrameTime = now;
+    if (playing){
+      playhead += dt;
+      var total = totalDuration();
+      if (playhead >= total){
+        if (loop) playhead = playhead % total;
+        else { playhead = total; playing = false; updatePlayBtn(); }
+      }
+    }
+    render(now/1000);
+    rafId = requestAnimationFrame(loopFrame);
+  }
+
+  function updatePlayBtn(){
+    document.getElementById("btnPlay").textContent = playing ? "⏸" : "▶";
+  }
+
+  // ---------- scene list UI ----------
+  function rebuildScrub(){
+    scrubTrack.innerHTML = "";
+    var total = totalDuration();
+    state.scenes.forEach(function(sc, i){
+      var w = (sc.duration/total)*100;
+      var div = document.createElement("div");
+      div.className = "scene-block";
+      div.style.width = w + "%";
+      div.style.background = COLOR_TINTS[i % COLOR_TINTS.length];
+      div.textContent = sc.text.slice(0,10);
+      div.dataset.index = i;
+      scrubTrack.appendChild(div);
+    });
+  }
+  var COLOR_TINTS = ["rgba(240,171,252,0.28)","rgba(56,189,248,0.28)","rgba(250,204,21,0.28)","rgba(52,211,153,0.28)","rgba(251,113,133,0.28)"];
+
+  function highlightSceneBlock(idx){
+    var blocks = scrubTrack.children;
+    for (var i=0;i<blocks.length;i++){
+      blocks[i].classList.toggle("active-block", i===idx);
+    }
+  }
+
+  function rebuildSceneList(){
+    sceneListEl.innerHTML = "";
+    state.scenes.forEach(function(sc, i){
+      var row = document.createElement("div");
+      row.className = "scene-row" + (i===state.selected ? " sel" : "");
+      row.innerHTML =
+        '<div class="swatch" style="background:'+sc.color+'"></div>' +
+        '<div class="lbl">'+ (sc.text || "(empty)") +'</div>' +
+        '<div class="mini">'+ sc.preset +' · '+ sc.duration.toFixed(1) +'s</div>';
+      row.addEventListener("click", function(){ selectScene(i); });
+      sceneListEl.appendChild(row);
+    });
+    rebuildScrub();
+  }
+
+  function selectScene(i){
+    state.selected = Math.max(0, Math.min(i, state.scenes.length-1));
+    syncFormFromScene();
+    rebuildSceneList();
+  }
+
+  function currentScene(){ return state.scenes[state.selected]; }
+
+  function syncFormFromScene(){
+    var sc = currentScene();
+    if (!sc) return;
+    fText.value = sc.text;
+    fPreset.value = sc.preset;
+    fDuration.value = sc.duration;
+    fDurationVal.textContent = sc.duration.toFixed(1)+"s";
+    fSize.value = sc.fontSize;
+    fSizeVal.textContent = sc.fontSize+"px";
+    fSpacing.value = sc.spacing;
+    fSpacingVal.textContent = sc.spacing;
+    fFont.value = sc.font;
+    fColor.value = sc.color;
+    fBg.value = sc.bg;
+  }
+
+  function applyFormToScene(){
+    var sc = currentScene();
+    if (!sc) return;
+    sc.text = fText.value || "TEXT";
+    sc.preset = fPreset.value;
+    sc.duration = parseFloat(fDuration.value);
+    sc.fontSize = parseInt(fSize.value,10);
+    sc.spacing = parseInt(fSpacing.value,10);
+    sc.font = fFont.value;
+    sc.color = fColor.value;
+    sc.bg = fBg.value;
+    fDurationVal.textContent = sc.duration.toFixed(1)+"s";
+    fSizeVal.textContent = sc.fontSize+"px";
+    fSpacingVal.textContent = sc.spacing;
+    rebuildSceneList();
+    autosave();
+  }
+
+  // ---------- controls wiring ----------
+  [fText,fPreset,fDuration,fSize,fSpacing,fFont,fColor,fBg].forEach(function(el){
+    el.addEventListener("input", applyFormToScene);
+    el.addEventListener("change", applyFormToScene);
+  });
+
+  swatchesEl.innerHTML = "";
+  SWATCH_COLORS.forEach(function(c){
+    var b = document.createElement("button");
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener("click", function(){ fColor.value = c; applyFormToScene(); });
+    swatchesEl.appendChild(b);
+  });
+
+  document.getElementById("btnAddScene").addEventListener("click", function(){
+    var preset = PRESETS[state.scenes.length % PRESETS.length];
+    var s = makeScene("NEW SCENE", preset, {color: SWATCH_COLORS[state.scenes.length % SWATCH_COLORS.length]});
+    state.scenes.push(s);
+    selectScene(state.scenes.length-1);
+    autosave();
+  });
+
+  document.getElementById("btnDupScene").addEventListener("click", function(){
+    var sc = currentScene();
+    if (!sc) return;
+    var copy = JSON.parse(JSON.stringify(sc));
+    copy.id = "s" + Math.floor(Math.random()*1e9);
+    state.scenes.splice(state.selected+1, 0, copy);
+    selectScene(state.selected+1);
+    autosave();
+  });
+
+  document.getElementById("btnDelScene").addEventListener("click", function(){
+    if (state.scenes.length <= 1){ toast("Need at least one scene"); return; }
+    state.scenes.splice(state.selected,1);
+    selectScene(Math.max(0, state.selected-1));
+    autosave();
+  });
+
+  document.getElementById("btnUp").addEventListener("click", function(){
+    var i = state.selected;
+    if (i<=0) return;
+    var tmp = state.scenes[i-1]; state.scenes[i-1]=state.scenes[i]; state.scenes[i]=tmp;
+    selectScene(i-1); autosave();
+  });
+  document.getElementById("btnDown").addEventListener("click", function(){
+    var i = state.selected;
+    if (i>=state.scenes.length-1) return;
+    var tmp = state.scenes[i+1]; state.scenes[i+1]=state.scenes[i]; state.scenes[i]=tmp;
+    selectScene(i+1); autosave();
+  });
+
+  // ---------- transport ----------
+  document.getElementById("btnPlay").addEventListener("click", function(){
+    playing = !playing;
+    updatePlayBtn();
+  });
+  document.getElementById("btnLoopToggle").addEventListener("click", function(e){
+    loop = !loop;
+    e.target.style.opacity = loop ? "1" : "0.45";
+  });
+
+  function scrubTo(clientX){
+    var rect = scrubber.getBoundingClientRect();
+    var pct = clamp01((clientX - rect.left)/rect.width);
+    playhead = pct * totalDuration();
+    render(performance.now()/1000);
+  }
+  var scrubbing = false;
+  scrubber.addEventListener("pointerdown", function(e){
+    scrubbing = true; scrubber.setPointerCapture(e.pointerId);
+    scrubTo(e.clientX);
+  });
+  scrubber.addEventListener("pointermove", function(e){ if (scrubbing) scrubTo(e.clientX); });
+  scrubber.addEventListener("pointerup", function(){ scrubbing = false; });
+  scrubber.addEventListener("pointercancel", function(){ scrubbing = false; });
+
+  document.getElementById("btnFull").addEventListener("click", function(){
+    var wrap = document.querySelector(".stage-wrap");
+    if (document.fullscreenElement){ document.exitFullscreen(); }
+    else if (wrap.requestFullscreen){ wrap.requestFullscreen().catch(function(){}); }
+  });
+
+  // ---------- persistence ----------
+  function autosave(){
+    try{ localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.scenes)); }catch(e){}
+  }
+  function loadAutosave(){
+    try{
+      var raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (raw){
+        var scenes = JSON.parse(raw);
+        if (Array.isArray(scenes) && scenes.length) { state.scenes = scenes; return true; }
+      }
+    }catch(e){}
+    return false;
+  }
+
+  function getPresetStore(){
+    try{ return JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); }catch(e){ return []; }
+  }
+  function setPresetStore(list){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(list)); }catch(e){}
+  }
+
+  document.getElementById("btnSave").addEventListener("click", function(){
+    var name = prompt("Name this composition:", "My scene " + new Date().toLocaleDateString());
+    if (!name) return;
+    var list = getPresetStore();
+    list.push({name:name, scenes: state.scenes, savedAt: Date.now()});
+    setPresetStore(list);
+    toast("Saved “" + name + "”");
+  });
+
+  document.getElementById("btnLoad").addEventListener("click", function(){
+    var list = getPresetStore();
+    if (!list.length){ toast("No saved compositions yet"); return; }
+    var names = list.map(function(p,i){ return (i+1)+". "+p.name; }).join("\n");
+    var pick = prompt("Load which composition? Enter a number:\n" + names);
+    var idx = parseInt(pick,10) - 1;
+    if (isNaN(idx) || !list[idx]) return;
+    state.scenes = JSON.parse(JSON.stringify(list[idx].scenes));
+    selectScene(0);
+    autosave();
+    toast("Loaded “" + list[idx].name + "”");
+  });
+
+  document.getElementById("btnShare").addEventListener("click", function(){
+    try{
+      var payload = btoa(encodeURIComponent(JSON.stringify(state.scenes)));
+      var url = location.origin + location.pathname + "#s=" + payload;
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(function(){ toast("Link copied to clipboard"); })
+          .catch(function(){ prompt("Copy this link:", url); });
+      } else {
+        prompt("Copy this link:", url);
+      }
+      history.replaceState(null, "", "#s=" + payload);
+    }catch(e){ toast("Could not build share link"); }
+  });
+
+  function loadFromHash(){
+    var h = location.hash;
+    if (h && h.indexOf("#s=") === 0){
+      try{
+        var json = decodeURIComponent(atob(h.slice(3)));
+        var scenes = JSON.parse(json);
+        if (Array.isArray(scenes) && scenes.length){ state.scenes = scenes; return true; }
+      }catch(e){}
+    }
+    return false;
+  }
+
+  // ---------- export ----------
+  document.getElementById("btnPng").addEventListener("click", function(){
+    canvas.toBlob(function(blob){
+      if (!blob){ toast("PNG export failed"); return; }
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "glyphstage-frame.png";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+      toast("PNG downloaded");
+    }, "image/png");
+  });
+
+  var btnRec = document.getElementById("btnRec");
+  btnRec.addEventListener("click", function(){
+    if (recorder && recorder.state === "recording") return;
+    if (typeof MediaRecorder === "undefined" || !canvas.captureStream){
+      toast("Video export not supported in this browser");
+      return;
+    }
+    var stream = canvas.captureStream(30);
+    var mime = "video/webm;codecs=vp9";
+    if (!MediaRecorder.isTypeSupported(mime)) mime = "video/webm";
+    try{
+      recorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 4_000_000});
+    }catch(e){
+      toast("Could not start recorder");
+      return;
+    }
+    recChunks = [];
+    recorder.ondataavailable = function(e){ if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = function(){
+      var blob = new Blob(recChunks, {type:"video/webm"});
+      if (blob.size === 0){ toast("Export produced no data — try again"); return; }
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "glyphstage-export.webm";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 8000);
+      btnRec.innerHTML = "⏺ Export WebM";
+      btnRec.disabled = false;
+      toast("WebM exported (" + (blob.size/1024).toFixed(0) + " KB)");
+    };
+    // record exactly one full loop from the top
+    playhead = 0;
+    playing = true;
+    loop = false;
+    var wasLoop = true;
+    updatePlayBtn();
+    recorder.start();
+    btnRec.innerHTML = '<span class="rec-dot"></span>Recording…';
+    btnRec.disabled = true;
+    var total = totalDuration();
+    setTimeout(function(){
+      recorder.stop();
+      loop = wasLoop;
+    }, total*1000 + 250);
+  });
+
+  // ---------- keyboard ----------
+  window.addEventListener("keydown", function(e){
+    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    if (e.code === "Space"){ e.preventDefault(); playing = !playing; updatePlayBtn(); }
+  });
+
+  // ---------- resize ----------
+  function fitCanvas(){
+    var rect = canvas.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.round(rect.width * dpr);
+    var h = Math.round(rect.width * (9/16) * dpr);
+    if (canvas.width !== w || canvas.height !== h){
+      canvas.width = w; canvas.height = h;
+    }
+  }
+  window.addEventListener("resize", fitCanvas);
+
+  // ---------- init ----------
+  function init(){
+    var hadHash = loadFromHash();
+    if (!hadHash) loadAutosave();
+    fitCanvas();
+    selectScene(0);
+    rebuildSceneList();
+    playing = true;
+    updatePlayBtn();
+    rafId = requestAnimationFrame(loopFrame);
+  }
+  init();
+})();
+</script>
+</body>
+</html>
