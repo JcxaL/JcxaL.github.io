@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Range Calendar — UI Spotlight</title>
+<style>
+  :root{ --bg:#080b12; --panel:#121826ee; --border:#ffffff1c; --text:#eef1fb; --dim:#8b90ac; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; }
+  body{
+    margin:0; font-family:system-ui,-apple-system,sans-serif; color:var(--text);
+    background:radial-gradient(90% 60% at 50% 0%, #241a3a 0%, var(--bg) 55%, #020306 100%);
+    min-height:100dvh; display:flex; flex-direction:column;
+  }
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:30; text-decoration:none; color:var(--text);
+    background:var(--panel); border:1px solid var(--border); padding:8px 14px; border-radius:999px;
+    font-size:12.5px; font-weight:600; backdrop-filter:blur(10px);
+  }
+  .back-link:hover{ background:#1c1c30; }
+
+  header{ text-align:center; padding:72px 20px 10px; }
+  header h1{ margin:0 0 8px; font-size:clamp(22px,4vw,32px); letter-spacing:-.01em; }
+  header h1 span{ color:var(--accent); }
+  header p{ color:var(--dim); max-width:580px; margin:0 auto; font-size:13.5px; line-height:1.6; }
+
+  .stage{ flex:1; display:flex; align-items:center; justify-content:center; padding:26px 16px 70px; }
+  .picker{
+    background:linear-gradient(165deg,#161c2c,#0c0f18); border:1px solid var(--border); border-radius:22px;
+    padding:20px; max-width:680px; width:100%; box-shadow:0 30px 70px #000a;
+  }
+  .trigger{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; background:#0e1119; border:1px solid var(--border);
+    border-radius:12px; padding:10px 14px; margin-bottom:16px; font-size:13px;
+  }
+  .trigger .val{ font-weight:700; color:var(--accent); }
+  .presets{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+  .presets button{
+    background:#0e1119; border:1px solid var(--border); color:var(--dim); border-radius:999px; padding:6px 12px;
+    font-size:11.5px; font-weight:600; cursor:pointer; transition:color .15s, border-color .15s;
+  }
+  .presets button:hover{ color:var(--text); border-color:#ffffff40; }
+  .presets button.active{ color:#1a1330; background:var(--accent); border-color:transparent; }
+
+  .months{ display:flex; gap:22px; }
+  @media (max-width:620px){ .months{ flex-direction:column; } .months .month:nth-child(2){ display:none; } }
+  .month{ flex:1; min-width:0; }
+  .month .nav{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .month .nav button{ background:none; border:none; color:var(--dim); font-size:16px; cursor:pointer; padding:4px 8px; border-radius:8px; }
+  .month .nav button:hover{ background:#ffffff10; color:var(--text); }
+  .month .nav .title{ font-size:12.5px; font-weight:700; }
+  .grid7{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+  .grid7 .dow{ text-align:center; font-size:10px; color:#6b7089; padding:4px 0; }
+  .day{
+    aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer;
+    border-radius:8px; color:var(--text); position:relative;
+  }
+  .day.muted{ color:#3d4257; cursor:default; }
+  .day.in-range{ background:color-mix(in srgb, var(--accent) 22%, transparent); border-radius:0; }
+  .day.range-start{ background:var(--accent); color:#1a1330; font-weight:700; border-radius:8px 0 0 8px; }
+  .day.range-end{ background:var(--accent); color:#1a1330; font-weight:700; border-radius:0 8px 8px 0; }
+  .day.range-start.range-end{ border-radius:8px; }
+  .day:not(.muted):hover{ outline:1px solid var(--accent); }
+
+  footer{ text-align:center; padding:6px 20px 20px; color:var(--dim); font-size:11.5px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Range <span>Calendar</span></h1>
+  <p>A two-month range picker with presets, an inline calendar, and a live-updating trigger label — the same shape as new design-system date-range components shipping in mid-2026.</p>
+</header>
+
+<div class="stage">
+  <div class="picker">
+    <div class="trigger"><span>Selected range</span><span class="val" id="rangeLabel">Pick a start date</span></div>
+    <div class="presets" id="presets"></div>
+    <div class="months" id="months"></div>
+  </div>
+</div>
+
+<footer>Inspired by the Nord Design System's July 2026 Date Range Picker component · UI Spotlight Day 87 · Drop #5</footer>
+
+<script>
+(function(){
+  var MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DOW = ['S','M','T','W','T','F','S'];
+
+  var today = new Date();
+  var baseYear = today.getFullYear(), baseMonth = today.getMonth();
+  var viewOffset = 0; // months forward from base for left calendar
+
+  var range = { start: null, end: null };
+
+  var monthsEl = document.getElementById('months');
+  var rangeLabel = document.getElementById('rangeLabel');
+  var presetsEl = document.getElementById('presets');
+
+  function fmt(d){
+    return d ? (MONTH_NAMES[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear()) : '';
+  }
+
+  function daysInMonth(y, m){ return new Date(y, m + 1, 0).getDate(); }
+
+  function buildMonth(y, m, showNav){
+    var wrap = document.createElement('div');
+    wrap.className = 'month';
+
+    var nav = document.createElement('div');
+    nav.className = 'nav';
+    var prevBtn = document.createElement('button'); prevBtn.textContent = '‹'; prevBtn.style.visibility = showNav === 'left' ? 'visible' : 'hidden';
+    var title = document.createElement('div'); title.className = 'title'; title.textContent = MONTH_NAMES[m] + ' ' + y;
+    var nextBtn = document.createElement('button'); nextBtn.textContent = '›'; nextBtn.style.visibility = showNav === 'right' ? 'visible' : 'hidden';
+    prevBtn.addEventListener('click', function(){ viewOffset -= 1; render(); });
+    nextBtn.addEventListener('click', function(){ viewOffset += 1; render(); });
+    nav.appendChild(prevBtn); nav.appendChild(title); nav.appendChild(nextBtn);
+    wrap.appendChild(nav);
+
+    var grid = document.createElement('div');
+    grid.className = 'grid7';
+    DOW.forEach(function(d){
+      var el = document.createElement('div'); el.className = 'dow'; el.textContent = d; grid.appendChild(el);
+    });
+
+    var firstDow = new Date(y, m, 1).getDay();
+    for (var i = 0; i < firstDow; i++){
+      var pad = document.createElement('div'); grid.appendChild(pad);
+    }
+    var total = daysInMonth(y, m);
+    for (var day = 1; day <= total; day++){
+      var cell = document.createElement('div');
+      cell.className = 'day';
+      cell.textContent = String(day);
+      var cellDate = new Date(y, m, day);
+      decorateCell(cell, cellDate);
+      cell.addEventListener('click', function(dt){
+        return function(){ pickDate(dt); };
+      }(cellDate));
+      grid.appendChild(cell);
+    }
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  function sameDay(a, b){ return a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+
+  function decorateCell(cell, date){
+    if (range.start && sameDay(date, range.start)) cell.classList.add('range-start');
+    if (range.end && sameDay(date, range.end)) cell.classList.add('range-end');
+    if (range.start && range.end && date > range.start && date < range.end) cell.classList.add('in-range');
+  }
+
+  function pickDate(date){
+    if (!range.start || (range.start && range.end)){
+      range.start = date; range.end = null;
+    } else if (date < range.start){
+      range.end = range.start; range.start = date;
+    } else {
+      range.end = date;
+    }
+    updatePresetActive(null);
+    render();
+  }
+
+  function render(){
+    monthsEl.innerHTML = '';
+    var d1 = new Date(baseYear, baseMonth + viewOffset, 1);
+    var d2 = new Date(baseYear, baseMonth + viewOffset + 1, 1);
+    monthsEl.appendChild(buildMonth(d1.getFullYear(), d1.getMonth(), 'left'));
+    monthsEl.appendChild(buildMonth(d2.getFullYear(), d2.getMonth(), 'right'));
+    rangeLabel.textContent = range.start
+      ? (fmt(range.start) + (range.end ? '  →  ' + fmt(range.end) : '  →  …'))
+      : 'Pick a start date';
+  }
+
+  var PRESETS = [
+    { label: '7 days', days: 7 },
+    { label: '14 days', days: 14 },
+    { label: '30 days', days: 30 },
+    { label: 'This month', days: null }
+  ];
+  var presetButtons = [];
+  PRESETS.forEach(function(p){
+    var btn = document.createElement('button');
+    btn.textContent = p.label;
+    btn.addEventListener('click', function(){
+      var end = new Date(today);
+      var start;
+      if (p.days){
+        start = new Date(today);
+        start.setDate(start.getDate() - p.days + 1);
+      } else {
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+      }
+      range.start = start; range.end = end;
+      viewOffset = 0;
+      updatePresetActive(btn);
+      render();
+    });
+    presetsEl.appendChild(btn);
+    presetButtons.push(btn);
+  });
+  function updatePresetActive(active){
+    presetButtons.forEach(function(b){ b.classList.toggle('active', b === active); });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

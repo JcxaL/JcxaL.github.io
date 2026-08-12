@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Resonant Bodies — Physical Modeling Synth</title>
+<style>
+  :root{
+    --bg:#0d0a08; --panel:#181310ee; --border:#ffffff17; --text:#f3ede6; --dim:#a89c8f;
+    --string:#c9a06b; --bar:#8fb8d8; --membrane:#e4a94f; --plate:#c084fc;
+    --accent: var(--string);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);
+    background:radial-gradient(120% 70% at 50% -10%,#26190f 0%, var(--bg) 55%, #050403 100%);
+    min-height:100dvh; overflow-x:hidden;
+  }
+  a{color:inherit;}
+  header{ text-align:center; padding:26px 16px 10px; }
+  header h1{ margin:0 0 6px; font-size:clamp(22px,4.4vw,32px); letter-spacing:-.02em; }
+  header h1 em{ font-style:normal; color:var(--accent); transition:color .3s; }
+  header p{ margin:0; color:var(--dim); font-size:13.5px; }
+
+  .wrap{ max-width:1180px; margin:0 auto; padding:10px 14px 60px; display:grid; grid-template-columns:280px 1fr; gap:18px; }
+  @media (max-width:920px){ .wrap{ grid-template-columns:1fr; } }
+
+  .panel{
+    background:linear-gradient(165deg,#1c1611,#120d0a); border:1px solid var(--border); border-radius:18px;
+    padding:16px; box-shadow:0 20px 50px #0007;
+  }
+  .panel h2{ margin:0 0 12px; font-size:11.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); }
+
+  .bodies{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
+  .body-btn{
+    border:1px solid var(--border); background:#0f0b09; color:var(--text); border-radius:12px; padding:10px 6px;
+    font-size:12.5px; font-weight:700; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px;
+    transition:border-color .15s, background .15s, transform .1s;
+  }
+  .body-btn .swatch{ width:22px; height:22px; border-radius:50%; }
+  .body-btn:active{ transform:scale(.96); }
+  .body-btn.active{ border-color:var(--c); background:color-mix(in srgb, var(--c) 16%, #0f0b09); }
+
+  .row{ margin-bottom:14px; }
+  .row .lbl{ display:flex; justify-content:space-between; font-size:12px; color:var(--dim); margin-bottom:4px; }
+  .row .lbl b{ color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+
+  .btnrow{ display:flex; gap:8px; flex-wrap:wrap; }
+  button.ui{
+    border:1px solid var(--border); background:#0f0b09; color:var(--text); border-radius:10px; padding:9px 12px;
+    font-size:12.5px; font-weight:600; cursor:pointer; transition:border-color .15s,background .15s;
+  }
+  button.ui:hover{ border-color:#ffffff40; }
+  button.ui:active{ transform:translateY(1px); }
+  button.ui.primary{ background:var(--accent); color:#140f0a; border-color:transparent; }
+  button.ui.danger{ color:#ff9a9a; }
+  button.ui:disabled{ opacity:.4; cursor:not-allowed; }
+  button.ui.rec.active{ background:#ef4444; color:#fff; border-color:transparent; animation:pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.55;} }
+
+  select, input[type=text]{
+    width:100%; background:#0f0b09; border:1px solid var(--border); color:var(--text); border-radius:8px;
+    padding:8px 10px; font-size:12.5px; margin-bottom:8px;
+  }
+
+  .stage{ display:flex; flex-direction:column; gap:16px; }
+  #viz{ width:100%; height:200px; display:block; border-radius:18px; background:#0a0705; border:1px solid var(--border); }
+
+  .transport{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .transport .time{ font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--dim); min-width:74px; }
+
+  .keyboard{ position:relative; height:180px; user-select:none; touch-action:none; }
+  .white-row{ position:absolute; inset:0; display:flex; gap:2px; }
+  .wkey{
+    flex:1; background:linear-gradient(180deg,#f4ecdf,#ddd0b8); border:1px solid #00000030; border-radius:0 0 8px 8px;
+    display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px; font-size:10.5px; color:#5a4a30; font-weight:700;
+    box-shadow:inset 0 -4px 6px #00000018;
+  }
+  .wkey.down{ background:linear-gradient(180deg,#e0c894,#c9a06b); }
+  .bkey{
+    position:absolute; top:0; width:6%; height:62%; background:linear-gradient(180deg,#3a2c1c,#1a1209);
+    border-radius:0 0 6px 6px; z-index:2; display:flex; align-items:flex-end; justify-content:center;
+    padding-bottom:6px; font-size:9.5px; color:#d9c9a8; font-weight:700; box-shadow:0 4px 8px #0009;
+  }
+  .bkey.down{ background:linear-gradient(180deg,var(--accent),#5c4322); }
+
+  .hint{ text-align:center; font-size:11.5px; color:#6f6558; margin-top:6px; }
+  .toast{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(20px); opacity:0; pointer-events:none;
+    background:#1c1611; border:1px solid var(--border); color:var(--text); padding:10px 18px; border-radius:999px;
+    font-size:12.5px; transition:opacity .25s, transform .25s; z-index:50; box-shadow:0 10px 30px #000a;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  footer{ text-align:center; padding:6px 20px 40px; color:#6f6558; font-size:11.5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Resonant <em id="titleAccent">Bodies</em></h1>
+  <p>A tiny physical-modeling instrument lab — pluck, strike, and loop four resonant bodies.</p>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>Instrument Body</h2>
+    <div class="bodies" id="bodies"></div>
+
+    <h2>Shape</h2>
+    <div class="row"><div class="lbl">Damping <b id="v_damping"></b></div><input type="range" id="damping" min="0.3" max="2" step="0.01"></div>
+    <div class="row"><div class="lbl">Brightness <b id="v_brightness"></b></div><input type="range" id="brightness" min="-1" max="1" step="0.01"></div>
+    <div class="row"><div class="lbl">Size <b id="v_size"></b></div><input type="range" id="size" min="0.5" max="2" step="0.01"></div>
+    <div class="row"><div class="lbl">Strike Position <b id="v_strikePos"></b></div><input type="range" id="strikePos" min="0.05" max="0.95" step="0.01"></div>
+    <div class="row"><div class="lbl">Mallet Hardness <b id="v_hardness"></b></div><input type="range" id="hardness" min="0" max="1" step="0.01"></div>
+    <div class="row"><div class="lbl">Reverb <b id="v_reverb"></b></div><input type="range" id="reverb" min="0" max="1" step="0.01"></div>
+    <div class="row"><div class="lbl">Volume <b id="v_volume"></b></div><input type="range" id="volume" min="0" max="1" step="0.01"></div>
+
+    <h2>Presets</h2>
+    <select id="presetSelect"><option value="">— saved presets —</option></select>
+    <div class="btnrow">
+      <button class="ui" id="savePreset">Save preset</button>
+      <button class="ui danger" id="deletePreset">Delete</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <canvas id="viz" width="1100" height="400"></canvas>
+
+    <div class="panel">
+      <h2>Loop Pedal</h2>
+      <div class="transport">
+        <button class="ui rec" id="recBtn">● Record loop</button>
+        <button class="ui" id="playBtn" disabled>▶ Play loop</button>
+        <button class="ui" id="clearBtn" disabled>Clear</button>
+        <button class="ui primary" id="exportBtn" disabled>⭳ Export WAV</button>
+        <span class="time" id="loopTime">no loop</span>
+      </div>
+      <div class="btnrow" style="margin-top:12px;">
+        <select id="loopSelect" style="max-width:180px; margin-bottom:0;"><option value="">— saved loops —</option></select>
+        <button class="ui" id="saveLoop">Save loop</button>
+        <button class="ui danger" id="deleteLoop">Delete</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Keyboard — tap, click, or use your computer keys (A–; row)</h2>
+      <div class="keyboard" id="keyboard"></div>
+      <div class="hint">First tap enables audio. Notes decay naturally — no sustain needed.</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<footer>Resonant Bodies · Day 88 Playground · all synthesis runs locally, nothing leaves your browser</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- instrument bodies (modal resonator banks) ----------
+  var BODIES = {
+    string:   { name:'String',   color:'#c9a06b', ratios:[1,2,3,4,5,6,7,8],                       decayBase:1.6, dampSlope:0.35 },
+    bar:      { name:'Bar',      color:'#8fb8d8', ratios:[1,2.756,5.404,8.933,13.34,18.64],        decayBase:1.1, dampSlope:0.55 },
+    membrane: { name:'Membrane', color:'#e4a94f', ratios:[1,1.594,2.136,2.296,2.653,2.918,3.156,3.501], decayBase:0.6, dampSlope:0.70 },
+    plate:    { name:'Plate',    color:'#c084fc', ratios:[1,2.01,2.998,3.796,4.44,5.94,6.97,8.44], decayBase:2.2, dampSlope:0.25 }
+  };
+  var BODY_ORDER = ['string','bar','membrane','plate'];
+
+  var DEFAULT_PARAMS = { damping:1.0, brightness:0.0, size:1.0, strikePos:0.32, hardness:0.55, reverb:0.28, volume:0.8 };
+
+  var state = {
+    bodyType: 'string',
+    params: Object.assign({}, DEFAULT_PARAMS)
+  };
+
+  // ---------- audio graph (created lazily on first gesture) ----------
+  var audioCtx = null, masterGain = null, dryGain = null, wetGain = null, convolver = null, reverbNode = null;
+
+  function ensureAudio(){
+    if (audioCtx) { if (audioCtx.state === 'suspended') audioCtx.resume(); return; }
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = state.params.volume;
+    masterGain.connect(audioCtx.destination);
+
+    dryGain = audioCtx.createGain();
+    wetGain = audioCtx.createGain();
+    dryGain.connect(masterGain);
+    wetGain.connect(masterGain);
+
+    convolver = audioCtx.createConvolver();
+    convolver.buffer = makeImpulseResponse(audioCtx, 2.2, 3.2);
+    convolver.connect(wetGain);
+
+    updateReverbMix();
+  }
+
+  function updateReverbMix(){
+    if (!audioCtx) return;
+    var r = state.params.reverb;
+    dryGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.02);
+    wetGain.gain.setTargetAtTime(r * 1.4, audioCtx.currentTime, 0.02);
+  }
+
+  function makeImpulseResponse(ctx, durSec, decayPow){
+    var sr = ctx.sampleRate, n = Math.round(sr * durSec);
+    var buf = ctx.createBuffer(2, n, sr);
+    for (var ch = 0; ch < 2; ch++){
+      var d = buf.getChannelData(ch);
+      for (var i = 0; i < n; i++){
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decayPow);
+      }
+    }
+    return buf;
+  }
+
+  // ---------- modal synthesis ----------
+  function exciteBurst(hardness, sr){
+    var lenMs = 2 + (1 - hardness) * 18;
+    var n = Math.max(4, Math.round(sr * lenMs / 1000));
+    var arr = new Float32Array(n);
+    for (var i = 0; i < n; i++){
+      var env = Math.pow(1 - i / n, 1.5);
+      arr[i] = (Math.random() * 2 - 1) * env;
+    }
+    var alpha = 0.15 + (1 - hardness) * 0.65;
+    var prev = 0;
+    for (i = 0; i < n; i++){ prev = prev + alpha * (arr[i] - prev); arr[i] = prev; }
+    return arr;
+  }
+
+  // returns { buffer:Float32Array, modeInfo:[{gain,decay}] } for freq/body/params at sample rate sr
+  function synthNote(freq, bodyKey, p, sr){
+    var body = BODIES[bodyKey];
+    var dur = Math.min(4.5, Math.max(0.3, body.decayBase * p.damping * 1.4));
+    var N = Math.max(1024, Math.round(sr * dur));
+    var out = new Float32Array(N);
+    var exc = exciteBurst(p.hardness, sr);
+    var excLen = exc.length;
+    var ratios = body.ratios, nModes = ratios.length;
+    var modeInfo = [];
+
+    for (var m = 0; m < nModes; m++){
+      var f = (freq * p.size) * ratios[m];
+      if (f <= 20 || f >= sr * 0.45) { modeInfo.push({ gain: 0, decay: 0.01 }); continue; }
+      var omega = 2 * Math.PI * f / sr;
+      var modeDecay = (body.decayBase * p.damping) / (1 + m * body.dampSlope);
+      modeDecay = Math.max(0.02, modeDecay);
+      var r = Math.exp(-1 / (modeDecay * sr));
+      var gain = 1 / (1 + m * 0.6);
+      gain *= Math.pow(10, p.brightness * (m / (nModes - 1 || 1)) * 0.6);
+      gain *= Math.abs(Math.sin((m + 1) * Math.PI * p.strikePos)) + 0.05;
+      modeInfo.push({ gain: gain, decay: modeDecay });
+
+      var cosw = Math.cos(omega), r2 = r * r, twoRcos = 2 * r * cosw;
+      var y1 = 0, y2 = 0;
+      for (var n = 0; n < N; n++){
+        var x = n < excLen ? exc[n] * (1 - r) : 0;
+        var y = twoRcos * y1 - r2 * y2 + x;
+        out[n] += gain * y;
+        y2 = y1; y1 = y;
+      }
+    }
+
+    var peak = 0;
+    for (var i = 0; i < N; i++){ var a = Math.abs(out[i]); if (a > peak) peak = a; }
+    if (peak > 1e-6){ var s = 0.9 / peak; for (i = 0; i < N; i++) out[i] *= s; }
+
+    return { buffer: out, modeInfo: modeInfo };
+  }
+
+  function playNote(freq){
+    ensureAudio();
+    var sr = audioCtx.sampleRate;
+    var result = synthNote(freq, state.bodyType, state.params, sr);
+    var abuf = audioCtx.createBuffer(1, result.buffer.length, sr);
+    abuf.copyToChannel(result.buffer, 0);
+    var src = audioCtx.createBufferSource();
+    src.buffer = abuf;
+    src.connect(dryGain);
+    src.connect(convolver);
+    src.start();
+
+    pushVoice(freq, result.modeInfo);
+    if (recording) recordEvent(freq);
+    return result;
+  }
+
+  // ---------- visualizer ----------
+  var canvas = document.getElementById('viz');
+  var ctx2d = canvas.getContext('2d');
+  var voices = []; // {freq, modeInfo, startTime}
+
+  function pushVoice(freq, modeInfo){
+    voices.push({ freq: freq, modeInfo: modeInfo, startTime: performance.now() / 1000 });
+    if (voices.length > 24) voices.shift();
+  }
+
+  function drawViz(){
+    var w = canvas.width, h = canvas.height;
+    ctx2d.clearRect(0, 0, w, h);
+    ctx2d.fillStyle = '#0a0705';
+    ctx2d.fillRect(0, 0, w, h);
+
+    var now = performance.now() / 1000;
+    var accent = BODIES[state.bodyType].color;
+    voices = voices.filter(function(v){ return (now - v.startTime) < 5; });
+
+    ctx2d.save();
+    ctx2d.translate(w / 2, h / 2);
+    voices.forEach(function(v){
+      var t = now - v.startTime;
+      v.modeInfo.forEach(function(mi, i){
+        if (mi.gain <= 0) return;
+        var amp = mi.gain * Math.exp(-t / mi.decay);
+        if (amp < 0.003) return;
+        var radius = 18 + i * 16 + (t * 26);
+        ctx2d.beginPath();
+        ctx2d.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx2d.strokeStyle = accent;
+        ctx2d.globalAlpha = Math.min(0.9, amp * 1.4);
+        ctx2d.lineWidth = 2 + amp * 6;
+        ctx2d.stroke();
+      });
+    });
+    ctx2d.restore();
+
+    // idle bars representing the current body's mode bank shape
+    ctx2d.globalAlpha = 1;
+    var ratios = BODIES[state.bodyType].ratios;
+    var bw = w / (ratios.length * 1.6);
+    ratios.forEach(function(rt, i){
+      var live = 0;
+      voices.forEach(function(v){
+        if (v.modeInfo[i]){
+          var t = now - v.startTime;
+          live = Math.max(live, v.modeInfo[i].gain * Math.exp(-t / v.modeInfo[i].decay));
+        }
+      });
+      var bh = 10 + live * (h * 0.38);
+      var x = 20 + i * (bw * 1.6);
+      ctx2d.fillStyle = accent;
+      ctx2d.globalAlpha = 0.25 + live * 0.6;
+      ctx2d.fillRect(x, h - 14 - bh, bw, bh);
+    });
+    ctx2d.globalAlpha = 1;
+
+    requestAnimationFrame(drawViz);
+  }
+  requestAnimationFrame(drawViz);
+
+  // ---------- keyboard layout ----------
+  var NOTE_SEMI = { C:-9, 'C#':-8, D:-7, 'D#':-6, E:-5, F:-4, 'F#':-3, G:-2, 'G#':-1, A:0, 'A#':1, B:2 };
+  function noteFreq(note, oct){
+    var semi = NOTE_SEMI[note] + (oct - 4) * 12;
+    return 440 * Math.pow(2, semi / 12);
+  }
+
+  var KEYS = [
+    { note:'C', oct:4, key:'a', type:'w' }, { note:'C#', oct:4, key:'w', type:'b' },
+    { note:'D', oct:4, key:'s', type:'w' }, { note:'D#', oct:4, key:'e', type:'b' },
+    { note:'E', oct:4, key:'d', type:'w' },
+    { note:'F', oct:4, key:'f', type:'w' }, { note:'F#', oct:4, key:'t', type:'b' },
+    { note:'G', oct:4, key:'g', type:'w' }, { note:'G#', oct:4, key:'y', type:'b' },
+    { note:'A', oct:4, key:'h', type:'w' }, { note:'A#', oct:4, key:'u', type:'b' },
+    { note:'B', oct:4, key:'j', type:'w' },
+    { note:'C', oct:5, key:'k', type:'w' }, { note:'C#', oct:5, key:'o', type:'b' },
+    { note:'D', oct:5, key:'l', type:'w' }, { note:'D#', oct:5, key:'p', type:'b' },
+    { note:'E', oct:5, key:';', type:'w' }
+  ];
+
+  var keyboardEl = document.getElementById('keyboard');
+  var whiteRow = document.createElement('div');
+  whiteRow.className = 'white-row';
+  keyboardEl.appendChild(whiteRow);
+
+  var whiteEls = [], blackEls = [], keyToEl = {};
+  var whites = KEYS.filter(function(k){ return k.type === 'w'; });
+
+  whites.forEach(function(k){
+    var el = document.createElement('div');
+    el.className = 'wkey';
+    el.textContent = k.key.toUpperCase();
+    whiteRow.appendChild(el);
+    whiteEls.push(el);
+    keyToEl[k.key] = el;
+  });
+
+  var whiteWidthPct = 100 / whites.length;
+  KEYS.forEach(function(k){
+    if (k.type !== 'b') return;
+    var whiteIdxBefore = whites.indexOf(whiteBefore(k));
+    var el = document.createElement('div');
+    el.className = 'bkey';
+    el.textContent = k.key.toUpperCase();
+    el.style.left = ((whiteIdxBefore + 1) * whiteWidthPct - 3) + '%';
+    keyboardEl.appendChild(el);
+    blackEls.push(el);
+    keyToEl[k.key] = el;
+  });
+
+  function whiteBefore(blackKey){
+    var idx = KEYS.indexOf(blackKey);
+    for (var i = idx - 1; i >= 0; i--){ if (KEYS[i].type === 'w') return KEYS[i]; }
+    return whites[0];
+  }
+
+  var keyFreq = {};
+  KEYS.forEach(function(k){ keyFreq[k.key] = noteFreq(k.note, k.oct); });
+
+  var downKeys = {};
+  function triggerKey(key){
+    if (downKeys[key]) return;
+    downKeys[key] = true;
+    var el = keyToEl[key];
+    if (el) el.classList.add('down');
+    playNote(keyFreq[key]);
+  }
+  function releaseKey(key){
+    downKeys[key] = false;
+    var el = keyToEl[key];
+    if (el) el.classList.remove('down');
+  }
+
+  Object.keys(keyToEl).forEach(function(key){
+    var el = keyToEl[key];
+    el.addEventListener('pointerdown', function(e){ e.preventDefault(); triggerKey(key); });
+    el.addEventListener('pointerup', function(){ releaseKey(key); });
+    el.addEventListener('pointerleave', function(){ releaseKey(key); });
+    el.addEventListener('pointercancel', function(){ releaseKey(key); });
+  });
+
+  window.addEventListener('keydown', function(e){
+    if (e.repeat) return;
+    var k = e.key.toLowerCase();
+    if (keyFreq.hasOwnProperty(k)) triggerKey(k);
+  });
+  window.addEventListener('keyup', function(e){
+    var k = e.key.toLowerCase();
+    if (keyFreq.hasOwnProperty(k)) releaseKey(k);
+  });
+
+  // ---------- body + param controls ----------
+  var bodiesEl = document.getElementById('bodies');
+  BODY_ORDER.forEach(function(key){
+    var b = BODIES[key];
+    var btn = document.createElement('button');
+    btn.className = 'body-btn';
+    btn.style.setProperty('--c', b.color);
+    btn.innerHTML = '<span class="swatch" style="background:' + b.color + '"></span>' + b.name;
+    btn.addEventListener('click', function(){
+      state.bodyType = key;
+      refreshBodyButtons();
+      document.getElementById('titleAccent').style.color = b.color;
+      document.documentElement.style.setProperty('--accent', b.color);
+      saveLastState();
+    });
+    bodiesEl.appendChild(btn);
+    btn.dataset.key = key;
+  });
+  function refreshBodyButtons(){
+    Array.prototype.forEach.call(bodiesEl.children, function(btn){
+      btn.classList.toggle('active', btn.dataset.key === state.bodyType);
+    });
+  }
+
+  var PARAM_KEYS = ['damping','brightness','size','strikePos','hardness','reverb','volume'];
+  var sliders = {};
+  PARAM_KEYS.forEach(function(key){
+    var input = document.getElementById(key);
+    sliders[key] = input;
+    input.addEventListener('input', function(){
+      state.params[key] = parseFloat(input.value);
+      document.getElementById('v_' + key).textContent = state.params[key].toFixed(2);
+      if (key === 'reverb') updateReverbMix();
+      if (key === 'volume' && masterGain) masterGain.gain.setTargetAtTime(state.params.volume, audioCtx.currentTime, 0.02);
+      saveLastState();
+    });
+  });
+
+  function applyParamsToUI(){
+    PARAM_KEYS.forEach(function(key){
+      sliders[key].value = state.params[key];
+      document.getElementById('v_' + key).textContent = state.params[key].toFixed(2);
+    });
+    refreshBodyButtons();
+    var c = BODIES[state.bodyType].color;
+    document.getElementById('titleAccent').style.color = c;
+    document.documentElement.style.setProperty('--accent', c);
+    if (masterGain) masterGain.gain.value = state.params.volume;
+    updateReverbMix();
+  }
+
+  // ---------- loop pedal ----------
+  var recording = false, loopStartTime = 0, loopLenSec = 0, loopEvents = [];
+  var playingLoop = false, playCursorSec = 0, lastFrameTime = 0, firedThisCycle = {};
+
+  var recBtn = document.getElementById('recBtn');
+  var playBtn = document.getElementById('playBtn');
+  var clearBtn = document.getElementById('clearBtn');
+  var exportBtn = document.getElementById('exportBtn');
+  var loopTimeEl = document.getElementById('loopTime');
+
+  function recordEvent(freq){
+    var t = (audioCtx.currentTime - loopStartTime);
+    loopEvents.push({ t: t, freq: freq, bodyType: state.bodyType, params: Object.assign({}, state.params) });
+  }
+
+  recBtn.addEventListener('click', function(){
+    ensureAudio();
+    if (!recording){
+      recording = true;
+      playingLoop = false;
+      loopEvents = [];
+      loopStartTime = audioCtx.currentTime;
+      recBtn.textContent = '■ Stop recording';
+      recBtn.classList.add('active');
+      playBtn.disabled = true; clearBtn.disabled = true; exportBtn.disabled = true;
+      loopTimeEl.textContent = 'recording…';
+    } else {
+      recording = false;
+      loopLenSec = Math.max(0.4, audioCtx.currentTime - loopStartTime);
+      recBtn.textContent = '● Record loop';
+      recBtn.classList.remove('active');
+      var has = loopEvents.length > 0;
+      playBtn.disabled = !has;
+      clearBtn.disabled = !has;
+      exportBtn.disabled = !has;
+      loopTimeEl.textContent = has ? (loopLenSec.toFixed(1) + 's · ' + loopEvents.length + ' notes') : 'no loop';
+      if (has) startLoopPlayback();
+    }
+  });
+
+  function startLoopPlayback(){
+    playingLoop = true;
+    playCursorSec = 0;
+    firedThisCycle = {};
+    lastFrameTime = audioCtx.currentTime;
+    playBtn.textContent = '⏸ Pause loop';
+  }
+  playBtn.addEventListener('click', function(){
+    if (loopEvents.length === 0) return;
+    if (playingLoop){
+      playingLoop = false;
+      playBtn.textContent = '▶ Play loop';
+    } else {
+      startLoopPlayback();
+    }
+  });
+  clearBtn.addEventListener('click', function(){
+    loopEvents = []; loopLenSec = 0; playingLoop = false;
+    playBtn.disabled = true; clearBtn.disabled = true; exportBtn.disabled = true;
+    playBtn.textContent = '▶ Play loop';
+    loopTimeEl.textContent = 'no loop';
+  });
+
+  function loopScheduler(){
+    if (playingLoop && audioCtx){
+      var now = audioCtx.currentTime;
+      var dt = now - lastFrameTime;
+      lastFrameTime = now;
+      var prevCursor = playCursorSec;
+      playCursorSec += dt;
+      if (playCursorSec >= loopLenSec){
+        playCursorSec -= loopLenSec;
+        firedThisCycle = {};
+      }
+      loopEvents.forEach(function(ev, idx){
+        var due = (ev.t >= prevCursor && ev.t <= playCursorSec && prevCursor <= playCursorSec) ||
+                  (prevCursor > playCursorSec && (ev.t >= prevCursor || ev.t <= playCursorSec));
+        if (due && !firedThisCycle[idx]){
+          firedThisCycle[idx] = true;
+          var savedBody = state.bodyType, savedParams = state.params;
+          state.bodyType = ev.bodyType; state.params = ev.params;
+          playNoteRaw(ev.freq);
+          state.bodyType = savedBody; state.params = savedParams;
+        }
+      });
+      if (prevCursor > playCursorSec) firedThisCycle = {};
+    }
+    requestAnimationFrame(loopScheduler);
+  }
+  requestAnimationFrame(loopScheduler);
+
+  function playNoteRaw(freq){
+    var sr = audioCtx.sampleRate;
+    var result = synthNote(freq, state.bodyType, state.params, sr);
+    var abuf = audioCtx.createBuffer(1, result.buffer.length, sr);
+    abuf.copyToChannel(result.buffer, 0);
+    var src = audioCtx.createBufferSource();
+    src.buffer = abuf;
+    src.connect(dryGain);
+    src.connect(convolver);
+    src.start();
+    pushVoice(freq, result.modeInfo);
+  }
+
+  // ---------- WAV export ----------
+  function encodeWav(samples, sr){
+    var numFrames = samples.length, blockAlign = 2, byteRate = sr * blockAlign;
+    var dataSize = numFrames * blockAlign;
+    var buffer = new ArrayBuffer(44 + dataSize);
+    var view = new DataView(buffer);
+    function writeStr(offset, str){ for (var i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); }
+    writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+    writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, sr, true);
+    view.setUint32(28, byteRate, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+    writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+    var offset = 44;
+    for (var i = 0; i < numFrames; i++){
+      var s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  function renderLoopToWav(events, lenSec, sr){
+    var N = Math.max(1, Math.round(lenSec * sr));
+    var mix = new Float32Array(N);
+    events.forEach(function(ev){
+      var res = synthNote(ev.freq, ev.bodyType, ev.params, sr);
+      var start = Math.round(ev.t * sr);
+      for (var i = 0; i < res.buffer.length && start + i < N; i++) mix[start + i] += res.buffer[i];
+    });
+    var peak = 0;
+    for (var i = 0; i < N; i++){ var a = Math.abs(mix[i]); if (a > peak) peak = a; }
+    if (peak > 1){ var s = 0.98 / peak; for (i = 0; i < N; i++) mix[i] *= s; }
+    return mix;
+  }
+
+  exportBtn.addEventListener('click', function(){
+    if (loopEvents.length === 0 || loopLenSec <= 0){ showToast('Record a loop first'); return; }
+    var sr = audioCtx ? audioCtx.sampleRate : 44100;
+    var mix = renderLoopToWav(loopEvents, loopLenSec, sr);
+    var blob = encodeWav(mix, sr);
+    if (!blob.size){ showToast('Export failed — empty buffer'); return; }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'resonant-bodies-loop.wav';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    showToast('Exported ' + (blob.size / 1024).toFixed(0) + ' KB WAV');
+  });
+
+  // ---------- persistence ----------
+  var LS_LAST = 'resonantBodies_last_v1';
+  var LS_PRESETS = 'resonantBodies_presets_v1';
+  var LS_LOOPS = 'resonantBodies_loops_v1';
+
+  function saveLastState(){
+    try { localStorage.setItem(LS_LAST, JSON.stringify(state)); } catch (e) {}
+  }
+  function loadLastState(){
+    try {
+      var raw = localStorage.getItem(LS_LAST);
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.bodyType && parsed.params){
+        state.bodyType = parsed.bodyType;
+        state.params = Object.assign({}, DEFAULT_PARAMS, parsed.params);
+      }
+    } catch (e) {}
+  }
+
+  function readPresets(){ try { return JSON.parse(localStorage.getItem(LS_PRESETS) || '{}'); } catch (e) { return {}; } }
+  function writePresets(obj){ try { localStorage.setItem(LS_PRESETS, JSON.stringify(obj)); } catch (e) {} }
+  function refreshPresetSelect(){
+    var presets = readPresets();
+    var sel = document.getElementById('presetSelect');
+    sel.innerHTML = '<option value="">— saved presets —</option>';
+    Object.keys(presets).forEach(function(name){
+      var o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o);
+    });
+  }
+  document.getElementById('savePreset').addEventListener('click', function(){
+    var name = prompt('Preset name?');
+    if (!name) return;
+    var presets = readPresets();
+    presets[name] = { bodyType: state.bodyType, params: state.params };
+    writePresets(presets);
+    refreshPresetSelect();
+    document.getElementById('presetSelect').value = name;
+    showToast('Saved preset "' + name + '"');
+  });
+  document.getElementById('deletePreset').addEventListener('click', function(){
+    var sel = document.getElementById('presetSelect');
+    if (!sel.value) return;
+    var presets = readPresets();
+    delete presets[sel.value];
+    writePresets(presets);
+    refreshPresetSelect();
+  });
+  document.getElementById('presetSelect').addEventListener('change', function(e){
+    var presets = readPresets();
+    var p = presets[e.target.value];
+    if (!p) return;
+    state.bodyType = p.bodyType;
+    state.params = Object.assign({}, DEFAULT_PARAMS, p.params);
+    applyParamsToUI();
+    saveLastState();
+  });
+
+  function readLoops(){ try { return JSON.parse(localStorage.getItem(LS_LOOPS) || '{}'); } catch (e) { return {}; } }
+  function writeLoops(obj){ try { localStorage.setItem(LS_LOOPS, JSON.stringify(obj)); } catch (e) {} }
+  function refreshLoopSelect(){
+    var loops = readLoops();
+    var sel = document.getElementById('loopSelect');
+    sel.innerHTML = '<option value="">— saved loops —</option>';
+    Object.keys(loops).forEach(function(name){
+      var o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o);
+    });
+  }
+  document.getElementById('saveLoop').addEventListener('click', function(){
+    if (loopEvents.length === 0){ showToast('Nothing to save yet'); return; }
+    var name = prompt('Loop name?');
+    if (!name) return;
+    var loops = readLoops();
+    loops[name] = { events: loopEvents, lenSec: loopLenSec };
+    writeLoops(loops);
+    refreshLoopSelect();
+    document.getElementById('loopSelect').value = name;
+    showToast('Saved loop "' + name + '"');
+  });
+  document.getElementById('deleteLoop').addEventListener('click', function(){
+    var sel = document.getElementById('loopSelect');
+    if (!sel.value) return;
+    var loops = readLoops();
+    delete loops[sel.value];
+    writeLoops(loops);
+    refreshLoopSelect();
+  });
+  document.getElementById('loopSelect').addEventListener('change', function(e){
+    var loops = readLoops();
+    var l = loops[e.target.value];
+    if (!l) return;
+    ensureAudio();
+    loopEvents = l.events; loopLenSec = l.lenSec;
+    playBtn.disabled = false; clearBtn.disabled = false; exportBtn.disabled = false;
+    loopTimeEl.textContent = loopLenSec.toFixed(1) + 's · ' + loopEvents.length + ' notes';
+    startLoopPlayback();
+  });
+
+  // ---------- toast ----------
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+  }
+
+  // ---------- init ----------
+  loadLastState();
+  applyParamsToUI();
+  refreshPresetSelect();
+  refreshLoopSelect();
+})();
+</script>
+</body>
+</html>
