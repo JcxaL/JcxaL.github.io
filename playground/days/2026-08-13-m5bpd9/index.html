@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Gearworks — Mechanism Designer</title>
+<style>
+  :root{
+    --bg0:#0b0a08;
+    --bg1:#141210;
+    --panel:rgba(24,21,17,0.82);
+    --panel-brd:rgba(214,178,120,0.18);
+    --brass:#d9a85c;
+    --brass-lt:#f0c785;
+    --steel:#8fb0c4;
+    --accent:#e4694f;
+    --ok:#7ac47a;
+    --text:#f3ecdf;
+    --text-dim:#a89a86;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(1200px 800px at 50% -10%, #241c14 0%, var(--bg0) 60%), var(--bg0);
+    color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden;
+    touch-action:none;
+    user-select:none;
+  }
+  #stage{
+    position:fixed; inset:0;
+    display:block;
+    width:100%; height:100%;
+    cursor:crosshair;
+  }
+  .glass{
+    background:var(--panel);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--panel-brd);
+    box-shadow:0 8px 30px rgba(0,0,0,0.45);
+    border-radius:16px;
+  }
+  #topbar{
+    position:fixed; top:12px; left:12px; right:12px;
+    display:flex; align-items:center; gap:10px;
+    padding:8px 10px;
+    z-index:20;
+    flex-wrap:wrap;
+  }
+  #brand{
+    font-weight:700; font-size:14px; letter-spacing:.4px;
+    color:var(--brass-lt); padding:4px 8px 4px 4px; white-space:nowrap;
+  }
+  #brand span{color:var(--text-dim); font-weight:400; font-size:11px; display:block;}
+  .tools{display:flex; gap:6px; flex-wrap:wrap;}
+  .tbtn{
+    appearance:none; border:1px solid var(--panel-brd); background:rgba(255,255,255,0.04);
+    color:var(--text); border-radius:10px; padding:8px 12px; font-size:12.5px;
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    transition:background .15s, border-color .15s, transform .1s;
+    white-space:nowrap;
+  }
+  .tbtn:active{transform:scale(0.96);}
+  .tbtn.active{background:linear-gradient(180deg, var(--brass) 0%, #b8863e 100%); color:#231a0c; border-color:var(--brass); font-weight:600;}
+  .tbtn .ic{font-size:14px;}
+  #rightTools{margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;}
+
+  #sidePanel{
+    position:fixed; top:70px; right:12px; width:220px;
+    padding:14px; z-index:20;
+    display:none; flex-direction:column; gap:10px;
+    max-height:calc(100vh - 150px); overflow:auto;
+  }
+  #sidePanel.show{display:flex;}
+  #sidePanel h3{margin:0 0 2px; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); font-weight:600;}
+  .row{display:flex; flex-direction:column; gap:4px;}
+  .row label{font-size:11.5px; color:var(--text-dim); display:flex; justify-content:space-between;}
+  input[type=range]{
+    -webkit-appearance:none; width:100%; height:5px; border-radius:3px;
+    background:linear-gradient(90deg, var(--brass) 0%, var(--brass) var(--pct,50%), rgba(255,255,255,0.12) var(--pct,50%));
+    outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+    background:var(--brass-lt); border:2px solid #231a0c; cursor:pointer;
+  }
+  .switch{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:rgba(255,255,255,0.04); border-radius:10px; padding:6px 10px;
+  }
+  .segbtns{display:flex; gap:4px;}
+  .segbtn{
+    flex:1; text-align:center; padding:6px 4px; font-size:11px; border-radius:8px;
+    background:rgba(255,255,255,0.05); border:1px solid transparent; cursor:pointer; color:var(--text-dim);
+  }
+  .segbtn.on{background:var(--accent); color:#fff; border-color:var(--accent);}
+  #deleteSel{
+    background:rgba(228,105,79,0.14); color:var(--accent); border:1px solid rgba(228,105,79,0.35);
+    border-radius:10px; padding:8px; font-size:12px; text-align:center; cursor:pointer;
+  }
+  #hint{font-size:11px; color:var(--text-dim); line-height:1.5;}
+
+  #bottombar{
+    position:fixed; bottom:12px; left:12px; right:12px;
+    display:flex; align-items:center; gap:8px; padding:8px 10px; z-index:20;
+    flex-wrap:wrap;
+  }
+  #stats{font-size:11.5px; color:var(--text-dim); flex:1; min-width:140px;}
+  #stats b{color:var(--brass-lt); font-weight:600;}
+  #presets{display:flex; gap:6px; flex-wrap:wrap;}
+
+  .dialog-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .dialog-overlay.show{display:flex;}
+  .dialog{
+    width:min(340px, 100%); padding:18px; display:flex; flex-direction:column; gap:12px;
+  }
+  .dialog h3{margin:0; font-size:14px;}
+  .dialog input[type=text]{
+    background:rgba(255,255,255,0.06); border:1px solid var(--panel-brd); border-radius:8px;
+    padding:9px 10px; color:var(--text); font-size:13px; outline:none;
+  }
+  .dialog .drow{display:flex; gap:8px; justify-content:flex-end;}
+  .dbtn{
+    padding:8px 14px; border-radius:8px; border:1px solid var(--panel-brd);
+    background:rgba(255,255,255,0.05); color:var(--text); font-size:12.5px; cursor:pointer;
+  }
+  .dbtn.primary{background:var(--brass); color:#231a0c; border-color:var(--brass); font-weight:600;}
+  #loadList{display:flex; flex-direction:column; gap:6px; max-height:240px; overflow:auto;}
+  .loadItem{
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+    background:rgba(255,255,255,0.04); border-radius:8px; padding:8px 10px; font-size:12.5px;
+  }
+  .loadItem .li-open{cursor:pointer; flex:1;}
+  .loadItem .li-del{color:var(--accent); cursor:pointer; font-size:11px;}
+  #emptyLoad{font-size:12px; color:var(--text-dim); text-align:center; padding:10px 0;}
+
+  #toast{
+    position:fixed; bottom:78px; left:50%; transform:translateX(-50%) translateY(20px);
+    padding:10px 16px; border-radius:10px; font-size:12.5px;
+    background:rgba(20,18,14,0.92); border:1px solid var(--panel-brd); color:var(--text);
+    z-index:60; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  @media (max-width:640px){
+    #brand span{display:none;}
+    #sidePanel{width:180px; top:auto; bottom:66px; right:8px; max-height:60vh; overflow:auto;}
+    #stats{display:none;}
+    .tbtn{padding:8px 10px;}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<div id="topbar" class="glass">
+  <div id="brand">Gearworks<span>mechanism designer</span></div>
+  <div class="tools">
+    <button class="tbtn active" data-tool="select"><span class="ic">◆</span>Select</button>
+    <button class="tbtn" data-tool="gear"><span class="ic">⚙</span>Gear</button>
+    <button class="tbtn" data-tool="motor"><span class="ic">⚡</span>Motor</button>
+    <button class="tbtn" data-tool="belt"><span class="ic">∞</span>Belt</button>
+    <button class="tbtn" data-tool="erase"><span class="ic">✕</span>Erase</button>
+  </div>
+  <div id="rightTools">
+    <button class="tbtn" id="btnNew"><span class="ic">＋</span>New</button>
+    <button class="tbtn" id="btnSave"><span class="ic">💾</span>Save</button>
+    <button class="tbtn" id="btnLoad"><span class="ic">📂</span>Load</button>
+    <button class="tbtn" id="btnShare"><span class="ic">🔗</span>Share</button>
+    <button class="tbtn" id="btnExport"><span class="ic">⬇</span>PNG</button>
+  </div>
+</div>
+
+<div id="sidePanel" class="glass">
+  <h3 id="panelTitle">Gear</h3>
+  <div class="row">
+    <label>Teeth <span id="teethVal">14</span></label>
+    <input type="range" id="teethSlider" min="6" max="36" step="1" value="14">
+  </div>
+  <div id="motorControls" style="display:none; flex-direction:column; gap:10px;">
+    <div class="row">
+      <label>Speed (RPM) <span id="speedVal">30</span></label>
+      <input type="range" id="speedSlider" min="0" max="120" step="1" value="30">
+    </div>
+    <div class="row">
+      <label>Direction</label>
+      <div class="segbtns">
+        <div class="segbtn on" id="dirCW">Clockwise</div>
+        <div class="segbtn" id="dirCCW">Counter</div>
+      </div>
+    </div>
+  </div>
+  <div id="deleteSel">Remove this piece</div>
+  <div id="hint">Tap a gear to select it. Drag to reposition — it snaps when its teeth touch a neighbor.</div>
+</div>
+
+<div id="bottombar" class="glass">
+  <div id="stats">Place a <b>Motor</b>, then mesh gears against it.</div>
+  <div id="presets">
+    <button class="tbtn" id="pReduction">Reduction train</button>
+    <button class="tbtn" id="pReverse">Reverse idler</button>
+    <button class="tbtn" id="pBelt">Belt drive</button>
+  </div>
+</div>
+
+<div class="dialog-overlay" id="saveOverlay">
+  <div class="dialog glass">
+    <h3>Save mechanism</h3>
+    <input type="text" id="saveName" placeholder="Name this mechanism…" maxlength="40">
+    <div class="drow">
+      <div class="dbtn" id="saveCancel">Cancel</div>
+      <div class="dbtn primary" id="saveConfirm">Save</div>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-overlay" id="loadOverlay">
+  <div class="dialog glass">
+    <h3>Load mechanism</h3>
+    <div id="loadList"></div>
+    <div class="drow">
+      <div class="dbtn" id="loadClose">Close</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var canvas = document.getElementById('stage');
+  var ctx = canvas.getContext('2d');
+  var DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+
+  function resize(){
+    var w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.round(w*DPR);
+    canvas.height = Math.round(h*DPR);
+    canvas.style.width = w+'px';
+    canvas.style.height = h+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    positionSidePanel();
+  }
+  function positionSidePanel(){
+    var panel = document.getElementById('sidePanel');
+    if(window.innerWidth <= 640){
+      panel.style.top = '';
+      return;
+    }
+    var tb = document.getElementById('topbar').getBoundingClientRect();
+    panel.style.top = (tb.bottom + 10) + 'px';
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- state ----------
+  var gears = [];      // {id, x, y, teeth, radius, angle, motor, motorRpm, motorDir, w, color}
+  var belts = [];      // {a, b}
+  var nextId = 1;
+  var tool = 'select';
+  var selectedId = null;
+  var selectedBeltIdx = null;
+  var camX = 0, camY = 0; // pan offset (world -> screen: screen = world + cam)
+  var LS_KEY = 'gearworks_saves_v1';
+
+  function radiusFor(teeth){ return 16 + teeth*3.1; }
+
+  function makeGear(x,y,teeth,isMotor){
+    var g = {
+      id: nextId++,
+      x:x, y:y,
+      teeth: teeth || 14,
+      radius: radiusFor(teeth||14),
+      angle: Math.random()*Math.PI*2,
+      motor: !!isMotor,
+      motorRpm: 30,
+      motorDir: 1,
+      w: 0,
+      color: isMotor ? '#e4694f' : hueForTeeth(teeth||14)
+    };
+    gears.push(g);
+    return g;
+  }
+
+  function hueForTeeth(t){
+    var palette = ['#d9a85c','#8fb0c4','#c084fc','#7ac47a','#f0c785','#e79a9a'];
+    return palette[t % palette.length];
+  }
+
+  function findGear(id){
+    for(var i=0;i<gears.length;i++) if(gears[i].id===id) return gears[i];
+    return null;
+  }
+
+  // ---------- snapping on drop ----------
+  function snapGear(g){
+    var best=null, bestDelta=26;
+    for(var i=0;i<gears.length;i++){
+      var o = gears[i];
+      if(o===g) continue;
+      var dx=g.x-o.x, dy=g.y-o.y;
+      var dist=Math.hypot(dx,dy);
+      var target=g.radius+o.radius;
+      var delta=Math.abs(dist-target);
+      if(delta<bestDelta && dist>1){
+        bestDelta=delta; best={o:o, dist:dist, target:target, dx:dx, dy:dy};
+      }
+    }
+    if(best){
+      var scale = best.target/best.dist;
+      g.x = best.o.x + best.dx*scale;
+      g.y = best.o.y + best.dy*scale;
+    }
+  }
+
+  // ---------- graph / physics ----------
+  function buildEdges(){
+    var edges = [];
+    for(var i=0;i<gears.length;i++){
+      for(var j=i+1;j<gears.length;j++){
+        var a=gears[i], b=gears[j];
+        var dist=Math.hypot(a.x-b.x, a.y-b.y);
+        var target=a.radius+b.radius;
+        if(Math.abs(dist-target) < 6){
+          edges.push({a:a.id, b:b.id, type:'mesh'});
+        }
+      }
+    }
+    belts.forEach(function(bt){
+      edges.push({a:bt.a, b:bt.b, type:'belt'});
+    });
+    return edges;
+  }
+
+  function computeAngularVelocities(){
+    gears.forEach(function(g){ g.w = 0; });
+    var edges = buildEdges();
+    var adjacency = {};
+    edges.forEach(function(e){
+      (adjacency[e.a] = adjacency[e.a]||[]).push({to:e.b, type:e.type});
+      (adjacency[e.b] = adjacency[e.b]||[]).push({to:e.a, type:e.type});
+    });
+    var visited = {};
+    gears.forEach(function(g){
+      if(!g.motor || visited[g.id]) return;
+      var startW = (g.motorRpm/60)*Math.PI*2*g.motorDir;
+      g.w = startW;
+      visited[g.id] = true;
+      var queue = [g.id];
+      while(queue.length){
+        var curId = queue.shift();
+        var cur = findGear(curId);
+        var neighbors = adjacency[curId] || [];
+        for(var k=0;k<neighbors.length;k++){
+          var n = neighbors[k];
+          if(visited[n.to]) continue;
+          var nb = findGear(n.to);
+          if(!nb) continue;
+          var ratio = cur.radius/nb.radius;
+          var nw = n.type==='mesh' ? -cur.w*ratio : cur.w*ratio;
+          nb.w = nw;
+          visited[n.to] = true;
+          queue.push(n.to);
+        }
+      }
+    });
+    return edges;
+  }
+
+  var cachedEdges = [];
+  function markDirty(){ cachedEdges = computeAngularVelocities(); updateStats(); }
+
+  // ---------- rendering ----------
+  function worldToScreen(x,y){ return {x:x+camX, y:y+camY}; }
+  function screenToWorld(x,y){ return {x:x-camX, y:y-camY}; }
+
+  function drawGear(g){
+    var s = worldToScreen(g.x, g.y);
+    var r = g.radius;
+    var toothH = r*0.16;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(g.angle);
+
+    var isSel = (g.id===selectedId);
+    var moving = Math.abs(g.w) > 0.001;
+
+    // body with cosine teeth silhouette
+    ctx.beginPath();
+    var steps = Math.max(64, g.teeth*8);
+    for(var i=0;i<=steps;i++){
+      var th = (i/steps)*Math.PI*2;
+      var rad = r + toothH*Math.max(0, Math.cos(g.teeth*th));
+      var px = Math.cos(th)*rad, py = Math.sin(th)*rad;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+
+    var grad = ctx.createRadialGradient(0,0,r*0.1,0,0,r*1.05);
+    grad.addColorStop(0, shade(g.color, 40));
+    grad.addColorStop(1, shade(g.color, -10));
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = isSel ? 3 : 1.4;
+    ctx.strokeStyle = isSel ? '#ffe9c2' : 'rgba(0,0,0,0.35)';
+    ctx.stroke();
+
+    // spokes
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth = Math.max(2, r*0.09);
+    var spokes = 5;
+    for(var sIdx=0; sIdx<spokes; sIdx++){
+      var a = (sIdx/spokes)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*r*0.32, Math.sin(a)*r*0.32);
+      ctx.lineTo(Math.cos(a)*r*0.78, Math.sin(a)*r*0.78);
+      ctx.stroke();
+    }
+
+    // hub
+    ctx.beginPath();
+    ctx.arc(0,0,r*0.28,0,Math.PI*2);
+    ctx.fillStyle = g.motor ? '#3a1a12' : '#1c1712';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = g.motor ? '#ffb199' : 'rgba(255,255,255,0.25)';
+    ctx.stroke();
+
+    if(g.motor){
+      ctx.fillStyle = '#ffd9c9';
+      ctx.font = (r*0.34)+'px system-ui';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('⚡', 0, 1);
+    }
+
+    ctx.restore();
+
+    if(moving){
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r+3, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(122,196,122,0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function shade(hex, amt){
+    var c = hex.replace('#','');
+    if(c.length===3) c = c.split('').map(function(ch){return ch+ch;}).join('');
+    var num = parseInt(c,16);
+    var r = Math.min(255,Math.max(0,(num>>16)+amt));
+    var g = Math.min(255,Math.max(0,((num>>8)&0xff)+amt));
+    var b = Math.min(255,Math.max(0,(num&0xff)+amt));
+    return 'rgb('+r+','+g+','+b+')';
+  }
+
+  function drawBelt(bt, idx){
+    var a = findGear(bt.a), b = findGear(bt.b);
+    if(!a||!b) return;
+    var sa = worldToScreen(a.x,a.y), sb = worldToScreen(b.x,b.y);
+    var dx=sb.x-sa.x, dy=sb.y-sa.y;
+    var ang = Math.atan2(dy,dx);
+    var perp = ang+Math.PI/2;
+    var pax = Math.cos(perp), pay = Math.sin(perp);
+    ctx.save();
+    ctx.strokeStyle = (idx===selectedBeltIdx) ? '#ffe9c2' : 'rgba(217,168,92,0.55)';
+    ctx.lineWidth = (idx===selectedBeltIdx) ? 5 : 3.5;
+    ctx.setLineDash([10,7]);
+    ctx.lineDashOffset = -performance_now_safe()*0.05;
+    ctx.beginPath();
+    ctx.moveTo(sa.x+pax*a.radius, sa.y+pay*a.radius);
+    ctx.lineTo(sb.x+pax*b.radius, sb.y+pay*b.radius);
+    ctx.moveTo(sa.x-pax*a.radius, sa.y-pay*a.radius);
+    ctx.lineTo(sb.x-pax*b.radius, sb.y-pay*b.radius);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  var _t0 = 0;
+  function performance_now_safe(){ return _t0; }
+
+  function drawBackground(){
+    var w = window.innerWidth, h = window.innerHeight;
+    ctx.clearRect(0,0,w,h);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+    ctx.lineWidth = 1;
+    var grid = 40;
+    var ox = camX % grid, oy = camY % grid;
+    for(var x=ox; x<w; x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+    for(var y=oy; y<h; y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    belts.forEach(drawBelt);
+    gears.forEach(drawGear);
+  }
+
+  // ---------- stats ----------
+  function updateStats(){
+    var el = document.getElementById('stats');
+    var motorCount = gears.filter(function(g){return g.motor;}).length;
+    var movingCount = gears.filter(function(g){return Math.abs(g.w)>0.001;}).length;
+    if(gears.length===0){
+      el.innerHTML = 'Empty bench. Pick <b>Gear</b> or <b>Motor</b> and tap the canvas.';
+      return;
+    }
+    if(motorCount===0){
+      el.innerHTML = '<b>'+gears.length+'</b> gears, no motor yet — add one to drive the train.';
+      return;
+    }
+    var txt = '<b>'+motorCount+'</b> motor'+(motorCount>1?'s':'')+' · <b>'+movingCount+'</b>/'+gears.length+' gears turning · <b>'+belts.length+'</b> belt'+(belts.length===1?'':'s');
+    if(selectedId){
+      var g = findGear(selectedId);
+      if(g && !g.motor){
+        var rpm = Math.abs(g.w)/(Math.PI*2)*60;
+        txt += ' · selected: <b>'+rpm.toFixed(1)+' rpm</b> ('+(g.w>=0?'CW':'CCW')+')';
+      }
+    }
+    el.innerHTML = txt;
+  }
+
+  // ---------- side panel ----------
+  var sidePanel = document.getElementById('sidePanel');
+  var teethSlider = document.getElementById('teethSlider');
+  var teethVal = document.getElementById('teethVal');
+  var motorControls = document.getElementById('motorControls');
+  var speedSlider = document.getElementById('speedSlider');
+  var speedVal = document.getElementById('speedVal');
+  var dirCW = document.getElementById('dirCW');
+  var dirCCW = document.getElementById('dirCCW');
+  var panelTitle = document.getElementById('panelTitle');
+
+  function syncRangeFill(input){
+    var pct = (input.value-input.min)/(input.max-input.min)*100;
+    input.style.setProperty('--pct', pct+'%');
+  }
+
+  function openPanel(g){
+    selectedId = g.id;
+    sidePanel.classList.add('show');
+    positionSidePanel();
+    panelTitle.textContent = g.motor ? 'Motor gear' : 'Gear #'+g.id;
+    teethSlider.value = g.teeth;
+    teethVal.textContent = g.teeth;
+    syncRangeFill(teethSlider);
+    if(g.motor){
+      motorControls.style.display='flex';
+      speedSlider.value = g.motorRpm;
+      speedVal.textContent = g.motorRpm;
+      syncRangeFill(speedSlider);
+      dirCW.classList.toggle('on', g.motorDir===1);
+      dirCCW.classList.toggle('on', g.motorDir===-1);
+    } else {
+      motorControls.style.display='none';
+    }
+  }
+
+  function closePanel(){
+    selectedId = null;
+    selectedBeltIdx = null;
+    sidePanel.classList.remove('show');
+  }
+
+  teethSlider.addEventListener('input', function(){
+    var g = findGear(selectedId);
+    if(!g) return;
+    g.teeth = parseInt(teethSlider.value,10);
+    g.radius = radiusFor(g.teeth);
+    g.color = g.motor ? g.color : hueForTeeth(g.teeth);
+    teethVal.textContent = g.teeth;
+    syncRangeFill(teethSlider);
+    markDirty();
+  });
+
+  speedSlider.addEventListener('input', function(){
+    var g = findGear(selectedId);
+    if(!g) return;
+    g.motorRpm = parseInt(speedSlider.value,10);
+    speedVal.textContent = g.motorRpm;
+    syncRangeFill(speedSlider);
+    markDirty();
+  });
+
+  dirCW.addEventListener('click', function(){
+    var g = findGear(selectedId); if(!g) return;
+    g.motorDir = 1; dirCW.classList.add('on'); dirCCW.classList.remove('on'); markDirty();
+  });
+  dirCCW.addEventListener('click', function(){
+    var g = findGear(selectedId); if(!g) return;
+    g.motorDir = -1; dirCCW.classList.add('on'); dirCW.classList.remove('on'); markDirty();
+  });
+
+  document.getElementById('deleteSel').addEventListener('click', function(){
+    if(selectedBeltIdx!==null){
+      belts.splice(selectedBeltIdx,1);
+    } else if(selectedId!==null){
+      gears = gears.filter(function(g){ return g.id!==selectedId; });
+      belts = belts.filter(function(b){ return b.a!==selectedId && b.b!==selectedId; });
+    }
+    closePanel();
+    markDirty();
+  });
+
+  // ---------- toolbar ----------
+  var beltFirst = null;
+  document.querySelectorAll('.tbtn[data-tool]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.tbtn[data-tool]').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      tool = btn.getAttribute('data-tool');
+      beltFirst = null;
+      closePanel();
+    });
+  });
+
+  // ---------- pointer interaction ----------
+  var dragGear = null, dragOffset = null, didDrag = false;
+  var panMode = false, panStart = null, camStart = null;
+
+  function hitGear(wx, wy){
+    for(var i=gears.length-1;i>=0;i--){
+      var g = gears[i];
+      if(Math.hypot(wx-g.x, wy-g.y) <= g.radius) return g;
+    }
+    return null;
+  }
+
+  function hitBelt(wx, wy){
+    for(var i=0;i<belts.length;i++){
+      var bt = belts[i];
+      var a=findGear(bt.a), b=findGear(bt.b);
+      if(!a||!b) continue;
+      var d = distToSegment(wx,wy,a.x,a.y,b.x,b.y);
+      if(d < 10) return i;
+    }
+    return -1;
+  }
+  function distToSegment(px,py,x1,y1,x2,y2){
+    var dx=x2-x1, dy=y2-y1;
+    var len2 = dx*dx+dy*dy;
+    var t = len2===0 ? 0 : Math.max(0,Math.min(1, ((px-x1)*dx+(py-y1)*dy)/len2));
+    var cx = x1+t*dx, cy=y1+t*dy;
+    return Math.hypot(px-cx, py-cy);
+  }
+
+  function getPos(evt){
+    var rect = canvas.getBoundingClientRect();
+    var cx = (evt.touches ? evt.touches[0].clientX : evt.clientX) - rect.left;
+    var cy = (evt.touches ? evt.touches[0].clientY : evt.clientY) - rect.top;
+    return screenToWorld(cx, cy);
+  }
+
+  canvas.addEventListener('pointerdown', function(evt){
+    canvas.setPointerCapture(evt.pointerId);
+    var w = getPos(evt);
+    didDrag = false;
+
+    if(tool==='gear' || tool==='motor'){
+      var g = makeGear(w.x, w.y, 14, tool==='motor');
+      snapGear(g);
+      markDirty();
+      openPanel(g);
+      return;
+    }
+
+    if(tool==='belt'){
+      var hitG = hitGear(w.x, w.y);
+      if(hitG){
+        if(beltFirst===null){
+          beltFirst = hitG.id;
+          toast('Pick a second gear to connect');
+        } else if(beltFirst!==hitG.id){
+          var exists = belts.some(function(b){ return (b.a===beltFirst&&b.b===hitG.id)||(b.b===beltFirst&&b.a===hitG.id); });
+          if(!exists) belts.push({a:beltFirst, b:hitG.id});
+          beltFirst = null;
+          markDirty();
+        }
+      }
+      return;
+    }
+
+    if(tool==='erase'){
+      var hg = hitGear(w.x, w.y);
+      if(hg){
+        gears = gears.filter(function(g){ return g.id!==hg.id; });
+        belts = belts.filter(function(b){ return b.a!==hg.id && b.b!==hg.id; });
+        markDirty();
+        return;
+      }
+      var hb = hitBelt(w.x, w.y);
+      if(hb>=0){ belts.splice(hb,1); markDirty(); }
+      return;
+    }
+
+    // select tool
+    var hitG2 = hitGear(w.x, w.y);
+    if(hitG2){
+      dragGear = hitG2;
+      dragOffset = {x: w.x-hitG2.x, y: w.y-hitG2.y};
+      selectedBeltIdx = null;
+      openPanel(hitG2);
+      return;
+    }
+    var hitB = hitBelt(w.x, w.y);
+    if(hitB>=0){
+      selectedId = null;
+      selectedBeltIdx = hitB;
+      sidePanel.classList.add('show');
+      positionSidePanel();
+      panelTitle.textContent = 'Belt';
+      motorControls.style.display='none';
+      teethSlider.parentElement.style.display='none';
+      updateStats();
+      return;
+    }
+    teethSlider.parentElement.style.display='';
+    closePanel();
+    panMode = true;
+    panStart = {x: evt.clientX, y: evt.clientY};
+    camStart = {x: camX, y: camY};
+  });
+
+  canvas.addEventListener('pointermove', function(evt){
+    if(dragGear){
+      didDrag = true;
+      var w = getPos(evt);
+      dragGear.x = w.x - dragOffset.x;
+      dragGear.y = w.y - dragOffset.y;
+    } else if(panMode){
+      camX = camStart.x + (evt.clientX - panStart.x);
+      camY = camStart.y + (evt.clientY - panStart.y);
+    }
+  });
+
+  function endDrag(){
+    if(dragGear){
+      if(didDrag) snapGear(dragGear);
+      markDirty();
+    }
+    dragGear = null; dragOffset = null; panMode = false;
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // ---------- toast ----------
+  var toastTimer = null;
+  function toast(msg){
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2200);
+  }
+
+  // ---------- new / presets ----------
+  document.getElementById('btnNew').addEventListener('click', function(){
+    if(gears.length && !confirm('Clear the bench and start a new mechanism?')) return;
+    gears = []; belts = []; camX=0; camY=0;
+    closePanel(); markDirty();
+    toast('New bench');
+  });
+
+  function loadMechanism(data){
+    gears = data.gears.map(function(g){ return Object.assign({}, g, {w:0}); });
+    belts = data.belts.slice();
+    nextId = Math.max(1, gears.reduce(function(m,g){return Math.max(m,g.id+1);},1));
+    camX=0; camY=0;
+    closePanel(); markDirty();
+  }
+
+  document.getElementById('pReduction').addEventListener('click', function(){
+    gears=[]; belts=[];
+    var cx=window.innerWidth/2, cy=window.innerHeight/2;
+    var m = makeGear(cx-160, cy, 10, true); m.motorRpm=40;
+    var g2 = makeGear(cx-160+radiusFor(10)+radiusFor(22), cy, 22, false);
+    var g3 = makeGear(cx-160+radiusFor(10)+radiusFor(22)*2+radiusFor(34)-radiusFor(22), cy, 34, false);
+    // re-snap chain precisely
+    g2.x = m.x + m.radius + g2.radius; g2.y = m.y;
+    g3.x = g2.x + g2.radius + g3.radius; g3.y = g2.y;
+    closePanel(); markDirty();
+    toast('Reduction train: each mesh slows rotation down');
+  });
+
+  document.getElementById('pReverse').addEventListener('click', function(){
+    gears=[]; belts=[];
+    var cx=window.innerWidth/2, cy=window.innerHeight/2;
+    var m = makeGear(cx-140, cy-40, 12, true); m.motorRpm=35;
+    var idler = makeGear(0,0,10,false);
+    idler.x = m.x + m.radius + idler.radius; idler.y = m.y;
+    var out = makeGear(0,0,12,false);
+    out.x = idler.x + idler.radius + out.radius; out.y = idler.y;
+    closePanel(); markDirty();
+    toast('Idler gear flips the output back to the motor’s own direction');
+  });
+
+  document.getElementById('pBelt').addEventListener('click', function(){
+    gears=[]; belts=[];
+    var cx=window.innerWidth/2, cy=window.innerHeight/2;
+    var m = makeGear(cx-180, cy+60, 14, true); m.motorRpm=45;
+    var far = makeGear(cx+140, cy-40, 20, false);
+    belts.push({a:m.id, b:far.id});
+    closePanel(); markDirty();
+    toast('Belts spin both wheels the same direction, unlike meshed gears');
+  });
+
+  // ---------- save / load ----------
+  var saveOverlay = document.getElementById('saveOverlay');
+  var loadOverlay = document.getElementById('loadOverlay');
+
+  document.getElementById('btnSave').addEventListener('click', function(){
+    if(!gears.length){ toast('Nothing to save yet'); return; }
+    document.getElementById('saveName').value='';
+    saveOverlay.classList.add('show');
+  });
+  document.getElementById('saveCancel').addEventListener('click', function(){ saveOverlay.classList.remove('show'); });
+  document.getElementById('saveConfirm').addEventListener('click', function(){
+    var name = document.getElementById('saveName').value.trim() || ('Mechanism '+new Date().toLocaleDateString());
+    var all = readSaves();
+    all.push({ name:name, gears: stripped(), belts: belts.slice(), saved: true });
+    localStorage.setItem(LS_KEY, JSON.stringify(all));
+    saveOverlay.classList.remove('show');
+    toast('Saved "'+name+'"');
+  });
+
+  function stripped(){
+    return gears.map(function(g){
+      return {id:g.id,x:g.x,y:g.y,teeth:g.teeth,radius:g.radius,angle:g.angle,motor:g.motor,motorRpm:g.motorRpm,motorDir:g.motorDir,color:g.color};
+    });
+  }
+  function readSaves(){
+    try{ return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e){ return []; }
+  }
+
+  document.getElementById('btnLoad').addEventListener('click', function(){
+    renderLoadList();
+    loadOverlay.classList.add('show');
+  });
+  document.getElementById('loadClose').addEventListener('click', function(){ loadOverlay.classList.remove('show'); });
+
+  function renderLoadList(){
+    var list = document.getElementById('loadList');
+    var all = readSaves();
+    if(!all.length){
+      list.innerHTML = '<div id="emptyLoad">No saved mechanisms yet.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    all.forEach(function(item, idx){
+      var row = document.createElement('div');
+      row.className='loadItem';
+      var open = document.createElement('div');
+      open.className='li-open';
+      open.textContent = item.name + ' · '+item.gears.length+' gears';
+      open.addEventListener('click', function(){
+        loadMechanism(item);
+        loadOverlay.classList.remove('show');
+        toast('Loaded "'+item.name+'"');
+      });
+      var del = document.createElement('div');
+      del.className='li-del';
+      del.textContent = 'Delete';
+      del.addEventListener('click', function(){
+        var arr = readSaves();
+        arr.splice(idx,1);
+        localStorage.setItem(LS_KEY, JSON.stringify(arr));
+        renderLoadList();
+      });
+      row.appendChild(open); row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  // ---------- share (URL hash) ----------
+  document.getElementById('btnShare').addEventListener('click', function(){
+    if(!gears.length){ toast('Nothing to share yet'); return; }
+    var payload = { gears: stripped(), belts: belts.slice() };
+    var json = JSON.stringify(payload);
+    var b64 = btoa(unescape(encodeURIComponent(json)));
+    var url = location.origin + location.pathname + '#m=' + b64;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){
+        toast('Share link copied to clipboard');
+      }).catch(function(){
+        prompt('Copy this link:', url);
+      });
+    } else {
+      prompt('Copy this link:', url);
+    }
+    history.replaceState(null, '', '#m='+b64);
+  });
+
+  function tryLoadFromHash(){
+    var h = location.hash;
+    if(h.indexOf('#m=')===0){
+      try{
+        var json = decodeURIComponent(escape(atob(h.slice(3))));
+        var payload = JSON.parse(json);
+        if(payload && payload.gears){
+          loadMechanism(payload);
+          toast('Loaded shared mechanism');
+          return true;
+        }
+      }catch(e){ /* ignore malformed hash */ }
+    }
+    return false;
+  }
+
+  // ---------- export PNG ----------
+  document.getElementById('btnExport').addEventListener('click', function(){
+    if(!gears.length){ toast('Nothing to export yet'); return; }
+    canvas.toBlob(function(blob){
+      if(!blob){ toast('Export failed'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'gearworks-mechanism.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      toast('PNG exported');
+    }, 'image/png');
+  });
+
+  // ---------- autosave last state ----------
+  var AUTOSAVE_KEY = 'gearworks_autosave_v1';
+  function autosave(){
+    try{
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({gears: stripped(), belts: belts.slice()}));
+    }catch(e){}
+  }
+  window.addEventListener('beforeunload', autosave);
+  setInterval(autosave, 8000);
+
+  // ---------- init ----------
+  var loadedFromHash = tryLoadFromHash();
+  if(!loadedFromHash){
+    try{
+      var auto = JSON.parse(localStorage.getItem(AUTOSAVE_KEY));
+      if(auto && auto.gears && auto.gears.length){
+        loadMechanism(auto);
+      } else {
+        seedDefault();
+      }
+    }catch(e){ seedDefault(); }
+  }
+
+  function seedDefault(){
+    var cx=window.innerWidth/2, cy=window.innerHeight/2;
+    var m = makeGear(cx-90, cy, 12, true); m.motorRpm=30;
+    var g2 = makeGear(0,0,18,false);
+    g2.x = m.x+m.radius+g2.radius; g2.y = m.y;
+    markDirty();
+  }
+
+  markDirty();
+  document.querySelectorAll('.tbtn[data-tool="select"]')[0].classList.add('active');
+
+  // ---------- main loop ----------
+  var last = performance.now();
+  function tick(now){
+    var dt = Math.min(0.05, (now-last)/1000);
+    last = now;
+    _t0 = now;
+    gears.forEach(function(g){ g.angle += g.w*dt; });
+    render();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>
