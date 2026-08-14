@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Skim Reader — UI Spotlight</title>
+<style>
+  :root{ --bg:#0a0d14; --panel:#121826ee; --border:#ffffff1c; --text:#eef2f8; --dim:#93a1b8; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:auto;}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);
+    background:radial-gradient(120% 60% at 50% -10%,#152036 0%, var(--bg) 55%);
+  }
+  a{color:inherit;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; background:#0e1420cc; border:1px solid var(--border);
+    color:var(--text); text-decoration:none; font-size:12.5px; padding:8px 13px; border-radius:20px;
+    backdrop-filter:blur(8px); font-weight:600;
+  }
+  .mode-badge{
+    position:fixed; top:14px; right:14px; z-index:20; background:#0e1420cc; border:1px solid var(--border);
+    padding:8px 13px; border-radius:20px; font-size:11.5px; font-weight:700; backdrop-filter:blur(8px);
+    display:flex; align-items:center; gap:7px;
+  }
+  .mode-badge .dot{ width:8px; height:8px; border-radius:50%; background:var(--accent); transition:background .3s; }
+  .mode-badge.skim .dot{ background:#fbbf24; }
+
+  .debug{
+    position:fixed; top:60px; right:14px; z-index:19; width:236px; background:var(--panel); border:1px solid var(--border);
+    border-radius:14px; padding:13px; backdrop-filter:blur(10px); font-size:11px; box-shadow:0 14px 34px #0007;
+  }
+  .debug h3{ margin:0 0 9px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); }
+  .debug .row{ margin-bottom:8px; }
+  .debug .lbl{ display:flex; justify-content:space-between; color:var(--dim); margin-bottom:3px; }
+  .debug .lbl b{ color:var(--text); font-variant-numeric:tabular-nums; }
+  .debug input[type=range]{ width:100%; accent-color:var(--accent); }
+  .debug .meter{ height:5px; background:#ffffff14; border-radius:4px; overflow:hidden; margin-top:5px; }
+  .debug .meter i{ display:block; height:100%; background:var(--accent); width:0%; transition:width .08s linear; }
+  .sim-btn{
+    width:100%; margin-top:2px; border:1px solid var(--border); background:#0c1420; color:var(--text); border-radius:9px;
+    padding:8px 10px; font-size:11.5px; font-weight:700; cursor:pointer;
+  }
+  .sim-btn:active{ transform:translateY(1px); }
+  @media (max-width:640px){ .debug{ display:none; } }
+
+  header.hero{ padding:120px 20px 40px; text-align:center; max-width:640px; margin:0 auto; }
+  header.hero h1{ margin:0 0 10px; font-size:clamp(24px,5vw,36px); }
+  header.hero p{ color:var(--dim); font-size:14px; line-height:1.6; }
+
+  .feed{ max-width:640px; margin:0 auto; padding:0 20px 110vh; }
+  .card{
+    border:1px solid var(--border); border-radius:16px; padding:22px; margin-bottom:16px;
+    background:linear-gradient(165deg,#131a29,#0c111c);
+  }
+  .card .kicker{ font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--accent); margin-bottom:8px; font-weight:700; }
+  .card h2{ margin:0 0 8px; font-family:Georgia,'Times New Roman',serif; font-size:21px; transition:font-family .25s, font-weight .25s, font-size .25s; }
+  .card .body{ overflow:hidden; }
+  .card .detailed, .card .skim{ margin:0; color:#c7d2e2; line-height:1.7; font-size:14.5px; }
+  .card .skim{ display:none; font-weight:700; font-size:15px; color:var(--text); }
+
+  body.skim .card h2{ font-family:system-ui,-apple-system,sans-serif; font-weight:800; font-size:19px; }
+  body.skim .card .detailed{ display:none; }
+  body.skim .card .skim{ display:block; }
+
+  footer.credit{ text-align:center; padding:30px 20px 60px; color:var(--dim); font-size:11.5px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="mode-badge" id="modeBadge"><span class="dot"></span><span id="modeLabel">Detailed</span></div>
+
+<div class="debug">
+  <h3>Velocity Engine</h3>
+  <div class="row">
+    <div class="lbl"><span>Velocity</span><b id="vVel">0</b></div>
+    <div class="meter"><i id="velBar"></i></div>
+  </div>
+  <div class="row">
+    <div class="lbl"><span>Enter skim (px/s)</span><b id="vEnter">500</b></div>
+    <input type="range" id="enter" min="200" max="1200" step="10" value="500">
+  </div>
+  <div class="row">
+    <div class="lbl"><span>Exit skim (px/s)</span><b id="vExit">400</b></div>
+    <input type="range" id="exit" min="100" max="1000" step="10" value="400">
+  </div>
+  <div class="row">
+    <div class="lbl"><span>Dead time (s)</span><b id="vDead">2.5</b></div>
+    <input type="range" id="dead" min="0.3" max="5" step="0.1" value="2.5">
+  </div>
+  <button class="sim-btn" id="simFlick">⚡ Simulate fast flick</button>
+</div>
+
+<header class="hero">
+  <h1>Scroll fast. Watch it think.</h1>
+  <p>This page runs a hysteresis state machine off your scroll velocity. Flick-scroll past the enter threshold and every card instantly collapses into skim mode. Slow down and hold there — it waits out a dead zone before trusting you're actually reading again.</p>
+</header>
+
+<div class="feed" id="feed"></div>
+
+<footer class="credit">Inspired by Razi Syed's "Velocity-Responsive Design" · UI Spotlight Day 90 · Drop #1 · Bucket: animation</footer>
+
+<script>
+(function(){
+  "use strict";
+  const ARTICLES = [
+    { kicker:'Field notes', title:'The dead zone is the whole trick', detail:'Most velocity-driven UI flickers because it reacts to raw noise — a single fast frame flips the state, then flips right back. The fix isn\'t a bigger smoothing window, it\'s an asymmetric threshold: enter the fast state instantly, but only leave it after the signal has stayed calm for a while.', skim:'Asymmetric thresholds beat smoothing for killing flicker.' },
+    { kicker:'Mechanism', title:'Two numbers, one dead zone', detail:'Enter fires the moment velocity crosses the high threshold — no delay, because a sudden flick should feel instant. Exit requires velocity to stay under the low threshold continuously for a hold time. Between the two thresholds is a dead zone where nothing happens either way.', skim:'High threshold = instant. Low threshold = timed. Gap = dead zone.' },
+    { kicker:'Why it matters', title:'Adaptive density, not adaptive decoration', detail:'The payoff isn\'t a cute animation — it\'s that content itself reshapes. Skimming shows one-line summaries in bold sans; reading shows full serif paragraphs. The interface is quietly negotiating how much of your attention it thinks it has.', skim:'Fast scroll = summaries. Slow scroll = full prose.' }
+  ];
+  const feed = document.getElementById('feed');
+  ARTICLES.forEach(a=>{
+    const el = document.createElement('article');
+    el.className = 'card';
+    el.innerHTML = `<div class="kicker">${a.kicker}</div><h2>${a.title}</h2><div class="body"><p class="detailed">${a.detail}</p><p class="skim">${a.skim}</p></div>`;
+    feed.appendChild(el);
+  });
+
+  const enterSlider = document.getElementById('enter');
+  const exitSlider = document.getElementById('exit');
+  const deadSlider = document.getElementById('dead');
+  const vVel = document.getElementById('vVel');
+  const vEnter = document.getElementById('vEnter');
+  const vExit = document.getElementById('vExit');
+  const vDead = document.getElementById('vDead');
+  const velBar = document.getElementById('velBar');
+  const modeBadge = document.getElementById('modeBadge');
+  const modeLabel = document.getElementById('modeLabel');
+
+  let enterThresh = 500, exitThresh = 400, deadTime = 2.5;
+  enterSlider.addEventListener('input', ()=>{ enterThresh = parseFloat(enterSlider.value); vEnter.textContent = enterThresh; });
+  exitSlider.addEventListener('input', ()=>{ exitThresh = parseFloat(exitSlider.value); vExit.textContent = exitThresh; });
+  deadSlider.addEventListener('input', ()=>{ deadTime = parseFloat(deadSlider.value); vDead.textContent = deadTime.toFixed(1); });
+
+  let lastY = window.scrollY, lastT = performance.now();
+  let smoothedVel = 0;
+  let mode = 'detailed';
+  let belowExitSince = null;
+
+  function setMode(next){
+    if(next === mode) return;
+    mode = next;
+    document.body.classList.toggle('skim', mode === 'skim');
+    modeBadge.classList.toggle('skim', mode === 'skim');
+    modeLabel.textContent = mode === 'skim' ? 'Skim' : 'Detailed';
+  }
+
+  function applyVelocity(vel, now){
+    smoothedVel = vel;
+    const clamped = Math.min(1, smoothedVel / 3000);
+    velBar.style.width = (clamped*100).toFixed(0) + '%';
+    vVel.textContent = Math.round(smoothedVel);
+
+    if(smoothedVel > enterThresh){
+      setMode('skim');
+      belowExitSince = null;
+    } else if(smoothedVel < exitThresh){
+      if(belowExitSince === null) belowExitSince = now;
+      if(mode === 'skim' && (now - belowExitSince) / 1000 >= deadTime){
+        setMode('detailed');
+      }
+    } else {
+      belowExitSince = null;
+    }
+  }
+
+  function onScroll(){
+    const now = performance.now();
+    const y = window.scrollY;
+    const dt = Math.max(1, now - lastT);
+    const rawVel = Math.abs((y - lastY) / dt) * 1000;
+    lastY = y; lastT = now;
+    const alpha = 0.4;
+    applyVelocity(smoothedVel + (rawVel - smoothedVel) * alpha, now);
+  }
+
+  let ticking = false;
+  window.addEventListener('scroll', ()=>{
+    if(!ticking){
+      ticking = true;
+      requestAnimationFrame(()=>{ onScroll(); ticking = false; });
+    }
+  }, { passive:true });
+
+  document.getElementById('simFlick').addEventListener('click', ()=>{
+    applyVelocity(enterThresh + 250, performance.now());
+  });
+
+  let decayTimer = setInterval(()=>{
+    applyVelocity(Math.max(0, smoothedVel*0.85 < 1 ? 0 : smoothedVel*0.85), performance.now());
+  }, 120);
+})();
+</script>
+</body>
+</html>

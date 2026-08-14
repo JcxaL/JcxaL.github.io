@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Tideline — Ocean Wave Studio</title>
+<style>
+  :root{
+    --panel:#0e1420ee; --border:#ffffff1c; --text:#eef4fa; --dim:#9db2c8; --accent:#38bdf8;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);
+    overflow:hidden; overscroll-behavior:none; touch-action:none;
+  }
+  #sky{ position:fixed; inset:0; z-index:0; transition:background 1.1s ease; }
+  #gl{ position:fixed; inset:0; z-index:1; display:block; width:100%; height:100%; touch-action:none; }
+  #hint{
+    position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:3;
+    font-size:11.5px; color:#ffffffcc; background:#00000055; padding:6px 12px; border-radius:20px;
+    pointer-events:none; transition:opacity .6s; backdrop-filter:blur(6px);
+  }
+  #hint.hide{ opacity:0; }
+
+  .panel{
+    position:fixed; z-index:4; background:linear-gradient(165deg,#141c2aee,#0b101aee);
+    border:1px solid var(--border); border-radius:18px; box-shadow:0 20px 50px #0009;
+    padding:14px 14px 16px; backdrop-filter:blur(10px);
+    top:14px; left:14px; width:272px; max-height:calc(100dvh - 28px); overflow-y:auto;
+  }
+  .panel h1{ margin:0 0 2px; font-size:16.5px; letter-spacing:-.01em; }
+  .panel .sub{ margin:0 0 12px; font-size:11.5px; color:var(--dim); line-height:1.4; }
+  .panel h2{ margin:14px 0 8px; font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); }
+  .panel h2:first-of-type{ margin-top:2px; }
+
+  .row{ margin-bottom:11px; }
+  .row .lbl{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--dim); margin-bottom:4px; }
+  .row .lbl b{ color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+
+  .grid4{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+  button.chip{
+    border:1px solid var(--border); background:#0c1420; color:var(--text); border-radius:10px; padding:8px 6px;
+    font-size:11.5px; font-weight:600; cursor:pointer; transition:border-color .15s,background .15s,transform .1s;
+  }
+  button.chip:active{ transform:scale(.96); }
+  button.chip.active{ border-color:var(--accent); background:#0f2333; color:var(--accent); }
+
+  .btnrow{ display:flex; gap:7px; flex-wrap:wrap; margin-top:4px; }
+  button.ui{
+    border:1px solid var(--border); background:#0c1420; color:var(--text); border-radius:9px; padding:8px 11px;
+    font-size:11.5px; font-weight:600; cursor:pointer; transition:border-color .15s,background .15s;
+    flex:1 1 auto;
+  }
+  button.ui:hover{ border-color:#ffffff44; }
+  button.ui:active{ transform:translateY(1px); }
+  button.ui.primary{ background:var(--accent); color:#04222f; border-color:transparent; }
+  button.ui.small{ flex:0 0 auto; padding:8px 9px; }
+
+  select{
+    width:100%; background:#0c1420; border:1px solid var(--border); color:var(--text); border-radius:8px;
+    padding:7px 8px; font-size:11.5px; margin-bottom:7px;
+  }
+
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px); z-index:9;
+    background:#0f2333ee; border:1px solid #38bdf855; color:#eef4fa; padding:9px 16px; border-radius:12px;
+    font-size:12.5px; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #panelToggle{
+    display:none; position:fixed; z-index:5; right:14px; bottom:14px; z-index:6;
+    background:var(--accent); color:#04222f; border:none; border-radius:24px; padding:11px 18px;
+    font-size:12.5px; font-weight:700; box-shadow:0 8px 22px #0007;
+  }
+
+  @media (max-width:720px){
+    .panel{
+      top:auto; bottom:0; left:0; right:0; width:100%; border-radius:20px 20px 0 0;
+      max-height:0; padding:0 16px; overflow:hidden; transition:max-height .3s ease, padding .3s ease;
+    }
+    .panel.open{ max-height:78dvh; padding:14px 16px 22px; overflow-y:auto; }
+    #panelToggle{ display:block; }
+    #hint{ bottom:78px; }
+  }
+</style>
+</head>
+<body>
+<div id="sky"></div>
+<canvas id="gl"></canvas>
+<div id="hint">Drag to orbit · tap water to drop a buoy · scroll / pinch to zoom</div>
+
+<div class="panel" id="panel">
+  <h1>🌊 Tideline</h1>
+  <p class="sub">Ocean wave studio — tune the sea, drop buoys, capture the light.</p>
+
+  <h2>Sea State</h2>
+  <div class="grid4">
+    <button class="chip" data-sea="calm">Calm</button>
+    <button class="chip" data-sea="choppy">Choppy</button>
+    <button class="chip" data-sea="storm">Storm</button>
+    <button class="chip" data-sea="tsunami">Tsunami</button>
+  </div>
+
+  <div class="row" style="margin-top:12px;">
+    <div class="lbl"><span>Amplitude</span><b id="vAmp"></b></div>
+    <input type="range" id="amp" min="0.1" max="3.5" step="0.05">
+  </div>
+  <div class="row">
+    <div class="lbl"><span>Wavelength</span><b id="vLen"></b></div>
+    <input type="range" id="len" min="6" max="60" step="1">
+  </div>
+  <div class="row">
+    <div class="lbl"><span>Choppiness</span><b id="vChop"></b></div>
+    <input type="range" id="chop" min="0" max="1" step="0.02">
+  </div>
+  <div class="row">
+    <div class="lbl"><span>Speed</span><b id="vSpeed"></b></div>
+    <input type="range" id="speed" min="0.2" max="2.5" step="0.05">
+  </div>
+  <div class="row">
+    <div class="lbl"><span>Wind direction</span><b id="vWind"></b></div>
+    <input type="range" id="wind" min="0" max="359" step="1">
+  </div>
+
+  <h2>Sky</h2>
+  <div class="grid3">
+    <button class="chip" data-sky="day">Day</button>
+    <button class="chip" data-sky="sunset">Sunset</button>
+    <button class="chip" data-sky="night">Night</button>
+  </div>
+
+  <h2>Buoys</h2>
+  <div class="btnrow">
+    <button class="ui" id="btnRandomBuoy">Drop random buoy</button>
+    <button class="ui small" id="btnClearBuoys">Clear</button>
+  </div>
+
+  <h2>Presets</h2>
+  <select id="presetSelect"><option value="">— saved presets —</option></select>
+  <div class="btnrow">
+    <button class="ui" id="btnSavePreset">Save preset</button>
+    <button class="ui small" id="btnLoadPreset">Load</button>
+    <button class="ui small" id="btnDeletePreset">Del</button>
+  </div>
+
+  <h2>Share &amp; Export</h2>
+  <div class="btnrow">
+    <button class="ui primary" id="btnExport">Export PNG</button>
+    <button class="ui" id="btnShare">Copy link</button>
+  </div>
+  <div class="btnrow">
+    <button class="ui" id="btnResetView">Reset view</button>
+  </div>
+</div>
+
+<button id="panelToggle">Controls</button>
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- tiny mat4 (glMatrix-style, column-major) ---------- */
+function mat4Perspective(out, fovy, aspect, near, far){
+  const f = 1.0/Math.tan(fovy/2);
+  out[0]=f/aspect; out[1]=0; out[2]=0; out[3]=0;
+  out[4]=0; out[5]=f; out[6]=0; out[7]=0;
+  out[8]=0; out[9]=0; out[11]=-1;
+  out[12]=0; out[13]=0; out[15]=0;
+  const nf = 1/(near-far);
+  out[10]=(far+near)*nf;
+  out[14]=2*far*near*nf;
+  return out;
+}
+function mat4LookAt(out, eye, center, up){
+  let x0,x1,x2,y0,y1,y2,z0,z1,z2,len;
+  const eyex=eye[0],eyey=eye[1],eyez=eye[2];
+  const upx=up[0],upy=up[1],upz=up[2];
+  const cx=center[0],cy=center[1],cz=center[2];
+  z0=eyex-cx; z1=eyey-cy; z2=eyez-cz;
+  len=Math.hypot(z0,z1,z2)||1; z0/=len; z1/=len; z2/=len;
+  x0=upy*z2-upz*z1; x1=upz*z0-upx*z2; x2=upx*z1-upy*z0;
+  len=Math.hypot(x0,x1,x2);
+  if(!len){x0=0;x1=0;x2=0;} else {len=1/len; x0*=len; x1*=len; x2*=len;}
+  y0=z1*x2-z2*x1; y1=z2*x0-z0*x2; y2=z0*x1-z1*x0;
+  len=Math.hypot(y0,y1,y2);
+  if(!len){y0=0;y1=0;y2=0;} else {len=1/len; y0*=len; y1*=len; y2*=len;}
+  out[0]=x0; out[1]=y0; out[2]=z0; out[3]=0;
+  out[4]=x1; out[5]=y1; out[6]=z1; out[7]=0;
+  out[8]=x2; out[9]=y2; out[10]=z2; out[11]=0;
+  out[12]=-(x0*eyex+x1*eyey+x2*eyez);
+  out[13]=-(y0*eyex+y1*eyey+y2*eyez);
+  out[14]=-(z0*eyex+z1*eyey+z2*eyez);
+  out[15]=1;
+  return out;
+}
+
+/* ---------- constants ---------- */
+const NUM_WAVES = 4;
+const LEN_FRAC = [1.0, 0.55, 1.35, 0.28];
+const AMP_FRAC = [1.0, 0.55, 0.35, 0.18];
+const ANG_OFFSET = [0, -28, 42, 155].map(d=>d*Math.PI/180);
+const G = 9.8;
+const SEA_LEVEL_HALF = 60;
+const GRID_N = 110;
+const AUTOSAVE_KEY = 'tideline_v1_autosave';
+const PRESETS_KEY = 'tideline_v1_presets';
+
+const SKY = {
+  day:    { top:'#4fb8ec', bottom:'#cdeeff', sunDir:[0.42,0.78,0.32], sunColor:[1,0.97,0.9],  deep:[0.02,0.12,0.24], shallow:[0.05,0.38,0.46], fog:[0.78,0.91,0.96], fogDensity:0.011 },
+  sunset: { top:'#241238', bottom:'#ff9a5c', sunDir:[0.86,0.20,0.14], sunColor:[1,0.62,0.32], deep:[0.05,0.04,0.17], shallow:[0.35,0.16,0.26], fog:[0.86,0.5,0.38],  fogDensity:0.013 },
+  night:  { top:'#020310', bottom:'#111e3a', sunDir:[-0.3,0.62,0.5],  sunColor:[0.55,0.66,0.9],deep:[0.0,0.01,0.04],  shallow:[0.02,0.06,0.13], fog:[0.02,0.03,0.09], fogDensity:0.015 }
+};
+const SEA = {
+  calm:    { amp:0.35, len:22, chop:0.25, speed:0.7 },
+  choppy:  { amp:0.85, len:14, chop:0.65, speed:1.1 },
+  storm:   { amp:1.7,  len:10, chop:0.95, speed:1.6 },
+  tsunami: { amp:3.2,  len:55, chop:0.4,  speed:0.9 }
+};
+
+/* ---------- state ---------- */
+const state = {
+  amp: 0.35, len: 22, chop: 0.25, speed: 0.7, wind: 30,
+  sky: 'day',
+  cam: { az: 0.7, el: 0.42, radius: 78 },
+  buoys: []
+};
+
+/* ---------- DOM ---------- */
+const glCanvas = document.getElementById('gl');
+const skyEl = document.getElementById('sky');
+const hint = document.getElementById('hint');
+const panel = document.getElementById('panel');
+const panelToggle = document.getElementById('panelToggle');
+const toastEl = document.getElementById('toast');
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>toastEl.classList.remove('show'), 1800);
+}
+
+panelToggle.addEventListener('click', ()=> panel.classList.toggle('open'));
+
+/* ---------- WebGL setup ---------- */
+const gl = glCanvas.getContext('webgl', { antialias:true, alpha:true, preserveDrawingBuffer:true })
+        || glCanvas.getContext('experimental-webgl', { antialias:true, alpha:true, preserveDrawingBuffer:true });
+
+if(!gl){
+  document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif;color:#fff;background:#111;">WebGL is not available in this browser.</div>';
+  throw new Error('no webgl');
+}
+
+function compileShader(type, src){
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+    const log = gl.getShaderInfoLog(sh);
+    gl.deleteShader(sh);
+    throw new Error('Shader compile error: ' + log);
+  }
+  return sh;
+}
+function linkProgram(vsSrc, fsSrc){
+  const vs = compileShader(gl.VERTEX_SHADER, vsSrc);
+  const fs = compileShader(gl.FRAGMENT_SHADER, fsSrc);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog, gl.LINK_STATUS)){
+    const log = gl.getProgramInfoLog(prog);
+    throw new Error('Program link error: ' + log);
+  }
+  return prog;
+}
+
+const OCEAN_VS = `
+attribute vec2 aPos;
+uniform float uTime;
+uniform vec2 uDir[4];
+uniform float uAmp[4];
+uniform float uK[4];
+uniform float uOmega[4];
+uniform float uQ[4];
+uniform mat4 uProj;
+uniform mat4 uView;
+varying vec3 vPos;
+varying vec3 vNormal;
+varying float vFoam;
+void main(){
+  float x = aPos.x;
+  float z = aPos.y;
+  vec3 pos = vec3(x, 0.0, z);
+  vec3 normal = vec3(0.0, 1.0, 0.0);
+  float foam = 0.0;
+  for(int i=0;i<4;i++){
+    float k = uK[i];
+    float a = uAmp[i];
+    float q = uQ[i];
+    vec2 d = uDir[i];
+    float theta = k*(d.x*x + d.y*z) + uOmega[i]*uTime;
+    float c = cos(theta);
+    float s = sin(theta);
+    pos.x += q*a*d.x*c;
+    pos.z += q*a*d.y*c;
+    pos.y += a*s;
+    normal.x -= d.x*k*a*c;
+    normal.z -= d.y*k*a*c;
+    normal.y -= q*k*a*s;
+    foam += max(0.0, s - 0.55) * a;
+  }
+  vNormal = normalize(normal);
+  vPos = pos;
+  vFoam = clamp(foam*1.6, 0.0, 1.0);
+  gl_Position = uProj * uView * vec4(pos, 1.0);
+}`;
+
+const OCEAN_FS = `
+precision mediump float;
+varying vec3 vPos;
+varying vec3 vNormal;
+varying float vFoam;
+uniform vec3 uCamPos;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform vec3 uDeepColor;
+uniform vec3 uShallowColor;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(uCamPos - vPos);
+  vec3 L = normalize(uSunDir);
+  float diff = max(dot(N,L), 0.0);
+  vec3 H = normalize(L+V);
+  float spec = pow(max(dot(N,H), 0.0), 140.0);
+  float fres = pow(1.0 - clamp(dot(N,V),0.0,1.0), 3.0);
+  vec3 base = mix(uDeepColor, uShallowColor, clamp(vPos.y*0.5+0.5, 0.0, 1.0));
+  vec3 color = base*(0.35+0.65*diff) + uSunColor*spec*1.3 + uSunColor*fres*0.28;
+  color = mix(color, vec3(1.0), vFoam*0.85);
+  float dist = length(uCamPos - vPos);
+  float fog = 1.0 - exp(-dist*uFogDensity);
+  color = mix(color, uFogColor, clamp(fog, 0.0, 1.0));
+  gl_FragColor = vec4(color, 1.0);
+}`;
+
+const SOLID_VS = `
+attribute vec3 aPos;
+attribute vec3 aNormal;
+uniform mat4 uProj;
+uniform mat4 uView;
+uniform vec3 uOffset;
+uniform float uScale;
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+void main(){
+  vec3 wp = aPos*uScale + uOffset;
+  vWorldPos = wp;
+  vNormal = aNormal;
+  gl_Position = uProj*uView*vec4(wp,1.0);
+}`;
+
+const SOLID_FS = `
+precision mediump float;
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+uniform vec3 uColor;
+uniform vec3 uSunDir;
+uniform vec3 uCamPos;
+void main(){
+  vec3 N = normalize(vNormal);
+  float diff = max(dot(N, normalize(uSunDir)), 0.0);
+  vec3 V = normalize(uCamPos - vWorldPos);
+  float rim = pow(1.0-max(dot(N,V),0.0), 2.5);
+  vec3 col = uColor*(0.45+0.65*diff) + vec3(1.0)*rim*0.35;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const oceanProg = linkProgram(OCEAN_VS, OCEAN_FS);
+const solidProg = linkProgram(SOLID_VS, SOLID_FS);
+
+function locs(prog, names){
+  const o = {};
+  for(const n of names) o[n] = gl.getUniformLocation(prog, n);
+  return o;
+}
+const oceanU = locs(oceanProg, ['uTime','uDir','uAmp','uK','uOmega','uQ','uProj','uView','uCamPos','uSunDir','uSunColor','uDeepColor','uShallowColor','uFogColor','uFogDensity']);
+const oceanAttrPos = gl.getAttribLocation(oceanProg, 'aPos');
+const solidU = locs(solidProg, ['uProj','uView','uOffset','uScale','uColor','uSunDir','uCamPos']);
+const solidAttrPos = gl.getAttribLocation(solidProg, 'aPos');
+const solidAttrNorm = gl.getAttribLocation(solidProg, 'aNormal');
+
+/* ---------- grid mesh ---------- */
+function buildGrid(n, half){
+  const verts = new Float32Array((n+1)*(n+1)*2);
+  let p = 0;
+  for(let j=0;j<=n;j++){
+    for(let i=0;i<=n;i++){
+      verts[p++] = -half + (2*half*i/n);
+      verts[p++] = -half + (2*half*j/n);
+    }
+  }
+  const idx = new Uint16Array(n*n*6);
+  let q = 0;
+  for(let j=0;j<n;j++){
+    for(let i=0;i<n;i++){
+      const a = j*(n+1)+i, b = a+1, c = a+(n+1), d = c+1;
+      idx[q++]=a; idx[q++]=c; idx[q++]=b;
+      idx[q++]=b; idx[q++]=c; idx[q++]=d;
+    }
+  }
+  return { verts, idx };
+}
+const grid = buildGrid(GRID_N, SEA_LEVEL_HALF);
+const gridVBO = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, gridVBO);
+gl.bufferData(gl.ARRAY_BUFFER, grid.verts, gl.STATIC_DRAW);
+const gridIBO = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gridIBO);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, grid.idx, gl.STATIC_DRAW);
+const gridIndexCount = grid.idx.length;
+
+/* ---------- sphere mesh (buoys) ---------- */
+function buildSphere(lat, lon, r){
+  const pos = [], norm = [], idx = [];
+  for(let y=0;y<=lat;y++){
+    const v = y/lat, theta = v*Math.PI;
+    for(let x=0;x<=lon;x++){
+      const u = x/lon, phi = u*Math.PI*2;
+      const sx = Math.sin(theta)*Math.cos(phi);
+      const sy = Math.cos(theta);
+      const sz = Math.sin(theta)*Math.sin(phi);
+      pos.push(sx*r, sy*r, sz*r);
+      norm.push(sx, sy, sz);
+    }
+  }
+  for(let y=0;y<lat;y++){
+    for(let x=0;x<lon;x++){
+      const a = y*(lon+1)+x, b = a+lon+1;
+      idx.push(a,b,a+1, a+1,b,b+1);
+    }
+  }
+  return { pos:new Float32Array(pos), norm:new Float32Array(norm), idx:new Uint16Array(idx) };
+}
+const sphere = buildSphere(8, 12, 1.0);
+const sphPosVBO = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, sphPosVBO);
+gl.bufferData(gl.ARRAY_BUFFER, sphere.pos, gl.STATIC_DRAW);
+const sphNormVBO = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, sphNormVBO);
+gl.bufferData(gl.ARRAY_BUFFER, sphere.norm, gl.STATIC_DRAW);
+const sphIBO = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphIBO);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, sphere.idx, gl.STATIC_DRAW);
+const sphIndexCount = sphere.idx.length;
+
+const BUOY_COLORS = [[1,0.35,0.32],[1,0.78,0.2],[0.35,0.9,0.6],[0.4,0.7,1.0],[0.85,0.5,1.0]];
+
+/* ---------- wave params derived from state ---------- */
+function computeWaveParams(){
+  const dirs=[], amps=[], ks=[], omegas=[], qs=[];
+  const windRad = state.wind*Math.PI/180;
+  for(let i=0;i<NUM_WAVES;i++){
+    const L = Math.max(1.5, state.len*LEN_FRAC[i]);
+    const A = Math.max(0.001, state.amp*AMP_FRAC[i]);
+    const ang = windRad + ANG_OFFSET[i];
+    const dx = Math.sin(ang), dz = Math.cos(ang);
+    const k = 2*Math.PI/L;
+    const omega = Math.sqrt(G*k) * state.speed;
+    let q = state.chop / (k*A*NUM_WAVES);
+    q = Math.min(q, 1/(k*A));
+    dirs.push(dx, dz);
+    amps.push(A);
+    ks.push(k);
+    omegas.push(omega);
+    qs.push(q);
+  }
+  return { dirs, amps, ks, omegas, qs };
+}
+function waveHeightAt(x, z, t, wp){
+  let y = 0;
+  for(let i=0;i<NUM_WAVES;i++){
+    const dx = wp.dirs[i*2], dz = wp.dirs[i*2+1];
+    const theta = wp.ks[i]*(dx*x+dz*z) + wp.omegas[i]*t;
+    y += wp.amps[i]*Math.sin(theta);
+  }
+  return y;
+}
+
+/* ---------- camera ---------- */
+const camera = {
+  eye:[0,0,0], forward:[0,0,-1], right:[1,0,0], up:[0,1,0],
+  update(){
+    const c = state.cam;
+    c.el = Math.max(0.09, Math.min(1.45, c.el));
+    c.radius = Math.max(18, Math.min(220, c.radius));
+    const ex = c.radius*Math.cos(c.el)*Math.sin(c.az);
+    const ey = c.radius*Math.sin(c.el) + 6;
+    const ez = c.radius*Math.cos(c.el)*Math.cos(c.az);
+    this.eye = [ex, ey, ez];
+    const fwd = [-ex, -(ey-4), -ez];
+    const len = Math.hypot(fwd[0],fwd[1],fwd[2])||1;
+    this.forward = [fwd[0]/len, fwd[1]/len, fwd[2]/len];
+    const worldUp = [0,1,0];
+    let rx = this.forward[1]*worldUp[2]-this.forward[2]*worldUp[1];
+    let ry = this.forward[2]*worldUp[0]-this.forward[0]*worldUp[2];
+    let rz = this.forward[0]*worldUp[1]-this.forward[1]*worldUp[0];
+    const rl = Math.hypot(rx,ry,rz)||1;
+    this.right = [rx/rl, ry/rl, rz/rl];
+    this.up = [
+      this.right[1]*this.forward[2]-this.right[2]*this.forward[1],
+      this.right[2]*this.forward[0]-this.right[0]*this.forward[2],
+      this.right[0]*this.forward[1]-this.right[1]*this.forward[0]
+    ];
+  },
+  ray(ndcX, ndcY, fov, aspect){
+    const t = Math.tan(fov/2);
+    const dx = this.forward[0] + this.right[0]*ndcX*t*aspect + this.up[0]*ndcY*t;
+    const dy = this.forward[1] + this.right[1]*ndcX*t*aspect + this.up[1]*ndcY*t;
+    const dz = this.forward[2] + this.right[2]*ndcX*t*aspect + this.up[2]*ndcY*t;
+    const len = Math.hypot(dx,dy,dz)||1;
+    return { origin:this.eye, dir:[dx/len, dy/len, dz/len] };
+  }
+};
+
+const FOV = 52*Math.PI/180;
+
+/* ---------- resize ---------- */
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const w = Math.floor(window.innerWidth*dpr);
+  const h = Math.floor(window.innerHeight*dpr);
+  if(glCanvas.width!==w || glCanvas.height!==h){
+    glCanvas.width = w;
+    glCanvas.height = h;
+  }
+  gl.viewport(0,0,glCanvas.width, glCanvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------- pointer interaction ---------- */
+const pointers = new Map();
+let dragStart = null, moveDist = 0, pinchStartDist = 0, pinchStartRadius = 0;
+
+function ndcFromEvent(e){
+  const r = glCanvas.getBoundingClientRect();
+  const x = ((e.clientX - r.left)/r.width)*2-1;
+  const y = -(((e.clientY - r.top)/r.height)*2-1);
+  return [x,y];
+}
+
+glCanvas.addEventListener('pointerdown', (e)=>{
+  glCanvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  hint.classList.add('hide');
+  if(pointers.size===1){
+    dragStart = {x:e.clientX, y:e.clientY, az:state.cam.az, el:state.cam.el};
+    moveDist = 0;
+  } else if(pointers.size===2){
+    const pts = [...pointers.values()];
+    pinchStartDist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+    pinchStartRadius = state.cam.radius;
+  }
+});
+glCanvas.addEventListener('pointermove', (e)=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pointers.size===1 && dragStart){
+    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+    moveDist = Math.max(moveDist, Math.hypot(dx,dy));
+    state.cam.az = dragStart.az - dx*0.0055;
+    state.cam.el = dragStart.el + dy*0.0045;
+  } else if(pointers.size===2){
+    const pts = [...pointers.values()];
+    const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+    state.cam.radius = pinchStartRadius * (pinchStartDist/d);
+    saveAutosaveSoon();
+  }
+});
+function onPointerEnd(e){
+  const wasSingle = pointers.size===1;
+  pointers.delete(e.pointerId);
+  if(wasSingle && dragStart && moveDist < 6){
+    pickBuoy(e);
+  }
+  if(pointers.size<2) pinchStartDist = 0;
+  dragStart = null;
+  saveAutosaveSoon();
+}
+glCanvas.addEventListener('pointerup', onPointerEnd);
+glCanvas.addEventListener('pointercancel', onPointerEnd);
+glCanvas.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  state.cam.radius *= (1 + e.deltaY*0.001);
+  saveAutosaveSoon();
+}, {passive:false});
+
+function pickBuoy(e){
+  const [ndcX, ndcY] = ndcFromEvent(e);
+  const aspect = glCanvas.width/glCanvas.height;
+  const r = camera.ray(ndcX, ndcY, FOV, aspect);
+  if(Math.abs(r.dir[1]) < 1e-4) return;
+  const t = -r.origin[1]/r.dir[1];
+  if(t <= 0 || t > 400) return;
+  const px = r.origin[0] + r.dir[0]*t;
+  const pz = r.origin[2] + r.dir[2]*t;
+  if(Math.abs(px) > SEA_LEVEL_HALF*0.96 || Math.abs(pz) > SEA_LEVEL_HALF*0.96) return;
+
+  let hitIdx = -1, hitDist = 6.5;
+  for(let i=0;i<state.buoys.length;i++){
+    const b = state.buoys[i];
+    const d = Math.hypot(b.x-px, b.z-pz);
+    if(d < hitDist){ hitDist = d; hitIdx = i; }
+  }
+  if(hitIdx>=0){
+    state.buoys.splice(hitIdx,1);
+    toast('Buoy removed');
+  } else {
+    if(state.buoys.length>=10) state.buoys.shift();
+    state.buoys.push({ x:px, z:pz, color: BUOY_COLORS[state.buoys.length % BUOY_COLORS.length] });
+    toast('Buoy dropped');
+  }
+  saveAutosaveSoon();
+}
+
+document.getElementById('btnRandomBuoy').addEventListener('click', ()=>{
+  const x = (Math.random()*2-1)*SEA_LEVEL_HALF*0.8;
+  const z = (Math.random()*2-1)*SEA_LEVEL_HALF*0.8;
+  if(state.buoys.length>=10) state.buoys.shift();
+  state.buoys.push({ x, z, color: BUOY_COLORS[state.buoys.length % BUOY_COLORS.length] });
+  saveAutosaveSoon();
+  toast('Buoy dropped');
+});
+document.getElementById('btnClearBuoys').addEventListener('click', ()=>{
+  state.buoys = [];
+  saveAutosaveSoon();
+  toast('Buoys cleared');
+});
+document.getElementById('btnResetView').addEventListener('click', ()=>{
+  state.cam.az = 0.7; state.cam.el = 0.42; state.cam.radius = 78;
+  saveAutosaveSoon();
+});
+
+/* ---------- sliders ---------- */
+const sliderEls = {
+  amp: document.getElementById('amp'), len: document.getElementById('len'),
+  chop: document.getElementById('chop'), speed: document.getElementById('speed'),
+  wind: document.getElementById('wind')
+};
+const labelEls = {
+  amp: document.getElementById('vAmp'), len: document.getElementById('vLen'),
+  chop: document.getElementById('vChop'), speed: document.getElementById('vSpeed'),
+  wind: document.getElementById('vWind')
+};
+function syncSlidersFromState(){
+  sliderEls.amp.value = state.amp; labelEls.amp.textContent = state.amp.toFixed(2);
+  sliderEls.len.value = state.len; labelEls.len.textContent = Math.round(state.len);
+  sliderEls.chop.value = state.chop; labelEls.chop.textContent = state.chop.toFixed(2);
+  sliderEls.speed.value = state.speed; labelEls.speed.textContent = state.speed.toFixed(2);
+  sliderEls.wind.value = state.wind; labelEls.wind.textContent = Math.round(state.wind) + '°';
+}
+Object.keys(sliderEls).forEach(key=>{
+  sliderEls[key].addEventListener('input', ()=>{
+    state[key] = parseFloat(sliderEls[key].value);
+    labelEls[key].textContent = key==='wind' ? (Math.round(state[key])+'°') : (key==='len' ? Math.round(state[key]) : state[key].toFixed(2));
+    saveAutosaveSoon();
+  });
+});
+syncSlidersFromState();
+
+document.querySelectorAll('[data-sea]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const p = SEA[btn.dataset.sea];
+    Object.assign(state, p);
+    syncSlidersFromState();
+    saveAutosaveSoon();
+    toast('Sea state: ' + btn.textContent);
+  });
+});
+document.querySelectorAll('[data-sky]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    setSky(btn.dataset.sky);
+    saveAutosaveSoon();
+  });
+});
+function setSky(mode){
+  state.sky = mode;
+  const s = SKY[mode];
+  skyEl.style.background = `linear-gradient(180deg, ${s.top} 0%, ${s.bottom} 100%)`;
+  document.querySelectorAll('[data-sky]').forEach(b=> b.classList.toggle('active', b.dataset.sky===mode));
+}
+setSky(state.sky);
+
+/* ---------- export ---------- */
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  const s = SKY[state.sky];
+  const off = document.createElement('canvas');
+  off.width = glCanvas.width; off.height = glCanvas.height;
+  const ctx = off.getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,0,off.height);
+  grad.addColorStop(0, s.top);
+  grad.addColorStop(1, s.bottom);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,off.width,off.height);
+  ctx.drawImage(glCanvas, 0, 0, off.width, off.height);
+  off.toBlob((blob)=>{
+    if(!blob || blob.size===0){ toast('Export failed'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tideline-' + Date.now() + '.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast('PNG exported');
+  }, 'image/png');
+});
+
+/* ---------- share link ---------- */
+function encodeState(){
+  const s = { a:state.amp, l:state.len, c:state.chop, s:state.speed, w:state.wind, k:state.sky, az:state.cam.az, el:state.cam.el, r:state.cam.radius };
+  return btoa(encodeURIComponent(JSON.stringify(s)));
+}
+function decodeState(str){
+  try{
+    const s = JSON.parse(decodeURIComponent(atob(str)));
+    if(typeof s.a==='number') state.amp=s.a;
+    if(typeof s.l==='number') state.len=s.l;
+    if(typeof s.c==='number') state.chop=s.c;
+    if(typeof s.s==='number') state.speed=s.s;
+    if(typeof s.w==='number') state.wind=s.w;
+    if(typeof s.az==='number') state.cam.az=s.az;
+    if(typeof s.el==='number') state.cam.el=s.el;
+    if(typeof s.r==='number') state.cam.radius=s.r;
+    if(s.k && SKY[s.k]) setSky(s.k);
+    return true;
+  } catch(err){ return false; }
+}
+document.getElementById('btnShare').addEventListener('click', async ()=>{
+  const hash = encodeState();
+  const url = location.origin + location.pathname + '#' + hash;
+  try{
+    await navigator.clipboard.writeText(url);
+    toast('Link copied');
+  } catch(err){
+    window.prompt('Copy this link:', url);
+  }
+});
+
+/* ---------- presets (named localStorage saves) ---------- */
+const presetSelect = document.getElementById('presetSelect');
+function loadPresetList(){
+  let list = {};
+  try{ list = JSON.parse(localStorage.getItem(PRESETS_KEY) || '{}'); } catch(err){ list = {}; }
+  presetSelect.innerHTML = '<option value="">— saved presets —</option>';
+  Object.keys(list).forEach(name=>{
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    presetSelect.appendChild(opt);
+  });
+  return list;
+}
+loadPresetList();
+document.getElementById('btnSavePreset').addEventListener('click', ()=>{
+  const name = window.prompt('Preset name:');
+  if(!name) return;
+  const list = loadPresetList();
+  list[name] = { amp:state.amp, len:state.len, chop:state.chop, speed:state.speed, wind:state.wind, sky:state.sky };
+  try{
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(list));
+    loadPresetList();
+    presetSelect.value = name;
+    toast('Preset saved');
+  } catch(err){ toast('Save failed'); }
+});
+document.getElementById('btnLoadPreset').addEventListener('click', ()=>{
+  const name = presetSelect.value;
+  if(!name) return;
+  const list = loadPresetList();
+  const p = list[name];
+  if(!p) return;
+  state.amp=p.amp; state.len=p.len; state.chop=p.chop; state.speed=p.speed; state.wind=p.wind;
+  syncSlidersFromState();
+  setSky(p.sky || 'day');
+  saveAutosaveSoon();
+  toast('Preset loaded');
+});
+document.getElementById('btnDeletePreset').addEventListener('click', ()=>{
+  const name = presetSelect.value;
+  if(!name) return;
+  const list = loadPresetList();
+  delete list[name];
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(list));
+  loadPresetList();
+  toast('Preset deleted');
+});
+
+/* ---------- autosave ---------- */
+let autosaveTimer = null;
+function saveAutosaveSoon(){
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(()=>{
+    try{
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+        amp:state.amp, len:state.len, chop:state.chop, speed:state.speed, wind:state.wind,
+        sky:state.sky, cam:state.cam
+      }));
+    } catch(err){ /* storage unavailable */ }
+  }, 300);
+}
+
+/* ---------- init from hash or autosave ---------- */
+(function init(){
+  const hash = location.hash.replace('#','');
+  let applied = false;
+  if(hash) applied = decodeState(hash);
+  if(!applied){
+    try{
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if(raw){
+        const s = JSON.parse(raw);
+        Object.assign(state, { amp:s.amp, len:s.len, chop:s.chop, speed:s.speed, wind:s.wind });
+        if(s.cam) Object.assign(state.cam, s.cam);
+        if(s.sky) setSky(s.sky);
+      }
+    } catch(err){ /* ignore */ }
+  }
+  syncSlidersFromState();
+})();
+
+/* ---------- render loop ---------- */
+gl.enable(gl.DEPTH_TEST);
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+const proj = new Float32Array(16);
+const view = new Float32Array(16);
+let startTime = null;
+
+function frame(ts){
+  if(startTime===null) startTime = ts;
+  const t = (ts - startTime) / 1000;
+
+  resize();
+  camera.update();
+
+  const aspect = glCanvas.width / Math.max(1, glCanvas.height);
+  mat4Perspective(proj, FOV, aspect, 0.3, 500);
+  mat4LookAt(view, camera.eye, [0,4,0], [0,1,0]);
+
+  gl.clearColor(0,0,0,0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  const wp = computeWaveParams();
+  const sky = SKY[state.sky];
+
+  gl.useProgram(oceanProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gridVBO);
+  gl.enableVertexAttribArray(oceanAttrPos);
+  gl.vertexAttribPointer(oceanAttrPos, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gridIBO);
+  gl.uniformMatrix4fv(oceanU.uProj, false, proj);
+  gl.uniformMatrix4fv(oceanU.uView, false, view);
+  gl.uniform1f(oceanU.uTime, t);
+  gl.uniform2fv(oceanU.uDir, wp.dirs);
+  gl.uniform1fv(oceanU.uAmp, wp.amps);
+  gl.uniform1fv(oceanU.uK, wp.ks);
+  gl.uniform1fv(oceanU.uOmega, wp.omegas);
+  gl.uniform1fv(oceanU.uQ, wp.qs);
+  gl.uniform3fv(oceanU.uCamPos, camera.eye);
+  gl.uniform3fv(oceanU.uSunDir, sky.sunDir);
+  gl.uniform3fv(oceanU.uSunColor, sky.sunColor);
+  gl.uniform3fv(oceanU.uDeepColor, sky.deep);
+  gl.uniform3fv(oceanU.uShallowColor, sky.shallow);
+  gl.uniform3fv(oceanU.uFogColor, sky.fog);
+  gl.uniform1f(oceanU.uFogDensity, sky.fogDensity);
+  gl.drawElements(gl.TRIANGLES, gridIndexCount, gl.UNSIGNED_SHORT, 0);
+
+  if(state.buoys.length){
+    gl.useProgram(solidProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, sphPosVBO);
+    gl.enableVertexAttribArray(solidAttrPos);
+    gl.vertexAttribPointer(solidAttrPos, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, sphNormVBO);
+    gl.enableVertexAttribArray(solidAttrNorm);
+    gl.vertexAttribPointer(solidAttrNorm, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphIBO);
+    gl.uniformMatrix4fv(solidU.uProj, false, proj);
+    gl.uniformMatrix4fv(solidU.uView, false, view);
+    gl.uniform3fv(solidU.uSunDir, sky.sunDir);
+    gl.uniform3fv(solidU.uCamPos, camera.eye);
+    for(const b of state.buoys){
+      const y = waveHeightAt(b.x, b.z, t, wp) + 1.15;
+      gl.uniform3f(solidU.uOffset, b.x, y, b.z);
+      gl.uniform1f(solidU.uScale, 1.3);
+      gl.uniform3f(solidU.uColor, b.color[0], b.color[1], b.color[2]);
+      gl.drawElements(gl.TRIANGLES, sphIndexCount, gl.UNSIGNED_SHORT, 0);
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+window._tidelineDebug = { state, gl, glCanvas };
+})();
+</script>
+</body>
+</html>

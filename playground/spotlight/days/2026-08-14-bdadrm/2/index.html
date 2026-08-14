@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Command Dock — UI Spotlight</title>
+<style>
+  :root{ --bg:#0b0e16; --panel:#131a28ee; --border:#ffffff1c; --text:#eef2f8; --dim:#93a1b8; --accent:#34d399; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; min-height:100vh; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);
+    background:radial-gradient(120% 60% at 50% -10%,#152136 0%, var(--bg) 55%); padding-bottom:130px;
+    overflow-x:hidden;
+  }
+  a{color:inherit;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:30; background:#0e1420cc; border:1px solid var(--border);
+    color:var(--text); text-decoration:none; font-size:12.5px; padding:8px 13px; border-radius:20px;
+    backdrop-filter:blur(8px); font-weight:600;
+  }
+  .reset-btn{
+    position:fixed; top:14px; right:14px; z-index:30; background:#0e1420cc; border:1px solid var(--border);
+    color:var(--text); font-size:12px; padding:8px 13px; border-radius:20px; backdrop-filter:blur(8px);
+    font-weight:600; cursor:pointer;
+  }
+
+  header.hero{ padding:100px 20px 24px; text-align:center; max-width:600px; margin:0 auto; }
+  header.hero h1{ margin:0 0 10px; font-size:clamp(22px,4.6vw,32px); }
+  header.hero p{ color:var(--dim); font-size:13.5px; line-height:1.6; }
+
+  .library{
+    max-width:640px; margin:20px auto 0; padding:0 20px; display:flex; gap:9px; flex-wrap:wrap; justify-content:center;
+    min-height:52px;
+  }
+  .chip{
+    display:flex; align-items:center; gap:7px; background:#141c2b; border:1px solid var(--border); border-radius:14px;
+    padding:9px 13px; font-size:13px; font-weight:600; cursor:grab; user-select:none; touch-action:none;
+    transition:border-color .15s, transform .1s;
+  }
+  .chip:active{ cursor:grabbing; }
+  .chip .ic{ font-size:16px; }
+  .chip.dragging{ opacity:.25; }
+  .chip.floating{ position:fixed; z-index:100; pointer-events:none; box-shadow:0 16px 40px #000a; }
+  .chip .state-dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); opacity:0; transition:opacity .2s; margin-left:2px; }
+  .chip.on .state-dot{ opacity:1; }
+
+  .zone-label{ text-align:center; color:var(--dim); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; margin:6px 0 2px; }
+
+  .dock-wrap{ position:fixed; left:0; right:0; bottom:16px; z-index:20; display:flex; justify-content:center; padding:0 12px; }
+  .dock{
+    display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--border);
+    border-radius:22px; padding:10px 16px; backdrop-filter:blur(12px); box-shadow:0 20px 50px #0009;
+    max-width:100%; overflow-x:auto;
+  }
+  .region{ display:flex; gap:7px; align-items:center; min-height:40px; min-width:44px; border-radius:12px; padding:2px; }
+  .region.drag-over{ background:#38bdf822; outline:1px dashed #38bdf866; }
+  .divider{ width:1px; height:26px; background:var(--border); }
+  .region .placeholder{ font-size:10px; color:#4a5872; padding:0 4px; white-space:nowrap; }
+
+  .overlay-backdrop{
+    position:fixed; inset:0; background:#03050bcc; opacity:0; pointer-events:none; transition:opacity .3s; z-index:40;
+  }
+  .overlay-backdrop.show{ opacity:1; pointer-events:auto; }
+  .overlay-card{
+    position:fixed; z-index:41; background:linear-gradient(165deg,#151d2d,#0d121d); border:1px solid var(--border);
+    border-radius:18px; overflow:hidden; box-shadow:0 30px 70px #000c; transition:left .38s cubic-bezier(.2,.8,.2,1), top .38s cubic-bezier(.2,.8,.2,1), width .38s cubic-bezier(.2,.8,.2,1), height .38s cubic-bezier(.2,.8,.2,1), opacity .25s;
+  }
+  .overlay-card .oc-head{ padding:14px 16px; border-bottom:1px solid var(--border); font-weight:700; font-size:14px; display:flex; justify-content:space-between; align-items:center; }
+  .overlay-card .oc-head button{ background:none; border:none; color:var(--dim); font-size:16px; cursor:pointer; }
+  .overlay-card .oc-body{ padding:10px 8px; max-height:calc(100% - 50px); overflow-y:auto; }
+  .overlay-card .oc-item{ padding:10px 12px; border-radius:10px; font-size:13.5px; color:#d6dfee; }
+  .overlay-card .oc-item:hover{ background:#ffffff0c; }
+
+  footer.credit{ position:relative; z-index:5; text-align:center; padding:26px 20px 10px; color:var(--dim); font-size:11.5px; }
+  @media (max-width:640px){ .dock{ gap:9px; padding:9px 11px; } .divider{ height:22px; } }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<button class="reset-btn" id="resetBtn">Reset layout</button>
+
+<header class="hero">
+  <h1>Pin commands, not shortcuts</h1>
+  <p>Drag a command from the library into the dock's start / center / end region. Toggle-type commands run inline the moment you tap them; palette-type commands expand straight out of the icon into a full overlay.</p>
+</header>
+
+<div class="zone-label">Library — drag into the dock below</div>
+<div class="library" id="library" data-zone="library"></div>
+
+<div class="overlay-backdrop" id="backdrop"></div>
+
+<div class="dock-wrap">
+  <div class="dock">
+    <div class="region" data-zone="start" id="zoneStart"></div>
+    <div class="divider"></div>
+    <div class="region" data-zone="center" id="zoneCenter"></div>
+    <div class="divider"></div>
+    <div class="region" data-zone="end" id="zoneEnd"></div>
+  </div>
+</div>
+
+<footer class="credit">Inspired by Microsoft PowerToys' Command Palette Dock · UI Spotlight Day 90 · Drop #2 · Bucket: layout</footer>
+
+<script>
+(function(){
+  "use strict";
+  const STORAGE_KEY = 'commanddock_v1_layout';
+
+  const COMMANDS = {
+    search:  { icon:'🔍', label:'Search',  type:'palette', items:['Open recent file','Jump to project','Find in workspace','Search commands'] },
+    theme:   { icon:'🌓', label:'Theme',   type:'toggle' },
+    notes:   { icon:'📝', label:'Notes',   type:'palette', items:['Quick note: ship the dock demo','Idea: region-snap animation','Reminder: credit the source'] },
+    timer:   { icon:'⏱️', label:'Timer',   type:'toggle' },
+    files:   { icon:'📁', label:'Files',   type:'palette', items:['index.html','style-notes.md','dock-layout.json','archive/'] },
+    mute:    { icon:'🔔', label:'Alerts',  type:'toggle' }
+  };
+  const DEFAULT_LAYOUT = { library:['notes','files','mute'], start:['search'], center:['theme'], end:['timer'] };
+
+  function loadLayout(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        if(parsed.library && parsed.start && parsed.center && parsed.end) return parsed;
+      }
+    } catch(err){}
+    return JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+  }
+  function saveLayout(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(layout)); } catch(err){}
+  }
+
+  let layout = loadLayout();
+  const onState = {}; // toggle states, id -> bool
+  let timerInterval = null, timerSeconds = 0;
+
+  const zones = {
+    library: document.getElementById('library'),
+    start: document.getElementById('zoneStart'),
+    center: document.getElementById('zoneCenter'),
+    end: document.getElementById('zoneEnd')
+  };
+
+  function render(){
+    Object.keys(zones).forEach(zoneName=>{
+      const el = zones[zoneName];
+      el.innerHTML = '';
+      const ids = layout[zoneName];
+      if(zoneName!=='library' && ids.length===0){
+        const ph = document.createElement('span');
+        ph.className = 'placeholder';
+        ph.textContent = zoneName;
+        el.appendChild(ph);
+        return;
+      }
+      ids.forEach(id=>{
+        const cmd = COMMANDS[id];
+        if(!cmd) return;
+        const chip = document.createElement('div');
+        chip.className = 'chip' + (onState[id] ? ' on' : '');
+        chip.dataset.id = id;
+        chip.innerHTML = `<span class="ic">${cmd.icon}</span><span>${cmd.label}</span><span class="state-dot"></span>`;
+        attachDrag(chip, id);
+        el.appendChild(chip);
+      });
+    });
+  }
+
+  function findZoneName(id){
+    for(const z of Object.keys(layout)) if(layout[z].includes(id)) return z;
+    return null;
+  }
+  function removeFromLayout(id){
+    const z = findZoneName(id);
+    if(z) layout[z] = layout[z].filter(x=>x!==id);
+    return z;
+  }
+
+  /* ---- pointer-based drag (works for mouse + touch) ---- */
+  function attachDrag(chip, id){
+    let floating = null, moved = false, startX=0, startY=0;
+
+    chip.addEventListener('pointerdown', (e)=>{
+      e.preventDefault();
+      chip.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      moved = false;
+
+      const onMove = (ev)=>{
+        const dx = ev.clientX-startX, dy = ev.clientY-startY;
+        if(!moved && Math.hypot(dx,dy) > 7){
+          moved = true;
+          chip.classList.add('dragging');
+          const r = chip.getBoundingClientRect();
+          floating = chip.cloneNode(true);
+          floating.classList.add('floating');
+          floating.style.left = r.left+'px';
+          floating.style.top = r.top+'px';
+          floating.style.width = r.width+'px';
+          document.body.appendChild(floating);
+        }
+        if(moved && floating){
+          floating.style.left = (ev.clientX - floating.offsetWidth/2)+'px';
+          floating.style.top = (ev.clientY - floating.offsetHeight/2)+'px';
+          document.querySelectorAll('.region,.library').forEach(z=>z.classList.remove('drag-over'));
+          const under = document.elementFromPoint(ev.clientX, ev.clientY);
+          const zoneEl = under && under.closest('[data-zone]');
+          if(zoneEl) zoneEl.classList.add('drag-over');
+        }
+      };
+      const onUp = (ev)=>{
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        document.querySelectorAll('.region,.library').forEach(z=>z.classList.remove('drag-over'));
+        if(floating){ floating.remove(); floating=null; }
+        chip.classList.remove('dragging');
+
+        if(moved){
+          const under = document.elementFromPoint(ev.clientX, ev.clientY);
+          const zoneEl = under && under.closest('[data-zone]');
+          if(zoneEl){
+            const targetZone = zoneEl.dataset.zone;
+            removeFromLayout(id);
+            layout[targetZone].push(id);
+            saveLayout();
+            render();
+          }
+        } else {
+          runCommand(id, chip);
+        }
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+
+  /* ---- command execution ---- */
+  const backdrop = document.getElementById('backdrop');
+  function runCommand(id, chipEl){
+    const cmd = COMMANDS[id];
+    if(cmd.type === 'toggle'){
+      onState[id] = !onState[id];
+      if(id === 'timer'){
+        if(onState.timer){
+          timerSeconds = 0;
+          timerInterval = setInterval(()=>{ timerSeconds++; }, 1000);
+        } else {
+          clearInterval(timerInterval);
+        }
+      }
+      if(id === 'theme'){
+        document.body.style.filter = onState.theme ? 'invert(1) hue-rotate(180deg)' : 'none';
+      }
+      render();
+      return;
+    }
+    // palette type: FLIP expand from the chip's rect
+    const rect = chipEl.getBoundingClientRect();
+    const card = document.createElement('div');
+    card.className = 'overlay-card';
+    card.style.left = rect.left+'px';
+    card.style.top = rect.top+'px';
+    card.style.width = rect.width+'px';
+    card.style.height = rect.height+'px';
+    card.style.opacity = '0';
+    card.innerHTML = `<div class="oc-head"><span>${cmd.icon} ${cmd.label}</span><button id="ocClose">✕</button></div><div class="oc-body">${cmd.items.map(i=>`<div class="oc-item">${i}</div>`).join('')}</div>`;
+    document.body.appendChild(card);
+    backdrop.classList.add('show');
+    requestAnimationFrame(()=>{
+      card.style.opacity = '1';
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const w = Math.min(360, vw*0.86), h = Math.min(420, vh*0.7);
+      card.style.left = ((vw-w)/2)+'px';
+      card.style.top = ((vh-h)/2)+'px';
+      card.style.width = w+'px';
+      card.style.height = h+'px';
+    });
+    function close(){
+      card.style.left = rect.left+'px';
+      card.style.top = rect.top+'px';
+      card.style.width = rect.width+'px';
+      card.style.height = rect.height+'px';
+      card.style.opacity = '0';
+      backdrop.classList.remove('show');
+      setTimeout(()=>card.remove(), 380);
+      backdrop.removeEventListener('click', close);
+    }
+    card.querySelector('#ocClose').addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+  }
+
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    layout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+    saveLayout();
+    render();
+  });
+
+  render();
+  window._commandDockDebug = { layout, onState, runCommand };
+})();
+</script>
+</body>
+</html>
