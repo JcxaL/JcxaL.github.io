@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Window Engine — UI Spotlight</title>
+<style>
+  :root{ --bg:#0a0e18; --panel:#121826ee; --border:#ffffff1e; --text:#eef2f8; --dim:#93a1b8; --accent:#a78bfa; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);
+    background:radial-gradient(120% 70% at 50% -10%,#1a1430 0%, var(--bg) 55%); overflow:hidden;
+    transition:background 1.2s ease;
+  }
+  body.dark-wall{ background:radial-gradient(120% 70% at 50% -10%,#050508 0%, #000103 55%); }
+  a{color:inherit;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:200; background:#0e1420cc; border:1px solid var(--border);
+    color:var(--text); text-decoration:none; font-size:12.5px; padding:8px 13px; border-radius:20px;
+    backdrop-filter:blur(8px); font-weight:600;
+  }
+  header.hero{
+    position:absolute; top:70px; left:0; right:0; text-align:center; max-width:520px; margin:0 auto; padding:0 20px;
+    color:var(--dim); font-size:13px; line-height:1.6; pointer-events:none;
+  }
+
+  .window{
+    position:fixed; min-width:260px; min-height:170px; border-radius:14px; overflow:hidden;
+    background:linear-gradient(165deg,#171b28,#0d1119); border:1px solid var(--border); box-shadow:0 24px 60px #000a;
+  }
+  .window.opening{ animation:winOpen .22s cubic-bezier(.2,.9,.3,1.2); }
+  body.reduce-motion .window.opening{ animation:none; }
+  @keyframes winOpen{ from{ opacity:0; transform:scale(.92); } to{ opacity:1; transform:scale(1); } }
+  .win-head{
+    display:flex; align-items:center; justify-content:space-between; padding:9px 11px; cursor:grab;
+    font-size:12.5px; font-weight:700; color:#0b0d14;
+  }
+  .win-head:active{ cursor:grabbing; }
+  .win-head .btns{ display:flex; gap:6px; }
+  .win-head button{
+    width:18px; height:18px; border-radius:50%; border:none; background:#0b0d1433; color:#0b0d14; font-size:10px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;
+  }
+  .win-body{ padding:12px; height:calc(100% - 40px); overflow:auto; font-size:13px; color:#d6dfee; }
+
+  .app-textarea{ width:100%; height:100%; resize:none; background:#0b0f18; border:1px solid var(--border); border-radius:8px; color:var(--text); padding:9px; font:inherit; }
+  .app-terminal{ display:flex; flex-direction:column; height:100%; }
+  .app-terminal .log{ flex:1; overflow-y:auto; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; color:#7ef7a0; white-space:pre-wrap; }
+  .app-terminal input{
+    margin-top:7px; background:#0b0f18; border:1px solid var(--border); border-radius:6px; color:#7ef7a0;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; padding:6px 8px;
+  }
+  .app-gallery{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .app-gallery .sw{ height:46px; border-radius:8px; cursor:pointer; border:2px solid transparent; }
+  .app-gallery .sw.selected{ border-color:#fff; }
+  .app-settings .toggle-row{ display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); font-size:12.5px; }
+  .app-settings .toggle-row:last-child{ border-bottom:none; }
+  .switch{ width:38px; height:22px; border-radius:14px; background:#232a3c; position:relative; cursor:pointer; flex:0 0 auto; }
+  .switch i{ position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .18s; }
+  .switch.on{ background:var(--accent); }
+  .switch.on i{ left:18px; }
+
+  .dock-bar{
+    position:fixed; left:0; right:0; bottom:14px; z-index:100; display:flex; justify-content:center; pointer-events:none;
+  }
+  .taskbar{
+    display:flex; gap:10px; background:var(--panel); border:1px solid var(--border); border-radius:20px;
+    padding:9px 12px; backdrop-filter:blur(12px); pointer-events:auto; box-shadow:0 18px 44px #0008;
+  }
+  .app-icon{
+    width:46px; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center; font-size:20px;
+    cursor:pointer; position:relative; transition:transform .12s;
+  }
+  .app-icon:active{ transform:scale(.9); }
+  .app-icon .indicator{ position:absolute; bottom:-6px; width:4px; height:4px; border-radius:50%; background:var(--accent); opacity:0; }
+  .app-icon.running .indicator{ opacity:1; }
+
+  .minimized-row{
+    position:fixed; bottom:76px; left:0; right:0; display:flex; justify-content:center; gap:8px; z-index:99; pointer-events:none;
+  }
+  .min-pill{
+    pointer-events:auto; background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:6px 12px;
+    font-size:11.5px; cursor:pointer; backdrop-filter:blur(8px);
+  }
+
+  footer.credit{
+    position:fixed; bottom:0; left:0; right:0; text-align:center; padding:2px 20px 0; color:#5c6883; font-size:10.5px; z-index:5;
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<header class="hero">A tiny desktop, not another modal. Open a few apps from the dock, drag them by the title bar, stack focus by clicking, minimize or close — a real window manager, reimplemented in the browser.</header>
+
+<div id="windowLayer"></div>
+<div class="minimized-row" id="minRow"></div>
+
+<div class="dock-bar">
+  <div class="taskbar" id="taskbar"></div>
+</div>
+<footer class="credit">Inspired by GStaehler/Window-Engine · UI Spotlight Day 90 · Drop #5 · Bucket: component</footer>
+
+<script>
+(function(){
+  "use strict";
+  const APPS = {
+    notes:    { icon:'📝', title:'Notes',    color:'#f0abfc' },
+    terminal: { icon:'💻', title:'Terminal', color:'#7ef7a0' },
+    gallery:  { icon:'🎨', title:'Gallery',  color:'#38bdf8' },
+    settings: { icon:'⚙️', title:'Settings', color:'#fbbf24' }
+  };
+  const SWATCHES = ['#f87171','#fb923c','#fbbf24','#4ade80','#38bdf8','#818cf8','#c084fc','#f472b6','#a3a3a3'];
+
+  let windows = [];
+  let zTop = 10;
+  let counter = 0;
+  let cascade = 0;
+  let selectedSwatch = null;
+  const prefs = { snap:false, darkWall:false, reduceMotion:false };
+
+  const windowLayer = document.getElementById('windowLayer');
+  const minRow = document.getElementById('minRow');
+  const taskbar = document.getElementById('taskbar');
+
+  function buildTaskbar(){
+    taskbar.innerHTML = '';
+    Object.keys(APPS).forEach(appType=>{
+      const app = APPS[appType];
+      const btn = document.createElement('div');
+      btn.className = 'app-icon';
+      btn.style.background = app.color + '22';
+      btn.innerHTML = `${app.icon}<span class="indicator"></span>`;
+      btn.addEventListener('click', ()=>spawnOrFocus(appType));
+      btn.dataset.app = appType;
+      taskbar.appendChild(btn);
+    });
+  }
+  buildTaskbar();
+
+  function syncTaskbarIndicators(){
+    taskbar.querySelectorAll('.app-icon').forEach(icon=>{
+      const has = windows.some(w=>w.appType===icon.dataset.app);
+      icon.classList.toggle('running', has);
+    });
+  }
+
+  function spawnOrFocus(appType){
+    let w = windows.find(x=>x.appType===appType);
+    if(w){
+      if(w.minimized) w.minimized = false;
+      focusWindow(w);
+      renderAll();
+      return;
+    }
+    w = {
+      id: 'w'+(counter++), appType,
+      x: 40 + (cascade%6)*30, y: 60 + (cascade%6)*26,
+      width: 320, height: 240, z: ++zTop, minimized:false, opening:true
+    };
+    cascade++;
+    windows.push(w);
+    renderAll();
+    setTimeout(()=>{ w.opening=false; }, 260);
+  }
+
+  function focusWindow(w){ w.z = ++zTop; }
+
+  function closeWindow(id){
+    windows = windows.filter(w=>w.id!==id);
+    renderAll();
+  }
+  function minimizeWindow(id){
+    const w = windows.find(x=>x.id===id);
+    if(w) w.minimized = true;
+    renderAll();
+  }
+
+  function appBody(w){
+    const app = APPS[w.appType];
+    if(w.appType === 'notes'){
+      const saved = localStorage.getItem('windowengine_notes') || '';
+      return `<div class="win-body"><textarea class="app-textarea" data-notes>${saved}</textarea></div>`;
+    }
+    if(w.appType === 'terminal'){
+      return `<div class="win-body"><div class="app-terminal"><div class="log" data-log>Window Engine terminal — type "help"\n</div><input data-cmd placeholder="type a command and press enter" /></div></div>`;
+    }
+    if(w.appType === 'gallery'){
+      return `<div class="win-body"><div class="app-gallery">${SWATCHES.map(c=>`<div class="sw" style="background:${c}" data-sw="${c}"></div>`).join('')}</div></div>`;
+    }
+    if(w.appType === 'settings'){
+      return `<div class="win-body"><div class="app-settings">
+        <div class="toggle-row"><span>Dark wallpaper</span><div class="switch ${prefs.darkWall?'on':''}" data-pref="darkWall"><i></i></div></div>
+        <div class="toggle-row"><span>Snap while dragging</span><div class="switch ${prefs.snap?'on':''}" data-pref="snap"><i></i></div></div>
+        <div class="toggle-row"><span>Reduce motion</span><div class="switch ${prefs.reduceMotion?'on':''}" data-pref="reduceMotion"><i></i></div></div>
+      </div></div>`;
+    }
+    return '';
+  }
+
+  function renderAll(){
+    document.body.classList.toggle('dark-wall', prefs.darkWall);
+    document.body.classList.toggle('reduce-motion', prefs.reduceMotion);
+
+    windowLayer.innerHTML = '';
+    windows.filter(w=>!w.minimized).sort((a,b)=>a.z-b.z).forEach(w=>{
+      const app = APPS[w.appType];
+      const el = document.createElement('div');
+      el.className = 'window' + (w.opening ? ' opening' : '');
+      el.style.left = w.x+'px'; el.style.top = w.y+'px';
+      el.style.width = w.width+'px'; el.style.height = w.height+'px';
+      el.style.zIndex = w.z;
+      el.innerHTML = `<div class="win-head" style="background:${app.color}">
+          <span>${app.icon} ${app.title}</span>
+          <span class="btns"><button data-min>—</button><button data-close>✕</button></span>
+        </div>${appBody(w)}`;
+      windowLayer.appendChild(el);
+      wireWindow(el, w);
+    });
+
+    minRow.innerHTML = '';
+    windows.filter(w=>w.minimized).forEach(w=>{
+      const app = APPS[w.appType];
+      const pill = document.createElement('div');
+      pill.className = 'min-pill';
+      pill.textContent = app.icon + ' ' + app.title;
+      pill.addEventListener('click', ()=>{ w.minimized=false; focusWindow(w); renderAll(); });
+      minRow.appendChild(pill);
+    });
+
+    syncTaskbarIndicators();
+  }
+
+  function wireWindow(el, w){
+    el.addEventListener('pointerdown', ()=>{ focusWindow(w); el.style.zIndex = w.z; });
+
+    const head = el.querySelector('.win-head');
+    head.addEventListener('pointerdown', (e)=>{
+      if(e.target.closest('button')) return;
+      head.setPointerCapture(e.pointerId);
+      const startX = e.clientX, startY = e.clientY, ox = w.x, oy = w.y;
+      const onMove = (ev)=>{
+        let nx = ox + (ev.clientX-startX);
+        let ny = oy + (ev.clientY-startY);
+        if(prefs.snap){ nx = Math.round(nx/20)*20; ny = Math.round(ny/20)*20; }
+        nx = Math.max(4, Math.min(window.innerWidth - w.width - 4, nx));
+        ny = Math.max(4, Math.min(window.innerHeight - w.height - 90, ny));
+        w.x = nx; w.y = ny;
+        el.style.left = nx+'px'; el.style.top = ny+'px';
+      };
+      const onUp = ()=>{
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+
+    el.querySelector('[data-min]').addEventListener('click', (e)=>{ e.stopPropagation(); minimizeWindow(w.id); });
+    el.querySelector('[data-close]').addEventListener('click', (e)=>{ e.stopPropagation(); closeWindow(w.id); });
+
+    const notesArea = el.querySelector('[data-notes]');
+    if(notesArea){
+      notesArea.addEventListener('input', ()=>{
+        try{ localStorage.setItem('windowengine_notes', notesArea.value); } catch(err){}
+      });
+    }
+    const cmdInput = el.querySelector('[data-cmd]');
+    if(cmdInput){
+      const log = el.querySelector('[data-log]');
+      cmdInput.addEventListener('keydown', (e)=>{
+        if(e.key !== 'Enter' || !cmdInput.value.trim()) return;
+        const cmd = cmdInput.value.trim();
+        let out = '';
+        if(cmd === 'help') out = 'commands: help, date, whoami, clear';
+        else if(cmd === 'date') out = new Date().toString();
+        else if(cmd === 'whoami') out = 'visitor@tideline-playground';
+        else if(cmd === 'clear'){ log.textContent=''; cmdInput.value=''; return; }
+        else out = cmd + ': command not found';
+        log.textContent += '$ ' + cmd + '\n' + out + '\n';
+        log.scrollTop = log.scrollHeight;
+        cmdInput.value = '';
+      });
+    }
+    el.querySelectorAll('[data-sw]').forEach(sw=>{
+      sw.addEventListener('click', ()=>{
+        selectedSwatch = sw.dataset.sw;
+        el.querySelectorAll('[data-sw]').forEach(s=>s.classList.toggle('selected', s===sw));
+      });
+    });
+    el.querySelectorAll('[data-pref]').forEach(sw=>{
+      sw.addEventListener('click', ()=>{
+        const key = sw.dataset.pref;
+        prefs[key] = !prefs[key];
+        renderAll();
+      });
+    });
+  }
+
+  // seed with two windows so the effect is felt immediately
+  spawnOrFocus('notes');
+  spawnOrFocus('gallery');
+
+  window._windowEngineDebug = { windows, prefs, spawnOrFocus };
+})();
+</script>
+</body>
+</html>
