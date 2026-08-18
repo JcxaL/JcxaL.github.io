@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RaceTrack — Bump Chart &amp; Ranking Race Studio</title>
+<style>
+  :root{
+    --bg:#070b12; --panel:#0d1420cc; --panel-solid:#0d1420; --line:#1c2534;
+    --text:#e7ecf5; --muted:#8a96ab; --accent:#5b8def;
+    --c1:#5b8def; --c2:#34d399; --c3:#f59e0b; --c4:#f472b6; --c5:#a78bfa;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(1200px 800px at 20% -10%, #101c30 0%, var(--bg) 55%);
+    color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; display:flex; flex-direction:column; height:100vh;
+  }
+  #toolbar{
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+    padding:10px 12px; background:var(--panel); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line); z-index:5; position:relative;
+  }
+  .brand{font-weight:700; font-size:15px; letter-spacing:.2px; margin-right:6px; white-space:nowrap;}
+  .brand span{color:var(--accent);}
+  select,button,input[type=text]{
+    font:inherit; font-size:13px; color:var(--text); background:#141d2c;
+    border:1px solid var(--line); border-radius:8px; padding:7px 10px; cursor:pointer;
+  }
+  select:hover,button:hover{border-color:#2c3a52;}
+  button:active{transform:translateY(1px);}
+  button.primary{background:linear-gradient(135deg,var(--accent),#3f6fd6); border:none; color:#fff; font-weight:600;}
+  button.icon{padding:7px 9px; line-height:0;}
+  .grow{flex:1 1 auto;}
+  .seg{display:flex; background:#141d2c; border:1px solid var(--line); border-radius:9px; padding:2px; gap:2px;}
+  .seg button{background:transparent; border:none; padding:6px 12px; border-radius:7px; color:var(--muted);}
+  .seg button.active{background:var(--accent); color:#fff;}
+  #playbar{display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line);}
+  #scrub{flex:1; accent-color:var(--accent);}
+  #timeLabel{font-variant-numeric:tabular-nums; font-size:12px; color:var(--muted); min-width:74px; text-align:right;}
+  main{flex:1; position:relative; overflow:hidden;}
+  #chart{display:block; width:100%; height:100%; touch-action:none;}
+  #tooltip{
+    position:absolute; pointer-events:none; background:#0f1826ee; border:1px solid var(--line);
+    border-radius:8px; padding:6px 9px; font-size:12px; color:var(--text); display:none; z-index:6;
+    box-shadow:0 8px 24px #0008;
+  }
+  .modal-backdrop{
+    position:fixed; inset:0; background:#00000099; display:none; align-items:center; justify-content:center;
+    z-index:20; padding:16px;
+  }
+  .modal-backdrop.open{display:flex;}
+  .modal{
+    background:var(--panel-solid); border:1px solid var(--line); border-radius:14px; padding:18px;
+    width:min(520px,94vw); max-height:86vh; overflow:auto; box-shadow:0 20px 60px #000a;
+  }
+  .modal h3{margin:0 0 10px; font-size:15px;}
+  .modal p.hint{color:var(--muted); font-size:12px; margin:4px 0 10px;}
+  .modal textarea{
+    width:100%; min-height:180px; background:#0a1119; color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:10px; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; resize:vertical;
+  }
+  .modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:12px;}
+  .gallery-list{display:flex; flex-direction:column; gap:6px; margin-top:8px; max-height:40vh; overflow:auto;}
+  .gallery-row{display:flex; align-items:center; gap:8px; background:#101827; border:1px solid var(--line); border-radius:8px; padding:7px 9px;}
+  .gallery-row .name{flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .gallery-row button{padding:5px 8px; font-size:12px;}
+  #toast{
+    position:fixed; left:50%; bottom:18px; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:#101827; border:1px solid var(--line); color:var(--text); padding:9px 16px; border-radius:20px;
+    font-size:13px; box-shadow:0 10px 30px #0009; transition:opacity .25s ease, transform .25s ease; z-index:30; pointer-events:none;
+    white-space:nowrap;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  .file-input{display:none;}
+  @media (max-width:720px){
+    .brand small{display:none;}
+    #toolbar{gap:6px; padding:8px;}
+    select,button{font-size:12px; padding:6px 8px;}
+    #playbar{padding:6px 10px;}
+  }
+  @media (max-width:520px){
+    .hide-narrow{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div class="brand">Race<span>Track</span></div>
+  <div class="seg" id="modeSeg" role="tablist" aria-label="Chart mode">
+    <button data-mode="bump" class="active">Bump Chart</button>
+    <button data-mode="race">Bar Race</button>
+  </div>
+  <select id="datasetSelect" title="Dataset"></select>
+  <select id="themeSelect" title="Palette">
+    <option value="aurora">Aurora</option>
+    <option value="sunset">Sunset</option>
+    <option value="mono">Mono Blue</option>
+    <option value="candy">Candy</option>
+  </select>
+  <div class="grow"></div>
+  <button id="btnEdit" class="hide-narrow">Edit Data</button>
+  <button id="btnImport">Import CSV</button>
+  <input type="file" id="fileInput" class="file-input" accept=".csv,text/csv">
+  <button id="btnGallery">Gallery</button>
+  <div class="seg">
+    <button id="btnExportMenu">Export ▾</button>
+  </div>
+  <button id="btnShare" class="icon" title="Copy share link">🔗</button>
+</div>
+
+<div id="playbar">
+  <button id="btnPlay" class="primary icon" title="Play / Pause">▶</button>
+  <input type="range" id="scrub" min="0" max="1000" value="0" step="1">
+  <span id="timeLabel">—</span>
+  <select id="speedSelect" title="Speed">
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1×</option>
+    <option value="2">2×</option>
+    <option value="4">4×</option>
+  </select>
+  <button id="btnRecord" class="icon" title="Record WebM of the race">⏺</button>
+</div>
+
+<main>
+  <canvas id="chart"></canvas>
+  <div id="tooltip"></div>
+</main>
+
+<div id="toast"></div>
+
+<!-- Export menu -->
+<div class="modal-backdrop" id="exportBackdrop">
+  <div class="modal">
+    <h3>Export</h3>
+    <p class="hint">Choose a format to download the current view.</p>
+    <div class="gallery-list">
+      <div class="gallery-row"><span class="name">PNG snapshot of the current frame</span><button id="expPng">PNG</button></div>
+      <div class="gallery-row"><span class="name">WebM video of the full bar race</span><button id="expWebm">WebM</button></div>
+      <div class="gallery-row"><span class="name">Raw dataset as CSV</span><button id="expCsv">CSV</button></div>
+      <div class="gallery-row"><span class="name">Raw dataset as JSON</span><button id="expJson">JSON</button></div>
+    </div>
+    <div class="modal-actions"><button id="closeExport">Close</button></div>
+  </div>
+</div>
+
+<!-- Data editor -->
+<div class="modal-backdrop" id="editBackdrop">
+  <div class="modal">
+    <h3>Edit Data</h3>
+    <p class="hint">Row 1: <code>Entity,label1,label2,…</code> — each following row: <code>name,val1,val2,…</code></p>
+    <textarea id="editArea" spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button id="cancelEdit">Cancel</button>
+      <button id="applyEdit" class="primary">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Gallery -->
+<div class="modal-backdrop" id="galleryBackdrop">
+  <div class="modal">
+    <h3>Saved Datasets</h3>
+    <p class="hint">Save the current dataset under a name, or load one you saved before.</p>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="saveName" placeholder="Name this dataset…" style="flex:1;">
+      <button id="btnSaveCurrent" class="primary">Save</button>
+    </div>
+    <div class="gallery-list" id="galleryList"></div>
+    <div class="modal-actions"><button id="closeGallery">Close</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Sample datasets (illustrative sample data, not real statistics) ----------
+  var SAMPLE_DATASETS = {
+    streaming: {
+      name: "Streaming Platforms — Sample Data",
+      timeLabels: ["2019","2020","2021","2022","2023","2024","2025","2026"],
+      series: [
+        { name: "Nimbus",  values: [12, 22, 34, 41, 47, 52, 55, 58] },
+        { name: "Solace",  values: [30, 33, 31, 29, 26, 24, 21, 19] },
+        { name: "Ember",   values: [8,  14, 20, 27, 33, 36, 40, 44] },
+        { name: "Quartz",  values: [40, 36, 32, 28, 24, 20, 17, 14] },
+        { name: "Drift",   values: [5,  9,  13, 18, 22, 25, 28, 31] }
+      ]
+    },
+    languages: {
+      name: "Language Mentions — Sample Data",
+      timeLabels: ["2016","2018","2020","2022","2024","2026"],
+      series: [
+        { name: "JavaScript", values: [90, 88, 84, 80, 76, 72] },
+        { name: "Python",     values: [55, 66, 78, 88, 95, 99] },
+        { name: "Rust",       values: [5,  10, 20, 34, 48, 60] },
+        { name: "TypeScript", values: [15, 28, 42, 58, 70, 79] },
+        { name: "Go",         values: [22, 27, 33, 38, 41, 43] }
+      ]
+    },
+    cities: {
+      name: "City Population Index — Sample Data",
+      timeLabels: ["1980","1990","2000","2010","2020","2026"],
+      series: [
+        { name: "Rivenport", values: [40, 48, 58, 66, 71, 74] },
+        { name: "Alderwick", values: [62, 60, 55, 50, 46, 44] },
+        { name: "Solmere",   values: [18, 26, 37, 49, 60, 68] },
+        { name: "Cragmoor",  values: [50, 52, 51, 53, 55, 57] },
+        { name: "Fennhollow",values: [10, 16, 25, 36, 50, 63] }
+      ]
+    }
+  };
+
+  var THEMES = {
+    aurora: ["#5b8def","#34d399","#f59e0b","#f472b6","#a78bfa","#22d3ee","#facc15","#fb7185"],
+    sunset: ["#f97316","#f43f5e","#fbbf24","#a855f7","#ef4444","#f472b6","#fb923c","#eab308"],
+    mono:   ["#5b8def","#60a5fa","#93c5fd","#38bdf8","#818cf8","#3b82f6","#0ea5e9","#6366f1"],
+    candy:  ["#ff6ec7","#7dd3fc","#a3e635","#fde047","#fb7185","#c084fc","#5eead4","#f472b6"]
+  };
+
+  var LS_GALLERY = "racetrack_gallery_v1";
+  var LS_STATE = "racetrack_state_v1";
+
+  // ---------- State ----------
+  var state = {
+    dataset: cloneDataset(SAMPLE_DATASETS.streaming),
+    datasetKey: "streaming",
+    mode: "bump",
+    theme: "aurora",
+    t: 0,           // continuous time in dataset index units
+    playing: false,
+    speed: 1,
+    raceY: [],      // eased vertical slots for race mode
+    highlight: -1,
+    recording: false
+  };
+
+  function cloneDataset(d){
+    return {
+      name: d.name,
+      timeLabels: d.timeLabels.slice(),
+      series: d.series.map(function(s){ return { name: s.name, values: s.values.slice() }; })
+    };
+  }
+
+  // ---------- DOM refs ----------
+  var canvas = document.getElementById("chart");
+  var ctx = canvas.getContext("2d");
+  var tooltip = document.getElementById("tooltip");
+  var scrub = document.getElementById("scrub");
+  var timeLabelEl = document.getElementById("timeLabel");
+  var btnPlay = document.getElementById("btnPlay");
+  var speedSelect = document.getElementById("speedSelect");
+  var datasetSelect = document.getElementById("datasetSelect");
+  var themeSelect = document.getElementById("themeSelect");
+  var modeSeg = document.getElementById("modeSeg");
+  var toastEl = document.getElementById("toast");
+  var btnRecord = document.getElementById("btnRecord");
+
+  // ---------- Populate dataset select ----------
+  Object.keys(SAMPLE_DATASETS).forEach(function(key){
+    var opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = SAMPLE_DATASETS[key].name;
+    datasetSelect.appendChild(opt);
+  });
+  var customOpt = document.createElement("option");
+  customOpt.value = "custom";
+  customOpt.textContent = "Custom / Imported";
+  customOpt.disabled = true;
+  customOpt.id = "customOptEl";
+  datasetSelect.appendChild(customOpt);
+
+  // ---------- Canvas sizing ----------
+  var DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  function resizeCanvas(){
+    var rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * DPR);
+    canvas.height = Math.round(rect.height * DPR);
+    canvas.style.width = rect.width + "px";
+    canvas.style.height = rect.height + "px";
+    render();
+  }
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("orientationchange", resizeCanvas);
+
+  // ---------- Toast ----------
+  var toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 2200);
+  }
+
+  // ---------- Data helpers ----------
+  function maxTime(){ return state.dataset.timeLabels.length - 1; }
+
+  function valueAt(seriesIdx, t){
+    var vals = state.dataset.series[seriesIdx].values;
+    var lo = Math.floor(t), hi = Math.min(vals.length - 1, lo + 1);
+    var frac = t - lo;
+    var a = vals[lo] != null ? vals[lo] : 0;
+    var b = vals[hi] != null ? vals[hi] : a;
+    return a + (b - a) * frac;
+  }
+
+  function ranksAtIndex(idx){
+    var arr = state.dataset.series.map(function(s, i){ return { i: i, v: s.values[idx] || 0 }; });
+    arr.sort(function(a,b){ return b.v - a.v || a.i - b.i; });
+    var ranks = new Array(state.dataset.series.length);
+    arr.forEach(function(entry, rank){ ranks[entry.i] = rank; });
+    return ranks;
+  }
+
+  function paletteColors(){
+    var pal = THEMES[state.theme];
+    return state.dataset.series.map(function(s, i){ return pal[i % pal.length]; });
+  }
+
+  // ---------- Rendering ----------
+  function render(){
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.save();
+    ctx.scale(DPR, DPR);
+    var cw = w / DPR, ch = h / DPR;
+
+    if (state.mode === "bump") drawBump(cw, ch);
+    else drawRace(cw, ch);
+
+    ctx.restore();
+    updateTimeLabel();
+  }
+
+  function updateTimeLabel(){
+    var labels = state.dataset.timeLabels;
+    var lo = Math.max(0, Math.min(labels.length - 1, Math.floor(state.t)));
+    timeLabelEl.textContent = labels[lo];
+  }
+
+  function drawBump(cw, ch){
+    var pad = { l: 108, r: 108, t: 26, b: 40 };
+    var innerW = cw - pad.l - pad.r, innerH = ch - pad.t - pad.b;
+    var labels = state.dataset.timeLabels;
+    var n = labels.length;
+    var seriesN = state.dataset.series.length;
+    var colors = paletteColors();
+
+    // grid + x labels
+    ctx.strokeStyle = "#1c2534"; ctx.lineWidth = 1;
+    ctx.fillStyle = "#8a96ab"; ctx.font = "11px system-ui,sans-serif"; ctx.textAlign = "center";
+    for (var i = 0; i < n; i++){
+      var x = pad.l + (n === 1 ? innerW/2 : innerW * i/(n-1));
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+innerH); ctx.stroke();
+      ctx.fillText(labels[i], x, ch - 14);
+    }
+
+    var slot = seriesN > 1 ? innerH / (seriesN - 1) : innerH/2;
+
+    // lines
+    for (var s = 0; s < seriesN; s++){
+      ctx.beginPath();
+      for (var ti = 0; ti < n; ti++){
+        var ranks = ranksAtIndex(ti);
+        var x2 = pad.l + (n===1?innerW/2:innerW*ti/(n-1));
+        var y2 = pad.t + (seriesN>1 ? ranks[s]*slot : innerH/2);
+        if (ti===0) ctx.moveTo(x2,y2); else ctx.lineTo(x2,y2);
+      }
+      var dim = state.highlight >= 0 && state.highlight !== s;
+      ctx.strokeStyle = colors[s];
+      ctx.globalAlpha = dim ? 0.18 : 0.92;
+      ctx.lineWidth = state.highlight === s ? 4 : 2.5;
+      ctx.lineJoin = "round";
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // nodes + end labels
+    ctx.font = "12px system-ui,sans-serif";
+    for (var s2 = 0; s2 < seriesN; s2++){
+      var dim2 = state.highlight >= 0 && state.highlight !== s2;
+      for (var ti2 = 0; ti2 < n; ti2++){
+        var ranks2 = ranksAtIndex(ti2);
+        var x3 = pad.l + (n===1?innerW/2:innerW*ti2/(n-1));
+        var y3 = pad.t + (seriesN>1 ? ranks2[s2]*slot : innerH/2);
+        ctx.beginPath(); ctx.arc(x3,y3, state.highlight===s2?5.5:3.5, 0, Math.PI*2);
+        ctx.fillStyle = colors[s2];
+        ctx.globalAlpha = dim2 ? 0.25 : 1;
+        ctx.fill();
+      }
+      ctx.globalAlpha = dim2 ? 0.3 : 1;
+      var ranksLast = ranksAtIndex(n-1);
+      var ranksFirst = ranksAtIndex(0);
+      var xEnd = pad.l + innerW;
+      var yEnd = pad.t + (seriesN>1 ? ranksLast[s2]*slot : innerH/2);
+      var xStart = pad.l;
+      var yStart = pad.t + (seriesN>1 ? ranksFirst[s2]*slot : innerH/2);
+      ctx.fillStyle = colors[s2];
+      ctx.textAlign = "left";
+      ctx.fillText(state.dataset.series[s2].name, xEnd + 10, yEnd + 4);
+      ctx.textAlign = "right";
+      ctx.fillText(state.dataset.series[s2].name, xStart - 10, yStart + 4);
+      ctx.globalAlpha = 1;
+    }
+
+    // playhead
+    var pt = Math.max(0, Math.min(n-1, state.t));
+    var px = pad.l + (n===1?innerW/2:innerW*pt/(n-1));
+    ctx.strokeStyle = "#e7ecf566"; ctx.setLineDash([4,4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t+innerH); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // cache node positions for hit-testing
+    lastBumpNodes = [];
+    for (var s3=0; s3<seriesN; s3++){
+      for (var ti3=0; ti3<n; ti3++){
+        var ranks3 = ranksAtIndex(ti3);
+        var xN = pad.l + (n===1?innerW/2:innerW*ti3/(n-1));
+        var yN = pad.t + (seriesN>1 ? ranks3[s3]*slot : innerH/2);
+        lastBumpNodes.push({ x:xN, y:yN, s:s3, ti:ti3 });
+      }
+    }
+  }
+
+  var lastBumpNodes = [];
+
+  function drawRace(cw, ch){
+    var pad = { l: 16, r: 90, t: 18, b: 18 };
+    var innerW = cw - pad.l - pad.r, innerH = ch - pad.t - pad.b;
+    var seriesN = state.dataset.series.length;
+    var colors = paletteColors();
+    var t = Math.max(0, Math.min(maxTime(), state.t));
+
+    var vals = state.dataset.series.map(function(s,i){ return { i:i, v: valueAt(i, t) }; });
+    var maxV = Math.max.apply(null, vals.map(function(v){return v.v;}).concat([1]));
+    var order = vals.slice().sort(function(a,b){ return b.v - a.v || a.i - b.i; });
+    var targetSlot = new Array(seriesN);
+    order.forEach(function(o, rank){ targetSlot[o.i] = rank; });
+
+    if (state.raceY.length !== seriesN){
+      state.raceY = targetSlot.slice();
+    } else {
+      var ease = Math.min(1, (state._dt || 0.016) * 8);
+      for (var k=0;k<seriesN;k++){
+        state.raceY[k] += (targetSlot[k] - state.raceY[k]) * ease;
+      }
+    }
+
+    var rowH = innerH / seriesN;
+    var barH = Math.max(10, rowH * 0.6);
+
+    ctx.font = "13px system-ui,sans-serif";
+    for (var i2=0;i2<seriesN;i2++){
+      var y = pad.t + state.raceY[i2]*rowH + rowH/2;
+      var bw = Math.max(2, innerW * (vals[i2].v / maxV));
+      var dim3 = state.highlight >= 0 && state.highlight !== i2;
+
+      ctx.globalAlpha = dim3 ? 0.3 : 1;
+      var grad = ctx.createLinearGradient(pad.l, 0, pad.l+bw, 0);
+      grad.addColorStop(0, colors[i2] + "cc");
+      grad.addColorStop(1, colors[i2]);
+      ctx.fillStyle = grad;
+      roundRect(ctx, pad.l, y - barH/2, bw, barH, 6);
+      ctx.fill();
+
+      ctx.fillStyle = "#0b1018";
+      ctx.textAlign = "left";
+      ctx.font = "12px system-ui,sans-serif";
+      var nameX = pad.l + 8;
+      if (bw > 60) ctx.fillText(state.dataset.series[i2].name, nameX, y+4);
+      else { ctx.fillStyle = colors[i2]; ctx.fillText(state.dataset.series[i2].name, pad.l+bw+6, y+4); }
+
+      ctx.fillStyle = colors[i2];
+      ctx.textAlign = "left";
+      ctx.font = "11px ui-monospace,monospace";
+      ctx.fillText(vals[i2].v.toFixed(1), pad.l+bw+6, y+4 + (bw>60?0:14));
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.fillStyle = "#e7ecf5";
+    ctx.font = "700 34px system-ui,sans-serif";
+    ctx.textAlign = "right";
+    ctx.globalAlpha = 0.15;
+    ctx.fillText(state.dataset.timeLabels[Math.round(t)] || "", cw - 14, ch - 16);
+    ctx.globalAlpha = 1;
+  }
+
+  function roundRect(c,x,y,w,h,r){
+    r = Math.min(r, h/2, Math.max(0,w));
+    c.beginPath();
+    c.moveTo(x+r,y);
+    c.arcTo(x+w,y,x+w,y+h,r);
+    c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r);
+    c.arcTo(x,y,x+w,y,r);
+    c.closePath();
+  }
+
+  // ---------- Playback loop ----------
+  var rafId = null, lastFrameTime = null;
+  function loop(now){
+    if (!lastFrameTime) lastFrameTime = now;
+    var dt = (now - lastFrameTime) / 1000;
+    lastFrameTime = now;
+    state._dt = dt;
+
+    if (state.playing){
+      state.t += dt * state.speed;
+      if (state.t >= maxTime()){
+        state.t = maxTime();
+        stopPlayback(true);
+      }
+    }
+    render();
+    syncScrub();
+    if (state.playing || needsEase()) {
+      rafId = requestAnimationFrame(loop);
+    } else {
+      rafId = null; lastFrameTime = null;
+    }
+  }
+
+  function needsEase(){
+    if (state.mode !== "race" || state.raceY.length === 0) return false;
+    var t = Math.max(0, Math.min(maxTime(), state.t));
+    var vals = state.dataset.series.map(function(s,i){ return { i:i, v: valueAt(i,t) }; });
+    var order = vals.slice().sort(function(a,b){ return b.v-a.v || a.i-b.i; });
+    var target = new Array(vals.length);
+    order.forEach(function(o,rank){ target[o.i]=rank; });
+    for (var i=0;i<target.length;i++){
+      if (Math.abs(target[i] - state.raceY[i]) > 0.01) return true;
+    }
+    return false;
+  }
+
+  function ensureLoop(){
+    if (rafId == null){ lastFrameTime = null; rafId = requestAnimationFrame(loop); }
+  }
+
+  function startPlayback(){
+    if (state.t >= maxTime() - 0.001) state.t = 0;
+    state.playing = true;
+    btnPlay.textContent = "⏸";
+    ensureLoop();
+  }
+  function stopPlayback(reachedEnd){
+    state.playing = false;
+    btnPlay.textContent = "▶";
+    if (reachedEnd) toast("Race finished");
+  }
+
+  function syncScrub(){
+    var maxT = maxTime() || 1;
+    scrub.value = Math.round((state.t / maxT) * 1000);
+    updateTimeLabel();
+  }
+
+  // ---------- Events ----------
+  document.getElementById("btnPlay").addEventListener("click", function(){
+    if (state.playing) stopPlayback(false); else startPlayback();
+  });
+
+  scrub.addEventListener("input", function(){
+    stopPlayback(false);
+    var maxT = maxTime() || 1;
+    state.t = (parseInt(scrub.value,10) / 1000) * maxT;
+    render();
+    ensureLoop();
+  });
+
+  speedSelect.addEventListener("change", function(){
+    state.speed = parseFloat(speedSelect.value);
+    persistState();
+  });
+
+  modeSeg.addEventListener("click", function(e){
+    var btn = e.target.closest("button[data-mode]");
+    if (!btn) return;
+    Array.prototype.forEach.call(modeSeg.querySelectorAll("button"), function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    state.mode = btn.dataset.mode;
+    state.raceY = [];
+    render();
+    ensureLoop();
+    persistState();
+  });
+
+  datasetSelect.addEventListener("change", function(){
+    var key = datasetSelect.value;
+    if (key === "custom") return;
+    loadSample(key);
+  });
+
+  themeSelect.addEventListener("change", function(){
+    state.theme = themeSelect.value;
+    render();
+    persistState();
+  });
+
+  function loadSample(key){
+    state.dataset = cloneDataset(SAMPLE_DATASETS[key]);
+    state.datasetKey = key;
+    state.t = 0; state.highlight = -1; state.raceY = [];
+    stopPlayback(false);
+    document.getElementById("customOptEl").disabled = true;
+    render(); syncScrub();
+    persistState();
+  }
+
+  function loadCustom(dataset, label){
+    state.dataset = dataset;
+    state.datasetKey = "custom";
+    state.t = 0; state.highlight = -1; state.raceY = [];
+    stopPlayback(false);
+    var opt = document.getElementById("customOptEl");
+    opt.disabled = false;
+    opt.textContent = label || "Custom / Imported";
+    datasetSelect.value = "custom";
+    render(); syncScrub();
+    persistState();
+  }
+
+  // ---------- Hover / tap tooltip (bump mode) ----------
+  function pointerPos(e){
+    var rect = canvas.getBoundingClientRect();
+    var pt = e.touches ? e.touches[0] : e;
+    return { x: pt.clientX - rect.left, y: pt.clientY - rect.top };
+  }
+  function handleHover(e){
+    if (state.mode !== "bump" || !lastBumpNodes.length) { tooltip.style.display="none"; return; }
+    var p = pointerPos(e);
+    var best = null, bestD = 18*18;
+    for (var i=0;i<lastBumpNodes.length;i++){
+      var n = lastBumpNodes[i];
+      var d = (n.x-p.x)*(n.x-p.x) + (n.y-p.y)*(n.y-p.y);
+      if (d < bestD){ bestD = d; best = n; }
+    }
+    if (best){
+      state.highlight = best.s;
+      var s = state.dataset.series[best.s];
+      tooltip.style.display = "block";
+      tooltip.style.left = (p.x+14)+"px";
+      tooltip.style.top = (p.y+10)+"px";
+      tooltip.innerHTML = "<strong>"+s.name+"</strong><br>"+state.dataset.timeLabels[best.ti]+": "+ (s.values[best.ti]!=null? s.values[best.ti] : "—");
+      render();
+    } else {
+      if (state.highlight !== -1){ state.highlight = -1; render(); }
+      tooltip.style.display = "none";
+    }
+  }
+  canvas.addEventListener("mousemove", handleHover);
+  canvas.addEventListener("mouseleave", function(){ state.highlight=-1; tooltip.style.display="none"; render(); });
+  canvas.addEventListener("touchstart", function(e){ handleHover(e); }, {passive:true});
+  canvas.addEventListener("touchmove", function(e){ handleHover(e); }, {passive:true});
+  canvas.addEventListener("touchend", function(){ setTimeout(function(){ state.highlight=-1; tooltip.style.display="none"; render(); }, 900); });
+
+  // ---------- Keyboard scrub ----------
+  window.addEventListener("keydown", function(e){
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+    var maxT = maxTime();
+    if (e.key === "ArrowRight"){ stopPlayback(false); state.t = Math.min(maxT, state.t+0.25); render(); syncScrub(); }
+    else if (e.key === "ArrowLeft"){ stopPlayback(false); state.t = Math.max(0, state.t-0.25); render(); syncScrub(); }
+    else if (e.key === " "){ e.preventDefault(); if (state.playing) stopPlayback(false); else startPlayback(); }
+  });
+
+  // ---------- CSV parse / build ----------
+  function parseCSV(text){
+    var lines = text.split(/\r?\n/).map(function(l){return l.trim();}).filter(function(l){return l.length;});
+    if (lines.length < 2) throw new Error("Need a header row and at least one data row.");
+    var header = lines[0].split(",").map(function(s){return s.trim();});
+    var timeLabels = header.slice(1);
+    if (!timeLabels.length) throw new Error("Header row needs at least one time column.");
+    var series = lines.slice(1).map(function(line){
+      var cells = line.split(",").map(function(s){return s.trim();});
+      var name = cells[0] || "Untitled";
+      var values = timeLabels.map(function(_, idx){
+        var n = parseFloat(cells[idx+1]);
+        return isNaN(n) ? 0 : n;
+      });
+      return { name: name, values: values };
+    });
+    if (!series.length) throw new Error("No data rows found.");
+    return { name: "Custom Dataset", timeLabels: timeLabels, series: series };
+  }
+
+  function datasetToCSV(d){
+    var rows = ["Entity," + d.timeLabels.join(",")];
+    d.series.forEach(function(s){
+      rows.push(s.name + "," + s.values.join(","));
+    });
+    return rows.join("\n");
+  }
+
+  function downloadBlob(blob, filename){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  }
+
+  // ---------- Import ----------
+  document.getElementById("btnImport").addEventListener("click", function(){
+    document.getElementById("fileInput").click();
+  });
+  document.getElementById("fileInput").addEventListener("change", function(e){
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try {
+        var ds = parseCSV(String(reader.result));
+        loadCustom(ds, file.name.replace(/\.csv$/i,""));
+        toast("Imported " + file.name);
+      } catch(err){
+        toast("Import failed: " + err.message);
+      }
+      e.target.value = "";
+    };
+    reader.onerror = function(){ toast("Could not read file"); e.target.value=""; };
+    reader.readAsText(file);
+  });
+
+  // ---------- Data editor modal ----------
+  var editBackdrop = document.getElementById("editBackdrop");
+  var editArea = document.getElementById("editArea");
+  document.getElementById("btnEdit").addEventListener("click", function(){
+    editArea.value = datasetToCSV(state.dataset);
+    editBackdrop.classList.add("open");
+  });
+  document.getElementById("cancelEdit").addEventListener("click", function(){ editBackdrop.classList.remove("open"); });
+  document.getElementById("applyEdit").addEventListener("click", function(){
+    try {
+      var ds = parseCSV(editArea.value);
+      loadCustom(ds, "Edited Dataset");
+      editBackdrop.classList.remove("open");
+      toast("Data updated");
+    } catch(err){
+      toast("Could not parse: " + err.message);
+    }
+  });
+  [editBackdrop].forEach(function(bd){
+    bd.addEventListener("click", function(e){ if (e.target === bd) bd.classList.remove("open"); });
+  });
+
+  // ---------- Export menu ----------
+  var exportBackdrop = document.getElementById("exportBackdrop");
+  document.getElementById("btnExportMenu").addEventListener("click", function(){ exportBackdrop.classList.add("open"); });
+  document.getElementById("closeExport").addEventListener("click", function(){ exportBackdrop.classList.remove("open"); });
+  exportBackdrop.addEventListener("click", function(e){ if (e.target === exportBackdrop) exportBackdrop.classList.remove("open"); });
+
+  document.getElementById("expPng").addEventListener("click", function(){
+    canvas.toBlob(function(blob){
+      if (!blob){ toast("PNG export failed"); return; }
+      downloadBlob(blob, "racetrack-" + Date.now() + ".png");
+      toast("PNG downloaded");
+    }, "image/png");
+  });
+  document.getElementById("expCsv").addEventListener("click", function(){
+    var blob = new Blob([datasetToCSV(state.dataset)], {type:"text/csv"});
+    downloadBlob(blob, "racetrack-data.csv");
+    toast("CSV downloaded");
+  });
+  document.getElementById("expJson").addEventListener("click", function(){
+    var blob = new Blob([JSON.stringify(state.dataset, null, 2)], {type:"application/json"});
+    downloadBlob(blob, "racetrack-data.json");
+    toast("JSON downloaded");
+  });
+
+  // ---------- WebM recording ----------
+  var mediaRecorder = null, recordedChunks = [];
+  var canRecord = !!(window.MediaRecorder && canvas.captureStream);
+  if (!canRecord){
+    btnRecord.disabled = true;
+    btnRecord.title = "Video recording not supported in this browser";
+    btnRecord.style.opacity = 0.4;
+  }
+
+  function pickMime(){
+    var options = ["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
+    for (var i=0;i<options.length;i++){
+      if (MediaRecorder.isTypeSupported(options[i])) return options[i];
+    }
+    return "";
+  }
+
+  document.getElementById("expWebm").addEventListener("click", function(){
+    exportBackdrop.classList.remove("open");
+    startRecording();
+  });
+  btnRecord.addEventListener("click", startRecording);
+
+  function startRecording(){
+    if (!canRecord || state.recording) return;
+    if (state.mode !== "race"){
+      Array.prototype.forEach.call(modeSeg.querySelectorAll("button"), function(b){ b.classList.toggle("active", b.dataset.mode==="race"); });
+      state.mode = "race"; state.raceY = [];
+    }
+    state.t = 0; state.highlight = -1;
+    render();
+    try {
+      var stream = canvas.captureStream(30);
+      var mime = pickMime();
+      mediaRecorder = mime ? new MediaRecorder(stream, {mimeType:mime}) : new MediaRecorder(stream);
+      recordedChunks = [];
+      mediaRecorder.ondataavailable = function(e){ if (e.data && e.data.size) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = function(){
+        state.recording = false;
+        btnRecord.textContent = "⏺";
+        if (recordedChunks.length){
+          var blob = new Blob(recordedChunks, {type: mediaRecorder.mimeType || "video/webm"});
+          if (blob.size > 0){
+            downloadBlob(blob, "racetrack-race-" + Date.now() + ".webm");
+            toast("WebM downloaded");
+          } else {
+            toast("Recording produced no data — try again");
+          }
+        } else {
+          toast("Recording produced no data — try again");
+        }
+      };
+      mediaRecorder.start();
+      state.recording = true;
+      btnRecord.textContent = "◼";
+      toast("Recording race…");
+      startPlayback();
+      var checkEnd = setInterval(function(){
+        if (!state.playing){
+          clearInterval(checkEnd);
+          setTimeout(function(){
+            if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+          }, 250);
+        }
+      }, 150);
+    } catch(err){
+      toast("Recording failed to start");
+      state.recording = false;
+    }
+  }
+
+  // ---------- Share via URL hash ----------
+  document.getElementById("btnShare").addEventListener("click", function(){
+    try {
+      var payload = { d: state.dataset, m: state.mode, th: state.theme };
+      var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      var url = location.origin + location.pathname + "#s=" + encoded;
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(function(){
+          toast("Share link copied to clipboard");
+        }).catch(function(){
+          location.hash = "s=" + encoded;
+          toast("Share link set in address bar");
+        });
+      } else {
+        location.hash = "s=" + encoded;
+        toast("Share link set in address bar");
+      }
+    } catch(err){
+      toast("Could not build share link");
+    }
+  });
+
+  function tryLoadFromHash(){
+    if (!location.hash || location.hash.indexOf("#s=") !== 0) return false;
+    try {
+      var encoded = location.hash.slice(3);
+      var payload = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+      if (!payload || !payload.d || !payload.d.series) return false;
+      loadCustom(payload.d, "Shared Dataset");
+      if (payload.m === "race" || payload.m === "bump"){
+        state.mode = payload.m;
+        Array.prototype.forEach.call(modeSeg.querySelectorAll("button"), function(b){ b.classList.toggle("active", b.dataset.mode===payload.m); });
+      }
+      if (payload.th && THEMES[payload.th]){ state.theme = payload.th; themeSelect.value = payload.th; }
+      return true;
+    } catch(err){
+      return false;
+    }
+  }
+
+  // ---------- Gallery (localStorage) ----------
+  var galleryBackdrop = document.getElementById("galleryBackdrop");
+  var galleryList = document.getElementById("galleryList");
+  document.getElementById("btnGallery").addEventListener("click", function(){ renderGallery(); galleryBackdrop.classList.add("open"); });
+  document.getElementById("closeGallery").addEventListener("click", function(){ galleryBackdrop.classList.remove("open"); });
+  galleryBackdrop.addEventListener("click", function(e){ if (e.target === galleryBackdrop) galleryBackdrop.classList.remove("open"); });
+
+  function readGallery(){
+    try {
+      var raw = localStorage.getItem(LS_GALLERY);
+      return raw ? JSON.parse(raw) : [];
+    } catch(err){ return []; }
+  }
+  function writeGallery(list){
+    try { localStorage.setItem(LS_GALLERY, JSON.stringify(list)); } catch(err){ /* storage unavailable */ }
+  }
+  function renderGallery(){
+    var list = readGallery();
+    galleryList.innerHTML = "";
+    if (!list.length){
+      galleryList.innerHTML = '<p class="hint">No saved datasets yet.</p>';
+      return;
+    }
+    list.forEach(function(item, idx){
+      var row = document.createElement("div");
+      row.className = "gallery-row";
+      var name = document.createElement("span");
+      name.className = "name"; name.textContent = item.label;
+      var loadBtn = document.createElement("button");
+      loadBtn.textContent = "Load";
+      loadBtn.addEventListener("click", function(){
+        loadCustom(cloneDataset(item.dataset), item.label);
+        galleryBackdrop.classList.remove("open");
+        toast("Loaded \"" + item.label + "\"");
+      });
+      var delBtn = document.createElement("button");
+      delBtn.textContent = "Delete";
+      delBtn.addEventListener("click", function(){
+        var l = readGallery(); l.splice(idx,1); writeGallery(l); renderGallery();
+      });
+      row.appendChild(name); row.appendChild(loadBtn); row.appendChild(delBtn);
+      galleryList.appendChild(row);
+    });
+  }
+  document.getElementById("btnSaveCurrent").addEventListener("click", function(){
+    var nameInput = document.getElementById("saveName");
+    var label = (nameInput.value || "").trim() || (state.dataset.name + " " + new Date().toISOString().slice(0,10));
+    var list = readGallery();
+    list.unshift({ label: label, dataset: state.dataset, savedAt: Date.now() });
+    if (list.length > 20) list.length = 20;
+    writeGallery(list);
+    nameInput.value = "";
+    renderGallery();
+    toast("Saved \"" + label + "\"");
+  });
+
+  // ---------- Autosave / restore last state ----------
+  var persistTimer = null;
+  function persistState(){
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(function(){
+      try {
+        localStorage.setItem(LS_STATE, JSON.stringify({
+          datasetKey: state.datasetKey,
+          dataset: state.datasetKey === "custom" ? state.dataset : null,
+          mode: state.mode,
+          theme: state.theme,
+          speed: state.speed
+        }));
+      } catch(err){ /* storage unavailable */ }
+    }, 400);
+  }
+  function restoreState(){
+    try {
+      var raw = localStorage.getItem(LS_STATE);
+      if (!raw) return false;
+      var saved = JSON.parse(raw);
+      if (!saved) return false;
+      if (saved.datasetKey === "custom" && saved.dataset){
+        loadCustom(saved.dataset, "Restored Dataset");
+      } else if (saved.datasetKey && SAMPLE_DATASETS[saved.datasetKey]){
+        datasetSelect.value = saved.datasetKey;
+        loadSample(saved.datasetKey);
+      }
+      if (saved.mode === "race" || saved.mode === "bump"){
+        state.mode = saved.mode;
+        Array.prototype.forEach.call(modeSeg.querySelectorAll("button"), function(b){ b.classList.toggle("active", b.dataset.mode===saved.mode); });
+      }
+      if (saved.theme && THEMES[saved.theme]){ state.theme = saved.theme; themeSelect.value = saved.theme; }
+      if (saved.speed){ state.speed = saved.speed; speedSelect.value = String(saved.speed); }
+      return true;
+    } catch(err){ return false; }
+  }
+
+  // ---------- Init ----------
+  datasetSelect.value = "streaming";
+  themeSelect.value = state.theme;
+
+  var loadedFromHash = tryLoadFromHash();
+  if (!loadedFromHash) restoreState();
+
+  resizeCanvas();
+  render();
+  syncScrub();
+})();
+</script>
+</body>
+</html>

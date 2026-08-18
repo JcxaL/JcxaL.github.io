@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Right-Click — Anchor Context Menu</title>
+<style>
+  :root{ --bg:#08090f; --panel:#12131fcc; --line:#242639; --text:#e9ecf7; --muted:#8b91a8; --accent:#818cf8; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:30; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  header{ padding:90px 20px 26px; text-align:center; }
+  header h1{ font-size:clamp(24px,4.6vw,40px); margin:0 0 8px; }
+  header p{ color:var(--muted); max-width:520px; margin:0 auto; font-size:14px; }
+
+  #grid{
+    max-width:900px; margin:0 auto; padding:20px 24px 120px; display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px;
+  }
+  .tile{
+    aspect-ratio:1; border-radius:16px; border:1px solid var(--line); cursor:context-menu;
+    display:flex; align-items:flex-end; padding:10px; font-size:12px; color:#fff9;
+    user-select:none; -webkit-user-select:none; touch-action:pan-y;
+    background-size:cover; position:relative; overflow:hidden;
+  }
+  .tile::after{ content:""; position:absolute; inset:0; background:linear-gradient(transparent 55%, #000a); }
+  .tile span{ position:relative; z-index:1; }
+  .tile:nth-child(6n+1){ background:linear-gradient(150deg,#ff8a65,#c2185b); }
+  .tile:nth-child(6n+2){ background:linear-gradient(150deg,#4fc3f7,#1a237e); }
+  .tile:nth-child(6n+3){ background:linear-gradient(150deg,#81c784,#004d40); }
+  .tile:nth-child(6n+4){ background:linear-gradient(150deg,#ba68c8,#4a148c); }
+  .tile:nth-child(6n+5){ background:linear-gradient(150deg,#ffd54f,#e65100); }
+  .tile:nth-child(6n+6){ background:linear-gradient(150deg,#4dd0e1,#01579b); }
+  .tile.selected{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  #ctxAnchor{ position:fixed; width:1px; height:1px; anchor-name:--ctx; pointer-events:none; }
+  #ctxAnchor.show-dot{ background:var(--accent); border-radius:50%; width:6px; height:6px; margin:-3px 0 0 -3px; box-shadow:0 0 0 4px #818cf855; }
+
+  [popover]{
+    margin:0; padding:6px; border:1px solid var(--line); border-radius:12px; background:#171827; color:var(--text);
+    box-shadow:0 20px 50px #000a; min-width:190px;
+    position-anchor:--ctx;
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    inset:auto; top:anchor(--ctx bottom); left:anchor(--ctx left);
+    transition: opacity .14s ease, transform .14s cubic-bezier(.2,.8,.2,1), display .14s allow-discrete;
+    opacity:0; transform:scale(.92) translateY(-4px);
+  }
+  [popover]:popover-open{ opacity:1; transform:scale(1) translateY(0); }
+  @starting-style{ [popover]:popover-open{ opacity:0; transform:scale(.92) translateY(-4px); } }
+  #noAnchor [popover]{ position:fixed; }
+
+  .menu-item{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+    background:none; border:none; color:var(--text); font:inherit; font-size:13px; text-align:left;
+    padding:9px 10px; border-radius:8px; cursor:pointer;
+  }
+  .menu-item:hover, .menu-item:focus-visible{ background:#242640; }
+  .menu-item .k{ color:var(--muted); font-size:11px; }
+  .menu-sep{ height:1px; background:var(--line); margin:5px 4px; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:210px;
+  }
+  #panel h3{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);}
+  #panel h3:first-child{ margin-top:0; }
+  #panel label{ display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; }
+  #panel input[type=checkbox]{ accent-color:var(--accent); }
+  #toast{
+    position:fixed; left:50%; bottom:18px; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:#12131f; border:1px solid var(--line); color:var(--text); padding:9px 16px; border-radius:20px;
+    font-size:13px; transition:opacity .25s, transform .25s; z-index:40; pointer-events:none;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  footer{ text-align:center; color:#5a5f78; font-size:12px; padding:0 20px 30px; }
+  @media (max-width:640px){ #panel{ display:none; } }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div id="ctxAnchor"></div>
+
+<div id="panel">
+  <h3>Anchor positioning</h3>
+  <label><input type="checkbox" id="fallbackToggle" checked> Auto-flip near edges</label>
+  <label><input type="checkbox" id="dotToggle"> Show anchor point</label>
+</div>
+
+<header>
+  <h1>Right-Click</h1>
+  <p>Right-click (or long-press) any tile — the menu is a native <code>popover</code> tethered to the cursor with CSS anchor positioning, including a nested submenu and edge auto-flip. No menu-positioning JavaScript.</p>
+</header>
+
+<div id="grid">
+  <div class="tile" data-name="Aurora"><span>Aurora.jpg</span></div>
+  <div class="tile" data-name="Canyon"><span>Canyon.jpg</span></div>
+  <div class="tile" data-name="Reef"><span>Reef.jpg</span></div>
+  <div class="tile" data-name="Nebula"><span>Nebula.jpg</span></div>
+  <div class="tile" data-name="Dune"><span>Dune.jpg</span></div>
+  <div class="tile" data-name="Glacier"><span>Glacier.jpg</span></div>
+</div>
+
+<div id="menu" popover>
+  <button class="menu-item" data-action="open">Open <span class="k">↵</span></button>
+  <button class="menu-item" data-action="rename">Rename <span class="k">R</span></button>
+  <button class="menu-item" id="shareTrigger" popovertarget="submenu">Share to… <span class="k">▸</span></button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" data-action="delete">Delete <span class="k">⌫</span></button>
+</div>
+
+<div id="submenu" popover>
+  <button class="menu-item" data-action="share-link">Copy link</button>
+  <button class="menu-item" data-action="share-mail">Email</button>
+  <button class="menu-item" data-action="share-embed">Embed code</button>
+</div>
+
+<div id="toast"></div>
+
+<footer>Built from the Popover API + CSS Anchor Positioning · Inspired by "Popover Context Menus with Anchor Positioning" (master.dev) · UI Spotlight Day 93 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+  var menu = document.getElementById("menu");
+  var submenu = document.getElementById("submenu");
+  var shareTrigger = document.getElementById("shareTrigger");
+  var anchorDot = document.getElementById("ctxAnchor");
+  var toastEl = document.getElementById("toast");
+  var activeTile = null;
+  var anchorSupported = !!(window.CSS && CSS.supports && CSS.supports("anchor-name","--x"));
+
+  if (!anchorSupported) document.body.id = "noAnchor";
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    setTimeout(function(){ toastEl.classList.remove("show"); }, 1800);
+  }
+
+  function positionAt(x, y){
+    anchorDot.style.left = x + "px";
+    anchorDot.style.top = y + "px";
+    if (!anchorSupported){
+      // manual fallback: clamp menu inside viewport near the point
+      menu.style.left = Math.min(x, window.innerWidth - 210) + "px";
+      menu.style.top = Math.min(y, window.innerHeight - 200) + "px";
+    }
+  }
+
+  function openMenu(x, y, tile){
+    document.querySelectorAll(".tile.selected").forEach(function(t){ t.classList.remove("selected"); });
+    activeTile = tile;
+    if (tile) tile.classList.add("selected");
+    positionAt(x, y);
+    if (submenu.matches(":popover-open")) submenu.hidePopover();
+    if (menu.matches(":popover-open")) menu.hidePopover();
+    menu.showPopover();
+  }
+
+  document.querySelectorAll(".tile").forEach(function(tile){
+    tile.addEventListener("contextmenu", function(e){
+      e.preventDefault();
+      openMenu(e.clientX, e.clientY, tile);
+    });
+
+    // Touch long-press support
+    var pressTimer = null, moved = false, startX = 0, startY = 0;
+    tile.addEventListener("touchstart", function(e){
+      moved = false;
+      var t = e.touches[0]; startX = t.clientX; startY = t.clientY;
+      pressTimer = setTimeout(function(){
+        if (!moved) openMenu(startX, startY, tile);
+      }, 480);
+    }, {passive:true});
+    tile.addEventListener("touchmove", function(e){
+      var t = e.touches[0];
+      if (Math.abs(t.clientX-startX) > 10 || Math.abs(t.clientY-startY) > 10) moved = true;
+    }, {passive:true});
+    tile.addEventListener("touchend", function(){ if (pressTimer) clearTimeout(pressTimer); });
+  });
+
+  shareTrigger.addEventListener("click", function(){
+    // anchor the submenu to this menu item so it flies out beside it
+    shareTrigger.style.setProperty("anchor-name", "--subanchor");
+    submenu.style.setProperty("position-anchor", "--subanchor");
+    submenu.style.setProperty("position-area", "inline-end span-block-start");
+    if (!anchorSupported){
+      var r = shareTrigger.getBoundingClientRect();
+      submenu.style.left = Math.min(r.right + 4, window.innerWidth - 190) + "px";
+      submenu.style.top = r.top + "px";
+    }
+  });
+
+  menu.addEventListener("click", function(e){
+    var btn = e.target.closest(".menu-item[data-action]");
+    if (!btn) return;
+    var name = activeTile ? activeTile.dataset.name : "item";
+    var action = btn.dataset.action;
+    if (action === "delete" && activeTile) {
+      activeTile.style.opacity = "0.25";
+      activeTile.style.pointerEvents = "none";
+    }
+    toast(action.replace("-"," ") + ": " + name);
+    menu.hidePopover();
+  });
+
+  submenu.addEventListener("click", function(e){
+    var btn = e.target.closest(".menu-item[data-action]");
+    if (!btn) return;
+    var name = activeTile ? activeTile.dataset.name : "item";
+    toast(btn.dataset.action.replace("share-","") + " → " + name);
+    submenu.hidePopover();
+    menu.hidePopover();
+  });
+
+  document.getElementById("fallbackToggle").addEventListener("change", function(e){
+    menu.style.positionTryFallbacks = e.target.checked ? "flip-block, flip-inline, flip-block flip-inline" : "none";
+  });
+  document.getElementById("dotToggle").addEventListener("change", function(e){
+    anchorDot.classList.toggle("show-dot", e.target.checked);
+  });
+
+  if (!anchorSupported){
+    var note = document.createElement("div");
+    note.style.cssText = "position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#12131fcc;border:1px solid #242639;padding:8px 14px;border-radius:10px;font-size:12px;color:#8b91a8;z-index:20;";
+    note.textContent = "Your browser doesn't support CSS anchor positioning — using a manual JS fallback for placement.";
+    document.body.appendChild(note);
+  }
+})();
+</script>
+</body>
+</html>
