@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morphing Preview Card</title>
+<style>
+  :root{ --bg:#0a0812; --panel:#181228cc; --line:#2c2440; --text:#f0edfa; --muted:#a29bc0; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:radial-gradient(1100px 700px at 50% -10%, #1c1530 0%, var(--bg) 55%); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:30; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 30px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#a78bfa,#c4b5fd,#e9d5ff); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:600px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  .row{ max-width:760px; margin:20px auto 140px; padding:0 20px; display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+  .chip{
+    display:inline-flex; align-items:center; gap:8px; background:#171126; border:1px solid var(--line);
+    color:var(--text); padding:9px 16px 9px 9px; border-radius:999px; font-size:14px; font-weight:600;
+    text-decoration:none; cursor:pointer; touch-action:manipulation;
+  }
+  .chip:hover, .chip.lit{ border-color:#5b4a94; background:#1e1733; }
+  .chip .av{ width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
+
+  #card{
+    position:fixed; left:0; top:0; width:300px; height:150px; z-index:25;
+    background:#161028ee; border:1px solid #3a2f5c; border-radius:16px; backdrop-filter:blur(14px);
+    padding:16px; opacity:0; transform:scale(.94); pointer-events:none;
+    transition:left .28s cubic-bezier(.22,.9,.3,1), top .28s cubic-bezier(.22,.9,.3,1),
+               opacity .16s ease, transform .16s ease;
+    box-shadow:0 24px 50px -18px #000c;
+  }
+  #card.open{ opacity:1; transform:scale(1); pointer-events:auto; }
+  #card .content{ transition:opacity .12s ease; display:flex; gap:12px; height:100%; }
+  #card.morphing .content{ opacity:0; }
+  #card .av2{ width:44px; height:44px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:22px; flex:none; }
+  #card h3{ margin:0 0 4px; font-size:15px; }
+  #card .role{ font-size:11px; color:#c9befa; margin-bottom:8px; }
+  #card p{ margin:0; font-size:12.5px; color:var(--muted); line-height:1.5; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:30; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:200px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel .rowbtn{ display:flex; gap:6px; flex-wrap:wrap; }
+  #panel button{ flex:1; font:inherit; font-size:11px; background:#1b1530; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:6px 4px; cursor:pointer; }
+  #panel button.active{ background:var(--accent); color:#1b1030; border-color:var(--accent); font-weight:700; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5c5578; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Open delay <span class="val" id="odVal">400ms</span></h4>
+  <input id="odRange" type="range" min="0" max="1200" value="400" step="50">
+  <h4>Close delay <span class="val" id="cdVal">250ms</span></h4>
+  <input id="cdRange" type="range" min="0" max="800" value="250" step="50">
+  <h4>Side</h4>
+  <div class="rowbtn" id="sideRow">
+    <button data-side="auto" class="active">Auto</button>
+    <button data-side="bottom">Below</button>
+    <button data-side="top">Above</button>
+  </div>
+</div>
+
+<div class="hero">
+  <h1>Morphing Preview Card</h1>
+  <p>One shared floating card serves every trigger below. Hover one to open it after a short delay — then glide to a neighbor and the <em>same card</em> slides, resizes and cross-fades to the new content instead of closing and reopening.</p>
+</div>
+
+<div class="row" id="triggers"></div>
+
+<div id="card"><div class="content"></div></div>
+
+<footer>Inspired by Base UI's Preview Card component · UI Spotlight Day 94 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var people = [
+    { id:"aria",  emoji:"🎨", bg:"#a78bfa", name:"Aria Kade",   role:"Product Designer · Nord Labs", desc:"Building tactile, tangible interfaces — thinks every corner radius should feel intentional." },
+    { id:"finch", emoji:"🛰️", bg:"#38bdf8", name:"Finch Odera", role:"Infra Engineer · Orbital",     desc:"Keeps three data centers awake with sleep to spare. Writes runbooks people actually read." },
+    { id:"maren", emoji:"📚", bg:"#f472b6", name:"Maren Sol",   role:"Design Writer · Field Notes",  desc:"Chronicles UI trends before they have names. Halftone type was her idea, twice removed." },
+    { id:"kestrel", emoji:"🧭", bg:"#34d399", name:"Kestrel Vane", role:"Research Lead · Wayfind",  desc:"Runs usability sessions with a stopwatch and zero mercy. Loves a good drag handle." },
+    { id:"opal", emoji:"🔊", bg:"#fbbf24", name:"Opal Reyes",  role:"Audio Engineer · Loom",        desc:"Tunes UI sound design so buttons feel as good as they look. Allergic to silent clicks." },
+    { id:"birch", emoji:"🪵", bg:"#f87171", name:"Birch Novak", role:"Frontend · Timberline",        desc:"Ships one weird CSS trick a week. This preview card is basically a cry for help." }
+  ];
+
+  var row = document.getElementById("triggers");
+  people.forEach(function(p){
+    var chip = document.createElement("button");
+    chip.className = "chip"; chip.dataset.id = p.id; chip.type = "button";
+    chip.innerHTML = '<span class="av" style="background:' + p.bg + '33;color:' + p.bg + '">' + p.emoji + '</span>@' + p.id;
+    row.appendChild(chip);
+  });
+
+  var card = document.getElementById("card");
+  var content = card.querySelector(".content");
+  var chips = row.querySelectorAll(".chip");
+
+  var openDelay = 400, closeDelay = 250, sidePref = "auto";
+  var openTimer = null, closeTimer = null, currentId = null, isOpen = false;
+
+  function personById(id){ return people.filter(function(p){ return p.id === id; })[0]; }
+
+  function paint(p){
+    content.innerHTML =
+      '<div class="av2" style="background:' + p.bg + '33;color:' + p.bg + '">' + p.emoji + '</div>' +
+      '<div><h3>' + p.name + '</h3><div class="role">' + p.role + '</div><p>' + p.desc + '</p></div>';
+  }
+
+  function position(triggerEl){
+    var r = triggerEl.getBoundingClientRect();
+    var cw = 300, ch = 150, margin = 10;
+    var spaceBelow = window.innerHeight - r.bottom;
+    var side = sidePref === "auto" ? (spaceBelow > ch + margin + 12 ? "bottom" : "top") : sidePref;
+    var top = side === "bottom" ? r.bottom + margin : r.top - ch - margin;
+    top = Math.max(8, Math.min(window.innerHeight - ch - 8, top));
+    var left = r.left + r.width/2 - cw/2;
+    left = Math.max(8, Math.min(window.innerWidth - cw - 8, left));
+    card.style.left = left + "px";
+    card.style.top = top + "px";
+  }
+
+  function switchTo(triggerEl, immediate){
+    var id = triggerEl.dataset.id;
+    var p = personById(id);
+    if (currentId !== null && !immediate){
+      card.classList.add("morphing");
+      setTimeout(function(){
+        paint(p); position(triggerEl); card.classList.remove("morphing");
+      }, 90);
+    } else {
+      paint(p); position(triggerEl);
+    }
+    currentId = id;
+    chips.forEach(function(c){ c.classList.toggle("lit", c.dataset.id === id); });
+  }
+
+  function show(){ card.classList.add("open"); isOpen = true; }
+  function hide(){ card.classList.remove("open"); isOpen = false; currentId = null; chips.forEach(function(c){ c.classList.remove("lit"); }); }
+
+  function scheduleClose(){
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(hide, closeDelay);
+  }
+
+  chips.forEach(function(chip){
+    chip.addEventListener("pointerenter", function(e){
+      if (e.pointerType === "touch") return;
+      clearTimeout(closeTimer);
+      if (isOpen && currentId !== chip.dataset.id){
+        switchTo(chip, false);
+      } else if (!isOpen){
+        clearTimeout(openTimer);
+        openTimer = setTimeout(function(){ switchTo(chip, true); show(); }, openDelay);
+      }
+    });
+    chip.addEventListener("pointerleave", function(e){
+      if (e.pointerType === "touch") return;
+      clearTimeout(openTimer);
+      if (isOpen) scheduleClose();
+    });
+
+    var pressTimer = null;
+    chip.addEventListener("touchstart", function(){
+      pressTimer = setTimeout(function(){ switchTo(chip, true); show(); }, 380);
+    }, { passive:true });
+    chip.addEventListener("touchend", function(){ clearTimeout(pressTimer); });
+    chip.addEventListener("touchmove", function(){ clearTimeout(pressTimer); });
+  });
+
+  card.addEventListener("pointerenter", function(){ clearTimeout(closeTimer); });
+  card.addEventListener("pointerleave", function(){ if (isOpen) scheduleClose(); });
+
+  document.addEventListener("touchstart", function(e){
+    if (isOpen && !card.contains(e.target) && !e.target.closest(".chip")){
+      hide();
+    }
+  }, { passive:true });
+
+  document.getElementById("odRange").addEventListener("input", function(e){
+    openDelay = parseInt(e.target.value, 10);
+    document.getElementById("odVal").textContent = openDelay + "ms";
+  });
+  document.getElementById("cdRange").addEventListener("input", function(e){
+    closeDelay = parseInt(e.target.value, 10);
+    document.getElementById("cdVal").textContent = closeDelay + "ms";
+  });
+  document.getElementById("sideRow").addEventListener("click", function(e){
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    this.querySelectorAll("button").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    sidePref = btn.dataset.side;
+  });
+
+  window.addEventListener("resize", function(){
+    if (isOpen && currentId){
+      var el = row.querySelector('.chip[data-id="' + currentId + '"]');
+      if (el) position(el);
+    }
+  });
+})();
+</script>
+</body>
+</html>

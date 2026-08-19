@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ordered Dither Field</title>
+<style>
+  :root{ --bg:#07070c; --panel:#12121ecc; --line:#242539; --text:#eceefa; --muted:#8b8fa8; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 30px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#38bdf8,#7dd3fc,#e0f2fe); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:560px; margin:0 auto; line-height:1.55; font-size:14px;}
+  .stage{ display:flex; flex-wrap:wrap; gap:20px; justify-content:center; padding:10px 20px 60px; }
+  .cell{ background:#0b0c14; border:1px solid var(--line); border-radius:16px; padding:14px; }
+  .cell h3{ margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:#7ce0ff; text-align:center; }
+  canvas{ display:block; border-radius:10px; touch-action:none; background:#000; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:198px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel .row{ display:flex; gap:6px; flex-wrap:wrap; }
+  #panel button{ flex:1; font:inherit; font-size:11px; background:#171a2a; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:6px 4px; cursor:pointer; }
+  #panel button.active{ background:var(--accent); color:#03131c; border-color:var(--accent); font-weight:700; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5b607a; font-size:12px; padding:0 20px 70px; }
+  footer a{ color:#7ce0ff; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Bayer order</h4>
+  <div class="row" id="orderRow">
+    <button data-order="1">2×2</button>
+    <button data-order="2" class="active">4×4</button>
+    <button data-order="3">8×8</button>
+  </div>
+  <h4>Cell size <span class="val" id="cellVal">7px</span></h4>
+  <input id="cellRange" type="range" min="4" max="16" value="7" step="1">
+  <h4>Speed <span class="val" id="speedVal">1.0×</span></h4>
+  <input id="speedRange" type="range" min="0" max="200" value="100" step="5">
+  <h4>Cursor push</h4>
+  <div class="row">
+    <button id="pushBtn" class="active">On</button>
+  </div>
+</div>
+
+<div class="hero">
+  <h1>Ordered Dither Field</h1>
+  <p>Three plasma fields, each quantized live through a recursively-built Bayer threshold matrix — the classic ordered-dithering algorithm from 1970s print reprographics, running as a real-time animation instead of a static image filter.</p>
+</div>
+
+<div class="stage">
+  <div class="cell"><h3>Mono · 2 levels</h3><canvas id="cMono" width="320" height="220"></canvas></div>
+  <div class="cell"><h3>Duotone · 2 levels</h3><canvas id="cDuo" width="320" height="220"></canvas></div>
+  <div class="cell"><h3>Riso · 4 levels</h3><canvas id="cRiso" width="320" height="220"></canvas></div>
+</div>
+
+<footer>Inspired by Aceternity UI's Dither Shader · UI Spotlight Day 94 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // --- Recursive Bayer matrix construction (standard quadrant-tiling algorithm) ---
+  function buildBayer(order){
+    var m = [[0,2],[3,1]], size = 2;
+    for (var o = 1; o < order; o++){
+      var n = size, nm = [];
+      for (var y = 0; y < 2*n; y++) nm.push(new Array(2*n).fill(0));
+      for (var yy = 0; yy < n; yy++){
+        for (var xx = 0; xx < n; xx++){
+          var v = m[yy][xx];
+          nm[yy][xx]       = 4*v;
+          nm[yy][xx+n]     = 4*v+2;
+          nm[yy+n][xx]     = 4*v+3;
+          nm[yy+n][xx+n]   = 4*v+1;
+        }
+      }
+      m = nm; size = 2*n;
+    }
+    var norm = m.map(function(row){ return row.map(function(v){ return v/(size*size); }); });
+    return { matrix: norm, size: size };
+  }
+
+  var bayer = buildBayer(2);
+
+  var canvases = [
+    { el: document.getElementById("cMono"), palette: ["#05070a", "#38bdf8"], seed: 0 },
+    { el: document.getElementById("cDuo"),  palette: ["#1a0b1f", "#f472b6"], seed: 11 },
+    { el: document.getElementById("cRiso"), palette: ["#08060c", "#7c3aed", "#38bdf8", "#f472b6"], seed: 27 }
+  ];
+  canvases.forEach(function(c){ c.ctx = c.el.getContext("2d"); });
+
+  var cellSize = 7, speed = 1.0, pushOn = true;
+  var mouse = { x: -9999, y: -9999, active: false };
+
+  function plasma(cx, cy, t, seed){
+    var nx = cx*0.14, ny = cy*0.14;
+    var w = Math.sin(nx + t) + Math.sin(ny*1.3 - t*0.8 + seed) + Math.sin((nx+ny)*0.7 + t*1.35 + seed*0.5);
+    return Math.max(0, Math.min(1, (w/3 + 1)/2));
+  }
+
+  function draw(t){
+    canvases.forEach(function(c){
+      var w = c.el.width, h = c.el.height, ctx = c.ctx;
+      var cols = Math.ceil(w/cellSize), rows = Math.ceil(h/cellSize);
+      var levels = c.palette.length;
+      var size = bayer.size;
+      ctx.clearRect(0,0,w,h);
+      for (var row = 0; row < rows; row++){
+        for (var col = 0; col < cols; col++){
+          var v = plasma(col, row, t, c.seed);
+          if (pushOn && mouse.active){
+            var px = col*cellSize + cellSize/2, py = row*cellSize + cellSize/2;
+            var d = Math.hypot(px - mouse.x, py - mouse.y);
+            var falloff = Math.max(0, 1 - d/110);
+            v = Math.min(1, v + falloff*0.6);
+          }
+          var scaled = v*(levels-1);
+          var lower = Math.floor(scaled);
+          var frac = scaled - lower;
+          var threshold = bayer.matrix[row % size][col % size];
+          var idx = frac > threshold ? Math.min(lower+1, levels-1) : lower;
+          ctx.fillStyle = c.palette[idx];
+          ctx.fillRect(col*cellSize, row*cellSize, cellSize, cellSize);
+        }
+      }
+    });
+  }
+
+  var raf = null, running = true;
+  function loop(ts){
+    draw(ts*0.00035*speed);
+    if (running) raf = requestAnimationFrame(loop);
+  }
+  raf = requestAnimationFrame(loop);
+
+  document.querySelectorAll(".stage").forEach(function(stageEl){
+    stageEl.addEventListener("pointermove", function(e){
+      var rect = e.currentTarget.getBoundingClientRect();
+      // find which canvas the pointer is nearest / over
+      canvases.forEach(function(c){
+        var r = c.el.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom){
+          mouse.x = e.clientX - r.left;
+          mouse.y = e.clientY - r.top;
+          mouse.active = true;
+        }
+      });
+    });
+    stageEl.addEventListener("pointerleave", function(){ mouse.active = false; });
+  });
+
+  document.getElementById("orderRow").addEventListener("click", function(e){
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    this.querySelectorAll("button").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    bayer = buildBayer(parseInt(btn.dataset.order, 10));
+  });
+
+  var cellRange = document.getElementById("cellRange");
+  cellRange.addEventListener("input", function(){
+    cellSize = parseInt(cellRange.value, 10);
+    document.getElementById("cellVal").textContent = cellSize + "px";
+  });
+
+  var speedRange = document.getElementById("speedRange");
+  speedRange.addEventListener("input", function(){
+    speed = parseInt(speedRange.value, 10)/100;
+    document.getElementById("speedVal").textContent = speed.toFixed(1) + "×";
+  });
+
+  document.getElementById("pushBtn").addEventListener("click", function(e){
+    pushOn = !pushOn;
+    e.target.classList.toggle("active", pushOn);
+    e.target.textContent = pushOn ? "On" : "Off";
+  });
+
+  document.addEventListener("visibilitychange", function(){
+    running = !document.hidden;
+    if (running) raf = requestAnimationFrame(loop);
+  });
+})();
+</script>
+</body>
+</html>

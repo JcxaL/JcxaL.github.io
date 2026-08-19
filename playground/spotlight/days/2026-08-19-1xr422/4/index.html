@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cursor-Lit Relief</title>
+<style>
+  :root{ --bg:#08080c; --panel:#141420cc; --line:#26263a; --text:#eeeef8; --muted:#8b8ba6; --accent:#fbbf24; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:radial-gradient(1100px 700px at 50% -10%, #17131a 0%, var(--bg) 55%); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 24px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#fbbf24,#fde68a,#fff7d6); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:600px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  .stage{ display:flex; flex-wrap:wrap; gap:28px; justify-content:center; padding:20px 20px 90px; }
+  .card{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .card .tag{ font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:#c9a24a; }
+  .relief-btn{ width:230px; height:78px; cursor:pointer; touch-action:none; }
+  .relief-btn text{ font: 800 20px system-ui, sans-serif; fill:#0b0b0f; letter-spacing:.02em; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:200px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel .row{ display:flex; gap:6px; flex-wrap:wrap; }
+  #panel button{ flex:1; font:inherit; font-size:11px; background:#1b1b2c; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:6px 4px; cursor:pointer; }
+  #panel button.active{ background:var(--accent); color:#1a1200; border-color:var(--accent); font-weight:700; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5b5a70; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<svg width="0" height="0" style="position:absolute"><defs id="filterDefs"></defs></svg>
+
+<div id="panel">
+  <h4>Light height (z) <span class="val" id="zVal">55</span></h4>
+  <input id="zRange" type="range" min="20" max="110" value="55" step="1">
+  <h4>Light mode</h4>
+  <div class="row">
+    <button id="autoBtn">Auto-orbit</button>
+  </div>
+</div>
+
+<div class="hero">
+  <h1>Cursor-Lit Relief</h1>
+  <p>Each panel is a bump-mapped surface lit by a real Phong light source — the SVG <code>feSpecularLighting</code> + <code>fePointLight</code> primitives. Move your cursor across a button and the highlight tracks it like a torch on carved material.</p>
+</div>
+
+<div class="stage" id="stage">
+  <div class="card"><div class="tag">Brushed Steel</div><svg class="relief-btn" data-i="0" viewBox="0 0 230 78"></svg></div>
+  <div class="card"><div class="tag">Warm Clay</div><svg class="relief-btn" data-i="1" viewBox="0 0 230 78"></svg></div>
+  <div class="card"><div class="tag">Obsidian Glass</div><svg class="relief-btn" data-i="2" viewBox="0 0 230 78"></svg></div>
+</div>
+
+<footer>Inspired by "A Look at SVG Light Source Filters" (CSS-Tricks) · UI Spotlight Day 94 · Drop #4</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var materials = [
+    { label:"BRUSHED",  fill:"#7c828f", texture:true,  surfaceScale:6, specConst:0.85, specExp:22, light:"#dff3ff", z:55 },
+    { label:"CLAY",     fill:"#c97a4a", texture:false, surfaceScale:2.4, specConst:0.6, specExp:5,  light:"#ffe2b8", z:55 },
+    { label:"OBSIDIAN", fill:"#171923", texture:false, surfaceScale:2,  specConst:1.1, specExp:42, light:"#8fd9ff", z:55 }
+  ];
+
+  var defs = document.getElementById("filterDefs");
+  var lights = [];
+
+  materials.forEach(function(m, i){
+    var ns = "http://www.w3.org/2000/svg";
+    var filter = document.createElementNS(ns, "filter");
+    filter.setAttribute("id", "relief-" + i);
+    filter.setAttribute("x", "-30%"); filter.setAttribute("y", "-30%");
+    filter.setAttribute("width", "160%"); filter.setAttribute("height", "160%");
+
+    var blur = document.createElementNS(ns, "feGaussianBlur");
+    blur.setAttribute("in", "SourceAlpha");
+    blur.setAttribute("stdDeviation", "3.2");
+    blur.setAttribute("result", "blur");
+    filter.appendChild(blur);
+
+    var bumpSourceResult = "blur";
+    if (m.texture){
+      var turb = document.createElementNS(ns, "feTurbulence");
+      turb.setAttribute("type", "fractalNoise");
+      turb.setAttribute("baseFrequency", "0.9 0.35");
+      turb.setAttribute("numOctaves", "2");
+      turb.setAttribute("result", "noise");
+      filter.appendChild(turb);
+
+      var cm = document.createElementNS(ns, "feColorMatrix");
+      cm.setAttribute("in", "noise");
+      cm.setAttribute("type", "matrix");
+      cm.setAttribute("values", "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.25 0.25 0.25 0 0");
+      cm.setAttribute("result", "noiseAlpha");
+      filter.appendChild(cm);
+
+      var mixComposite = document.createElementNS(ns, "feComposite");
+      mixComposite.setAttribute("in", "noiseAlpha");
+      mixComposite.setAttribute("in2", "blur");
+      mixComposite.setAttribute("operator", "arithmetic");
+      mixComposite.setAttribute("k1", "0"); mixComposite.setAttribute("k2", "0.6");
+      mixComposite.setAttribute("k3", "1"); mixComposite.setAttribute("k4", "0");
+      mixComposite.setAttribute("result", "bump");
+      filter.appendChild(mixComposite);
+      bumpSourceResult = "bump";
+    }
+
+    var spec = document.createElementNS(ns, "feSpecularLighting");
+    spec.setAttribute("in", bumpSourceResult);
+    spec.setAttribute("surfaceScale", m.surfaceScale);
+    spec.setAttribute("specularConstant", m.specConst);
+    spec.setAttribute("specularExponent", m.specExp);
+    spec.setAttribute("lighting-color", m.light);
+    spec.setAttribute("result", "spec");
+    var light = document.createElementNS(ns, "fePointLight");
+    light.setAttribute("x", "115"); light.setAttribute("y", "39"); light.setAttribute("z", m.z);
+    spec.appendChild(light);
+    filter.appendChild(spec);
+    lights.push(light);
+
+    var clip = document.createElementNS(ns, "feComposite");
+    clip.setAttribute("in", "spec"); clip.setAttribute("in2", "SourceAlpha");
+    clip.setAttribute("operator", "in"); clip.setAttribute("result", "specClipped");
+    filter.appendChild(clip);
+
+    var blend = document.createElementNS(ns, "feBlend");
+    blend.setAttribute("in", "SourceGraphic"); blend.setAttribute("in2", "specClipped");
+    blend.setAttribute("mode", "screen");
+    filter.appendChild(blend);
+
+    defs.appendChild(filter);
+  });
+
+  var buttons = document.querySelectorAll(".relief-btn");
+  buttons.forEach(function(btn, i){
+    var m = materials[i];
+    var ns = "http://www.w3.org/2000/svg";
+    var g = document.createElementNS(ns, "g");
+    g.setAttribute("filter", "url(#relief-" + i + ")");
+    var rect = document.createElementNS(ns, "rect");
+    rect.setAttribute("x", "3"); rect.setAttribute("y", "3");
+    rect.setAttribute("width", "224"); rect.setAttribute("height", "72");
+    rect.setAttribute("rx", "16");
+    rect.setAttribute("fill", m.fill);
+    var text = document.createElementNS(ns, "text");
+    text.setAttribute("x", "115"); text.setAttribute("y", "45");
+    text.setAttribute("text-anchor", "middle");
+    text.textContent = m.label;
+    g.appendChild(rect); g.appendChild(text);
+    btn.appendChild(g);
+  });
+
+  var autoOrbit = false, orbitT = 0;
+
+  function setLightAll(x, y){
+    lights.forEach(function(l){ l.setAttribute("x", x); l.setAttribute("y", y); });
+  }
+
+  buttons.forEach(function(btn, i){
+    btn.addEventListener("pointermove", function(e){
+      if (autoOrbit) return;
+      var r = btn.getBoundingClientRect();
+      var x = (e.clientX - r.left) / r.width * 230;
+      var y = (e.clientY - r.top) / r.height * 78;
+      lights[i].setAttribute("x", x);
+      lights[i].setAttribute("y", y);
+    });
+    btn.addEventListener("pointerleave", function(){
+      if (autoOrbit) return;
+      lights[i].setAttribute("x", 115); lights[i].setAttribute("y", 39);
+    });
+  });
+
+  document.getElementById("zRange").addEventListener("input", function(e){
+    var z = parseInt(e.target.value, 10);
+    document.getElementById("zVal").textContent = z;
+    lights.forEach(function(l){ l.setAttribute("z", z); });
+  });
+
+  document.getElementById("autoBtn").addEventListener("click", function(e){
+    autoOrbit = !autoOrbit;
+    e.target.classList.toggle("active", autoOrbit);
+  });
+
+  function loop(){
+    if (autoOrbit){
+      orbitT += 0.02;
+      var x = 115 + Math.cos(orbitT) * 100;
+      var y = 39 + Math.sin(orbitT*1.3) * 34;
+      setLightAll(x, y);
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

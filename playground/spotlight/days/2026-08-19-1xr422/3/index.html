@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Halftone Type</title>
+<style>
+  :root{ --bg:#0c0808; --panel:#1c1010cc; --line:#3a2323; --text:#fbeeee; --muted:#b89393; --accent:#f87171; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 20px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#f87171,#fca5a5,#fecaca); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:600px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  .stack{ max-width:820px; margin:20px auto 80px; padding:0 20px; display:flex; flex-direction:column; gap:26px; }
+  .panelCard{ background:#150d0d; border:1px solid var(--line); border-radius:16px; padding:16px; }
+  .panelCard h3{ margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:#ffb4b4; }
+  canvas{ display:block; width:100%; height:150px; background:#000; border-radius:10px; touch-action:none; }
+  .hint{ font-size:11px; color:#8a6c6c; margin-top:6px; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:198px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#8a6c6c; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Dot spacing <span class="val" id="spVal">12px</span></h4>
+  <input id="spRange" type="range" min="7" max="22" value="12" step="1">
+  <h4>Cursor boost <span class="val" id="boVal">1.4×</span></h4>
+  <input id="boRange" type="range" min="0" max="30" value="14" step="1">
+  <h4>Breathe speed <span class="val" id="brVal">1.0×</span></h4>
+  <input id="brRange" type="range" min="0" max="200" value="100" step="10">
+</div>
+
+<div class="hero">
+  <h1>Halftone Type</h1>
+  <p>Each headline is rasterized to a hidden canvas, sampled on a dot grid, then redrawn as ink circles sized by brightness — the print-shop halftone trick, brought back for its risograph-poster comeback.</p>
+</div>
+
+<div class="stack">
+  <div class="panelCard">
+    <h3>Mono · static ink</h3>
+    <canvas id="c1"></canvas>
+    <div class="hint">Fixed dot sizes straight from the sampled letterforms.</div>
+  </div>
+  <div class="panelCard">
+    <h3>Duotone · cursor reveal</h3>
+    <canvas id="c2"></canvas>
+    <div class="hint">Move your cursor (or finger) across the type — nearby dots swell.</div>
+  </div>
+  <div class="panelCard">
+    <h3>Riso · breathing ink</h3>
+    <canvas id="c3"></canvas>
+    <div class="hint">Dot size pulses on its own, like ink slowly re-wetting the page.</div>
+  </div>
+</div>
+
+<footer>Inspired by "Creating Halftone Dot Art with JavaScript" (Banyapon Poolsawas, Medium) · UI Spotlight Day 94 · Drop #3</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var spacing = 12, boost = 1.4, breatheSpeed = 1.0;
+
+  var configs = [
+    { canvas: document.getElementById("c1"), text: "INK", color: "#f87171", reactive:false, breathing:false },
+    { canvas: document.getElementById("c2"), text: "PRESS", colorHi: "#fca5a5", colorLo: "#7f1d1d", reactive:true, breathing:false },
+    { canvas: document.getElementById("c3"), text: "BREATHE", color: "#f472b6", reactive:false, breathing:true }
+  ];
+
+  function sampleText(w, h, text){
+    var off = document.createElement("canvas");
+    off.width = w; off.height = h;
+    var octx = off.getContext("2d");
+    var fontSize = Math.min(h*0.62, w/(text.length*0.62));
+    octx.fillStyle = "#fff";
+    octx.font = "800 " + fontSize + "px system-ui, -apple-system, sans-serif";
+    octx.textAlign = "center";
+    octx.textBaseline = "middle";
+    octx.fillText(text, w/2, h/2 + fontSize*0.03);
+    return octx.getImageData(0, 0, w, h).data;
+  }
+
+  function buildDots(data, w, h, spc){
+    var dots = [];
+    for (var y = spc/2; y < h; y += spc){
+      for (var x = spc/2; x < w; x += spc){
+        var idx = (Math.floor(y)*w + Math.floor(x))*4;
+        var a = data[idx+3];
+        if (a > 10) dots.push({ x: x, y: y, a: a/255 });
+      }
+    }
+    return dots;
+  }
+
+  function setup(cfg){
+    var canvas = cfg.canvas;
+    var rect = canvas.getBoundingClientRect();
+    var w = Math.max(200, Math.round(rect.width)), h = Math.round(rect.height) || 150;
+    canvas.width = w; canvas.height = h;
+    cfg.ctx = canvas.getContext("2d");
+    cfg.w = w; cfg.h = h;
+    var data = sampleText(w, h, cfg.text);
+    cfg.dots = buildDots(data, w, h, spacing);
+    cfg.mouse = { x: -9999, y: -9999, active: false };
+  }
+
+  function render(cfg, t){
+    var ctx = cfg.ctx;
+    ctx.clearRect(0, 0, cfg.w, cfg.h);
+    cfg.dots.forEach(function(d){
+      var scale = 1;
+      if (cfg.breathing) scale *= 0.7 + 0.4*Math.sin(t*2*breatheSpeed + (d.x+d.y)*0.02);
+      if (cfg.reactive && cfg.mouse.active){
+        var dist = Math.hypot(d.x - cfg.mouse.x, d.y - cfg.mouse.y);
+        var falloff = Math.max(0, 1 - dist/140);
+        scale *= 1 + falloff*boost;
+      }
+      var r = (spacing/2) * d.a * scale;
+      if (r <= 0.35) return;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, r, 0, Math.PI*2);
+      if (cfg.color) ctx.fillStyle = cfg.color;
+      else ctx.fillStyle = d.a > 0.55 ? cfg.colorHi : cfg.colorLo;
+      ctx.fill();
+    });
+  }
+
+  configs.forEach(setup);
+
+  configs.forEach(function(cfg){
+    cfg.canvas.addEventListener("pointermove", function(e){
+      var r = cfg.canvas.getBoundingClientRect();
+      cfg.mouse.x = (e.clientX - r.left) * (cfg.w / r.width);
+      cfg.mouse.y = (e.clientY - r.top) * (cfg.h / r.height);
+      cfg.mouse.active = true;
+    });
+    cfg.canvas.addEventListener("pointerleave", function(){ cfg.mouse.active = false; });
+  });
+
+  function loop(ts){
+    var t = ts*0.001;
+    configs.forEach(function(cfg){ render(cfg, t); });
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  function rebuild(){
+    configs.forEach(function(cfg){
+      var data = sampleText(cfg.w, cfg.h, cfg.text);
+      cfg.dots = buildDots(data, cfg.w, cfg.h, spacing);
+    });
+  }
+
+  document.getElementById("spRange").addEventListener("input", function(e){
+    spacing = parseInt(e.target.value, 10);
+    document.getElementById("spVal").textContent = spacing + "px";
+    rebuild();
+  });
+  document.getElementById("boRange").addEventListener("input", function(e){
+    boost = parseInt(e.target.value, 10)/10;
+    document.getElementById("boVal").textContent = boost.toFixed(1) + "×";
+  });
+  document.getElementById("brRange").addEventListener("input", function(e){
+    breatheSpeed = parseInt(e.target.value, 10)/100;
+    document.getElementById("brVal").textContent = breatheSpeed.toFixed(1) + "×";
+  });
+
+  var resizeTimer;
+  window.addEventListener("resize", function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function(){ configs.forEach(setup); }, 150);
+  });
+})();
+</script>
+</body>
+</html>

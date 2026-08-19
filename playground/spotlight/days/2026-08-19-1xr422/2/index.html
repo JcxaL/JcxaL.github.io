@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drag-Bento Dashboard</title>
+<style>
+  :root{ --bg:#07070c; --panel:#12121ecc; --line:#242539; --text:#eceefa; --muted:#8b8fa8; --accent:#34d399; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:30; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 24px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#34d399,#6ee7b7,#a7f3d0); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:600px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  #board{
+    position:relative; max-width:900px; margin:0 auto 80px; padding:0 20px;
+  }
+  .grid{ position:relative; display:grid; }
+  .widget{
+    border-radius:14px; padding:14px 16px; color:#04140d; display:flex; flex-direction:column;
+    justify-content:space-between; cursor:grab; user-select:none; touch-action:none;
+    box-shadow:0 6px 18px -8px #000a; transition:box-shadow .15s ease;
+    position:relative;
+  }
+  .widget.dragging{ cursor:grabbing; z-index:15; box-shadow:0 20px 40px -10px #000c; opacity:.96; }
+  .widget .label{ font-weight:800; font-size:14px; letter-spacing:-.01em; }
+  .widget .metric{ font-size:26px; font-weight:800; line-height:1; }
+  .widget .sub{ font-size:11px; opacity:.75; font-weight:600; }
+  .handle{
+    position:absolute; right:5px; bottom:4px; width:16px; height:16px; cursor:nwse-resize;
+    opacity:.55; touch-action:none;
+  }
+  .handle svg{ width:100%; height:100%; }
+  .ghost{
+    position:absolute; border:2px dashed #ffffff88; border-radius:14px; background:#ffffff14;
+    pointer-events:none; z-index:5; display:none;
+  }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:30; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:198px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel .row{ display:flex; gap:6px; flex-wrap:wrap; }
+  #panel button{ flex:1; font:inherit; font-size:11px; background:#171a2a; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:6px 4px; cursor:pointer; }
+  #panel button.active{ background:var(--accent); color:#03130c; border-color:var(--accent); font-weight:700; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5b607a; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Columns</h4>
+  <div class="row" id="colsRow">
+    <button data-cols="4">4</button>
+    <button data-cols="6" class="active">6</button>
+    <button data-cols="8">8</button>
+  </div>
+  <h4>Gap <span class="val" id="gapVal">12px</span></h4>
+  <input id="gapRange" type="range" min="4" max="24" value="12" step="2">
+  <h4>Actions</h4>
+  <div class="row">
+    <button id="shuffleBtn">Shuffle</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<div class="hero">
+  <h1>Drag-Bento Dashboard</h1>
+  <p>Drag any tile to a new cell — others push out of the way and the grid auto-compacts. Drag the corner grip to resize. Layout persists to <code>localStorage</code>, just like a real dashboard.</p>
+</div>
+
+<div id="board">
+  <div class="grid" id="grid"><div class="ghost" id="ghost"></div></div>
+</div>
+
+<footer>Inspired by gridstack.js (gridstack/gridstack.js) · UI Spotlight Day 94 · Drop #2</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var STORE_KEY = "spotlight94-drag-bento-layout";
+  var DEFAULT_LAYOUT = [
+    { id:1, x:0, y:0, w:2, h:2, color:"#34d399", label:"Revenue",  metric:"$48.2k", sub:"+12% this week" },
+    { id:2, x:2, y:0, w:2, h:1, color:"#38bdf8", label:"Users",    metric:"9,214",  sub:"342 online now" },
+    { id:3, x:4, y:0, w:2, h:2, color:"#a78bfa", label:"Uptime",   metric:"99.98%", sub:"30-day rolling" },
+    { id:4, x:2, y:1, w:1, h:1, color:"#f87171", label:"Errors",   metric:"3",      sub:"last hour" },
+    { id:5, x:3, y:1, w:1, h:1, color:"#fbbf24", label:"Latency",  metric:"84ms",   sub:"p95" },
+    { id:6, x:0, y:2, w:3, h:1, color:"#38bdf8", label:"Traffic",  metric:"▁▃▅▇▆▄▂", sub:"24h volume" },
+    { id:7, x:3, y:2, w:3, h:1, color:"#f472b6", label:"Notes",    metric:"6 open",  sub:"2 due today" }
+  ];
+
+  var state = { cols: 6, gap: 12, rowH: 70, widgets: null };
+
+  function load(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw){ var parsed = JSON.parse(raw); if (Array.isArray(parsed) && parsed.length) return parsed; }
+    } catch(e){}
+    return DEFAULT_LAYOUT.map(function(w){ return Object.assign({}, w); });
+  }
+  function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(state.widgets)); } catch(e){} }
+
+  state.widgets = load();
+
+  var gridEl = document.getElementById("grid");
+  var ghostEl = document.getElementById("ghost");
+
+  function rectsOverlap(a,b){ return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y; }
+
+  function resolveCollisions(activeId){
+    var iter = 0, changed = true;
+    while (changed && iter < 40){
+      changed = false; iter++;
+      for (var i=0;i<state.widgets.length;i++){
+        for (var j=0;j<state.widgets.length;j++){
+          if (i===j) continue;
+          var a = state.widgets[i], b = state.widgets[j];
+          if (!rectsOverlap(a,b)) continue;
+          var mover;
+          if (b.id === activeId) mover = a;
+          else if (a.id === activeId) mover = b;
+          else mover = (a.y <= b.y) ? b : a;
+          var other = (mover === a) ? b : a;
+          var newY = other.y + other.h;
+          if (mover.y !== newY){ mover.y = newY; changed = true; }
+        }
+      }
+    }
+  }
+
+  function compact(){
+    var sorted = state.widgets.slice().sort(function(a,b){ return a.y-b.y || a.x-b.x; });
+    sorted.forEach(function(w){
+      var y = w.y;
+      while (y > 0){
+        var test = { x:w.x, y:y-1, w:w.w, h:w.h };
+        var hit = state.widgets.some(function(o){ return o !== w && rectsOverlap(test, o); });
+        if (hit) break;
+        y--;
+      }
+      w.y = y;
+    });
+  }
+
+  function clampToCols(){
+    state.widgets.forEach(function(w){
+      w.w = Math.min(w.w, state.cols);
+      w.x = Math.min(w.x, state.cols - w.w);
+      if (w.x < 0) w.x = 0;
+    });
+  }
+
+  function cellMetrics(){
+    var rect = gridEl.getBoundingClientRect();
+    var cellW = (rect.width - state.gap*(state.cols-1)) / state.cols;
+    return { rect: rect, cellW: cellW, cellH: state.rowH };
+  }
+
+  function render(){
+    gridEl.style.gridTemplateColumns = "repeat(" + state.cols + ", 1fr)";
+    gridEl.style.gap = state.gap + "px";
+    gridEl.querySelectorAll(".widget").forEach(function(el){ el.remove(); });
+    state.widgets.forEach(function(w){
+      var el = document.createElement("div");
+      el.className = "widget";
+      el.dataset.id = w.id;
+      el.style.background = "linear-gradient(160deg," + w.color + "," + w.color + "cc)";
+      el.style.gridColumn = (w.x+1) + " / span " + w.w;
+      el.style.gridRow = (w.y+1) + " / span " + w.h;
+      el.innerHTML =
+        '<div class="label">' + w.label + '</div>' +
+        '<div><div class="metric">' + w.metric + '</div><div class="sub">' + w.sub + '</div></div>' +
+        '<div class="handle" title="Drag to resize"><svg viewBox="0 0 16 16"><path d="M14 14 L14 9 M14 14 L9 14 M14 14 L4 4" stroke="#04140d" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>';
+      gridEl.appendChild(el);
+      wireWidget(el, w);
+    });
+    gridEl.appendChild(ghostEl);
+    var totalRows = state.widgets.reduce(function(m,w){ return Math.max(m, w.y+w.h); }, 1);
+    gridEl.style.gridAutoRows = state.rowH + "px";
+    gridEl.style.minHeight = (totalRows*state.rowH + (totalRows-1)*state.gap) + "px";
+  }
+
+  function showGhost(x, y, w, h){
+    var m = cellMetrics();
+    var left = x*(m.cellW+state.gap);
+    var top = y*(m.cellH+state.gap);
+    var width = w*m.cellW + (w-1)*state.gap;
+    var height = h*m.cellH + (h-1)*state.gap;
+    ghostEl.style.display = "block";
+    ghostEl.style.left = left+"px"; ghostEl.style.top = top+"px";
+    ghostEl.style.width = width+"px"; ghostEl.style.height = height+"px";
+  }
+  function hideGhost(){ ghostEl.style.display = "none"; }
+
+  function wireWidget(el, w){
+    el.addEventListener("pointerdown", function(e){
+      if (e.target.closest(".handle")) return startResize(e, el, w);
+      startDrag(e, el, w);
+    });
+  }
+
+  function startDrag(e, el, w){
+    e.preventDefault();
+    var startX = e.clientX, startY = e.clientY;
+    var m = cellMetrics();
+    var origX = w.x, origY = w.y;
+    el.classList.add("dragging");
+    el.setPointerCapture(e.pointerId);
+    showGhost(origX, origY, w.w, w.h);
+
+    function move(ev){
+      var dx = ev.clientX - startX, dy = ev.clientY - startY;
+      el.style.transform = "translate(" + dx + "px," + dy + "px)";
+      var cellDX = Math.round(dx / (m.cellW + state.gap));
+      var cellDY = Math.round(dy / (m.cellH + state.gap));
+      var nx = Math.max(0, Math.min(state.cols - w.w, origX + cellDX));
+      var ny = Math.max(0, origY + cellDY);
+      showGhost(nx, ny, w.w, w.h);
+      el.dataset.tx = nx; el.dataset.ty = ny;
+    }
+    function up(){
+      el.classList.remove("dragging");
+      el.style.transform = "";
+      hideGhost();
+      var nx = parseInt(el.dataset.tx, 10), ny = parseInt(el.dataset.ty, 10);
+      if (!isNaN(nx)) { w.x = nx; w.y = ny; }
+      resolveCollisions(w.id);
+      compact();
+      render(); save();
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  function startResize(e, el, w){
+    e.preventDefault(); e.stopPropagation();
+    var startX = e.clientX, startY = e.clientY;
+    var m = cellMetrics();
+    var origW = w.w, origH = w.h;
+    el.setPointerCapture(e.pointerId);
+
+    function move(ev){
+      var dx = ev.clientX - startX, dy = ev.clientY - startY;
+      var addW = Math.round(dx / (m.cellW + state.gap));
+      var addH = Math.round(dy / (m.cellH + state.gap));
+      w.w = Math.max(1, Math.min(state.cols - w.x, origW + addW));
+      w.h = Math.max(1, Math.min(6, origH + addH));
+      el.style.gridColumn = (w.x+1) + " / span " + w.w;
+      el.style.gridRow = (w.y+1) + " / span " + w.h;
+    }
+    function up(){
+      resolveCollisions(w.id);
+      compact();
+      render(); save();
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  document.getElementById("colsRow").addEventListener("click", function(e){
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    this.querySelectorAll("button").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    state.cols = parseInt(btn.dataset.cols, 10);
+    clampToCols(); resolveCollisions(null); compact(); render(); save();
+  });
+
+  var gapRange = document.getElementById("gapRange");
+  gapRange.addEventListener("input", function(){
+    state.gap = parseInt(gapRange.value, 10);
+    document.getElementById("gapVal").textContent = state.gap + "px";
+    render();
+  });
+
+  document.getElementById("shuffleBtn").addEventListener("click", function(){
+    state.widgets.forEach(function(w){ w.x = Math.floor(Math.random()*(state.cols-w.w+1)); w.y = 0; });
+    state.widgets.forEach(function(w){ resolveCollisions(w.id); });
+    compact(); render(); save();
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    state.widgets = DEFAULT_LAYOUT.map(function(w){ return Object.assign({}, w); });
+    clampToCols(); render(); save();
+  });
+
+  render();
+  window.addEventListener("resize", render);
+})();
+</script>
+</body>
+</html>
