@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Kite Flyer — Wind Physics Sandbox</title>
+<style>
+  :root{
+    --ink:#0b1120;
+    --glass:rgba(15,23,42,0.55);
+    --glass-brd:rgba(255,255,255,0.14);
+    --gold:#fbbf24;
+    --sky-blue:#38bdf8;
+    --kite-red:#f87171;
+    --grass:#4ade80;
+    --text:#eef2ff;
+    --text-dim:#94a3b8;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    background:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+    color:var(--text);
+    touch-action:none;
+    user-select:none;
+  }
+  #sky{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;}
+  #sky.dragging{cursor:grabbing;}
+
+  .hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:max(10px,env(safe-area-inset-top)) 12px 0;pointer-events:none;z-index:5;}
+  .hud-card{
+    pointer-events:auto;
+    background:var(--glass);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+    border:1px solid var(--glass-brd);border-radius:14px;padding:8px 12px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.35);
+  }
+  .stat-row{display:flex;gap:14px;font-size:12px;color:var(--text-dim);}
+  .stat-row b{display:block;font-size:16px;color:var(--text);font-variant-numeric:tabular-nums;}
+  .title-card{font-weight:700;font-size:14px;letter-spacing:0.2px;display:flex;align-items:center;gap:6px;}
+  .icon-btns{display:flex;gap:8px;pointer-events:auto;}
+  .icon-btn{
+    width:38px;height:38px;border-radius:11px;border:1px solid var(--glass-brd);
+    background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--text);
+    cursor:pointer;transition:transform .15s ease, background .15s ease;
+  }
+  .icon-btn:active{transform:scale(0.9);}
+  .icon-btn.active{background:rgba(56,189,248,0.35);border-color:rgba(56,189,248,0.6);}
+
+  .toast{
+    position:fixed;left:50%;top:14%;transform:translateX(-50%);
+    background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--glass-brd);border-radius:14px;padding:10px 16px;font-size:13px;
+    color:var(--text);opacity:0;transition:opacity .5s ease;pointer-events:none;z-index:20;text-align:center;max-width:80vw;
+  }
+  .toast.show{opacity:1;}
+
+  .panel{
+    position:fixed;left:0;right:0;bottom:0;z-index:6;
+    padding:10px 10px max(10px,env(safe-area-inset-bottom));
+    display:flex;flex-direction:column;gap:8px;
+    background:linear-gradient(to top, rgba(4,8,18,0.72), rgba(4,8,18,0));
+  }
+  .row{display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;}
+  .row::-webkit-scrollbar{display:none;}
+  .glass-pill{
+    background:var(--glass);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+    border:1px solid var(--glass-brd);border-radius:999px;padding:7px 10px;
+    display:flex;align-items:center;gap:8px;flex-shrink:0;
+  }
+  .kite-btn{
+    display:flex;align-items:center;gap:6px;border:none;background:transparent;color:var(--text-dim);
+    font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer;white-space:nowrap;
+    transition:background .15s ease,color .15s ease;
+  }
+  .kite-btn .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .kite-btn.active{background:rgba(255,255,255,0.16);color:var(--text);}
+  .toggle-btn{
+    border:none;background:transparent;color:var(--text-dim);font-size:12px;font-weight:600;
+    padding:6px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s;
+  }
+  .toggle-btn.on{background:rgba(251,191,36,0.28);color:var(--gold);}
+  .slider-wrap{flex:1;display:flex;align-items:center;gap:8px;min-width:150px;}
+  .slider-wrap label{font-size:11px;color:var(--text-dim);white-space:nowrap;}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:2px;
+    background:rgba(255,255,255,0.18);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:var(--sky-blue);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:pointer;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:18px;height:18px;border-radius:50%;background:var(--sky-blue);border:2px solid #fff;cursor:pointer;
+  }
+  .pop-btn{
+    border:none;border-radius:999px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;
+    background:linear-gradient(135deg,var(--kite-red),#fb923c);color:#1a0c0c;flex-shrink:0;
+    box-shadow:0 4px 14px rgba(248,113,113,0.4);
+  }
+  .pop-btn:active{transform:scale(0.94);}
+
+  #dl-anchor{display:none;}
+
+  @media (max-width:420px){
+    .stat-row{gap:10px;font-size:11px;}
+    .title-card{font-size:12px;}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="sky"></canvas>
+
+<div class="hud">
+  <div class="hud-card">
+    <div class="title-card">🪁 Kite Flyer</div>
+    <div class="stat-row">
+      <div>Flight<b id="statTime">0:00</b></div>
+      <div>Best<b id="statBest">0:00</b></div>
+      <div>Altitude<b id="statAlt">0%</b></div>
+    </div>
+  </div>
+  <div class="icon-btns">
+    <button class="icon-btn" id="btnSound" title="Toggle sound">🔊</button>
+    <button class="icon-btn" id="btnSnap" title="Save snapshot">📸</button>
+    <button class="icon-btn" id="btnShare" title="Copy share link">🔗</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="panel">
+  <div class="row">
+    <div class="glass-pill" id="kiteTypes">
+      <button class="kite-btn" data-type="diamond"><span class="dot" style="background:#f87171"></span>Diamond</button>
+      <button class="kite-btn" data-type="delta"><span class="dot" style="background:#38bdf8"></span>Delta</button>
+      <button class="kite-btn" data-type="box"><span class="dot" style="background:#fbbf24"></span>Box</button>
+    </div>
+    <button class="pop-btn" id="btnPop">💨 Slack Pop</button>
+  </div>
+  <div class="row">
+    <div class="glass-pill slider-wrap" style="flex:1;">
+      <label>Wind</label>
+      <input type="range" id="windSlider" min="10" max="100" value="55">
+    </div>
+    <div class="glass-pill">
+      <button class="toggle-btn" id="btnGust">Gusts</button>
+    </div>
+    <div class="glass-pill">
+      <button class="toggle-btn" id="btnThermal">Thermal</button>
+    </div>
+  </div>
+</div>
+
+<a id="dl-anchor"></a>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------- Canvas setup ----------
+  var canvas = document.getElementById('sky');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.max(1, Math.round(W * DPR));
+    canvas.height = Math.max(1, Math.round(H * DPR));
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- Persistence ----------
+  var STORE_KEY = 'kiteflyer_v1';
+  function loadState(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch(e){ return {}; }
+  }
+  function saveState(){
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        bestTimes: bestTimes,
+        lastType: kiteTypeKey,
+        windStrength: windStrength,
+        gust: gustOn,
+        thermal: thermalOn,
+        soundOn: soundOn,
+        tipShown: true
+      }));
+    } catch(e){}
+  }
+  var saved = loadState();
+
+  // ---------- RNG ----------
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- Kite type definitions ----------
+  var KITE_TYPES = {
+    diamond: { label:'Diamond', liftMax:1.05, weight:0.9,  turnRate:1.0, respRate:4.5, color:'#f87171', accent:'#fecaca', tailCount:7 },
+    delta:   { label:'Delta',   liftMax:1.3,  weight:0.75, turnRate:1.6, respRate:6.0, color:'#38bdf8', accent:'#bae6fd', tailCount:5 },
+    box:     { label:'Box',     liftMax:0.85, weight:1.3,  turnRate:0.6, respRate:3.0, color:'#fbbf24', accent:'#fef3c7', tailCount:9 }
+  };
+
+  // ---------- Parse share hash ----------
+  var hashParams = {};
+  if (location.hash.length > 1) {
+    location.hash.slice(1).split('&').forEach(function(pair){
+      var kv = pair.split('=');
+      if (kv[0]) hashParams[kv[0]] = decodeURIComponent(kv[1] || '');
+    });
+  }
+
+  var kiteTypeKey = (hashParams.k && KITE_TYPES[hashParams.k]) ? hashParams.k : (saved.lastType && KITE_TYPES[saved.lastType] ? saved.lastType : 'diamond');
+  var windStrength = hashParams.w ? clamp(parseInt(hashParams.w,10) || 55, 10, 100) : (typeof saved.windStrength === 'number' ? saved.windStrength : 55);
+  var gustOn = hashParams.g !== undefined ? hashParams.g === '1' : (saved.gust !== undefined ? !!saved.gust : true);
+  var thermalOn = hashParams.t !== undefined ? hashParams.t === '1' : (saved.thermal !== undefined ? !!saved.thermal : false);
+  var windSeed = hashParams.s ? (parseInt(hashParams.s,10) || 1234) : Math.floor(Math.random() * 999999);
+  var soundOn = saved.soundOn !== undefined ? !!saved.soundOn : true;
+  var bestTimes = saved.bestTimes || { diamond:0, delta:0, box:0 };
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+
+  // ---------- Flight state ----------
+  var anchor = { x: 0, y: 0 };
+  var lineLengthBase = 0;
+  var lineLengthTarget = 0;
+  var phi = Math.PI / 2;        // angle around flying window, 0..PI
+  var r = 0;                    // current radial distance (line taut-ness)
+  var kiteX = 0, kiteY = 0;
+  var prevKiteX = 0, prevKiteY = 0;
+  var noseAngle = -Math.PI/2;
+  var flightTime = 0;
+  var running = true;
+  var crashed = false;
+  var crashTimer = 0;
+  var popTimer = 0;
+  var elapsed = 0; // seconds, monotonic sim clock for noise functions
+
+  var steerInput = 0;   // -1..1
+  var keySteer = 0;
+  var keyReel = 0;
+
+  var tail = [];
+
+  function windowRadius(){ return Math.min(W, H * 1.5) * 0.42; }
+
+  function resetFlight(keepScore){
+    var kt = KITE_TYPES[kiteTypeKey];
+    anchor.x = W * 0.5;
+    anchor.y = H - 46;
+    lineLengthBase = windowRadius();
+    lineLengthTarget = lineLengthBase;
+    phi = Math.PI / 2 + (Math.random()-0.5) * 0.3;
+    r = lineLengthBase * 0.35;
+    kiteX = anchor.x + r * Math.cos(phi);
+    kiteY = anchor.y - r * Math.sin(phi);
+    prevKiteX = kiteX; prevKiteY = kiteY;
+    noseAngle = -Math.PI/2;
+    flightTime = 0;
+    crashed = false;
+    crashTimer = 0;
+    tail = [];
+    for (var i=0;i<kt.tailCount;i++){
+      tail.push({ x:kiteX, y:kiteY });
+    }
+  }
+
+  function noise1(seedOffset, t, speed){
+    return Math.sin(t*1.3*speed + seedOffset) * 0.5 +
+           Math.sin(t*2.7*speed + seedOffset*1.7 + 1.1) * 0.3 +
+           Math.sin(t*5.1*speed + seedOffset*2.3 + 2.2) * 0.2;
+  }
+
+  // ---------- Particles ----------
+  var windParticles = [];
+  (function initWindParticles(){
+    for (var i=0;i<46;i++){
+      windParticles.push({
+        x: Math.random()*2000, y: Math.random()*800,
+        depth: 0.3 + Math.random()*0.7, len: 14 + Math.random()*24
+      });
+    }
+  })();
+  var clouds = [];
+  (function initClouds(){
+    for (var i=0;i<6;i++){
+      clouds.push({ x: Math.random()*2000, y: 40 + Math.random()*160, s: 0.6+Math.random()*1.2, speed: 4+Math.random()*8 });
+    }
+  })();
+  var thermalWisps = [];
+  var burstParticles = [];
+
+  // ---------- Audio (created lazily on first gesture) ----------
+  var audioCtx = null, windGain = null, windNoiseSrc = null;
+  function ensureAudio(){
+    if (audioCtx || !soundOn) return;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audioCtx = new AC();
+      var bufferSize = audioCtx.sampleRate * 2;
+      var buf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      var data = buf.getChannelData(0);
+      for (var i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1) * 0.6;
+      windNoiseSrc = audioCtx.createBufferSource();
+      windNoiseSrc.buffer = buf;
+      windNoiseSrc.loop = true;
+      var filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 500;
+      filter.Q.value = 0.6;
+      windGain = audioCtx.createGain();
+      windGain.gain.value = 0.0001;
+      windNoiseSrc.connect(filter).connect(windGain).connect(audioCtx.destination);
+      windNoiseSrc.start();
+    } catch(e){ audioCtx = null; }
+  }
+  function playCrashSound(){
+    if (!audioCtx || !soundOn) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, t0);
+      osc.frequency.exponentialRampToValueAtTime(40, t0+0.4);
+      g.gain.setValueAtTime(0.25, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0+0.45);
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start(t0); osc.stop(t0+0.5);
+    } catch(e){}
+  }
+  function playPopSound(){
+    if (!audioCtx || !soundOn) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(700, t0);
+      osc.frequency.exponentialRampToValueAtTime(220, t0+0.25);
+      g.gain.setValueAtTime(0.2, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0+0.3);
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start(t0); osc.stop(t0+0.32);
+    } catch(e){}
+  }
+
+  // ---------- Toast ----------
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+  function showToast(msg, ms){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, ms || 2200);
+  }
+
+  // ---------- UI wiring ----------
+  var statTime = document.getElementById('statTime');
+  var statBest = document.getElementById('statBest');
+  var statAlt = document.getElementById('statAlt');
+
+  function fmtTime(s){
+    s = Math.max(0, s|0);
+    var m = Math.floor(s/60), sec = s%60;
+    return m + ':' + (sec<10 ? '0'+sec : sec);
+  }
+
+  var kiteTypeBtns = Array.prototype.slice.call(document.querySelectorAll('.kite-btn'));
+  function updateKiteTypeUI(){
+    kiteTypeBtns.forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-type') === kiteTypeKey);
+    });
+    statBest.textContent = fmtTime(bestTimes[kiteTypeKey] || 0);
+  }
+  kiteTypeBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var type = btn.getAttribute('data-type');
+      if (type === kiteTypeKey) return;
+      kiteTypeKey = type;
+      updateKiteTypeUI();
+      resetFlight();
+      saveState();
+      showToast(KITE_TYPES[type].label + ' kite ready');
+    });
+  });
+
+  var windSlider = document.getElementById('windSlider');
+  windSlider.value = windStrength;
+  windSlider.addEventListener('input', function(){
+    windStrength = parseInt(windSlider.value, 10);
+    saveState();
+  });
+
+  var btnGust = document.getElementById('btnGust');
+  var btnThermal = document.getElementById('btnThermal');
+  function updateToggleUI(){
+    btnGust.classList.toggle('on', gustOn);
+    btnGust.textContent = 'Gusts ' + (gustOn ? 'On' : 'Off');
+    btnThermal.classList.toggle('on', thermalOn);
+    btnThermal.textContent = 'Thermal ' + (thermalOn ? 'On' : 'Off');
+  }
+  btnGust.addEventListener('click', function(){ gustOn = !gustOn; updateToggleUI(); saveState(); });
+  btnThermal.addEventListener('click', function(){ thermalOn = !thermalOn; updateToggleUI(); saveState(); });
+
+  var btnPop = document.getElementById('btnPop');
+  btnPop.addEventListener('click', triggerSlackPop);
+  function triggerSlackPop(){
+    if (crashed) return;
+    popTimer = 0.55;
+    playPopSound();
+    showToast('💨 Slack given — watch it dive!', 1400);
+  }
+
+  var btnSound = document.getElementById('btnSound');
+  function updateSoundUI(){
+    btnSound.textContent = soundOn ? '🔊' : '🔇';
+    btnSound.classList.toggle('active', soundOn);
+    if (windGain) windGain.gain.value = soundOn ? windGain._target || 0.0001 : 0;
+  }
+  btnSound.addEventListener('click', function(){
+    soundOn = !soundOn;
+    if (soundOn) ensureAudio();
+    updateSoundUI();
+    saveState();
+  });
+
+  var btnSnap = document.getElementById('btnSnap');
+  var dlAnchor = document.getElementById('dl-anchor');
+  btnSnap.addEventListener('click', function(){
+    canvas.toBlob(function(blob){
+      if (!blob) { showToast('Snapshot failed'); return; }
+      var url = URL.createObjectURL(blob);
+      dlAnchor.href = url;
+      dlAnchor.download = 'kite-flyer-' + Date.now() + '.png';
+      dlAnchor.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      showToast('📸 Snapshot saved');
+    }, 'image/png');
+  });
+
+  var btnShare = document.getElementById('btnShare');
+  btnShare.addEventListener('click', function(){
+    var hash = 'k=' + kiteTypeKey + '&w=' + windStrength + '&g=' + (gustOn?1:0) + '&t=' + (thermalOn?1:0) + '&s=' + windSeed;
+    var url = location.origin + location.pathname + '#' + hash;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function(){
+        showToast('🔗 Share link copied!');
+      }).catch(function(){
+        showToast('Copy failed — link: ' + url, 4000);
+      });
+    } else {
+      showToast('Share link: ' + url, 5000);
+    }
+  });
+
+  updateKiteTypeUI();
+  updateToggleUI();
+  updateSoundUI();
+
+  if (!saved.tipShown) {
+    setTimeout(function(){ showToast('Drag or arrow keys to steer & reel · Tap a kite below to switch', 4200); }, 400);
+  }
+
+  // ---------- Pointer input ----------
+  var dragging = false, dragStartX = 0, dragStartY = 0, dragLastX = 0, dragLastY = 0;
+  function onPointerDown(x,y){
+    dragging = true;
+    dragStartX = x; dragStartY = y; dragLastX = x; dragLastY = y;
+    canvas.classList.add('dragging');
+    ensureAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function onPointerMove(x,y){
+    if (!dragging) return;
+    var dx = x - dragLastX;
+    var dy = y - dragLastY;
+    dragLastX = x; dragLastY = y;
+    steerInput = clamp(steerInput + dx * 0.006, -1, 1);
+    lineLengthTarget = clamp(lineLengthTarget - dy * 0.6, lineLengthBase*0.25, lineLengthBase*1.05);
+  }
+  function onPointerUp(){
+    dragging = false;
+    canvas.classList.remove('dragging');
+  }
+  canvas.addEventListener('pointerdown', function(e){ onPointerDown(e.clientX, e.clientY); });
+  canvas.addEventListener('pointermove', function(e){ onPointerMove(e.clientX, e.clientY); });
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+
+  // ---------- Keyboard input ----------
+  window.addEventListener('keydown', function(e){
+    var tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT') return;
+    if (e.key === 'ArrowLeft'){ keySteer = -1; e.preventDefault(); }
+    else if (e.key === 'ArrowRight'){ keySteer = 1; e.preventDefault(); }
+    else if (e.key === 'ArrowUp'){ keyReel = 1; e.preventDefault(); }
+    else if (e.key === 'ArrowDown'){ keyReel = -1; e.preventDefault(); }
+    else if (e.key === ' '){ triggerSlackPop(); e.preventDefault(); }
+    ensureAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  });
+  window.addEventListener('keyup', function(e){
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') keySteer = 0;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') keyReel = 0;
+  });
+
+  // ---------- Simulation ----------
+  resetFlight();
+
+  function simStep(dt){
+    if (dt <= 0) return;
+    elapsed += dt;
+    var kt = KITE_TYPES[kiteTypeKey];
+
+    if (crashed) {
+      crashTimer -= dt;
+      burstParticles.forEach(function(p){
+        p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 600*dt; p.life -= dt;
+      });
+      burstParticles = burstParticles.filter(function(p){ return p.life > 0; });
+      if (crashTimer <= 0) resetFlight();
+      return;
+    }
+
+    flightTime += dt;
+
+    // combine pointer steer decay + keyboard override
+    if (keySteer !== 0) steerInput = clamp(steerInput + keySteer * 1.6 * dt, -1, 1);
+    else steerInput *= Math.max(0, 1 - dt*1.8); // decay toward 0 when idle
+
+    if (keyReel !== 0) lineLengthTarget = clamp(lineLengthTarget + keyReel * 90 * dt, lineLengthBase*0.25, lineLengthBase*1.05);
+
+    if (popTimer > 0){
+      popTimer -= dt;
+    }
+    var effectiveLineTarget = lineLengthTarget + (popTimer > 0 ? lineLengthBase * 0.4 * (popTimer/0.55) : 0);
+
+    // steering changes phi; sign chosen so dragging/steering right moves kite right
+    var dphi = -steerInput * kt.turnRate * 1.1 * dt;
+    phi = clamp(phi + dphi, 0.035, Math.PI - 0.035);
+
+    var windMag = windStrength / 100;
+    var gustAmp = gustOn ? 0.32 : 0;
+    var gustPhi = noise1(windSeed*0.7, elapsed, 0.6) * gustAmp * 0.35;
+    var gustPull = noise1(windSeed*1.3+5, elapsed, 0.5) * gustAmp;
+    phi = clamp(phi + gustPhi*dt*2, 0.035, Math.PI - 0.035);
+
+    var thermalMul = 1;
+    if (thermalOn) {
+      var pulse = Math.sin(elapsed*0.22 + windSeed*0.01);
+      thermalMul = 1 + Math.max(0, pulse) * 0.55;
+    }
+
+    var power = Math.sin(phi) * windMag * kt.liftMax * thermalMul;
+    var ratio = power / kt.weight;
+    var target = effectiveLineTarget * clamp(ratio + gustPull*0.5, 0.12, 1.18);
+    target = Math.min(target, lineLengthBase * 1.22);
+
+    var resp = 1 - Math.exp(-kt.respRate * dt);
+    r += (target - r) * resp;
+    r = Math.max(6, r);
+
+    prevKiteX = kiteX; prevKiteY = kiteY;
+    kiteX = anchor.x + r * Math.cos(phi);
+    kiteY = anchor.y - r * Math.sin(phi);
+
+    var vx = (kiteX - prevKiteX) / Math.max(dt, 0.0001);
+    var vy = (kiteY - prevKiteY) / Math.max(dt, 0.0001);
+    var speed = Math.hypot(vx, vy);
+    if (speed > 4) {
+      var targetAngle = Math.atan2(vy, vx);
+      var diff = Math.atan2(Math.sin(targetAngle - noseAngle), Math.cos(targetAngle - noseAngle));
+      noseAngle += diff * Math.min(1, dt*8);
+    }
+
+    // tail follow (spring-lag chain)
+    var kx = kiteX, ky = kiteY;
+    var tailBaseX = kiteX - Math.cos(noseAngle) * 18;
+    var tailBaseY = kiteY - Math.sin(noseAngle) * 18;
+    var leadX = tailBaseX, leadY = tailBaseY;
+    for (var i=0;i<tail.length;i++){
+      var seg = tail[i];
+      var followRate = 1 - Math.exp(-9 * dt);
+      var sway = Math.sin(elapsed*4 + i*1.3) * 4 * (windMag+0.2);
+      seg.x += (leadX - seg.x) * followRate + sway*dt;
+      seg.y += (leadY - seg.y + 30*dt) * followRate;
+      leadX = seg.x; leadY = seg.y;
+    }
+
+    // ground / crash check
+    var groundY = H - 40;
+    if (kiteY >= groundY - 10) {
+      crashed = true;
+      crashTimer = 1.1;
+      playCrashSound();
+      burstParticles = [];
+      for (var b=0;b<22;b++){
+        var ang = Math.random()*Math.PI*2;
+        var spd = 60 + Math.random()*140;
+        burstParticles.push({ x:kiteX, y:kiteY, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd - 60, life: 0.6+Math.random()*0.4, color: kt.color });
+      }
+      var best = bestTimes[kiteTypeKey] || 0;
+      if (flightTime > best) {
+        bestTimes[kiteTypeKey] = flightTime;
+        showToast('🏆 New best: ' + fmtTime(flightTime), 2400);
+      } else {
+        showToast('💥 Crashed!', 1600);
+      }
+      statBest.textContent = fmtTime(bestTimes[kiteTypeKey] || 0);
+      saveState();
+    }
+
+    // thermal wisps
+    if (thermalOn && thermalMul > 1.25 && Math.random() < 0.4) {
+      thermalWisps.push({ x: anchor.x + (Math.random()-0.5)*W*0.6, y: H-60, life: 2.5, r: 3+Math.random()*4 });
+    }
+    thermalWisps.forEach(function(w){ w.y -= 40*dt; w.life -= dt; });
+    thermalWisps = thermalWisps.filter(function(w){ return w.life > 0; });
+
+    windParticles.forEach(function(p){
+      p.x += (60 + windMag*220) * p.depth * dt;
+      if (p.x > W + 40) { p.x = -40; p.y = Math.random()*H*0.75; }
+    });
+    clouds.forEach(function(c){
+      c.x += c.speed * dt;
+      if (c.x > W + 200) c.x = -200;
+    });
+
+    statTime.textContent = fmtTime(flightTime);
+    statAlt.textContent = Math.round(clamp((groundY - kiteY) / (lineLengthBase*1.1), 0, 1) * 100) + '%';
+
+    if (windGain) {
+      var vol = crashed ? 0 : (0.02 + windMag*0.05 + Math.abs(gustPull)*0.02);
+      windGain._target = vol;
+      windGain.gain.setTargetAtTime(soundOn ? vol : 0, audioCtx.currentTime, 0.2);
+    }
+  }
+
+  // ---------- Rendering ----------
+  function skyColor(mag){
+    var top = [lerp(11,4,mag), lerp(40,20,mag)|0, lerp(80,44,mag)|0];
+    return top;
+  }
+  function drawBackground(windMag){
+    var g = ctx.createLinearGradient(0,0,0,H);
+    var calmTop='#1e3a5f', calmBot='#7dd3fc';
+    var windyTop='#111827', windyBot='#64748b';
+    g.addColorStop(0, lerpColor(calmTop, windyTop, Math.min(1,windMag*1.1)));
+    g.addColorStop(1, lerpColor(calmBot, windyBot, Math.min(1,windMag*1.1)));
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+
+    // sun
+    ctx.save();
+    ctx.globalAlpha = 0.9 - windMag*0.35;
+    var sunGrad = ctx.createRadialGradient(W*0.82, H*0.16, 4, W*0.82, H*0.16, 70);
+    sunGrad.addColorStop(0, 'rgba(255,244,214,0.95)');
+    sunGrad.addColorStop(1, 'rgba(255,244,214,0)');
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath(); ctx.arc(W*0.82, H*0.16, 70, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // clouds
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.55 - windMag*0.15) + ')';
+    clouds.forEach(function(c){
+      drawCloud(c.x, c.y, c.s);
+    });
+    ctx.restore();
+
+    // wind streaks
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.4;
+    windParticles.forEach(function(p){
+      ctx.globalAlpha = 0.15 + p.depth*0.25 * Math.min(1, windMag*2+0.2);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.len*p.depth, p.y);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    // thermal wisps
+    ctx.save();
+    thermalWisps.forEach(function(w){
+      ctx.globalAlpha = Math.max(0, w.life/2.5) * 0.5;
+      ctx.fillStyle = '#fca5a5';
+      ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.restore();
+  }
+  function drawCloud(x,y,s){
+    ctx.beginPath();
+    ctx.arc(x, y, 18*s, 0, Math.PI*2);
+    ctx.arc(x+20*s, y-8*s, 22*s, 0, Math.PI*2);
+    ctx.arc(x+42*s, y, 17*s, 0, Math.PI*2);
+    ctx.arc(x+20*s, y+6*s, 20*s, 0, Math.PI*2);
+    ctx.fill();
+  }
+  function lerpColor(c1, c2, t){
+    var a = hexToRgb(c1), b = hexToRgb(c2);
+    var r = Math.round(lerp(a[0],b[0],t));
+    var g = Math.round(lerp(a[1],b[1],t));
+    var bl = Math.round(lerp(a[2],b[2],t));
+    return 'rgb(' + r + ',' + g + ',' + bl + ')';
+  }
+  function hexToRgb(hex){
+    hex = hex.replace('#','');
+    return [parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)];
+  }
+
+  function drawGround(){
+    var groundY = H - 40;
+    var g = ctx.createLinearGradient(0, groundY, 0, H);
+    g.addColorStop(0, '#166534');
+    g.addColorStop(1, '#052e16');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, groundY+14);
+    for (var x=0;x<=W;x+=40){
+      ctx.lineTo(x, groundY + Math.sin(x*0.02+1)*6 + 10);
+    }
+    ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawPilot(){
+    var x = anchor.x, y = anchor.y;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    // body
+    ctx.beginPath(); ctx.moveTo(x, y-2); ctx.lineTo(x, y-26); ctx.stroke();
+    // head
+    ctx.beginPath(); ctx.arc(x, y-32, 6, 0, Math.PI*2); ctx.fill();
+    // arm to reel
+    ctx.beginPath(); ctx.moveTo(x, y-20); ctx.lineTo(x+10, y-14); ctx.stroke();
+    // legs
+    ctx.beginPath(); ctx.moveTo(x, y-2); ctx.lineTo(x-6, y+10); ctx.moveTo(x,y-2); ctx.lineTo(x+6,y+10); ctx.stroke();
+    // reel
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath(); ctx.arc(x+11, y-13, 4, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLine(){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    var midX = (anchor.x + kiteX)/2;
+    var midY = (anchor.y + kiteY)/2 + 18; // sag
+    ctx.moveTo(anchor.x, anchor.y-16);
+    ctx.quadraticCurveTo(midX, midY, kiteX, kiteY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTail(kt){
+    ctx.save();
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    var prev = { x: kiteX - Math.cos(noseAngle)*18, y: kiteY - Math.sin(noseAngle)*18 };
+    for (var i=0;i<tail.length;i++){
+      var seg = tail[i];
+      ctx.strokeStyle = i % 2 === 0 ? kt.color : kt.accent;
+      ctx.beginPath();
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(seg.x, seg.y);
+      ctx.stroke();
+      prev = seg;
+    }
+    ctx.restore();
+  }
+
+  function drawKite(kt){
+    ctx.save();
+    ctx.translate(kiteX, kiteY);
+    var bank = clamp(steerInput, -1, 1) * 0.35;
+    ctx.rotate(noseAngle + Math.PI/2 + bank);
+
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 4;
+
+    if (kiteTypeKey === 'diamond') {
+      ctx.beginPath();
+      ctx.moveTo(0,-26); ctx.lineTo(16,2); ctx.lineTo(0,30); ctx.lineTo(-16,2); ctx.closePath();
+      ctx.fillStyle = kt.color; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,-26); ctx.lineTo(0,30); ctx.moveTo(-16,2); ctx.lineTo(16,2); ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.stroke();
+    } else if (kiteTypeKey === 'delta') {
+      ctx.beginPath();
+      ctx.moveTo(0,-30); ctx.lineTo(24,18); ctx.lineTo(0,8); ctx.lineTo(-24,18); ctx.closePath();
+      ctx.fillStyle = kt.color; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,-30); ctx.lineTo(0,20); ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.stroke();
+    } else {
+      ctx.fillStyle = kt.color;
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.rect(-14,-22,28,18); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.rect(-14,4,28,18); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,0.35)';
+      ctx.beginPath(); ctx.moveTo(-14,-22); ctx.lineTo(-14,22); ctx.moveTo(14,-22); ctx.lineTo(14,22); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBurst(){
+    ctx.save();
+    burstParticles.forEach(function(p){
+      ctx.globalAlpha = Math.max(0, p.life/1.0);
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function render(){
+    var windMag = windStrength/100;
+    drawBackground(windMag);
+    drawGround();
+    drawPilot();
+    if (!crashed) {
+      var kt = KITE_TYPES[kiteTypeKey];
+      drawLine();
+      drawTail(kt);
+      drawKite(kt);
+    } else {
+      drawBurst();
+      ctx.save();
+      ctx.font = 'bold 28px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.textAlign = 'center';
+      ctx.fillText('💥 Crashed!', W/2, H*0.35);
+      ctx.restore();
+    }
+  }
+
+  // ---------- Main loop ----------
+  var lastT = null;
+  function frame(ts){
+    if (lastT === null) lastT = ts;
+    var dt = Math.min(0.033, (ts - lastT) / 1000);
+    lastT = ts;
+    simStep(dt);
+    render();
+    if (running) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) { lastT = null; }
+  });
+
+  // expose minimal test hook (harmless in production)
+  window.__kiteFlyerReady = true;
+})();
+</script>
+</body>
+</html>

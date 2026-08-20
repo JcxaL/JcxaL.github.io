@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overgrown Type</title>
+<style>
+  :root{ --bg:#06080a; --panel:#12111ecc; --line:#242539; --text:#eceefa; --muted:#8b8fa8; --accent:#f87171; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:radial-gradient(1200px 800px at 30% -10%, #101a14 0%, var(--bg) 55%); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 20px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#f87171,#fca5a5,#fee2e2); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:640px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  .stage{ display:flex; flex-direction:column; gap:34px; align-items:center; padding:40px 20px 100px; }
+  .plot{ position:relative; text-align:center; cursor:pointer; }
+  .plot canvas{ display:block; }
+  .plot .cap{ margin-top:10px; font-size:11px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:210px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel .row{ display:flex; gap:6px; flex-wrap:wrap; }
+  #panel button{ flex:1; font:inherit; font-size:11px; background:#1b1b2c; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:6px 4px; cursor:pointer; }
+  #panel button.active{ background:var(--accent); color:#1a0505; border-color:var(--accent); font-weight:700; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5b5a70; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Blade density <span class="val" id="densVal">3</span></h4>
+  <input id="densRange" type="range" min="1" max="6" step="1" value="3">
+  <h4>Wind <span class="val" id="windVal">40%</span></h4>
+  <input id="windRange" type="range" min="0" max="100" step="1" value="40">
+  <h4>Season</h4>
+  <div class="row">
+    <button data-s="spring" class="active">Spring</button>
+    <button data-s="autumn">Autumn</button>
+    <button data-s="frost">Frost</button>
+  </div>
+</div>
+
+<div class="hero">
+  <h1>Overgrown Type</h1>
+  <p>Headlines set in plain system-ui, with a field of tiny grass blades sampled along each glyph's top contour and grown in on scroll. Click any headline to regrow it; the wind slider keeps every blade swaying afterward.</p>
+</div>
+
+<div class="stage" id="stage">
+  <div class="plot"><canvas data-text="OVERGROWN"></canvas><div class="cap">tap to regrow</div></div>
+  <div class="plot"><canvas data-text="WILD TYPE"></canvas><div class="cap">tap to regrow</div></div>
+  <div class="plot"><canvas data-text="MEADOW"></canvas><div class="cap">tap to regrow</div></div>
+</div>
+
+<footer>Inspired by Mandy Michael's growing-grass variable-font experiment (CodePen) · UI Spotlight Day 95 · Drop #3</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var SEASONS = {
+    spring: { blade:"#4ade80", bladeDark:"#166534", ink:"#e8fbea" },
+    autumn: { blade:"#f59e0b", bladeDark:"#7c2d12", ink:"#fff1de" },
+    frost:  { blade:"#93c5fd", bladeDark:"#1e3a8a", ink:"#eaf3ff" }
+  };
+  var season = "spring";
+  var density = 3;
+  var windAmt = 0.4;
+
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function Plot(canvas){
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.text = canvas.getAttribute("data-text");
+    this.blades = [];
+    this.growth = 0; // 0..1 overall
+    this.startTime = null;
+    this.grownOnce = false;
+    this.resize();
+    window.addEventListener("resize", this.resize.bind(this));
+  }
+
+  Plot.prototype.resize = function(){
+    var DPR = Math.min(window.devicePixelRatio||1, 2);
+    var w = Math.min(520, window.innerWidth - 48);
+    var h = 150;
+    this.canvas.width = w * DPR;
+    this.canvas.height = h * DPR;
+    this.canvas.style.width = w + "px";
+    this.canvas.style.height = h + "px";
+    this.ctx.setTransform(DPR,0,0,DPR,0,0);
+    this.w = w; this.h = h;
+    this.sampleSkyline();
+  };
+
+  Plot.prototype.sampleSkyline = function(){
+    var off = document.createElement("canvas");
+    off.width = this.w; off.height = this.h;
+    var octx = off.getContext("2d");
+    var fontSize = Math.min(64, this.w / (this.text.length * 0.62));
+    octx.font = "800 " + fontSize + "px system-ui, -apple-system, sans-serif";
+    octx.textBaseline = "alphabetic";
+    var metrics = octx.measureText(this.text);
+    var textW = metrics.width;
+    var baseY = this.h * 0.62;
+    var baseX = (this.w - textW) / 2;
+    octx.fillStyle = "#fff";
+    octx.fillText(this.text, baseX, baseY);
+    this.textBaseX = baseX; this.textBaseY = baseY; this.fontSize = fontSize;
+
+    var data = octx.getImageData(0,0,this.w,this.h).data;
+    var points = [];
+    for (var x=0; x<this.w; x+=3){
+      for (var y=0; y<this.h; y++){
+        var idx = (y*this.w + x) * 4 + 3;
+        if (data[idx] > 60){
+          points.push({ x: x, y: y });
+          break;
+        }
+      }
+    }
+    var rand = mulberry32(this.text.length * 977 + this.w);
+    var blades = [];
+    var step = Math.max(1, 7 - density);
+    for (var i=0;i<points.length;i+=step){
+      var p = points[i];
+      var len = 8 + rand()*16;
+      var lean = (rand()-0.5) * 0.6;
+      var phase = rand() * Math.PI * 2;
+      var delay = (p.x / this.w) * 900 + rand()*200;
+      blades.push({ x:p.x, y:p.y, len:len, lean:lean, phase:phase, delay:delay });
+    }
+    this.blades = blades;
+  };
+
+  Plot.prototype.regrow = function(){
+    this.startTime = null;
+    this.grownOnce = true;
+  };
+
+  Plot.prototype.draw = function(ts, elapsed){
+    var ctx = this.ctx;
+    ctx.clearRect(0,0,this.w,this.h);
+    var pal = SEASONS[season];
+
+    ctx.font = "800 " + this.fontSize + "px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = pal.ink;
+    ctx.globalAlpha = 0.92;
+    ctx.fillText(this.text, this.textBaseX, this.textBaseY);
+    ctx.globalAlpha = 1;
+
+    if (this.startTime === null) this.startTime = ts;
+    var t = ts - this.startTime;
+
+    for (var i=0;i<this.blades.length;i++){
+      var b = this.blades[i];
+      var local = Math.max(0, Math.min(1, (t - b.delay) / 550));
+      var grownLen = b.len * easeOutBack(local);
+      if (grownLen <= 0.1) continue;
+      var sway = Math.sin(elapsed*0.0022 + b.phase) * windAmt * 6;
+      var tipX = b.x + b.lean*grownLen + sway;
+      var tipY = b.y - grownLen;
+      var midX = b.x + b.lean*grownLen*0.5 + sway*0.5;
+      var midY = b.y - grownLen*0.55;
+
+      ctx.strokeStyle = grownLen > b.len*0.7 ? pal.blade : pal.bladeDark;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.quadraticCurveTo(midX, midY, tipX, tipY);
+      ctx.stroke();
+    }
+  };
+
+  function easeOutBack(x){
+    var c1 = 1.4, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+  }
+
+  var canvases = Array.prototype.slice.call(document.querySelectorAll(".plot canvas"));
+  var plots = canvases.map(function(c){ return new Plot(c); });
+
+  plots.forEach(function(p, idx){
+    p.canvas.parentElement.addEventListener("click", function(){ p.regrow(); });
+  });
+
+  var io = ("IntersectionObserver" in window) ? new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (entry.isIntersecting){
+        var idx = canvases.indexOf(entry.target);
+        if (idx >= 0 && !plots[idx].grownOnce) plots[idx].regrow();
+      }
+    });
+  }, { threshold: 0.4 }) : null;
+  if (io) canvases.forEach(function(c){ io.observe(c); });
+  else plots.forEach(function(p){ p.regrow(); });
+
+  function loop(ts){
+    plots.forEach(function(p){ p.draw(ts, ts); });
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  var densRange = document.getElementById("densRange");
+  var densVal = document.getElementById("densVal");
+  densRange.addEventListener("input", function(){
+    density = parseInt(densRange.value,10);
+    densVal.textContent = density;
+    plots.forEach(function(p){ p.sampleSkyline(); p.regrow(); });
+  });
+
+  var windRange = document.getElementById("windRange");
+  var windVal = document.getElementById("windVal");
+  windRange.addEventListener("input", function(){
+    windAmt = parseInt(windRange.value,10)/100;
+    windVal.textContent = windRange.value + "%";
+  });
+
+  var seasonBtns = Array.prototype.slice.call(document.querySelectorAll('#panel [data-s]'));
+  seasonBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      season = b.getAttribute('data-s');
+      seasonBtns.forEach(function(x){ x.classList.toggle('active', x===b); });
+    });
+  });
+
+  window.__spotlightDrop3Ready = true;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlexiString — Elastic Drag Text</title>
+<style>
+  :root{ --bg:#08070c; --panel:#12111ecc; --line:#242539; --text:#eceefa; --muted:#8b8fa8; --accent:#fbbf24; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:radial-gradient(1200px 800px at 30% -10%, #1a1408 0%, var(--bg) 55%); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh; touch-action:pan-y;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 20px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#fbbf24,#fde68a,#fff7d6); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:620px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  .stage{ display:flex; flex-direction:column; gap:56px; align-items:center; padding:60px 20px 110px; }
+  .flexi{ font-size:clamp(34px,7vw,64px); font-weight:800; display:flex; user-select:none; cursor:grab; touch-action:none; }
+  .flexi span{ display:inline-block; transform-origin:center bottom; will-change:transform; }
+  .flexi:active{ cursor:grabbing; }
+  .flexi .sp{ width:0.35em; display:inline-block; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:200px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5b5a70; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Ripple reach <span class="val" id="reachVal">3</span></h4>
+  <input id="reachRange" type="range" min="1" max="6" step="1" value="3">
+  <h4>Spring bounce <span class="val" id="bounceVal">Med</span></h4>
+  <input id="bounceRange" type="range" min="0" max="2" step="1" value="1">
+</div>
+
+<div class="hero">
+  <h1>FlexiString</h1>
+  <p>Grab any letter and drag — it stretches and squashes along your motion, and the distortion ripples outward through its neighbors with distance-based falloff. Let go, and every letter springs back with an elastic recoil, the drag origin settling last.</p>
+</div>
+
+<div class="stage" id="stage">
+  <div class="flexi" data-text="STRETCH ME"></div>
+  <div class="flexi" data-text="DRAG A LETTER"></div>
+  <div class="flexi" data-text="ELASTIC TYPE"></div>
+</div>
+
+<footer>Inspired by tmrDevelops — "FlexiString" (CodePen) · UI Spotlight Day 95 · Drop #4</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var reach = 3;
+  var bounceLevel = 1; // 0 soft, 1 med, 2 snappy
+  var BOUNCE_EASE = [
+    "cubic-bezier(.25,1,.4,1)",
+    "cubic-bezier(.34,1.56,.64,1)",
+    "cubic-bezier(.2,2.2,.3,1.1)"
+  ];
+
+  function buildFlexi(el){
+    var text = el.getAttribute("data-text");
+    var letters = [];
+    text.split("").forEach(function(ch){
+      var span = document.createElement("span");
+      if (ch === " "){ span.className = "sp"; }
+      else { span.textContent = ch; }
+      el.appendChild(span);
+      letters.push(span);
+    });
+
+    var dragging = null; // { index, startX, startY }
+    var rest = letters.map(function(){ return { sx:1, sy:1, rot:0, tx:0, ty:0 }; });
+
+    function applyTransform(i, s){
+      letters[i].style.transform =
+        "translate(" + s.tx + "px," + s.ty + "px) rotate(" + s.rot + "deg) scale(" + s.sx + "," + s.sy + ")";
+    }
+
+    function resetAll(animated){
+      letters.forEach(function(span, i){
+        if (animated){
+          var cur = rest[i];
+          span.animate([
+            { transform: "translate(" + cur.tx + "px," + cur.ty + "px) rotate(" + cur.rot + "deg) scale(" + cur.sx + "," + cur.sy + ")" },
+            { transform: "translate(0px,0px) rotate(0deg) scale(1,1)" }
+          ], {
+            duration: 620 + Math.abs(i - (dragging ? dragging.index : 0)) * 18,
+            easing: BOUNCE_EASE[bounceLevel],
+            fill: "forwards"
+          });
+        }
+        rest[i] = { sx:1, sy:1, rot:0, tx:0, ty:0 };
+      });
+    }
+
+    function onDown(i, x, y){
+      dragging = { index:i, startX:x, startY:y };
+      el.style.cursor = "grabbing";
+    }
+    function onMove(x, y){
+      if (!dragging) return;
+      var dx = x - dragging.startX;
+      var dy = y - dragging.startY;
+      var mag = Math.min(60, Math.hypot(dx,dy));
+      var dir = Math.atan2(dy,dx);
+
+      letters.forEach(function(span, i){
+        var dist = Math.abs(i - dragging.index);
+        if (dist > reach){ applyTransform(i, rest[i] = {sx:1,sy:1,rot:0,tx:0,ty:0}); return; }
+        var falloff = 1 - dist/(reach+1);
+        var stretch = 1 + (mag/60) * 0.9 * falloff;
+        var squash = 1 - (mag/60) * 0.35 * falloff;
+        var rot = (dir * 180/Math.PI) * 0.12 * falloff * (dx<0?-1:1) * 0;
+        var tx = dist === 0 ? dx*0.5 : dx*0.18*falloff*Math.sign(i-dragging.index || 1);
+        var ty = dist === 0 ? dy*0.5 : dy*0.12*falloff;
+        var s = { sx: squash, sy: stretch, rot: rot, tx: tx, ty: ty };
+        rest[i] = s;
+        applyTransform(i, s);
+      });
+    }
+    function onUp(){
+      if (!dragging) return;
+      dragging = null;
+      el.style.cursor = "grab";
+      resetAll(true);
+    }
+
+    el.addEventListener("pointerdown", function(e){
+      var target = e.target;
+      var idx = letters.indexOf(target);
+      if (idx === -1) return;
+      el.setPointerCapture(e.pointerId);
+      onDown(idx, e.clientX, e.clientY);
+    });
+    el.addEventListener("pointermove", function(e){ onMove(e.clientX, e.clientY); });
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+  }
+
+  var flexis = Array.prototype.slice.call(document.querySelectorAll(".flexi"));
+  flexis.forEach(buildFlexi);
+
+  var reachRange = document.getElementById("reachRange");
+  var reachVal = document.getElementById("reachVal");
+  reachRange.addEventListener("input", function(){
+    reach = parseInt(reachRange.value,10);
+    reachVal.textContent = reach;
+  });
+
+  var bounceRange = document.getElementById("bounceRange");
+  var bounceVal = document.getElementById("bounceVal");
+  var LABELS = ["Soft","Med","Snappy"];
+  bounceRange.addEventListener("input", function(){
+    bounceLevel = parseInt(bounceRange.value,10);
+    bounceVal.textContent = LABELS[bounceLevel];
+  });
+
+  window.__spotlightDrop4Ready = true;
+})();
+</script>
+</body>
+</html>
