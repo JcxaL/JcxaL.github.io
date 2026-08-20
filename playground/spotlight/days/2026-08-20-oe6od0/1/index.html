@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concentric Testimonial Swap</title>
+<style>
+  :root{ --bg:#07070d; --panel:#12111ecc; --line:#242539; --text:#eceefa; --muted:#8b8fa8; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:radial-gradient(1200px 800px at 30% -10%, #101a24 0%, var(--bg) 55%); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 20px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#38bdf8,#7dd3fc,#e0f2fe); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:620px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  .stage{ display:flex; justify-content:center; align-items:center; gap:22px; padding:50px 16px 40px; flex-wrap:wrap; perspective:1400px; }
+  .card{
+    width:190px; height:230px; position:relative; border-radius:18px; overflow:hidden;
+    background:#12111e; border:1px solid var(--line); box-shadow:0 14px 34px rgba(0,0,0,0.4);
+  }
+  .card.center{ width:220px; height:264px; border-color:#3a5c78; box-shadow:0 20px 46px rgba(56,189,248,0.18); }
+  .face{
+    position:absolute; inset:0; padding:20px 16px; display:flex; flex-direction:column; justify-content:space-between;
+    backface-visibility:hidden; transform-style:preserve-3d;
+  }
+  .quote{ font-size:13.5px; line-height:1.5; color:#dfe3fa; }
+  .who{ display:flex; align-items:center; gap:10px; }
+  .avatar{ width:34px; height:34px; border-radius:50%; flex-shrink:0; }
+  .who .name{ font-size:12.5px; font-weight:700; }
+  .who .role{ font-size:11px; color:var(--muted); }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:210px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel .row{ display:flex; gap:6px; flex-wrap:wrap; }
+  #panel button{ flex:1; font:inherit; font-size:11px; background:#1b1b2c; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:6px 4px; cursor:pointer; }
+  #panel button.active{ background:var(--accent); color:#031018; border-color:var(--accent); font-weight:700; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  #panel .val{ float:right; color:var(--accent); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5b5a70; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Cycle <span class="val" id="intVal">3.2s</span></h4>
+  <input id="intRange" type="range" min="1.5" max="6" step="0.1" value="3.2">
+  <h4>Stagger direction</h4>
+  <div class="row">
+    <button id="edgesBtn" class="active">Edges → In</button>
+    <button id="centerBtn">Center → Out</button>
+  </div>
+  <h4>Manual</h4>
+  <div class="row"><button id="nextBtn">Swap Now →</button></div>
+</div>
+
+<div class="hero">
+  <h1>Concentric Testimonial Swap</h1>
+  <p>Five testimonial cards flip in 3D — front face rotates away, next face rotates in with an elastic overshoot. Timing staggers outward-to-inward (or reversed), so the swap ripples across the row instead of firing all at once.</p>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<footer>Inspired by "Building an Animated Testimonial Hero Using the GSAP Timeline" (Codrops, Jonas Arleth) · UI Spotlight Day 95 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var COLORS = ["#38bdf8","#a78bfa","#34d399","#fbbf24","#f87171","#f472b6","#22d3ee"];
+  var NAMES = ["Priya Anand","Jonas Berg","Mei Lin Tan","Kofi Owusu","Elena Vasquez","Sam O'Reilly","Nadia Farouk","Liam Ó Conaill"];
+  var ROLES = ["Product Lead","Design Director","Founder","Frontend Eng.","Growth Lead","CTO","UX Researcher","Ops Manager"];
+  var QUOTES = [
+    "Shipped our redesign three weeks early and the team never burned out.",
+    "The onboarding flow finally feels like it respects people's time.",
+    "We stopped debating pixels and started debating outcomes.",
+    "Every teammate can ship a polished screen on day one now.",
+    "It's rare that a tool actually gets out of the way like this.",
+    "Our support tickets about 'how do I find X' dropped to near zero.",
+    "Feels like the roadmap finally matches how we actually work.",
+    "The kind of tool you forget is even there — which is the point."
+  ];
+
+  function initials(name){
+    return name.split(" ").map(function(p){ return p[0]; }).join("").slice(0,2);
+  }
+
+  function makeFace(seed){
+    var c = COLORS[seed % COLORS.length];
+    var name = NAMES[seed % NAMES.length];
+    var role = ROLES[seed % ROLES.length];
+    var quote = QUOTES[seed % QUOTES.length];
+    var face = document.createElement("div");
+    face.className = "face";
+    var q = document.createElement("div");
+    q.className = "quote";
+    q.textContent = "“" + quote + "”";
+    var who = document.createElement("div");
+    who.className = "who";
+    var av = document.createElement("div");
+    av.className = "avatar";
+    av.style.background = "linear-gradient(135deg," + c + ",#0b0b12)";
+    av.style.display = "flex"; av.style.alignItems = "center"; av.style.justifyContent = "center";
+    av.style.fontSize = "12px"; av.style.fontWeight = "800"; av.style.color = "#fff";
+    av.textContent = initials(name);
+    var meta = document.createElement("div");
+    meta.innerHTML = '<div class="name">' + name + '</div><div class="role">' + role + '</div>';
+    who.appendChild(av); who.appendChild(meta);
+    face.appendChild(q); face.appendChild(who);
+    return face;
+  }
+
+  var N = 5;
+  var stage = document.getElementById("stage");
+  var cards = [];
+  var seeds = [];
+  for (var i=0;i<N;i++){
+    var card = document.createElement("div");
+    card.className = "card" + (i === Math.floor(N/2) ? " center" : "");
+    var seed = i;
+    seeds.push(seed);
+    var face = makeFace(seed);
+    card.appendChild(face);
+    stage.appendChild(card);
+    cards.push(card);
+  }
+
+  var direction = "edges"; // "edges" or "center"
+  var cycleMs = 3200;
+  var animating = false;
+
+  function staggerDelay(i){
+    var center = (N-1)/2;
+    var dist = Math.abs(i - center);
+    var maxDist = center;
+    var norm = maxDist > 0 ? dist / maxDist : 0;
+    var t = direction === "edges" ? (1 - norm) : norm;
+    return t * 260;
+  }
+
+  function swap(){
+    if (animating) return;
+    animating = true;
+    var finished = 0;
+    cards.forEach(function(card, i){
+      seeds[i] = seeds[i] + N; // advance content deterministically
+      var oldFace = card.querySelector(".face");
+      var newFace = makeFace(seeds[i]);
+      newFace.style.transform = "perspective(1000px) rotateX(-90deg) translateY(14%) scale(0.72)";
+      newFace.style.opacity = "0";
+      card.appendChild(newFace);
+
+      var delay = staggerDelay(i);
+      setTimeout(function(){
+        oldFace.animate([
+          { transform: "perspective(1000px) rotateX(0deg) scale(1)", opacity: 1 },
+          { transform: "perspective(1000px) rotateX(90deg) translateY(-14%) scale(0.72)", opacity: 0 }
+        ], { duration: 260, easing: "cubic-bezier(.4,0,.7,.4)", fill: "forwards" });
+
+        newFace.animate([
+          { transform: "perspective(1000px) rotateX(-90deg) translateY(14%) scale(0.72)", opacity: 0 },
+          { transform: "perspective(1000px) rotateX(0deg) translateY(0) scale(1)", opacity: 1 }
+        ], { duration: 620, delay: 150, easing: "cubic-bezier(.34,1.56,.64,1)", fill: "forwards" })
+          .onfinish = function(){
+            newFace.style.transform = ""; newFace.style.opacity = "";
+            newFace.className = "face";
+            if (oldFace.parentNode) oldFace.parentNode.removeChild(oldFace);
+            finished++;
+            if (finished === N) animating = false;
+          };
+      }, delay);
+    });
+  }
+
+  var timer = null;
+  function restartTimer(){
+    if (timer) clearInterval(timer);
+    timer = setInterval(swap, cycleMs);
+  }
+  restartTimer();
+
+  var intRange = document.getElementById("intRange");
+  var intVal = document.getElementById("intVal");
+  intRange.addEventListener("input", function(){
+    cycleMs = parseFloat(intRange.value) * 1000;
+    intVal.textContent = parseFloat(intRange.value).toFixed(1) + "s";
+    restartTimer();
+  });
+
+  var edgesBtn = document.getElementById("edgesBtn");
+  var centerBtn = document.getElementById("centerBtn");
+  edgesBtn.addEventListener("click", function(){
+    direction = "edges"; edgesBtn.classList.add("active"); centerBtn.classList.remove("active");
+  });
+  centerBtn.addEventListener("click", function(){
+    direction = "center"; centerBtn.classList.add("active"); edgesBtn.classList.remove("active");
+  });
+
+  document.getElementById("nextBtn").addEventListener("click", function(){
+    swap();
+    restartTimer();
+  });
+
+  window.__spotlightDrop1Ready = true;
+})();
+</script>
+</body>
+</html>

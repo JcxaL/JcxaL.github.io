@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anchored Command Palette</title>
+<style>
+  :root{ --bg:#08080f; --panel:#12111ecc; --line:#242539; --text:#eceefa; --muted:#8b8fa8; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  body{margin:0; background:radial-gradient(1200px 800px at 30% -10%, #150f1f 0%, var(--bg) 55%); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:20; text-decoration:none; color:var(--text);
+    background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--line);
+    padding:8px 14px; border-radius:999px; font-size:13px;
+  }
+  .hero{ padding:100px 20px 20px; text-align:center; }
+  .hero h1{ font-size:clamp(26px,5.5vw,44px); margin:0 0 10px; background:linear-gradient(120deg,#a78bfa,#c4b5fd,#ede9fe); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{ color:var(--muted); max-width:640px; margin:0 auto; line-height:1.55; font-size:14px;}
+
+  .stage{ display:flex; flex-direction:column; align-items:center; gap:16px; padding:50px 20px 120px; }
+  .trigger{
+    anchor-name: --cmdk-anchor;
+    font:inherit; font-size:14px; font-weight:600; color:var(--text);
+    background:#15132200; background:#171425; border:1px solid var(--line); border-radius:12px;
+    padding:12px 20px; cursor:pointer; display:flex; align-items:center; gap:10px;
+  }
+  .trigger kbd{ background:#26223a; border:1px solid #3a3454; border-radius:6px; padding:2px 7px; font-size:11px; }
+  .hint{ color:var(--muted); font-size:12.5px; }
+
+  #cmdk{
+    border:1px solid var(--line); border-radius:16px; padding:0; background:#12111e; color:var(--text);
+    width:min(420px, 90vw); box-shadow:0 24px 60px rgba(0,0,0,0.5);
+    position:fixed; top:120px; left:50%; translate:-50% 0; margin:0;
+    position-anchor: --cmdk-anchor;
+    top: anchor(bottom);
+    left: anchor(left);
+    translate: 0 10px;
+  }
+  #cmdk::backdrop{ background:rgba(4,4,10,0.55); backdrop-filter:blur(2px); }
+  #cmdk .search{ padding:14px 16px; border-bottom:1px solid var(--line); }
+  #cmdk input{
+    width:100%; background:#1a1828; border:1px solid var(--line); border-radius:9px; color:var(--text);
+    font:inherit; font-size:14px; padding:9px 12px; outline:none;
+  }
+  #cmdk input:focus{ border-color:var(--accent); }
+  #cmdk .list{ max-height:280px; overflow-y:auto; padding:8px; }
+  #cmdk .item{
+    display:flex; justify-content:space-between; align-items:center; padding:9px 10px; border-radius:9px;
+    font-size:13.5px; cursor:pointer; color:#dcdcf0;
+  }
+  #cmdk .item.active{ background:rgba(167,139,250,0.18); color:#fff; }
+  #cmdk .item .k{ font-size:11px; color:var(--muted); }
+  #cmdk .empty{ padding:20px; text-align:center; color:var(--muted); font-size:13px; }
+
+  #toastHost{ position:fixed; right:16px; bottom:16px; z-index:40; display:flex; flex-direction:column-reverse; gap:8px; align-items:flex-end; }
+  .toast{
+    position:static; margin:0; border:1px solid var(--line); border-radius:12px; background:#15131f;
+    color:var(--text); padding:11px 14px; font-size:13px; display:flex; align-items:center; gap:10px;
+    box-shadow:0 10px 26px rgba(0,0,0,0.4); min-width:200px;
+  }
+  .toast .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .toast button{ margin-left:auto; background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:20; background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:12px; width:200px;
+  }
+  #panel h4{ margin:10px 0 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  #panel h4:first-child{ margin-top:0; }
+  #panel button{ width:100%; font:inherit; font-size:11px; background:#1b1b2c; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:7px 4px; cursor:pointer; margin-bottom:6px; }
+  @media (max-width:640px){ #panel{ display:none; } }
+  footer{ text-align:center; color:#5b5a70; font-size:12px; padding:0 20px 60px; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Try it</h4>
+  <button id="stackBtn">Fire 3 stacked toasts</button>
+  <button id="openBtn">Open palette</button>
+</div>
+
+<div class="hero">
+  <h1>Anchored Command Palette</h1>
+  <p>A ⌘K palette and a toast stack built with zero positioning JavaScript: the <code>popover</code> attribute handles show/hide, focus and top-layer promotion, while native CSS anchor positioning (<code>anchor-name</code> / <code>position-anchor</code> / <code>anchor()</code>) glues the panel to its trigger button.</p>
+</div>
+
+<div class="stage">
+  <button class="trigger" popovertarget="cmdk">🔎 Open Command Palette <kbd>⌘K</kbd></button>
+  <div class="hint">or press <kbd>Ctrl/Cmd</kbd> + <kbd>K</kbd> anywhere on this page</div>
+</div>
+
+<div id="cmdk" popover="auto">
+  <div class="search"><input id="cmdkInput" type="text" placeholder="Type a command…" autocomplete="off"></div>
+  <div class="list" id="cmdkList"></div>
+</div>
+
+<div id="toastHost"></div>
+
+<footer>Inspired by "The HTML Popover API: Native Modals Without a Library" (BuildMVPFast) · UI Spotlight Day 95 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var TOAST_COLORS = { success:"#34d399", warn:"#fbbf24", info:"#38bdf8" };
+
+  function spawnToast(kind, msg){
+    var t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = '<span class="dot" style="background:' + (TOAST_COLORS[kind]||"#a78bfa") + '"></span><span>' + msg + '</span><button aria-label="Dismiss">✕</button>';
+    document.getElementById("toastHost").appendChild(t);
+    var anim = t.animate([
+      { opacity:0, transform:"translateY(10px) scale(0.96)" },
+      { opacity:1, transform:"translateY(0) scale(1)" }
+    ], { duration:280, easing:"cubic-bezier(.34,1.56,.64,1)" });
+
+    function remove(){
+      t.animate([
+        { opacity:1, transform:"translateY(0)" },
+        { opacity:0, transform:"translateY(8px) scale(0.96)" }
+      ], { duration:220, easing:"ease-in" }).onfinish = function(){
+        if (t.parentNode) t.parentNode.removeChild(t);
+      };
+    }
+    t.querySelector("button").addEventListener("click", remove);
+    setTimeout(remove, 3200);
+  }
+
+  var COMMANDS = [
+    { label:"Show success toast", key:"S", run:function(){ spawnToast("success","Saved successfully"); } },
+    { label:"Show warning toast", key:"W", run:function(){ spawnToast("warn","Storage almost full"); } },
+    { label:"Show info toast", key:"I", run:function(){ spawnToast("info","New version available"); } },
+    { label:"Fire 3 stacked toasts", key:"3", run:function(){
+        spawnToast("info","Queued export…");
+        setTimeout(function(){ spawnToast("success","Export ready"); }, 350);
+        setTimeout(function(){ spawnToast("warn","2 files skipped"); }, 700);
+    } },
+    { label:"Copy invite link", key:"C", run:function(){ spawnToast("success","Invite link copied"); } },
+    { label:"New document", key:"N", run:function(){ spawnToast("info","New document created"); } },
+    { label:"Open settings", key:"⌘,", run:function(){ spawnToast("info","Settings would open here"); } },
+    { label:"Search files", key:"F", run:function(){ spawnToast("info","Searching workspace…"); } }
+  ];
+
+  var listEl = document.getElementById("cmdkList");
+  var inputEl = document.getElementById("cmdkInput");
+  var cmdk = document.getElementById("cmdk");
+  var activeIndex = 0;
+  var filtered = COMMANDS.slice();
+
+  function render(){
+    listEl.innerHTML = "";
+    if (filtered.length === 0){
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No matching commands";
+      listEl.appendChild(empty);
+      return;
+    }
+    filtered.forEach(function(cmd, i){
+      var item = document.createElement("div");
+      item.className = "item" + (i === activeIndex ? " active" : "");
+      item.innerHTML = "<span>" + cmd.label + "</span><span class='k'>" + cmd.key + "</span>";
+      item.addEventListener("click", function(){ runCommand(cmd); });
+      item.addEventListener("mouseenter", function(){ activeIndex = i; render(); });
+      listEl.appendChild(item);
+    });
+  }
+
+  function runCommand(cmd){
+    cmd.run();
+    cmdk.hidePopover();
+  }
+
+  function filterCommands(q){
+    q = q.trim().toLowerCase();
+    filtered = q === "" ? COMMANDS.slice() : COMMANDS.filter(function(c){
+      return c.label.toLowerCase().indexOf(q) !== -1;
+    });
+    activeIndex = 0;
+    render();
+  }
+
+  inputEl.addEventListener("input", function(){ filterCommands(inputEl.value); });
+
+  inputEl.addEventListener("keydown", function(e){
+    if (e.key === "ArrowDown"){ activeIndex = Math.min(filtered.length-1, activeIndex+1); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp"){ activeIndex = Math.max(0, activeIndex-1); render(); e.preventDefault(); }
+    else if (e.key === "Enter"){ if (filtered[activeIndex]) runCommand(filtered[activeIndex]); e.preventDefault(); }
+  });
+
+  cmdk.addEventListener("toggle", function(e){
+    if (e.newState === "open"){
+      inputEl.value = "";
+      filterCommands("");
+      setTimeout(function(){ inputEl.focus(); }, 30);
+    }
+  });
+
+  window.addEventListener("keydown", function(e){
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k"){
+      e.preventDefault();
+      if (cmdk.matches(":popover-open")) cmdk.hidePopover();
+      else cmdk.showPopover();
+    }
+  });
+
+  document.getElementById("stackBtn").addEventListener("click", function(){
+    COMMANDS[3].run();
+  });
+  document.getElementById("openBtn").addEventListener("click", function(){
+    cmdk.showPopover();
+  });
+
+  render();
+  window.__spotlightDrop5Ready = true;
+})();
+</script>
+</body>
+</html>
