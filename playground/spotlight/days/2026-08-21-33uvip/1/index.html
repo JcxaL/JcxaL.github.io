@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Scroll-Driven Path Camera</title>
+<style>
+  :root{ --ink:#eef4ff; --muted:#8fa2c4; --accent:#38bdf8; --accent2:#f97316; --bg:#050914; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  body{ height:420vh; }
+
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;display:inline-flex;align-items:center;gap:6px;
+    background:rgba(10,14,26,0.65);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);
+    color:var(--ink);text-decoration:none;padding:8px 14px;border-radius:999px;font-size:12.5px;}
+  .back-link:hover{background:rgba(10,14,26,0.85);}
+
+  .progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));
+    z-index:60;width:0%;transition:width 0.05s linear;}
+
+  .stage{position:sticky;top:0;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 90% at 50% 10%, #0c1730 0%, #050914 60%, #020409 100%);}
+  svg{width:100%;height:100%;display:block;}
+
+  .title{position:fixed;left:50%;bottom:8vh;transform:translateX(-50%);z-index:20;text-align:center;pointer-events:none;
+    text-shadow:0 4px 20px rgba(0,0,0,0.7);}
+  .title h1{margin:0 0 4px;font-size:clamp(18px,3.6vw,30px);letter-spacing:0.02em;font-weight:700;}
+  .title p{margin:0;color:var(--muted);font-size:12.5px;}
+
+  .hint{position:fixed;bottom:2vh;left:50%;transform:translateX(-50%);z-index:20;color:var(--muted);
+    font-size:11px;letter-spacing:0.06em;text-transform:uppercase;pointer-events:none;animation:bob 1.8s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translate(-50%,0);}50%{transform:translate(-50%,6px);}}
+
+  .panel{position:fixed;top:14px;right:14px;z-index:50;background:rgba(10,14,26,0.68);backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.14);border-radius:14px;padding:12px 14px;width:198px;font-size:11.5px;}
+  .panel h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;}
+  .field{margin-bottom:9px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:3px;}
+  .field output{color:var(--ink);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .toggleRow{display:flex;align-items:center;gap:6px;color:var(--muted);}
+  @media (max-width:640px){ .panel{display:none;} }
+
+  .credit{position:fixed;bottom:8px;right:12px;z-index:20;font-size:10px;color:rgba(143,162,196,0.7);
+    text-shadow:0 2px 6px rgba(0,0,0,0.7);}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="progress" id="progressBar"></div>
+
+<div class="stage">
+  <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-label="Animated flyover route">
+    <defs>
+      <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.9"/>
+        <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="routeGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#38bdf8"/>
+        <stop offset="100%" stop-color="#f97316"/>
+      </linearGradient>
+    </defs>
+
+    <g class="zoom">
+      <g class="pan">
+        <g id="terrain"></g>
+        <g id="grid"></g>
+        <path id="route" fill="none" stroke="url(#routeGrad)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <g id="waypoints"></g>
+        <circle id="tracker" r="14" fill="url(#glow)"/>
+        <circle id="trackerCore" r="6" fill="#fff"/>
+      </g>
+    </g>
+  </svg>
+</div>
+
+<div class="title">
+  <h1 id="wpLabel">Basecamp</h1>
+  <p>Scroll to fly the route</p>
+</div>
+<div class="hint">Scroll ↓</div>
+
+<div class="panel" aria-label="Camera controls">
+  <h2>Camera</h2>
+  <div class="field">
+    <label>Zoom range <output id="zoomOut">1.0 – 2.4×</output></label>
+    <input type="range" id="zoomMax" min="120" max="360" value="240">
+  </div>
+  <div class="field">
+    <label>Smoothing <output id="smoothOut">0.14</output></label>
+    <input type="range" id="smoothSlider" min="4" max="40" value="14">
+  </div>
+  <div class="field">
+    <label>Route width <output id="widthOut">6</output></label>
+    <input type="range" id="widthSlider" min="2" max="14" value="6">
+  </div>
+  <div class="field toggleRow">
+    <input type="checkbox" id="labelsToggle" checked>
+    <label for="labelsToggle" style="margin:0;">Show waypoint labels</label>
+  </div>
+</div>
+
+<div class="credit">Inspired by Codrops — "Scroll-Driven SVG Map Animations" · UI Spotlight Day 96 · Drop #1</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---- procedural route: smooth cubic chain through seeded waypoints ---- */
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = mulberry32(9137);
+const WAYPOINT_NAMES = ["Basecamp","Ridge Trail","Glacier Pass","Windy Col","Summit Ridge","Peak"];
+const N = WAYPOINT_NAMES.length;
+const pts = [];
+for(let i=0;i<N;i++){
+  const t = i/(N-1);
+  const x = 140 + t*1320 + (rand()-0.5)*80;
+  const baseY = 700 - t*520;
+  const y = baseY + (rand()-0.5)*140;
+  pts.push({x,y});
+}
+function buildPathD(points){
+  let d = "M "+points[0].x+" "+points[0].y+" ";
+  for(let i=0;i<points.length-1;i++){
+    const p0 = points[i===0?0:i-1], p1 = points[i], p2 = points[i+1], p3 = points[i+2>points.length-1?points.length-1:i+2];
+    const c1x = p1.x + (p2.x-p0.x)/6, c1y = p1.y + (p2.y-p0.y)/6;
+    const c2x = p2.x - (p3.x-p1.x)/6, c2y = p2.y - (p3.y-p1.y)/6;
+    d += "C "+c1x+" "+c1y+", "+c2x+" "+c2y+", "+p2.x+" "+p2.y+" ";
+  }
+  return d;
+}
+const routeEl = document.getElementById("route");
+routeEl.setAttribute("d", buildPathD(pts));
+const len = routeEl.getTotalLength();
+
+/* waypoint markers + fraction along path (nearest sample) */
+const SAMPLES = 400;
+function fractionForPoint(target){
+  let best=0, bestD=Infinity;
+  for(let i=0;i<=SAMPLES;i++){
+    const l = len*i/SAMPLES;
+    const p = routeEl.getPointAtLength(l);
+    const d = (p.x-target.x)*(p.x-target.x)+(p.y-target.y)*(p.y-target.y);
+    if(d<bestD){bestD=d; best=i/SAMPLES;}
+  }
+  return best;
+}
+const waypointsG = document.getElementById("waypoints");
+const waypointData = pts.map((p,i)=>{
+  const frac = fractionForPoint(p);
+  const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+  g.setAttribute("class","wp");
+  const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+  c.setAttribute("cx",p.x); c.setAttribute("cy",p.y); c.setAttribute("r","9");
+  c.setAttribute("fill","#050914"); c.setAttribute("stroke","#8fa2c4"); c.setAttribute("stroke-width","2");
+  g.appendChild(c);
+  const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+  t.setAttribute("x",p.x); t.setAttribute("y",p.y-16); t.setAttribute("text-anchor","middle");
+  t.setAttribute("fill","#eef4ff"); t.setAttribute("font-size","15"); t.setAttribute("font-family","system-ui,sans-serif");
+  t.setAttribute("font-weight","600"); t.setAttribute("opacity","0"); t.textContent = WAYPOINT_NAMES[i];
+  g.appendChild(t);
+  waypointsG.appendChild(g);
+  return {frac, circle:c, text:t, name:WAYPOINT_NAMES[i], lit:false};
+});
+
+/* decorative terrain: soft layered blobs + a faint dot grid for depth */
+const terrain = document.getElementById("terrain");
+for(let i=0;i<9;i++){
+  const cx = rand()*1600, cy = rand()*900, r = 90+rand()*220;
+  const el = document.createElementNS("http://www.w3.org/2000/svg","ellipse");
+  el.setAttribute("cx",cx); el.setAttribute("cy",cy); el.setAttribute("rx",r); el.setAttribute("ry",r*0.6);
+  el.setAttribute("fill", i%2===0 ? "rgba(56,189,248,0.05)" : "rgba(249,115,22,0.04)");
+  terrain.appendChild(el);
+}
+const grid = document.getElementById("grid");
+for(let gx=0; gx<=1600; gx+=64){
+  for(let gy=0; gy<=900; gy+=64){
+    const d = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    d.setAttribute("cx",gx); d.setAttribute("cy",gy); d.setAttribute("r","1.4");
+    d.setAttribute("fill","rgba(143,162,196,0.14)");
+    grid.appendChild(d);
+  }
+}
+
+/* ---- scroll-driven camera ---- */
+const panG = document.querySelector(".pan");
+const zoomG = document.querySelector(".zoom");
+const tracker = document.getElementById("tracker");
+const trackerCore = document.getElementById("trackerCore");
+const wpLabel = document.getElementById("wpLabel");
+const progressBar = document.getElementById("progressBar");
+
+let zoomMax = 240; // percent-ish scale target *100 -> real scale computed below
+let smoothing = 0.14;
+let strokeW = 6;
+let showLabels = true;
+let camX = pts[0].x, camY = pts[0].y, camScale = 1.0;
+
+document.getElementById("zoomMax").addEventListener("input", (e)=>{
+  zoomMax = parseInt(e.target.value,10);
+  document.getElementById("zoomOut").textContent = "1.0 – "+(zoomMax/100).toFixed(1)+"×";
+});
+document.getElementById("smoothSlider").addEventListener("input",(e)=>{
+  smoothing = parseInt(e.target.value,10)/100;
+  document.getElementById("smoothOut").textContent = smoothing.toFixed(2);
+});
+document.getElementById("widthSlider").addEventListener("input",(e)=>{
+  strokeW = parseInt(e.target.value,10);
+  document.getElementById("widthOut").textContent = String(strokeW);
+  routeEl.setAttribute("stroke-width", String(strokeW));
+});
+document.getElementById("labelsToggle").addEventListener("change",(e)=>{ showLabels = e.target.checked; });
+
+routeEl.style.strokeDasharray = String(len);
+routeEl.style.strokeDashoffset = String(len);
+
+function getProgress(){
+  const doc = document.documentElement;
+  const total = doc.scrollHeight - window.innerHeight;
+  if(total<=0) return 0;
+  return Math.max(0, Math.min(1, window.scrollY/total));
+}
+
+function tick(){
+  const progress = getProgress();
+  progressBar.style.width = (progress*100).toFixed(1)+"%";
+
+  const l = len*progress;
+  routeEl.style.strokeDashoffset = String(len - l);
+
+  const pt = routeEl.getPointAtLength(l);
+  const targetX = pt.x, targetY = pt.y;
+  camX += (targetX-camX)*smoothing;
+  camY += (targetY-camY)*smoothing;
+
+  const targetScale = 1 + (zoomMax/100 - 1) * progress;
+  camScale += (targetScale-camScale)*smoothing;
+
+  panG.setAttribute("transform", "translate("+(800-camX)+","+(450-camY)+")");
+  zoomG.setAttribute("transform", "translate(800,450) scale("+camScale.toFixed(4)+") translate(-800,-450)");
+
+  tracker.setAttribute("cx", targetX); tracker.setAttribute("cy", targetY);
+  trackerCore.setAttribute("cx", targetX); trackerCore.setAttribute("cy", targetY);
+
+  let activeName = waypointData[0].name;
+  waypointData.forEach((w)=>{
+    const isLit = progress >= w.frac - 0.01;
+    if(isLit !== w.lit){
+      w.lit = isLit;
+      w.circle.setAttribute("fill", isLit ? "#38bdf8" : "#050914");
+      w.circle.setAttribute("stroke", isLit ? "#f97316" : "#8fa2c4");
+    }
+    w.text.setAttribute("opacity", (isLit && showLabels) ? "1" : "0");
+    if(progress >= w.frac - 0.02) activeName = w.name;
+  });
+  wpLabel.textContent = activeName;
+
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

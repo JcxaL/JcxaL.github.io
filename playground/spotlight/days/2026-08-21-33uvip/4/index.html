@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Precomputed Noise Dust Cursor</title>
+<style>
+  :root{ --ink:#f5f2ea; --muted:#9a927f; --bg:#0a0806; --accent:#f2c14e; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#0a0806;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden;touch-action:none;}
+  #field{position:fixed;inset:0;background:radial-gradient(140% 100% at 50% 20%, #17120c 0%, #0a0806 60%, #050403 100%);}
+  #dust{position:fixed;inset:0;pointer-events:none;}
+
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;display:inline-flex;align-items:center;gap:6px;
+    background:rgba(20,16,10,0.65);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);
+    color:var(--ink);text-decoration:none;padding:8px 14px;border-radius:999px;font-size:12.5px;}
+  .back-link:hover{background:rgba(20,16,10,0.85);}
+
+  .hero{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;
+    z-index:2;max-width:520px;padding:0 20px;}
+  .hero h1{margin:0 0 8px;font-size:clamp(20px,4vw,32px);font-weight:800;color:rgba(245,242,234,0.92);
+    text-shadow:0 4px 24px rgba(0,0,0,0.6);}
+  .hero p{margin:0;color:var(--muted);font-size:13px;line-height:1.5;}
+
+  .panel{position:fixed;top:14px;right:14px;z-index:50;background:rgba(20,16,10,0.72);backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.14);border-radius:14px;padding:12px 14px;width:206px;font-size:11.5px;}
+  .panel h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;}
+  .field{margin-bottom:9px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:3px;}
+  .field output{color:var(--ink);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .presets{display:flex;gap:5px;margin-top:2px;}
+  .presets button{flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);color:var(--ink);
+    padding:6px 0;border-radius:7px;font-size:10.5px;cursor:pointer;}
+  .presets button.active{background:rgba(242,193,78,0.25);border-color:rgba(242,193,78,0.5);}
+  @media (max-width:640px){ .panel{display:none;} }
+
+  .credit{position:fixed;bottom:10px;left:0;right:0;text-align:center;z-index:2;font-size:10px;color:rgba(154,146,127,0.75);pointer-events:none;}
+</style>
+</head>
+<body>
+<div id="field"></div>
+<canvas id="dust"></canvas>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="hero">
+  <h1>Gritty Dust Trail</h1>
+  <p>Position tracks your cursor every frame — smooth. The dust texture itself only advances a few times a second — chunky. That mismatch is the whole trick: no per-frame noise math, just a small library of pre-baked frames cycling on their own clock.</p>
+</div>
+
+<div class="panel" aria-label="Dust controls">
+  <h2>Dust</h2>
+  <div class="field">
+    <label>Preset</label>
+    <div class="presets">
+      <button id="pGrit" class="active" type="button">Grit</button>
+      <button id="pSmoke" type="button">Smoke</button>
+      <button id="pStatic" type="button">Static</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>Flicker speed <output id="speedOut">10/s</output></label>
+    <input type="range" id="speedSlider" min="2" max="30" value="10">
+  </div>
+  <div class="field">
+    <label>Brush radius <output id="radiusOut">70px</output></label>
+    <input type="range" id="radiusSlider" min="30" max="160" value="70">
+  </div>
+  <div class="field">
+    <label>Frame count <output id="framesOut">12</output></label>
+    <input type="range" id="framesSlider" min="4" max="24" value="12">
+  </div>
+</div>
+
+<div class="credit">Inspired by Robert Aperios / Codrops — "Run Rob Run" (dust texture technique) · UI Spotlight Day 96 · Drop #4</div>
+
+<script>
+(function(){
+"use strict";
+
+const canvas = document.getElementById("dust");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  canvas.width = Math.floor(innerWidth*dpr);
+  canvas.height = Math.floor(innerHeight*dpr);
+  canvas.style.width = innerWidth+"px";
+  canvas.style.height = innerHeight+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ---- bake noise frames once ---- */
+let dustFrames = [];
+let frameCount = 12;
+function bakeFrames(n){
+  dustFrames = [];
+  const size = 220;
+  for(let f=0; f<n; f++){
+    const off = document.createElement("canvas");
+    off.width = size; off.height = size;
+    const octx = off.getContext("2d");
+    octx.clearRect(0,0,size,size);
+    const dots = 420;
+    for(let i=0;i<dots;i++){
+      const x = Math.random()*size, y = Math.random()*size;
+      const a = Math.random()*0.5;
+      const r = 0.6 + Math.random()*1.8;
+      octx.fillStyle = "rgba(242,205,150,"+a.toFixed(3)+")";
+      octx.beginPath(); octx.arc(x,y,r,0,Math.PI*2); octx.fill();
+    }
+    dustFrames.push(off);
+  }
+}
+bakeFrames(frameCount);
+
+/* ---- pointer tracking (smooth, every rAF) ---- */
+let px = innerWidth/2, py = innerHeight/2;
+let hasPointer = false;
+window.addEventListener("pointermove",(e)=>{ px=e.clientX; py=e.clientY; hasPointer=true; });
+window.addEventListener("pointerdown",(e)=>{ px=e.clientX; py=e.clientY; hasPointer=true; });
+
+/* ---- decoupled texture frame clock ---- */
+let dustFrameIndex = 0;
+let lastDustUpdate = 0;
+let dustSpeed = 10; // frames per second, independent of rAF rate
+let brushRadius = 70;
+
+const trail = []; // recent positions for a short streak
+const TRAIL_MAX = 10;
+
+function frame(now){
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+
+  if(now - lastDustUpdate > 1000/dustSpeed){
+    lastDustUpdate = now;
+    dustFrameIndex = (dustFrameIndex+1) % dustFrames.length;
+  }
+
+  if(hasPointer){
+    trail.push({x:px,y:py});
+    if(trail.length>TRAIL_MAX) trail.shift();
+
+    trail.forEach((p,i)=>{
+      const t = (i+1)/trail.length;
+      const r = brushRadius * (0.5 + t*0.5);
+      drawDust(p.x, p.y, r, t*0.9);
+    });
+  }
+
+  requestAnimationFrame(frame);
+}
+
+function drawDust(x,y,r,alpha){
+  const tmp = document.createElement("canvas");
+  tmp.width = r*2; tmp.height = r*2;
+  const tctx = tmp.getContext("2d");
+  const tex = dustFrames[dustFrameIndex];
+  tctx.drawImage(tex, 0,0, r*2, r*2);
+  tctx.globalCompositeOperation = "destination-in";
+  const grad = tctx.createRadialGradient(r,r,0, r,r,r);
+  grad.addColorStop(0, "rgba(0,0,0,1)");
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  tctx.fillStyle = grad;
+  tctx.fillRect(0,0,r*2,r*2);
+
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(tmp, x-r, y-r);
+  ctx.globalAlpha = 1;
+}
+
+requestAnimationFrame(frame);
+
+/* ---- controls ---- */
+document.getElementById("speedSlider").addEventListener("input",(e)=>{
+  dustSpeed = parseInt(e.target.value,10);
+  document.getElementById("speedOut").textContent = dustSpeed+"/s";
+});
+document.getElementById("radiusSlider").addEventListener("input",(e)=>{
+  brushRadius = parseInt(e.target.value,10);
+  document.getElementById("radiusOut").textContent = brushRadius+"px";
+});
+document.getElementById("framesSlider").addEventListener("input",(e)=>{
+  frameCount = parseInt(e.target.value,10);
+  document.getElementById("framesOut").textContent = String(frameCount);
+  bakeFrames(frameCount);
+});
+
+function setPreset(speed, radius, frames, btn){
+  document.querySelectorAll(".presets button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  dustSpeed=speed; brushRadius=radius; frameCount=frames;
+  document.getElementById("speedSlider").value=speed;
+  document.getElementById("radiusSlider").value=radius;
+  document.getElementById("framesSlider").value=frames;
+  document.getElementById("speedOut").textContent=speed+"/s";
+  document.getElementById("radiusOut").textContent=radius+"px";
+  document.getElementById("framesOut").textContent=String(frames);
+  bakeFrames(frames);
+}
+document.getElementById("pGrit").addEventListener("click",(e)=>setPreset(10,70,12,e.target));
+document.getElementById("pSmoke").addEventListener("click",(e)=>setPreset(4,120,20,e.target));
+document.getElementById("pStatic").addEventListener("click",(e)=>setPreset(26,50,6,e.target));
+
+/* touch: keep dust following the finger while dragging */
+window.addEventListener("touchmove",(e)=>{ if(e.touches[0]){ px=e.touches[0].clientX; py=e.touches[0].clientY; hasPointer=true; } }, {passive:true});
+})();
+</script>
+</body>
+</html>

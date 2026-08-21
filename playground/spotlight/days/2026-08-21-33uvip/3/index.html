@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Diffusion Decode Text</title>
+<style>
+  :root{ --ink:#f5f8ff; --muted:#8b96b8; --bg:#06070d; --red:#ff5470; --cyan:#38e0ff; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:radial-gradient(120% 90% at 50% 0%, #0d0f1c 0%, #06070d 60%);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100%;padding:24px;}
+
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;display:inline-flex;align-items:center;gap:6px;
+    background:rgba(10,14,26,0.65);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);
+    color:var(--ink);text-decoration:none;padding:8px 14px;border-radius:999px;font-size:12.5px;}
+  .back-link:hover{background:rgba(10,14,26,0.85);}
+
+  .console{width:min(92vw,760px);}
+  .statusRow{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;font-size:11.5px;color:var(--muted);
+    font-variant-numeric:tabular-nums;letter-spacing:0.02em;}
+  .sampler{display:flex;align-items:center;gap:8px;}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pulse 1.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:0.5;}50%{opacity:1;}}
+
+  .stage{position:relative;min-height:120px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;
+    gap:0.02em;font-size:clamp(30px,8vw,72px);font-weight:800;letter-spacing:0.01em;
+    font-variant-numeric:tabular-nums;}
+  .char{position:relative;display:inline-block;color:#e9edff;}
+  .char::before, .char::after{content:attr(data-ghost);position:absolute;inset:0;pointer-events:none;
+    mix-blend-mode:screen;opacity:var(--ghost-op,1);transition:opacity 0.2s ease;}
+  .char::before{content:attr(data-ghost);color:var(--red);transform:translateX(-4px);}
+  .char::after{content:attr(data-ghost2);color:var(--cyan);transform:translateX(4px);}
+  .char.is-settled{color:#ffffff;text-shadow:0 0 18px rgba(167,139,250,0.5);}
+
+  .progressWrap{width:100%;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:26px;overflow:hidden;}
+  .progressBar{height:100%;width:0%;background:linear-gradient(90deg,var(--red),var(--accent),var(--cyan));transition:width 0.08s linear;}
+
+  .chips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;justify-content:center;}
+  .chip{font-size:10.5px;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);color:var(--muted);letter-spacing:0.03em;}
+  .chip.state{color:var(--ink);border-color:rgba(167,139,250,0.4);background:rgba(167,139,250,0.12);}
+
+  .panel{position:fixed;top:14px;right:14px;z-index:50;background:rgba(10,14,26,0.72);backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.14);border-radius:14px;padding:12px 14px;width:200px;font-size:11.5px;}
+  .panel h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;}
+  .field{margin-bottom:9px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:3px;}
+  .field output{color:var(--ink);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  @media (max-width:640px){ .panel{display:none;} }
+
+  .credit{position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:10px;color:rgba(139,150,184,0.7);}
+
+  @media (prefers-reduced-motion: reduce){
+    .dot{animation:none;}
+    .char::before,.char::after{transition:none;opacity:0;}
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="console">
+  <div class="statusRow">
+    <div class="sampler"><span class="dot"></span> karras · 50 steps</div>
+    <div id="tReadout">t = 1.000</div>
+  </div>
+
+  <div class="stage" id="stage" aria-live="polite"></div>
+
+  <div class="progressWrap"><div class="progressBar" id="progressBar"></div></div>
+
+  <div class="chips">
+    <div class="chip">diffusion · v3.2</div>
+    <div class="chip" id="stepChip">step 0/50</div>
+    <div class="chip state" id="stateChip">decoding</div>
+  </div>
+</div>
+
+<div class="panel" aria-label="Decode controls">
+  <h2>Sampler</h2>
+  <div class="field">
+    <label>Decode time <output id="durOut">2.0s</output></label>
+    <input type="range" id="durSlider" min="8" max="50" value="20">
+  </div>
+  <div class="field">
+    <label>Hold time <output id="holdOut">1.5s</output></label>
+    <input type="range" id="holdSlider" min="5" max="40" value="15">
+  </div>
+  <div class="field">
+    <label>Ghost intensity <output id="ghostOut">100%</output></label>
+    <input type="range" id="ghostSlider" min="0" max="100" value="100">
+  </div>
+</div>
+
+<div class="credit">Inspired by CodeFronts — "Diffusion Decode Glitch Text" · UI Spotlight Day 96 · Drop #3</div>
+
+<script>
+(function(){
+"use strict";
+
+const WORDS = ["SYNTHESIZE","INFERENCE","EMBEDDING","LATENT","DECODE","TENSOR"];
+const NOISE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ΣΦΨΩαβγδλμ∇∂∞≈≠□◇△▽▢".split("");
+
+const stage = document.getElementById("stage");
+const progressBar = document.getElementById("progressBar");
+const stepChip = document.getElementById("stepChip");
+const stateChip = document.getElementById("stateChip");
+const tReadout = document.getElementById("tReadout");
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let decodeMs = 2000, holdMs = 1500, ghostIntensity = 1.0;
+document.getElementById("durSlider").addEventListener("input",(e)=>{
+  decodeMs = parseInt(e.target.value,10)*100;
+  document.getElementById("durOut").textContent = (decodeMs/1000).toFixed(1)+"s";
+});
+document.getElementById("holdSlider").addEventListener("input",(e)=>{
+  holdMs = parseInt(e.target.value,10)*100;
+  document.getElementById("holdOut").textContent = (holdMs/1000).toFixed(1)+"s";
+});
+document.getElementById("ghostSlider").addEventListener("input",(e)=>{
+  ghostIntensity = parseInt(e.target.value,10)/100;
+  document.getElementById("ghostOut").textContent = Math.round(ghostIntensity*100)+"%";
+});
+
+function randChar(){ return NOISE_CHARS[Math.floor(Math.random()*NOISE_CHARS.length)]; }
+
+let wordIndex = 0;
+let chars = [];
+
+function buildWord(word){
+  stage.innerHTML = "";
+  chars = word.split("").map((letter, i)=>{
+    const span = document.createElement("span");
+    span.className = "char";
+    span.dataset.target = letter;
+    span.textContent = reduceMotion ? letter : randChar();
+    span.dataset.ghost = randChar();
+    span.dataset.ghost2 = randChar();
+    span.style.setProperty("--ghost-op", reduceMotion ? "0" : String(ghostIntensity));
+    span.dataset.settled = reduceMotion ? "1" : "0";
+    if(reduceMotion) span.classList.add("is-settled");
+    stage.appendChild(span);
+    return span;
+  });
+}
+
+function allSettled(){ return chars.every(c=>c.dataset.settled==="1"); }
+
+let phaseStart = performance.now();
+let state = "decoding"; // decoding -> resolved -> re-noising
+let step = 0;
+
+function frame(now){
+  const word = WORDS[wordIndex];
+
+  if(state==="decoding"){
+    const elapsed = now - phaseStart;
+    const progress = Math.min(1, elapsed/decodeMs);
+    progressBar.style.width = (progress*100).toFixed(1)+"%";
+    step = Math.min(50, Math.floor(progress*50));
+    stepChip.textContent = "step "+step+"/50";
+    tReadout.textContent = "t = "+(1-progress).toFixed(3);
+    stateChip.textContent = "decoding";
+
+    if(!reduceMotion){
+      chars.forEach((c,i)=>{
+        if(c.dataset.settled==="1") return;
+        const p = Math.pow(progress, 1.5) * 0.18 * (1 + i*0.05);
+        if(Math.random() < p || progress > 0.95){
+          c.textContent = c.dataset.target;
+          c.dataset.settled = "1";
+          c.classList.add("is-settled");
+          c.style.setProperty("--ghost-op","0");
+          c.removeAttribute("data-ghost");
+          c.removeAttribute("data-ghost2");
+        } else {
+          c.textContent = randChar();
+          c.dataset.ghost = randChar();
+          c.dataset.ghost2 = randChar();
+        }
+      });
+    }
+
+    if(progress>=1 || allSettled() || reduceMotion){
+      chars.forEach(c=>{
+        if(c.dataset.settled!=="1"){
+          c.textContent = c.dataset.target;
+          c.dataset.settled="1"; c.classList.add("is-settled"); c.style.setProperty("--ghost-op","0");
+        }
+      });
+      state = "resolved"; phaseStart = now;
+      stateChip.textContent = "resolved";
+      progressBar.style.width = "100%";
+      tReadout.textContent = "t = 0.000";
+    }
+  } else if(state==="resolved"){
+    if(now - phaseStart >= holdMs){
+      state = "re-noising"; phaseStart = now;
+      stateChip.textContent = "re-noising";
+    }
+  } else if(state==="re-noising"){
+    const elapsed = now - phaseStart;
+    const p = Math.min(1, elapsed/280);
+    if(!reduceMotion){
+      chars.forEach(c=>{
+        c.textContent = randChar();
+        c.dataset.ghost = randChar();
+        c.dataset.ghost2 = randChar();
+        c.dataset.settled = "0";
+        c.classList.remove("is-settled");
+        c.style.setProperty("--ghost-op", String(ghostIntensity));
+      });
+    }
+    progressBar.style.width = "0%";
+    if(p>=1 || reduceMotion){
+      wordIndex = (wordIndex+1) % WORDS.length;
+      buildWord(WORDS[wordIndex]);
+      state = "decoding"; phaseStart = now; step = 0;
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+
+buildWord(WORDS[wordIndex]);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
