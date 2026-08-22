@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Native Entry/Exit — Drop 1</title>
+<style>
+  :root{ --bg0:#08070f; --bg1:#0f0e1e; --ink:#e9e7ff; --dim:#8b87b8; --accent:#38bdf8; --ok:#34d399; --warn:#fbbf24; --err:#f87171; --glass:rgba(20,18,40,.6); --glass-b:rgba(255,255,255,.09); }
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%; background:radial-gradient(1200px 600px at 50% -10%, var(--bg1), var(--bg0)); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  body{padding:70px 18px 40px; display:flex; flex-direction:column; align-items:center; min-height:100vh;}
+  .back-link{position:fixed; top:14px; left:14px; z-index:50; background:var(--glass); border:1px solid var(--glass-b); backdrop-filter:blur(10px); color:var(--ink); text-decoration:none; font-size:13px; font-weight:600; padding:8px 14px; border-radius:999px;}
+  .back-link:hover{background:rgba(255,255,255,.12);}
+  h1{font-size:clamp(22px,5vw,32px); margin:6px 0 6px; text-align:center;}
+  p.sub{color:var(--dim); font-size:14px; text-align:center; max-width:520px; margin:0 0 28px;}
+  .controls{display:flex; gap:10px; margin-bottom:22px; flex-wrap:wrap; justify-content:center;}
+  button.act{font:inherit; font-size:13px; font-weight:700; color:#04101f; background:linear-gradient(135deg,var(--accent),#4f9fe0); border:none; padding:10px 18px; border-radius:10px; cursor:pointer;}
+  button.act.secondary{color:var(--ink); background:rgba(255,255,255,.08); border:1px solid var(--glass-b);}
+  button.act:active{transform:scale(.96);}
+
+  #feed{ width:min(480px,100%); display:flex; flex-direction:column; gap:10px; }
+  .item{
+    display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:14px;
+    background:var(--glass); border:1px solid var(--glass-b); backdrop-filter:blur(10px);
+    opacity:1; transform:translateY(0) scale(1);
+    transition: opacity .38s cubic-bezier(.2,.7,.3,1), transform .38s cubic-bezier(.2,.7,.3,1), display .38s allow-discrete;
+  }
+  /* entry state: applied to a freshly-inserted element before its first paint */
+  @starting-style{
+    .item{ opacity:0; transform:translateY(16px) scale(.96); }
+  }
+  /* exit state: JS just toggles this class; CSS drives the whole animation, including
+     the discrete `display` swap at the very end via allow-discrete */
+  .item.removing{
+    opacity:0; transform:translateY(-14px) scale(.94);
+    display:none;
+  }
+  .dot{width:10px; height:10px; border-radius:50%; flex:none;}
+  .dot.ok{background:var(--ok); box-shadow:0 0 10px var(--ok);}
+  .dot.warn{background:var(--warn); box-shadow:0 0 10px var(--warn);}
+  .dot.err{background:var(--err); box-shadow:0 0 10px var(--err);}
+  .item .txt{flex:1; font-size:13.5px; line-height:1.4;}
+  .item .txt b{display:block; font-size:13px; margin-bottom:2px;}
+  .item .meta{color:var(--dim); font-size:11px;}
+  .item .close{background:none; border:none; color:var(--dim); font-size:16px; cursor:pointer; padding:4px 8px; border-radius:8px;}
+  .item .close:hover{background:rgba(255,255,255,.08); color:var(--ink);}
+
+  footer{margin-top:34px; color:var(--dim); font-size:11.5px; text-align:center;}
+  .howbox{ width:min(480px,100%); margin-top:20px; background:rgba(255,255,255,.04); border:1px solid var(--glass-b); border-radius:12px; padding:12px 14px; font-size:12px; color:var(--dim); line-height:1.6; }
+  .howbox code{color:var(--accent); font-family:ui-monospace,monospace;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<h1>Zero-JS Enter &amp; Exit</h1>
+<p class="sub">Cards animate in on insert and animate out on removal — <code>@starting-style</code> plus <code>transition-behavior: allow-discrete</code> do the whole thing. JS only adds/removes a class.</p>
+
+<div class="controls">
+  <button class="act" id="btnAdd">+ New event</button>
+  <button class="act secondary" id="btnAuto">▶ Auto-stream</button>
+  <button class="act secondary" id="btnClear">Clear all</button>
+</div>
+
+<div id="feed"></div>
+
+<div class="howbox">
+  <b style="color:var(--ink)">The mechanism</b><br>
+  Entry: a new <code>.item</code> is inserted with the base rule already in place, but the browser first paints it using the <code>@starting-style</code> override — then transitions from there to normal on the very next frame.<br><br>
+  Exit: JS adds <code>.removing</code>. Because <code>display</code> is listed in <code>transition-property</code> with <code>allow-discrete</code>, the element keeps rendering at its old <code>display</code> value for the full transition duration, then flips to <code>none</code> at the end — so opacity/transform get to finish before the element vanishes from layout.
+</div>
+
+<footer>Inspired by web-standards.dev "Entry and Exit Transitions with Modern CSS" · UI Spotlight Day 97 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+const feed = document.getElementById("feed");
+const KINDS = [
+  {dot:"ok",   title:"Deploy succeeded",  meta:"main → production"},
+  {dot:"warn", title:"Build queued",       meta:"waiting for runner"},
+  {dot:"err",  title:"Test suite failed",  meta:"3 failures in auth"},
+  {dot:"ok",   title:"Cache warmed",       meta:"edge nodes ready"},
+  {dot:"warn", title:"Rate limit near",    meta:"82% of quota used"},
+];
+let counter = 0;
+
+function addItem(){
+  const k = KINDS[counter % KINDS.length];
+  counter++;
+  const el = document.createElement("div");
+  el.className = "item";
+  el.innerHTML =
+    '<div class="dot '+k.dot+'"></div>'+
+    '<div class="txt"><b>'+k.title+'</b><span class="meta">'+k.meta+' · just now</span></div>'+
+    '<button class="close" aria-label="Dismiss">✕</button>';
+  el.querySelector(".close").addEventListener("click", ()=>removeItem(el));
+  feed.prepend(el);
+  if(feed.children.length > 8) removeItem(feed.lastElementChild);
+}
+
+function removeItem(el){
+  if(!el || el.classList.contains("removing")) return;
+  el.classList.add("removing");
+  el.addEventListener("transitionend", (e)=>{
+    if(e.propertyName === "display" || e.target === el) el.remove();
+  }, {once:true});
+  // safety fallback in case transitionend for `display` doesn't fire (reduced motion etc.)
+  setTimeout(()=>{ if(el.isConnected) el.remove(); }, 700);
+}
+
+document.getElementById("btnAdd").addEventListener("click", addItem);
+document.getElementById("btnClear").addEventListener("click", ()=>{
+  Array.from(feed.children).forEach(removeItem);
+});
+
+let autoTimer = null;
+document.getElementById("btnAuto").addEventListener("click", (e)=>{
+  if(autoTimer){
+    clearInterval(autoTimer); autoTimer = null;
+    e.target.textContent = "▶ Auto-stream";
+  } else {
+    autoTimer = setInterval(addItem, 1100);
+    e.target.textContent = "⏸ Stop stream";
+  }
+});
+
+addItem(); addItem(); addItem();
+})();
+</script>
+</body>
+</html>

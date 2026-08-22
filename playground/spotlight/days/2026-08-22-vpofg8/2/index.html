@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meniscus Nav — Drop 2</title>
+<style>
+  :root{ --bg0:#0a0713; --bg1:#120b22; --ink:#efeaff; --dim:#9089bd; --accent:#a78bfa; --glass:rgba(24,18,42,.62); --glass-b:rgba(255,255,255,.09); }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; min-height:100%; background:radial-gradient(1100px 620px at 50% -8%, var(--bg1), var(--bg0)); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  body{padding:70px 18px 140px; display:flex; flex-direction:column; align-items:center; min-height:100vh;}
+  .back-link{position:fixed; top:14px; left:14px; z-index:50; background:var(--glass); border:1px solid var(--glass-b); backdrop-filter:blur(10px); color:var(--ink); text-decoration:none; font-size:13px; font-weight:600; padding:8px 14px; border-radius:999px;}
+  .back-link:hover{background:rgba(255,255,255,.12);}
+  h1{font-size:clamp(22px,5vw,32px); margin:6px 0 6px; text-align:center;}
+  p.sub{color:var(--dim); font-size:14px; text-align:center; max-width:520px; margin:0 0 8px;}
+  .panel{width:min(560px,100%); background:rgba(255,255,255,.03); border:1px solid var(--glass-b); border-radius:16px; padding:24px; margin-top:26px; text-align:center;}
+  .panel h2{font-size:15px; margin:0 0 6px;}
+  .panel p{color:var(--dim); font-size:12.5px; margin:0;}
+
+  #debug{
+    position:fixed; top:14px; right:14px; z-index:50; background:var(--glass); border:1px solid var(--glass-b);
+    backdrop-filter:blur(10px); border-radius:14px; padding:12px 14px; font-size:11px; color:var(--dim); width:190px;
+  }
+  #debug label{display:flex; justify-content:space-between; margin-bottom:4px;}
+  #debug input[type=range]{width:100%; accent-color:var(--accent); margin-bottom:8px;}
+  @media (max-width:640px){ #debug{display:none;} }
+
+  #navwrap{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); width:min(420px, calc(100vw - 32px)); filter:drop-shadow(0 18px 40px rgba(0,0,0,.55)); }
+  svg{display:block; width:100%; overflow:visible;}
+  .bar-fill{fill:url(#barGrad);}
+  .bead{fill:url(#beadGrad); stroke:rgba(255,255,255,.5); stroke-width:1.5;}
+  .tab{cursor:pointer;}
+  .tab .ic{fill:none; stroke:#c8c2f0; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; transition:stroke .25s;}
+  .tab.active .ic{stroke:#04081a; stroke-width:6.5;}
+  .tab .lbl{font-size:9px; fill:#8a83b8; font-family:inherit; text-anchor:middle; transition:fill .25s;}
+  .tab.active .lbl{opacity:0;}
+
+  footer{margin-top:20px; color:var(--dim); font-size:11.5px; text-align:center;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<h1>Meniscus Liquid Nav</h1>
+<p class="sub">The bar's edge is three tangent arcs, not a border-radius hack — the bowl always hugs the bead exactly, and a signed-velocity term stretches whichever shoulder is trailing.</p>
+
+<div class="panel">
+  <h2>Tap a tab below</h2>
+  <p>Watch the bar surface itself deform around the bead as it travels, with an asymmetric stretch in the direction of motion — like a bead of water finding a new dimple.</p>
+</div>
+
+<div id="debug">
+  <label><span>Spring stiffness</span><span id="kVal">210</span></label>
+  <input type="range" id="kSlider" min="90" max="400" value="210">
+  <label><span>Stretch amount</span><span id="stretchVal">0.55</span></label>
+  <input type="range" id="stretchSlider" min="0" max="100" value="55">
+</div>
+
+<div id="navwrap">
+  <svg viewBox="0 0 400 92" id="svgNav">
+    <defs>
+      <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#221a3d"/>
+        <stop offset="1" stop-color="#150f28"/>
+      </linearGradient>
+      <radialGradient id="beadGrad" cx="35%" cy="30%" r="75%">
+        <stop offset="0" stop-color="#c9b8ff"/>
+        <stop offset="1" stop-color="#8b6cf0"/>
+      </radialGradient>
+    </defs>
+    <path id="barPath" class="bar-fill"></path>
+    <circle id="bead" class="bead" r="24"></circle>
+    <g id="tabs"></g>
+  </svg>
+</div>
+
+<footer>Inspired by hasib41/meniscus-liquid-nav (GitHub) · UI Spotlight Day 97 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+const W = 400, H = 92, BAR_TOP = 26, CORNER = 20;
+const LABELS = ["Home","Search","Saved","Grid","Profile"];
+const ICONS = [
+  "M -8,2 L 0,-7 L 8,2 M -5,2 L -5,8 L 5,8 L 5,2",
+  "M -2,-2 a6,6 0 1,0 0.01,0 M 3,3 L 8,8",
+  "M 0,7 C -9,0 -7,-8 0,-3 C 7,-8 9,0 0,7 Z",
+  "M -7,-7 L -1,-7 L -1,-1 L -7,-1 Z M 1,-7 L 7,-7 L 7,-1 L 1,-1 Z M -7,1 L -1,1 L -1,7 L -7,7 Z M 1,1 L 7,1 L 7,7 L 1,7 Z",
+  "M 0,-3 a4,4 0 1,0 0.01,0 M -6,8 C -6,1 6,1 6,8"
+];
+const N = ICONS.length;
+const tabX = i => (W/(N))*(i+0.5);
+
+const tabsG = document.getElementById("tabs");
+const els = [];
+ICONS.forEach((d,i)=>{
+  const x = tabX(i);
+  const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+  g.setAttribute("class","tab"+(i===0?" active":""));
+  g.setAttribute("transform","translate("+x+","+62+")");
+  const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+  path.setAttribute("class","ic"); path.setAttribute("d",d);
+  const label = document.createElementNS("http://www.w3.org/2000/svg","text");
+  label.setAttribute("class","lbl"); label.setAttribute("y","18"); label.textContent = LABELS[i];
+  g.appendChild(path); g.appendChild(label);
+  g.addEventListener("click", ()=>selectTab(i));
+  tabsG.appendChild(g);
+  els.push(g);
+});
+
+let active = 0;
+let beadX = tabX(0), beadVX = 0;
+let target = tabX(0);
+let K = 210, DAMP = 22, STRETCH = 0.55;
+
+document.getElementById("kSlider").addEventListener("input", e=>{ K=Number(e.target.value); document.getElementById("kVal").textContent=K; });
+document.getElementById("stretchSlider").addEventListener("input", e=>{ STRETCH=Number(e.target.value)/100; document.getElementById("stretchVal").textContent=STRETCH.toFixed(2); });
+
+function selectTab(i){
+  active = i;
+  target = tabX(i);
+  els.forEach((g,idx)=>g.classList.toggle("active", idx===i));
+}
+
+function barPathD(bx, stretchSigned){
+  const br = 27; // bowl half-width baseline
+  const depth = 30;
+  const padL = br * (1 + Math.max(0,-stretchSigned));
+  const padR = br * (1 + Math.max(0, stretchSigned));
+  const lx = Math.max(CORNER+2, bx - padL);
+  const rx = Math.min(W-CORNER-2, bx + padR);
+  return [
+    "M 0,"+H,
+    "L 0,"+(BAR_TOP+CORNER),
+    "Q 0,"+BAR_TOP+" "+CORNER+","+BAR_TOP,
+    "L "+lx+","+BAR_TOP,
+    "C "+(lx+(bx-lx)*0.55)+","+BAR_TOP+" "+(bx-(bx-lx)*0.15)+","+(BAR_TOP+depth)+" "+bx+","+(BAR_TOP+depth),
+    "C "+(bx+(rx-bx)*0.15)+","+(BAR_TOP+depth)+" "+(rx-(rx-bx)*0.55)+","+BAR_TOP+" "+rx+","+BAR_TOP,
+    "L "+(W-CORNER)+","+BAR_TOP,
+    "Q "+W+","+BAR_TOP+" "+W+","+(BAR_TOP+CORNER),
+    "L "+W+","+H,
+    "Z"
+  ].join(" ");
+}
+
+const barPath = document.getElementById("barPath");
+const bead = document.getElementById("bead");
+let lastT = null;
+function tick(ts){
+  if(lastT==null) lastT = ts;
+  let dt = (ts-lastT)/1000; lastT = ts;
+  if(dt>0.05) dt = 0.05;
+
+  const accel = (target - beadX) * K - beadVX * DAMP;
+  beadVX += accel * dt;
+  beadX += beadVX * dt;
+
+  const stretchSigned = Math.max(-1, Math.min(1, beadVX/900)) * STRETCH;
+  barPath.setAttribute("d", barPathD(beadX, stretchSigned));
+
+  const squish = Math.max(-1,Math.min(1, beadVX/1400));
+  const sx = 1 + Math.abs(squish)*0.28;
+  const sy = 1 - Math.abs(squish)*0.22;
+  bead.setAttribute("cx", beadX);
+  bead.setAttribute("cy", BAR_TOP + 14);
+  bead.setAttribute("transform", "translate("+beadX+","+(BAR_TOP+14)+") scale("+sx+","+sy+") translate("+(-beadX)+","+(-(BAR_TOP+14))+")");
+
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

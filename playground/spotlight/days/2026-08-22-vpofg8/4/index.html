@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web Haptics — Drop 4</title>
+<style>
+  :root{ --bg0:#0a0710; --bg1:#130d22; --ink:#efeaff; --dim:#938dbb; --accent:#fbbf24; --glass:rgba(24,18,42,.6); --glass-b:rgba(255,255,255,.09); }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; min-height:100%; background:radial-gradient(1100px 600px at 50% -8%, var(--bg1), var(--bg0)); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  body{padding:70px 18px 50px; display:flex; flex-direction:column; align-items:center; min-height:100vh;}
+  .back-link{position:fixed; top:14px; left:14px; z-index:50; background:var(--glass); border:1px solid var(--glass-b); backdrop-filter:blur(10px); color:var(--ink); text-decoration:none; font-size:13px; font-weight:600; padding:8px 14px; border-radius:999px;}
+  .back-link:hover{background:rgba(255,255,255,.12);}
+  h1{font-size:clamp(22px,5vw,32px); margin:6px 0 6px; text-align:center;}
+  p.sub{color:var(--dim); font-size:14px; text-align:center; max-width:540px; margin:0 0 6px;}
+  #support{ font-size:12px; color:var(--dim); margin-bottom:26px; padding:6px 14px; border-radius:999px; background:rgba(255,255,255,.05); border:1px solid var(--glass-b); }
+  #support.yes{color:#5be08a;}
+  #support.no{color:#ff8a8a;}
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; width:min(760px,100%); }
+  .card{ background:var(--glass); border:1px solid var(--glass-b); border-radius:16px; padding:20px; backdrop-filter:blur(10px); display:flex; flex-direction:column; gap:14px; align-items:center; text-align:center; }
+  .card h3{margin:0; font-size:14px;}
+  .card p{margin:0; font-size:12px; color:var(--dim); min-height:32px;}
+
+  .waveform{ display:flex; align-items:flex-end; gap:3px; height:36px; }
+  .bar{ width:6px; border-radius:3px; background:rgba(255,255,255,.14); transition:background .12s, transform .12s; transform-origin:bottom; height:6px; }
+  .bar.lit{ background:var(--accent); box-shadow:0 0 8px var(--accent); }
+
+  button.hbtn{
+    font:inherit; font-weight:700; font-size:13px; color:#1a1206; border:none; border-radius:12px;
+    padding:12px 20px; cursor:pointer; width:100%; transition:transform .1s;
+  }
+  button.hbtn:active{ transform:scale(.94); }
+  .b-tap{ background:linear-gradient(135deg,#38bdf8,#4f9fe0); color:#04101f;}
+  .b-success{ background:linear-gradient(135deg,#34d399,#0ea968); }
+  .b-error{ background:linear-gradient(135deg,#f87171,#dc4b4b); }
+  .b-long{ background:linear-gradient(135deg,var(--accent),#e08a2c); }
+
+  .ripple-zone{ position:relative; width:64px; height:64px; border-radius:50%; background:rgba(255,255,255,.06); border:1px solid var(--glass-b); display:flex; align-items:center; justify-content:center; overflow:visible;}
+  .ripple{ position:absolute; inset:0; border-radius:50%; border:2px solid var(--accent); opacity:0; }
+  .ripple.go{ animation:rip .5s ease-out; }
+  @keyframes rip{ from{ transform:scale(.6); opacity:.9; } to{ transform:scale(2.1); opacity:0; } }
+
+  footer{margin-top:30px; color:var(--dim); font-size:11.5px; text-align:center;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<h1>Feel the Interface</h1>
+<p class="sub">Real device haptics via <code>navigator.vibrate()</code> — each pattern is an array of pulse/pause durations. Since vibration itself is invisible, the bars below light up in sync so you can "see" the pattern too.</p>
+<div id="support">checking haptics support…</div>
+
+<div class="grid">
+  <div class="card">
+    <h3>Tap · nudge</h3>
+    <p>A single short pulse — confirms a light action, like a toggle flip.</p>
+    <div class="waveform" data-wave="tap"></div>
+    <button class="hbtn b-tap" data-pattern="tap">Tap me</button>
+  </div>
+  <div class="card">
+    <h3>Success · double</h3>
+    <p>Two quick pulses — the classic "done" confirmation.</p>
+    <div class="waveform" data-wave="success"></div>
+    <button class="hbtn b-success" data-pattern="success">Complete action</button>
+  </div>
+  <div class="card">
+    <h3>Error · buzz</h3>
+    <p>One longer, harsher pulse — something needs attention.</p>
+    <div class="waveform" data-wave="error"></div>
+    <button class="hbtn b-error" data-pattern="error">Trigger error</button>
+  </div>
+  <div class="card">
+    <h3>Hold · escalating</h3>
+    <p>Pulses that ramp up — press and hold to feel it build.</p>
+    <div class="waveform" data-wave="long"></div>
+    <button class="hbtn b-long" data-pattern="long" id="btnLong">Press &amp; hold</button>
+  </div>
+</div>
+
+<div class="ripple-zone" style="margin-top:26px;">
+  <div class="ripple" id="rippleEl"></div>
+  <span style="font-size:22px;">👆</span>
+</div>
+
+<footer>Inspired by lochie/web-haptics (GitHub) · UI Spotlight Day 97 · Drop #4</footer>
+
+<script>
+(function(){
+"use strict";
+const PATTERNS = {
+  tap:     [50],
+  success: [40, 60, 40],
+  error:   [140],
+  long:    [30, 40, 40, 40, 60, 40, 90]
+};
+
+const supported = "vibrate" in navigator;
+const supportEl = document.getElementById("support");
+supportEl.textContent = supported
+  ? "✓ Haptics supported on this device — patterns below will actually buzz"
+  : "This device/browser has no vibration motor (or blocks it) — you'll still see each pattern below";
+supportEl.className = supported ? "yes" : "no";
+
+function buildWaveform(container, pattern){
+  container.innerHTML = "";
+  pattern.forEach((dur, i)=>{
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    const isPulse = i % 2 === 0;
+    bar.dataset.pulse = isPulse ? "1" : "0";
+    bar.dataset.dur = dur;
+    bar.style.height = isPulse ? Math.min(34, 8 + dur/6) + "px" : "4px";
+    container.appendChild(bar);
+  });
+}
+document.querySelectorAll(".waveform").forEach(w=>{
+  buildWaveform(w, PATTERNS[w.dataset.wave]);
+});
+
+function playWaveform(container, pattern){
+  const bars = container.querySelectorAll(".bar");
+  let t = 0;
+  pattern.forEach((dur, i)=>{
+    const bar = bars[i];
+    const isPulse = i % 2 === 0;
+    if(isPulse){
+      setTimeout(()=>{
+        bar.classList.add("lit");
+        setTimeout(()=>bar.classList.remove("lit"), dur);
+      }, t);
+    }
+    t += dur;
+  });
+}
+
+function fireRipple(){
+  const r = document.getElementById("rippleEl");
+  r.classList.remove("go");
+  void r.offsetWidth;
+  r.classList.add("go");
+}
+
+function trigger(name){
+  const pattern = PATTERNS[name];
+  if(supported){ try{ navigator.vibrate(pattern); }catch(e){} }
+  const wave = document.querySelector('.waveform[data-wave="'+name+'"]');
+  playWaveform(wave, pattern);
+  fireRipple();
+}
+
+document.querySelectorAll("[data-pattern]").forEach(btn=>{
+  if(btn.id === "btnLong") return;
+  btn.addEventListener("click", ()=>trigger(btn.dataset.pattern));
+});
+
+// press-and-hold for the escalating pattern
+const longBtn = document.getElementById("btnLong");
+let holdTimer = null;
+function startHold(){
+  trigger("long");
+  holdTimer = setTimeout(startHold, PATTERNS.long.reduce((a,b)=>a+b,0) + 120);
+}
+function stopHold(){ clearTimeout(holdTimer); }
+longBtn.addEventListener("pointerdown", startHold);
+longBtn.addEventListener("pointerup", stopHold);
+longBtn.addEventListener("pointerleave", stopHold);
+longBtn.addEventListener("pointercancel", stopHold);
+})();
+</script>
+</body>
+</html>
