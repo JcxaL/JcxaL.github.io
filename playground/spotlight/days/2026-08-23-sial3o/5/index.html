@@ -1,0 +1,332 @@
+<title>Viscous Ring Carousel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{ --bg:#0a0714; --line:#241a3a; --text:#f0ecfa; --dim:#9d8fc2; --accent:#a78bfa; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; overflow-x:hidden;}
+  body{ background: radial-gradient(1000px 600px at 50% 0%, #1c1240 0%, transparent 60%), var(--bg); }
+
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:60; text-decoration:none; color:var(--text);
+    font-size:.78rem; padding:8px 14px; border-radius:20px; background:#160f2ccc; border:1px solid var(--line);
+    backdrop-filter:blur(8px);
+  }
+  .panel{
+    position:fixed; top:14px; right:14px; z-index:60; width:210px; background:#160f2cee; border:1px solid var(--line);
+    border-radius:14px; padding:12px 14px; font-size:.72rem; backdrop-filter:blur(10px);
+  }
+  .panel h4{margin:0 0 8px; font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--dim);}
+  .panel label{display:block; margin-top:8px; color:var(--dim);}
+  .panel .row{display:flex; justify-content:space-between; color:var(--text);}
+  .panel input[type=range]{width:100%; accent-color:var(--accent);}
+  .panel .chk{display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer;}
+  .panel input[type=checkbox]{accent-color:var(--accent);}
+  @media (max-width:720px){ .panel{width:150px; padding:10px; font-size:.66rem;} }
+
+  main{max-width:1000px; margin:0 auto; padding:90px 20px 50px; text-align:center;}
+  .eyebrow{font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; color:var(--accent); margin-bottom:6px;}
+  h1{font-size:clamp(1.6rem,4vw,2.2rem); margin:0 0 12px; font-weight:800;}
+  main > p{color:var(--dim); line-height:1.6; font-size:.9rem; max-width:600px; margin:0 auto 20px;}
+
+  .stage-wrap{position:relative; width:100%; max-width:920px; margin:0 auto; height:min(62vh,480px); border-radius:22px;
+    overflow:hidden; border:1px solid var(--line); background:#080512; touch-action:none;}
+  canvas#gl{ display:block; width:100%; height:100%; cursor:grab; }
+  canvas#gl.dragging{ cursor:grabbing; }
+  .card-label{
+    position:absolute; top:0; left:0; display:flex; align-items:center; justify-content:center;
+    font-size:.8rem; font-weight:700; color:#fff; text-shadow:0 2px 8px #000a; pointer-events:auto; cursor:pointer;
+    user-select:none; -webkit-user-select:none;
+  }
+  .hint{position:absolute; bottom:12px; left:50%; transform:translateX(-50%); font-size:.68rem; color:var(--dim);
+    background:#000000aa; padding:4px 10px; border-radius:20px; pointer-events:none;}
+
+  footer{text-align:center; padding:26px; font-size:.68rem; color:var(--dim);}
+  footer a{color:var(--accent); text-decoration:none;}
+</style>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h4>Tune the effect</h4>
+  <label>Card count <span class="row"><span></span><b id="countVal">7</b></span></label>
+  <input type="range" id="countSlider" min="5" max="9" value="7" step="1">
+  <label>Goo-ness <span class="row"><span></span><b id="gooVal">26</b></span></label>
+  <input type="range" id="gooSlider" min="4" max="60" value="26" step="1">
+  <label class="chk"><input type="checkbox" id="autoplayChk" checked> Autoplay spin</label>
+</div>
+
+<main>
+  <div class="eyebrow">Drop #5 · Component</div>
+  <h1>Viscous ring carousel</h1>
+  <p>A carousel rendered as one fullscreen WebGL fragment shader evaluating signed-distance fields.
+  Neighbouring cards melt into each other as they close up, and separate cleanly once the smooth-min
+  radius no longer reaches between them. Drag to spin, click a card to snap it to the front.</p>
+
+  <div class="stage-wrap" id="stageWrap">
+    <canvas id="gl"></canvas>
+    <div class="hint">drag to spin · click a card to bring it forward</div>
+  </div>
+</main>
+
+<footer>Inspired by <a href="https://github.com/Yousuf-developer/Viscose-carousel" target="_blank" rel="noopener">Yousuf-developer/Viscose-carousel</a> · UI Spotlight Day 98 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+  var MAXC = 9;
+  var CARD_NAMES = ['Aurora','Basalt','Cirrus','Delta','Ember','Flux','Glyph','Halide','Ionic'];
+
+  var stageWrap = document.getElementById('stageWrap');
+  var canvas = document.getElementById('gl');
+  var countSlider = document.getElementById('countSlider');
+  var gooSlider = document.getElementById('gooSlider');
+  var countVal = document.getElementById('countVal');
+  var gooVal = document.getElementById('gooVal');
+  var autoplayChk = document.getElementById('autoplayChk');
+
+  var state = { count: 7, goo: 26, autoplay: true, rotation: 0, spinTarget: null, dragging: false };
+
+  var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  var supported = !!gl;
+
+  var labels = [];
+  for (var i = 0; i < MAXC; i++){
+    var lbl = document.createElement('div');
+    lbl.className = 'card-label';
+    lbl.textContent = CARD_NAMES[i];
+    lbl.style.display = 'none';
+    (function(idx){
+      lbl.addEventListener('click', function(){ snapTo(idx); });
+    })(i);
+    stageWrap.appendChild(lbl);
+    labels.push(lbl);
+  }
+
+  if (!supported){
+    var msg = document.createElement('div');
+    msg.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9d8fc2;font-size:.85rem;padding:20px;text-align:center;';
+    msg.textContent = 'WebGL is not available in this browser — the SDF ring carousel needs it.';
+    stageWrap.appendChild(msg);
+  }
+
+  var program, u_res, u_pos, u_half, u_goo, a_pos_loc;
+
+  if (supported){
+    var vsSrc = 'attribute vec2 a_pos;\n' +
+      'void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }';
+
+    var fsSrc =
+      'precision highp float;\n' +
+      'uniform vec2 u_res;\n' +
+      'uniform vec2 u_pos[' + MAXC + '];\n' +
+      'uniform float u_half[' + MAXC + '];\n' +
+      'uniform float u_goo;\n' +
+      'float sdRoundBox(vec2 p, vec2 b, float r){\n' +
+      '  vec2 q = abs(p) - b + r;\n' +
+      '  return length(max(q,0.0)) + min(max(q.x,q.y),0.0) - r;\n' +
+      '}\n' +
+      'float smin(float a, float b, float k){\n' +
+      '  float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);\n' +
+      '  return mix(b,a,h) - k*h*(1.0-h);\n' +
+      '}\n' +
+      'void main(){\n' +
+      '  vec2 uv = gl_FragCoord.xy;\n' +
+      '  float d = 1.0e5;\n' +
+      '  for (int i = 0; i < ' + MAXC + '; i++){\n' +
+      '    vec2 p = uv - u_pos[i];\n' +
+      '    vec2 b = vec2(u_half[i], u_half[i]*1.3);\n' +
+      '    float r = min(b.x,b.y)*0.4;\n' +
+      '    float dc = sdRoundBox(p, b, r);\n' +
+      '    d = smin(d, dc, u_goo);\n' +
+      '  }\n' +
+      '  vec3 bg = mix(vec3(0.03,0.02,0.07), vec3(0.06,0.03,0.11), uv.y/u_res.y);\n' +
+      '  float mask = smoothstep(2.0, -2.0, d);\n' +
+      '  vec3 base = mix(vec3(0.16,0.13,0.34), vec3(0.55,0.44,0.86), uv.x/u_res.x);\n' +
+      '  float rim = smoothstep(0.0,-18.0,d) - smoothstep(0.0,-3.0,d);\n' +
+      '  vec3 col = mix(bg, base + rim*0.55, mask);\n' +
+      '  gl_FragColor = vec4(col, 1.0);\n' +
+      '}';
+
+    function compile(type, src){
+      var sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+        console.warn('Shader compile error:', gl.getShaderInfoLog(sh));
+        return null;
+      }
+      return sh;
+    }
+    var vs = compile(gl.VERTEX_SHADER, vsSrc);
+    var fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+    if (vs && fs){
+      program = gl.createProgram();
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)){
+        console.warn('Program link error:', gl.getProgramInfoLog(program));
+        supported = false;
+      }
+    } else {
+      supported = false;
+    }
+  }
+
+  if (supported){
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    a_pos_loc = gl.getAttribLocation(program, 'a_pos');
+    u_res = gl.getUniformLocation(program, 'u_res');
+    u_pos = gl.getUniformLocation(program, 'u_pos');
+    u_half = gl.getUniformLocation(program, 'u_half');
+    u_goo = gl.getUniformLocation(program, 'u_goo');
+    gl.useProgram(program);
+    gl.enableVertexAttribArray(a_pos_loc);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.vertexAttribPointer(a_pos_loc, 2, gl.FLOAT, false, 0, 0);
+  }
+
+  var dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  var rectCache = { w: 0, h: 0 };
+  function fit(){
+    var rect = stageWrap.getBoundingClientRect();
+    rectCache.w = rect.width; rectCache.h = rect.height;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    if (supported) gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+
+  function frontAngleDiff(angle){
+    var FRONT = Math.PI / 2;
+    var diff = (angle - FRONT) % (Math.PI * 2);
+    if (diff > Math.PI) diff -= Math.PI * 2;
+    if (diff < -Math.PI) diff += Math.PI * 2;
+    return diff;
+  }
+
+  function snapTo(idx){
+    if (idx >= state.count) return;
+    var baseAngle = idx * (Math.PI * 2 / state.count);
+    var current = baseAngle + state.rotation;
+    var diff = frontAngleDiff(current);
+    state.spinTarget = state.rotation - diff;
+  }
+
+  function computeGeom(){
+    var w = rectCache.w, h = rectCache.h;
+    var cx = w / 2, cy = h * 0.52;
+    var rx = w * 0.30, ry = h * 0.30;
+    var baseHalf = Math.min(w, h) * 0.11;
+    var geoms = [];
+    for (var i = 0; i < MAXC; i++){
+      if (i < state.count){
+        var angle = i * (Math.PI * 2 / state.count) + state.rotation;
+        var sx = Math.cos(angle), sy = Math.sin(angle);
+        var depth = (sy + 1) / 2;
+        var cxi = cx + sx * rx;
+        var cyi = cy + sy * ry;
+        var half = baseHalf * (0.62 + 0.55 * depth);
+        geoms.push({ x: cxi, y: cyi, half: half, depth: depth });
+      } else {
+        geoms.push({ x: -9999, y: -9999, half: 1, depth: 0 });
+      }
+    }
+    return geoms;
+  }
+
+  function render(){
+    if (!rectCache.w) fit();
+    var geoms = computeGeom();
+
+    // labels (sorted by depth so front cards render above back cards)
+    var order = geoms.map(function(g, i){ return i; }).sort(function(a, b){ return geoms[a].depth - geoms[b].depth; });
+    order.forEach(function(i, z){
+      var lbl = labels[i];
+      if (i >= state.count){ lbl.style.display = 'none'; return; }
+      var g = geoms[i];
+      var w = g.half * 2 * 0.9, h = g.half * 2.6 * 0.62;
+      lbl.style.display = 'flex';
+      lbl.style.width = w + 'px';
+      lbl.style.height = h + 'px';
+      lbl.style.left = (g.x - w/2) + 'px';
+      lbl.style.top = (g.y - h/2) + 'px';
+      lbl.style.zIndex = String(10 + z);
+      lbl.style.opacity = String(0.55 + g.depth * 0.45);
+      lbl.style.fontSize = (0.7 + g.depth * 0.35) + 'rem';
+    });
+
+    if (supported){
+      var posArr = new Float32Array(MAXC * 2);
+      var halfArr = new Float32Array(MAXC);
+      for (var i = 0; i < MAXC; i++){
+        var g = geoms[i];
+        posArr[i*2] = g.x * dpr;
+        posArr[i*2+1] = (rectCache.h - g.y) * dpr;
+        halfArr[i] = g.half * dpr;
+      }
+      gl.useProgram(program);
+      gl.uniform2f(u_res, canvas.width, canvas.height);
+      gl.uniform2fv(u_pos, posArr);
+      gl.uniform1fv(u_half, halfArr);
+      gl.uniform1f(u_goo, state.goo * dpr);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+  }
+
+  function tick(){
+    if (state.spinTarget != null){
+      var d = state.spinTarget - state.rotation;
+      if (Math.abs(d) < 0.001){ state.rotation = state.spinTarget; state.spinTarget = null; }
+      else state.rotation += d * 0.14;
+    } else if (state.autoplay && !state.dragging){
+      state.rotation += 0.0035;
+    }
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  // ---- drag ----
+  var dragStartX = 0, dragStartRotation = 0;
+  function dragStart(clientX){
+    state.dragging = true;
+    state.spinTarget = null;
+    dragStartX = clientX;
+    dragStartRotation = state.rotation;
+    canvas.classList.add('dragging');
+  }
+  function dragMove(clientX){
+    if (!state.dragging) return;
+    var dx = clientX - dragStartX;
+    state.rotation = dragStartRotation + dx / rectCache.w * Math.PI * 1.6;
+  }
+  function dragEnd(){
+    if (!state.dragging) return;
+    state.dragging = false;
+    canvas.classList.remove('dragging');
+    // snap to nearest front card
+    var nearest = 0, best = Infinity;
+    for (var i = 0; i < state.count; i++){
+      var angle = i * (Math.PI * 2 / state.count) + state.rotation;
+      var diff = Math.abs(frontAngleDiff(angle));
+      if (diff < best){ best = diff; nearest = i; }
+    }
+    snapTo(nearest);
+  }
+  canvas.addEventListener('mousedown', function(e){ dragStart(e.clientX); });
+  window.addEventListener('mousemove', function(e){ dragMove(e.clientX); });
+  window.addEventListener('mouseup', dragEnd);
+  canvas.addEventListener('touchstart', function(e){ dragStart(e.touches[0].clientX); e.preventDefault(); }, { passive:false });
+  canvas.addEventListener('touchmove', function(e){ dragMove(e.touches[0].clientX); e.preventDefault(); }, { passive:false });
+  canvas.addEventListener('touchend', dragEnd);
+
+  countSlider.addEventListener('input', function(){ state.count = parseInt(this.value, 10); countVal.textContent = state.count; snapTo(0); });
+  gooSlider.addEventListener('input', function(){ state.goo = parseInt(this.value, 10); gooVal.textContent = state.goo; });
+  autoplayChk.addEventListener('change', function(){ state.autoplay = this.checked; });
+
+  window.addEventListener('resize', fit);
+  fit();
+  requestAnimationFrame(tick);
+})();
+</script>

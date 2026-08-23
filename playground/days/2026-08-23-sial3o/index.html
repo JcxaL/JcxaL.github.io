@@ -1,0 +1,952 @@
+<title>Sonify — Data Sonification Studio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  :root{
+    --bg:#070a12; --bg2:#0d1220; --panel:#0f1526cc; --line:#1c2338;
+    --teal:#38bdf8; --purple:#a78bfa; --gold:#fbbf24; --pink:#f472b6;
+    --text:#e7ecf7; --dim:#8b93ab;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    overflow-x:hidden; width:100%; height:100%;}
+  body{background:
+      radial-gradient(1200px 700px at 15% -10%, #14203a 0%, transparent 60%),
+      radial-gradient(1000px 600px at 110% 10%, #201430 0%, transparent 55%),
+      var(--bg);
+    min-height:100vh; display:flex; flex-direction:column;}
+
+  header{padding:14px 18px 8px; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  header h1{font-size:1.15rem; margin:0; font-weight:700; letter-spacing:.2px;}
+  header h1 span{color:var(--teal);}
+  header p{margin:0; font-size:.78rem; color:var(--dim);}
+
+  main{flex:1; display:flex; flex-direction:column; gap:12px; padding:0 12px 16px; max-width:1100px; width:100%; margin:0 auto;}
+
+  .stage{
+    position:relative; border-radius:16px; border:1px solid var(--line);
+    background:linear-gradient(180deg,#0b0f1c,#080b15);
+    overflow:hidden; box-shadow:0 20px 50px -20px #000a;
+  }
+  canvas#chart{display:block; width:100%; height:260px; touch-action:none; cursor:crosshair;}
+  .stage-tag{position:absolute; top:10px; left:12px; font-size:.68rem; color:var(--dim);
+    background:#000000aa; padding:4px 8px; border-radius:20px; border:1px solid var(--line); pointer-events:none;}
+  .stage-hint{position:absolute; bottom:10px; right:12px; font-size:.65rem; color:var(--dim);
+    background:#000000aa; padding:4px 8px; border-radius:20px; border:1px solid var(--line); pointer-events:none;}
+
+  .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px;
+    backdrop-filter:blur(6px);
+  }
+  .card h2{margin:0 0 8px; font-size:.72rem; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); font-weight:700;}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  @media (min-width:760px){ .grid2{grid-template-columns:1fr 1fr 1fr;} }
+
+  .segbtns{display:flex; gap:6px; flex-wrap:wrap;}
+  .segbtn{
+    flex:1 1 auto; min-width:64px; text-align:center; padding:9px 10px; border-radius:10px;
+    border:1px solid var(--line); background:#0c1220; color:var(--text); font-size:.74rem;
+    cursor:pointer; user-select:none; transition:transform .12s ease, background .15s, border-color .15s;
+  }
+  .segbtn:active{transform:scale(.96);}
+  .segbtn.active{background:linear-gradient(135deg,#1c2c4d,#131a2c); border-color:var(--teal); color:#bfe8ff; box-shadow:0 0 0 1px #38bdf855 inset;}
+
+  label.field{display:flex; flex-direction:column; gap:4px; font-size:.68rem; color:var(--dim);}
+  select, input[type=text]{
+    background:#0c1220; border:1px solid var(--line); color:var(--text); border-radius:9px;
+    padding:8px 9px; font-size:.78rem; width:100%;
+  }
+  input[type=range]{width:100%; accent-color:var(--teal); height:26px;}
+  .valline{display:flex; justify-content:space-between; font-size:.68rem; color:var(--dim);}
+  .valline b{color:var(--text); font-weight:600;}
+
+  .transport{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+  button.big{
+    border:none; border-radius:12px; padding:12px 18px; font-size:.85rem; font-weight:700;
+    cursor:pointer; color:#04121c; background:linear-gradient(135deg,var(--teal),#7dd3fc);
+    box-shadow:0 8px 20px -8px #38bdf888; transition:transform .12s;
+  }
+  button.big:active{transform:scale(.96);}
+  button.ghost{
+    border:1px solid var(--line); background:#0c1220; color:var(--text); border-radius:12px;
+    padding:12px 16px; font-size:.8rem; cursor:pointer; transition:transform .12s, border-color .15s;
+  }
+  button.ghost:active{transform:scale(.96);}
+  button.ghost:hover{border-color:var(--purple);}
+  button.warn{border-color:#7a3040; color:#ffb4c2;}
+  button:disabled{opacity:.45; cursor:not-allowed;}
+
+  .patches{display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;}
+  .patch-row{display:flex; align-items:center; gap:6px; background:#0c1220; border:1px solid var(--line);
+    border-radius:9px; padding:6px 8px; font-size:.74rem;}
+  .patch-row span{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .patch-row button{border:none; background:none; color:var(--dim); cursor:pointer; font-size:.85rem; padding:2px 6px;}
+  .patch-row button.load{color:var(--teal);}
+  .patch-row button.del{color:#f87171;}
+  .empty-note{font-size:.72rem; color:var(--dim); font-style:italic;}
+
+  .toast{
+    position:fixed; left:50%; bottom:18px; transform:translateX(-50%) translateY(20px);
+    background:#101728ee; border:1px solid var(--teal); color:var(--text); padding:10px 16px;
+    border-radius:12px; font-size:.8rem; opacity:0; pointer-events:none; transition:all .25s ease; z-index:50;
+    box-shadow:0 10px 30px -10px #000;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  footer{text-align:center; padding:10px; font-size:.66rem; color:var(--dim);}
+  footer a{color:var(--teal); text-decoration:none;}
+
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-thumb{background:#26304a; border-radius:8px;}
+</style>
+
+<header>
+  <h1>🎧 <span>Sonify</span> — Data Sonification Studio</h1>
+  <p>Draw a curve or pick a dataset · hear it three different ways · export a real WAV</p>
+</header>
+
+<main>
+  <div class="stage">
+    <canvas id="chart" width="1000" height="260"></canvas>
+    <div class="stage-tag" id="datasetTag">Sine Wave</div>
+    <div class="stage-hint" id="stageHint">tap / drag to draw</div>
+  </div>
+
+  <div class="card">
+    <h2>Dataset</h2>
+    <div class="segbtns" id="datasetBtns">
+      <div class="segbtn" data-ds="sine">Sine</div>
+      <div class="segbtn" data-ds="stock">Stock</div>
+      <div class="segbtn" data-ds="temp">Temperature</div>
+      <div class="segbtn" data-ds="pop">Population</div>
+      <div class="segbtn" data-ds="draw">✏️ Draw Your Own</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sonification Mode</h2>
+    <div class="segbtns" id="modeBtns">
+      <div class="segbtn" data-mode="pitch">Pitch Glide</div>
+      <div class="segbtn" data-mode="rhythm">Rhythm Plucks</div>
+      <div class="segbtn" data-mode="chords">Chord Pad</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Scale &amp; Range</h2>
+      <label class="field">Scale
+        <select id="scaleSel">
+          <option value="major">Major</option>
+          <option value="minor">Minor</option>
+          <option value="pentatonic" selected>Minor Pentatonic</option>
+          <option value="wholetone">Whole Tone</option>
+          <option value="chromatic">Chromatic</option>
+        </select>
+      </label>
+      <label class="field" style="margin-top:8px;">Root note
+        <select id="rootSel">
+          <option value="0">C</option><option value="2">D</option>
+          <option value="4">E</option><option value="5">F</option>
+          <option value="7" selected>G</option><option value="9">A</option>
+          <option value="11">B</option>
+        </select>
+      </label>
+      <label class="field" style="margin-top:8px;">Octave range: <b id="rangeVal">2</b>
+        <input type="range" id="rangeSlider" min="1" max="4" step="1" value="2">
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Instrument</h2>
+      <div class="segbtns" id="waveBtns" style="margin-bottom:8px;">
+        <div class="segbtn" data-wave="sine">Sine</div>
+        <div class="segbtn" data-wave="triangle">Triangle</div>
+        <div class="segbtn" data-wave="sawtooth">Saw</div>
+        <div class="segbtn" data-wave="square">Square</div>
+        <div class="segbtn" data-wave="bell">Bell FM</div>
+      </div>
+      <div class="valline"><span>Attack</span><b id="attackVal">0.05s</b></div>
+      <input type="range" id="attackSlider" min="0.01" max="0.6" step="0.01" value="0.05">
+      <div class="valline" style="margin-top:6px;"><span>Release</span><b id="releaseVal">0.30s</b></div>
+      <input type="range" id="releaseSlider" min="0.05" max="1.2" step="0.01" value="0.3">
+    </div>
+
+    <div class="card">
+      <h2>Playback</h2>
+      <div class="valline"><span>Duration</span><b id="durVal">8.0s</b></div>
+      <input type="range" id="durSlider" min="3" max="24" step="0.5" value="8">
+      <div class="valline" style="margin-top:6px;"><span>Brightness</span><b id="brightVal">55%</b></div>
+      <input type="range" id="brightSlider" min="5" max="100" step="1" value="55">
+      <label class="field" style="margin-top:8px; flex-direction:row; align-items:center; gap:8px;">
+        <input type="checkbox" id="loopChk" style="width:auto;"> Loop playback
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Transport</h2>
+    <div class="transport">
+      <button class="big" id="playBtn">▶ Play</button>
+      <button class="ghost" id="stopBtn" disabled>■ Stop</button>
+      <button class="ghost" id="exportBtn">⬇ Export WAV</button>
+      <button class="ghost" id="shareBtn">🔗 Copy Share Link</button>
+      <button class="ghost warn" id="clearDrawBtn">🧹 Clear Drawing</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Saved Patches</h2>
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="patchName" placeholder="Name this patch…" style="flex:1; min-width:140px;">
+      <button class="ghost" id="savePatchBtn">💾 Save</button>
+    </div>
+    <div class="patches" id="patchList"><div class="empty-note">No saved patches yet — tune something and hit Save.</div></div>
+  </div>
+</main>
+
+<footer>Sonify · Playground Day 98 · everything runs locally, nothing leaves your browser</footer>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- constants ----------
+  var N = 200; // canvas-resolution sample count for datasets/drawing
+  var SCALES = {
+    major:      [0,2,4,5,7,9,11],
+    minor:      [0,2,3,5,7,8,10],
+    pentatonic: [0,2,3,7,10],
+    wholetone:  [0,2,4,6,8,10],
+    chromatic:  [0,1,2,3,4,5,6,7,8,9,10,11]
+  };
+  var STORE_KEY = 'SONIFY_STATE_V1';
+  var PATCH_KEY = 'SONIFY_PATCHES_V1';
+
+  // ---------- state ----------
+  var state = {
+    dataset: 'sine',
+    mode: 'pitch',
+    scale: 'pentatonic',
+    root: 7,
+    range: 2,
+    wave: 'sine',
+    attack: 0.05,
+    release: 0.3,
+    duration: 8,
+    brightness: 55,
+    loop: false,
+    drawPoints: null // Float32Array(N) 0..1, only used when dataset === 'draw'
+  };
+
+  var samples = new Float32Array(N); // active data (0..1)
+
+  // ---------- dom ----------
+  var $ = function(id){ return document.getElementById(id); };
+  var chart = $('chart'), ctx2d = chart.getContext('2d');
+  var datasetTag = $('datasetTag'), stageHint = $('stageHint');
+  var playBtn = $('playBtn'), stopBtn = $('stopBtn'), exportBtn = $('exportBtn'),
+      shareBtn = $('shareBtn'), clearDrawBtn = $('clearDrawBtn');
+  var toastEl = $('toast');
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+  }
+
+  // ---------- seeded rng ----------
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function normalize(arr){
+    var min = Infinity, max = -Infinity;
+    for (var i = 0; i < arr.length; i++){ if (arr[i] < min) min = arr[i]; if (arr[i] > max) max = arr[i]; }
+    var span = (max - min) || 1;
+    var out = new Float32Array(arr.length);
+    for (var j = 0; j < arr.length; j++) out[j] = (arr[j] - min) / span;
+    return out;
+  }
+
+  function buildDataset(id){
+    var arr = new Float32Array(N);
+    var i, x;
+    if (id === 'sine'){
+      for (i = 0; i < N; i++){ x = i / (N - 1); arr[i] = 0.5 + 0.5 * Math.sin(x * Math.PI * 2 * 3); }
+      return arr;
+    }
+    if (id === 'stock'){
+      var rng = mulberry32(20260823);
+      var v = 0.5;
+      for (i = 0; i < N; i++){
+        v += (rng() - 0.48) * 0.06;
+        arr[i] = v;
+      }
+      return normalize(arr);
+    }
+    if (id === 'temp'){
+      var rng2 = mulberry32(7);
+      for (i = 0; i < N; i++){
+        x = i / (N - 1);
+        arr[i] = Math.sin(x * Math.PI * 2) * 0.8 + (rng2() - 0.5) * 0.25 + Math.sin(x * Math.PI * 18) * 0.06;
+      }
+      return normalize(arr);
+    }
+    if (id === 'pop'){
+      for (i = 0; i < N; i++){
+        x = i / (N - 1);
+        arr[i] = 1 / (1 + Math.exp(-11 * (x - 0.45)));
+      }
+      return normalize(arr);
+    }
+    // draw fallback: flat line at 0.5
+    for (i = 0; i < N; i++) arr[i] = 0.5;
+    return arr;
+  }
+
+  function activeSamples(){
+    if (state.dataset === 'draw' && state.drawPoints) return state.drawPoints;
+    return buildDataset(state.dataset === 'draw' ? 'sine' : state.dataset);
+  }
+
+  function refreshSamples(){
+    samples = activeSamples();
+  }
+
+  // ---------- drawing on canvas ----------
+  var drawing = false;
+  function canvasToSampleIndex(clientX){
+    var r = chart.getBoundingClientRect();
+    var xr = (clientX - r.left) / r.width;
+    xr = Math.max(0, Math.min(1, xr));
+    return Math.round(xr * (N - 1));
+  }
+  function canvasToValue(clientY){
+    var r = chart.getBoundingClientRect();
+    var yr = 1 - (clientY - r.top) / r.height;
+    return Math.max(0, Math.min(1, yr));
+  }
+  function paintAt(clientX, clientY, lastIdx){
+    var idx = canvasToSampleIndex(clientX);
+    var val = canvasToValue(clientY);
+    if (!state.drawPoints) state.drawPoints = new Float32Array(N).fill(0.5);
+    if (lastIdx != null && lastIdx !== idx){
+      var lo = Math.min(lastIdx, idx), hi = Math.max(lastIdx, idx);
+      for (var i = lo; i <= hi; i++){
+        var t = hi === lo ? 1 : (i - lo) / (hi - lo);
+        // interpolate using last known + new value roughly (good enough for freehand)
+        state.drawPoints[i] = val;
+      }
+    } else {
+      state.drawPoints[idx] = val;
+    }
+    return idx;
+  }
+  var lastDrawIdx = null;
+  function pointerDown(e){
+    if (state.dataset !== 'draw') return;
+    drawing = true;
+    var p = e.touches ? e.touches[0] : e;
+    lastDrawIdx = paintAt(p.clientX, p.clientY, null);
+    refreshSamples(); render();
+    e.preventDefault();
+  }
+  function pointerMove(e){
+    if (!drawing || state.dataset !== 'draw') return;
+    var p = e.touches ? e.touches[0] : e;
+    lastDrawIdx = paintAt(p.clientX, p.clientY, lastDrawIdx);
+    refreshSamples(); render();
+    e.preventDefault();
+  }
+  function pointerUp(){
+    if (!drawing) return;
+    drawing = false;
+    lastDrawIdx = null;
+    saveStateLocal();
+  }
+  chart.addEventListener('mousedown', pointerDown);
+  chart.addEventListener('mousemove', pointerMove);
+  window.addEventListener('mouseup', pointerUp);
+  chart.addEventListener('touchstart', pointerDown, { passive:false });
+  chart.addEventListener('touchmove', pointerMove, { passive:false });
+  chart.addEventListener('touchend', pointerUp);
+
+  // ---------- note-marker computation (for rhythm/chord visual dots) ----------
+  function noteMarkers(){
+    if (state.mode === 'pitch') return [];
+    var count = state.mode === 'chords' ? 8 : 32;
+    var out = [];
+    for (var i = 0; i < count; i++){
+      var idx = Math.min(N - 1, Math.round((i / count) * N));
+      out.push({ t: i / count, v: samples[idx] });
+    }
+    return out;
+  }
+
+  // ---------- render chart ----------
+  var dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  function fitCanvas(){
+    var rect = chart.getBoundingClientRect();
+    chart.width = Math.round(rect.width * dpr);
+    chart.height = Math.round(rect.height * dpr);
+    render();
+  }
+  var playhead = null; // 0..1 or null
+
+  function render(){
+    var w = chart.width, h = chart.height;
+    ctx2d.clearRect(0, 0, w, h);
+    ctx2d.save();
+    ctx2d.scale(dpr, dpr);
+    var W = w / dpr, H = h / dpr;
+
+    // grid
+    ctx2d.strokeStyle = '#151d31';
+    ctx2d.lineWidth = 1;
+    for (var gx = 0; gx <= 8; gx++){
+      var x = (gx / 8) * W;
+      ctx2d.beginPath(); ctx2d.moveTo(x, 0); ctx2d.lineTo(x, H); ctx2d.stroke();
+    }
+    for (var gy = 0; gy <= 4; gy++){
+      var y = (gy / 4) * H;
+      ctx2d.beginPath(); ctx2d.moveTo(0, y); ctx2d.lineTo(W, y); ctx2d.stroke();
+    }
+
+    // area fill
+    var grad = ctx2d.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(56,189,248,0.35)');
+    grad.addColorStop(1, 'rgba(56,189,248,0.02)');
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, H);
+    for (var i = 0; i < N; i++){
+      var px = (i / (N - 1)) * W;
+      var py = H - samples[i] * (H - 16) - 8;
+      ctx2d.lineTo(px, py);
+    }
+    ctx2d.lineTo(W, H);
+    ctx2d.closePath();
+    ctx2d.fillStyle = grad;
+    ctx2d.fill();
+
+    // line
+    ctx2d.beginPath();
+    for (var j = 0; j < N; j++){
+      var px2 = (j / (N - 1)) * W;
+      var py2 = H - samples[j] * (H - 16) - 8;
+      if (j === 0) ctx2d.moveTo(px2, py2); else ctx2d.lineTo(px2, py2);
+    }
+    ctx2d.strokeStyle = '#7dd3fc';
+    ctx2d.lineWidth = 2;
+    ctx2d.stroke();
+
+    // note markers
+    var markers = noteMarkers();
+    for (var m = 0; m < markers.length; m++){
+      var mx = markers[m].t * W;
+      var my = H - markers[m].v * (H - 16) - 8;
+      ctx2d.beginPath();
+      ctx2d.arc(mx, my, 4, 0, Math.PI * 2);
+      ctx2d.fillStyle = state.mode === 'chords' ? '#f472b6' : '#fbbf24';
+      ctx2d.fill();
+    }
+
+    // playhead
+    if (playhead != null){
+      var phx = playhead * W;
+      ctx2d.beginPath();
+      ctx2d.moveTo(phx, 0); ctx2d.lineTo(phx, H);
+      ctx2d.strokeStyle = '#ffffffcc';
+      ctx2d.lineWidth = 1.5;
+      ctx2d.stroke();
+      ctx2d.beginPath();
+      ctx2d.arc(phx, H - samples[Math.min(N-1,Math.round(playhead*(N-1)))] * (H-16) - 8, 5, 0, Math.PI*2);
+      ctx2d.fillStyle = '#fff';
+      ctx2d.fill();
+    }
+
+    ctx2d.restore();
+  }
+
+  window.addEventListener('resize', fitCanvas);
+
+  // ---------- music theory ----------
+  function rootFreq(semitoneFromC){
+    // C4 = MIDI 60 = one reference octave; use C3 base (MIDI 48) for a warmer low end
+    var midi = 48 + semitoneFromC;
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+  function quantizedFreq(value){
+    var deg = SCALES[state.scale];
+    var totalSteps = deg.length * state.range;
+    var idx = Math.round(value * (totalSteps - 1));
+    idx = Math.max(0, Math.min(totalSteps - 1, idx));
+    var octave = Math.floor(idx / deg.length);
+    var semis = deg[idx % deg.length] + 12 * octave;
+    return rootFreq(state.root) * Math.pow(2, semis / 12);
+  }
+  function continuousFreq(value){
+    var minF = rootFreq(state.root);
+    var maxF = minF * Math.pow(2, state.range);
+    return minF * Math.pow(maxF / minF, value);
+  }
+  function chordFreqs(value){
+    var deg = SCALES[state.scale];
+    var totalSteps = deg.length * state.range;
+    var idx = Math.round(value * (totalSteps - 1));
+    var thirdOff = deg.length >= 5 ? 2 : 1;
+    var fifthOff = deg.length >= 5 ? 4 : 2;
+    function freqAt(stepIdx){
+      stepIdx = Math.max(0, Math.min(totalSteps - 1, stepIdx));
+      var octave = Math.floor(stepIdx / deg.length);
+      var semis = deg[stepIdx % deg.length] + 12 * octave;
+      return rootFreq(state.root) * Math.pow(2, semis / 12);
+    }
+    return [freqAt(idx), freqAt(idx + thirdOff), freqAt(idx + fifthOff)];
+  }
+
+  // ---------- audio engine ----------
+  var audioCtx = null;
+  var masterGain = null;
+  var playing = false;
+  var playStartTime = 0;
+  var rafId = null;
+  var activeStopFns = [];
+
+  function ensureAudioCtx(){
+    if (!audioCtx){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.6;
+      masterGain.connect(audioCtx.destination);
+    }
+    return audioCtx;
+  }
+
+  function makeVoice(ctxObj, dest, waveform, freqAtStart){
+    var osc, modOsc = null, modGain = null;
+    if (waveform === 'bell'){
+      osc = ctxObj.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freqAtStart;
+      modOsc = ctxObj.createOscillator();
+      modOsc.type = 'sine';
+      modOsc.frequency.value = freqAtStart * 3.01;
+      modGain = ctxObj.createGain();
+      modGain.gain.value = freqAtStart * 2.2;
+      modOsc.connect(modGain);
+      modGain.connect(osc.frequency);
+    } else {
+      osc = ctxObj.createOscillator();
+      osc.type = waveform;
+      osc.frequency.value = freqAtStart;
+    }
+    var filt = ctxObj.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.value = 400 + (state.brightness / 100) * 7000;
+    filt.Q.value = 0.7;
+    var gain = ctxObj.createGain();
+    gain.gain.value = 0;
+    osc.connect(filt); filt.connect(gain); gain.connect(dest);
+    return { osc: osc, modOsc: modOsc, gain: gain, filt: filt };
+  }
+
+  function envelope(gainParam, startTime, dur, attack, release, peak){
+    var a = Math.min(attack, dur * 0.5);
+    var r = Math.min(release, dur * 0.5);
+    gainParam.setValueAtTime(0, startTime);
+    gainParam.linearRampToValueAtTime(peak, startTime + a);
+    var sustainEnd = Math.max(startTime + a, startTime + dur - r);
+    gainParam.setValueAtTime(peak, sustainEnd);
+    gainParam.linearRampToValueAtTime(0, startTime + dur);
+  }
+
+  // schedules the full sequence onto ctxObj/dest starting at t0, returns list of {osc,modOsc} to start/stop
+  function scheduleSequence(ctxObj, dest, t0){
+    var voices = [];
+    var dur = state.duration;
+
+    if (state.mode === 'pitch'){
+      var curveLen = 512;
+      var freqCurve = new Float32Array(curveLen);
+      for (var i = 0; i < curveLen; i++){
+        var sIdx = Math.min(N - 1, Math.round((i / (curveLen - 1)) * (N - 1)));
+        freqCurve[i] = Math.max(20, continuousFreq(samples[sIdx]));
+      }
+      var v = makeVoice(ctxObj, dest, state.wave === 'bell' ? 'sine' : state.wave, freqCurve[0]);
+      v.osc.frequency.setValueCurveAtTime(freqCurve, t0, dur);
+      envelope(v.gain.gain, t0, dur, state.attack, state.release, 0.55);
+      voices.push(v);
+    }
+
+    if (state.mode === 'rhythm'){
+      var steps = 32;
+      var stepDur = dur / steps;
+      for (var s = 0; s < steps; s++){
+        var idx = Math.min(N - 1, Math.round((s / steps) * N));
+        var val = samples[idx];
+        var f = quantizedFreq(val);
+        var start = t0 + s * stepDur;
+        var noteDur = Math.max(0.05, stepDur * 0.92);
+        var vv = makeVoice(ctxObj, dest, state.wave, f);
+        envelope(vv.gain.gain, start, noteDur, Math.min(state.attack, noteDur * 0.4), Math.min(state.release, noteDur * 0.6), 0.5 + val * 0.3);
+        vv.osc.start(start);
+        vv.osc.stop(start + noteDur + 0.05);
+        if (vv.modOsc){ vv.modOsc.start(start); vv.modOsc.stop(start + noteDur + 0.05); }
+        voices.push(vv);
+      }
+    }
+
+    if (state.mode === 'chords'){
+      var segs = 8;
+      var segDur = dur / segs;
+      for (var c = 0; c < segs; c++){
+        var idx2 = Math.min(N - 1, Math.round((c / segs) * N));
+        var val2 = samples[idx2];
+        var freqs = chordFreqs(val2);
+        var cstart = t0 + c * segDur;
+        var cdur = segDur * 0.96;
+        for (var fi = 0; fi < freqs.length; fi++){
+          var cv = makeVoice(ctxObj, dest, state.wave === 'square' ? 'triangle' : state.wave, freqs[fi]);
+          envelope(cv.gain.gain, cstart, cdur, Math.max(state.attack, cdur * 0.15), Math.max(state.release, cdur * 0.3), 0.28);
+          cv.osc.start(cstart);
+          cv.osc.stop(cstart + cdur + 0.05);
+          if (cv.modOsc){ cv.modOsc.start(cstart); cv.modOsc.stop(cstart + cdur + 0.05); }
+          voices.push(cv);
+        }
+      }
+    }
+
+    // start/stop for pitch mode voice (rhythm/chords already started above)
+    if (state.mode === 'pitch'){
+      voices[0].osc.start(t0);
+      voices[0].osc.stop(t0 + dur + 0.05);
+      if (voices[0].modOsc){ voices[0].modOsc.start(t0); voices[0].modOsc.stop(t0 + dur + 0.05); }
+    }
+
+    return voices;
+  }
+
+  function stopPlayback(){
+    playing = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    playhead = null;
+    activeStopFns.forEach(function(fn){ try { fn(); } catch(e){} });
+    activeStopFns = [];
+    playBtn.disabled = false;
+    stopBtn.disabled = true;
+    render();
+  }
+
+  function startPlayback(){
+    ensureAudioCtx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    refreshSamples();
+    playing = true;
+    playBtn.disabled = true;
+    stopBtn.disabled = false;
+
+    function playOnce(){
+      var t0 = audioCtx.currentTime + 0.06;
+      var voices = scheduleSequence(audioCtx, masterGain, t0);
+      var stopFn = function(){
+        voices.forEach(function(v){
+          try { v.osc.stop(); } catch(e){}
+          if (v.modOsc) try { v.modOsc.stop(); } catch(e){}
+        });
+      };
+      activeStopFns = [stopFn];
+      var dur = state.duration;
+      var startWall = performance.now();
+
+      function tick(){
+        if (!playing) return;
+        var elapsed = (performance.now() - startWall) / 1000 - 0.06;
+        var frac = elapsed / dur;
+        if (frac >= 1){
+          if (state.loop){
+            activeStopFns = [];
+            playOnce();
+            return;
+          } else {
+            stopPlayback();
+            return;
+          }
+        }
+        playhead = Math.max(0, frac);
+        render();
+        rafId = requestAnimationFrame(tick);
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+    playOnce();
+  }
+
+  playBtn.addEventListener('click', function(){
+    startPlayback();
+  });
+  stopBtn.addEventListener('click', stopPlayback);
+
+  // ---------- WAV export ----------
+  function encodeWav(audioBuffer){
+    var numCh = audioBuffer.numberOfChannels;
+    var sr = audioBuffer.sampleRate;
+    var len = audioBuffer.length;
+    var bytesPerSample = 2;
+    var blockAlign = numCh * bytesPerSample;
+    var dataSize = len * blockAlign;
+    var buffer = new ArrayBuffer(44 + dataSize);
+    var view = new DataView(buffer);
+    function writeStr(off, str){ for (var i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); }
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numCh, true);
+    view.setUint32(24, sr, true);
+    view.setUint32(28, sr * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+    var chans = [];
+    for (var c = 0; c < numCh; c++) chans.push(audioBuffer.getChannelData(c));
+    var offset = 44;
+    for (var i = 0; i < len; i++){
+      for (var c2 = 0; c2 < numCh; c2++){
+        var s = Math.max(-1, Math.min(1, chans[c2][i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        offset += 2;
+      }
+    }
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  function exportWav(){
+    refreshSamples();
+    var sr = 44100;
+    var dur = state.duration + 0.3;
+    var OfflineCtor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    var offline = new OfflineCtor(1, Math.ceil(sr * dur), sr);
+    var g = offline.createGain();
+    g.gain.value = 0.6;
+    g.connect(offline.destination);
+    scheduleSequence(offline, g, 0.05);
+    exportBtn.disabled = true;
+    exportBtn.textContent = '⏳ Rendering…';
+    offline.startRendering().then(function(buf){
+      var blob = encodeWav(buf);
+      if (blob.size === 0){ toast('Export failed — empty buffer'); exportBtn.disabled = false; exportBtn.textContent = '⬇ Export WAV'; return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'sonify-' + state.dataset + '-' + state.mode + '.wav';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      exportBtn.disabled = false;
+      exportBtn.textContent = '⬇ Export WAV';
+      toast('WAV exported (' + (blob.size/1024).toFixed(0) + ' KB)');
+    }).catch(function(err){
+      toast('Export error: ' + err.message);
+      exportBtn.disabled = false;
+      exportBtn.textContent = '⬇ Export WAV';
+    });
+  }
+  exportBtn.addEventListener('click', exportWav);
+
+  // ---------- persistence ----------
+  function saveStateLocal(){
+    try {
+      var toSave = Object.assign({}, state);
+      if (state.dataset === 'draw' && state.drawPoints) toSave.drawPoints = Array.prototype.slice.call(state.drawPoints);
+      else delete toSave.drawPoints;
+      localStorage.setItem(STORE_KEY, JSON.stringify(toSave));
+    } catch(e){ /* storage unavailable */ }
+  }
+  function loadStateLocal(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return false;
+      var obj = JSON.parse(raw);
+      applyState(obj);
+      return true;
+    } catch(e){ return false; }
+  }
+  function applyState(obj){
+    if (!obj) return;
+    state.dataset = obj.dataset || state.dataset;
+    state.mode = obj.mode || state.mode;
+    state.scale = obj.scale || state.scale;
+    state.root = (obj.root != null) ? obj.root : state.root;
+    state.range = obj.range || state.range;
+    state.wave = obj.wave || state.wave;
+    state.attack = (obj.attack != null) ? obj.attack : state.attack;
+    state.release = (obj.release != null) ? obj.release : state.release;
+    state.duration = obj.duration || state.duration;
+    state.brightness = (obj.brightness != null) ? obj.brightness : state.brightness;
+    state.loop = !!obj.loop;
+    if (obj.drawPoints && obj.drawPoints.length === N) state.drawPoints = Float32Array.from(obj.drawPoints);
+    syncUI();
+    refreshSamples();
+  }
+
+  // ---------- share link ----------
+  function shareLink(){
+    var toSave = Object.assign({}, state);
+    if (state.dataset === 'draw' && state.drawPoints) toSave.drawPoints = Array.prototype.slice.call(state.drawPoints);
+    else delete toSave.drawPoints;
+    var json = JSON.stringify(toSave);
+    var hash = '';
+    try { hash = btoa(unescape(encodeURIComponent(json))); } catch(e){ hash = ''; }
+    var url = location.origin + location.pathname + '#p=' + hash;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){ toast('Share link copied!'); }).catch(function(){ toast(url); });
+    } else {
+      toast('Copy manually: link built');
+    }
+    history.replaceState(null, '', '#p=' + hash);
+  }
+  shareBtn.addEventListener('click', shareLink);
+
+  function loadFromHash(){
+    var h = location.hash;
+    if (h && h.indexOf('#p=') === 0){
+      try {
+        var json = decodeURIComponent(escape(atob(h.slice(3))));
+        var obj = JSON.parse(json);
+        applyState(obj);
+        return true;
+      } catch(e){ return false; }
+    }
+    return false;
+  }
+
+  // ---------- saved patches ----------
+  function getPatches(){
+    try { return JSON.parse(localStorage.getItem(PATCH_KEY) || '[]'); } catch(e){ return []; }
+  }
+  function setPatches(list){
+    try { localStorage.setItem(PATCH_KEY, JSON.stringify(list)); } catch(e){}
+  }
+  function renderPatches(){
+    var list = getPatches();
+    var el = $('patchList');
+    if (!list.length){ el.innerHTML = '<div class="empty-note">No saved patches yet — tune something and hit Save.</div>'; return; }
+    el.innerHTML = '';
+    list.forEach(function(p, i){
+      var row = document.createElement('div');
+      row.className = 'patch-row';
+      var span = document.createElement('span');
+      span.textContent = p.name;
+      var loadBtn = document.createElement('button');
+      loadBtn.className = 'load'; loadBtn.textContent = '▶ Load';
+      loadBtn.addEventListener('click', function(){ applyState(p.state); saveStateLocal(); toast('Loaded "' + p.name + '"'); });
+      var delBtn = document.createElement('button');
+      delBtn.className = 'del'; delBtn.textContent = '✕';
+      delBtn.addEventListener('click', function(){
+        var l = getPatches(); l.splice(i, 1); setPatches(l); renderPatches();
+      });
+      row.appendChild(span); row.appendChild(loadBtn); row.appendChild(delBtn);
+      el.appendChild(row);
+    });
+  }
+  $('savePatchBtn').addEventListener('click', function(){
+    var name = $('patchName').value.trim() || ('Patch ' + (getPatches().length + 1));
+    var toSave = Object.assign({}, state);
+    if (state.dataset === 'draw' && state.drawPoints) toSave.drawPoints = Array.prototype.slice.call(state.drawPoints);
+    else delete toSave.drawPoints;
+    var list = getPatches();
+    list.push({ name: name, state: toSave });
+    if (list.length > 12) list.shift();
+    setPatches(list);
+    $('patchName').value = '';
+    renderPatches();
+    toast('Saved "' + name + '"');
+  });
+
+  // ---------- UI wiring ----------
+  function setSeg(containerId, dataAttr, value, onPick){
+    var container = $(containerId);
+    Array.prototype.forEach.call(container.children, function(btn){
+      var v = btn.getAttribute(dataAttr);
+      btn.classList.toggle('active', v === value);
+      btn.onclick = function(){
+        onPick(v);
+      };
+    });
+  }
+
+  function syncUI(){
+    setSeg('datasetBtns', 'data-ds', state.dataset, function(v){
+      state.dataset = v;
+      stageHint.textContent = v === 'draw' ? 'tap / drag to draw' : 'switch to “Draw Your Own” to sketch';
+      datasetTag.textContent = { sine:'Sine Wave', stock:'Stock Index', temp:'Temperature', pop:'Population Growth', draw:'Custom Drawing' }[v];
+      refreshSamples(); render(); saveStateLocal(); syncUI();
+    });
+    setSeg('modeBtns', 'data-mode', state.mode, function(v){
+      state.mode = v; render(); saveStateLocal(); syncUI();
+    });
+    setSeg('waveBtns', 'data-wave', state.wave, function(v){
+      state.wave = v; saveStateLocal(); syncUI();
+    });
+
+    datasetTag.textContent = { sine:'Sine Wave', stock:'Stock Index', temp:'Temperature', pop:'Population Growth', draw:'Custom Drawing' }[state.dataset];
+    stageHint.textContent = state.dataset === 'draw' ? 'tap / drag to draw' : 'switch to “Draw Your Own” to sketch';
+
+    $('scaleSel').value = state.scale;
+    $('rootSel').value = String(state.root);
+    $('rangeSlider').value = state.range;
+    $('rangeVal').textContent = state.range;
+    $('attackSlider').value = state.attack;
+    $('attackVal').textContent = state.attack.toFixed(2) + 's';
+    $('releaseSlider').value = state.release;
+    $('releaseVal').textContent = state.release.toFixed(2) + 's';
+    $('durSlider').value = state.duration;
+    $('durVal').textContent = state.duration.toFixed(1) + 's';
+    $('brightSlider').value = state.brightness;
+    $('brightVal').textContent = state.brightness + '%';
+    $('loopChk').checked = state.loop;
+  }
+
+  $('scaleSel').addEventListener('change', function(){ state.scale = this.value; saveStateLocal(); });
+  $('rootSel').addEventListener('change', function(){ state.root = parseInt(this.value, 10); saveStateLocal(); });
+  $('rangeSlider').addEventListener('input', function(){ state.range = parseInt(this.value, 10); $('rangeVal').textContent = state.range; saveStateLocal(); });
+  $('attackSlider').addEventListener('input', function(){ state.attack = parseFloat(this.value); $('attackVal').textContent = state.attack.toFixed(2) + 's'; saveStateLocal(); });
+  $('releaseSlider').addEventListener('input', function(){ state.release = parseFloat(this.value); $('releaseVal').textContent = state.release.toFixed(2) + 's'; saveStateLocal(); });
+  $('durSlider').addEventListener('input', function(){ state.duration = parseFloat(this.value); $('durVal').textContent = state.duration.toFixed(1) + 's'; saveStateLocal(); });
+  $('brightSlider').addEventListener('input', function(){ state.brightness = parseInt(this.value, 10); $('brightVal').textContent = state.brightness + '%'; saveStateLocal(); });
+  $('loopChk').addEventListener('change', function(){ state.loop = this.checked; saveStateLocal(); });
+
+  clearDrawBtn.addEventListener('click', function(){
+    state.drawPoints = new Float32Array(N).fill(0.5);
+    if (state.dataset === 'draw'){ refreshSamples(); render(); }
+    saveStateLocal();
+    toast('Drawing cleared');
+  });
+
+  // ---------- init ----------
+  fitCanvas();
+  var loadedFromHash = loadFromHash();
+  if (!loadedFromHash) loadStateLocal();
+  syncUI();
+  refreshSamples();
+  render();
+  renderPatches();
+
+  window.addEventListener('beforeunload', saveStateLocal);
+})();
+</script>
