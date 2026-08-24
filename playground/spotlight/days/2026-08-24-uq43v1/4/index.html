@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cursor-as-Light-Source Relighting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  :root{ --bg:#0b0904; --line:#332711; --text:#f7efe0; --dim:#ab9b7c; --accent:#fbbf24; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{width:min(94vw,900px);height:min(64vh,600px);border-radius:20px;touch-action:none;
+    box-shadow:0 30px 70px -30px #000d; background:#000;}
+
+  .back-link{position:fixed;top:14px;left:14px;z-index:40;text-decoration:none;color:var(--text);
+    font-size:.78rem;padding:8px 14px;border-radius:20px;background:#1a1408cc;border:1px solid var(--line);
+    backdrop-filter:blur(8px);}
+  .title{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:5;text-align:center;pointer-events:none;}
+  .title .eyebrow{font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;color:var(--accent);}
+  .title h1{margin:2px 0 0;font-size:1rem;font-weight:800;text-shadow:0 2px 10px #000a;}
+
+  .panel{position:fixed;top:14px;right:14px;z-index:40;width:210px;background:#1a1408ee;border:1px solid var(--line);
+    border-radius:14px;padding:12px 14px;font-size:.72rem;backdrop-filter:blur(10px);}
+  .panel h4{margin:0 0 8px;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);}
+  .panel label{display:block;margin-top:8px;color:var(--dim);}
+  .panel input[type=range]{width:100%;accent-color:var(--accent);}
+  .panel .row{display:flex;justify-content:space-between;color:var(--text);}
+  .scenes{display:flex;gap:5px;margin-top:10px;}
+  .scenes button{flex:1;padding:7px 4px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.05);
+    color:var(--dim);font-size:.66rem;cursor:pointer;font-weight:700;}
+  .scenes button.active{background:var(--accent);color:#2a1a00;}
+  @media (max-width:720px){ .panel{display:none;} }
+
+  .hint{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:5;font-size:.72rem;color:var(--dim);
+    background:#1a1408cc;border:1px solid var(--line);padding:7px 14px;border-radius:100px;pointer-events:none;
+    transition:opacity .6s ease;}
+  .hint.hide{opacity:0;}
+
+  footer{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:14px;font-size:.68rem;color:var(--dim);z-index:5;}
+  footer a{color:var(--accent);text-decoration:none;}
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="title"><div class="eyebrow">Drop #4 · Micro-interaction</div><h1>Your Cursor Is the Light</h1></div>
+
+<div class="panel">
+  <h4>Relight controls</h4>
+  <label>Ambient <span class="row"><span></span><b id="ambVal">0.22</b></span></label>
+  <input type="range" id="ambSlider" min="0" max="0.6" step="0.02" value="0.22">
+  <label>Specular <span class="row"><span></span><b id="specVal">0.50</b></span></label>
+  <input type="range" id="specSlider" min="0" max="1" step="0.05" value="0.5">
+  <label>Shadow depth <span class="row"><span></span><b id="shadVal">0.70</b></span></label>
+  <input type="range" id="shadSlider" min="0" max="1" step="0.05" value="0.7">
+  <div class="scenes" id="scenes">
+    <button data-scene="coin" class="active">Coin</button>
+    <button data-scene="ridges">Ridges</button>
+    <button data-scene="orbs">Orbs</button>
+  </div>
+</div>
+
+<div class="hint" id="hint">move your cursor across the surface</div>
+
+<div id="stage"><canvas id="gl"></canvas></div>
+
+<footer>Inspired by <a href="https://tympanus.net/codrops/2026/08/19/relighting-images-with-depth-maps-and-three-js/" target="_blank" rel="noopener">Dominik Fojcik — Relighting Images with Depth Maps (Codrops)</a> · UI Spotlight Day 99 · Drop #4</footer>
+
+<script>
+(function(){
+  "use strict";
+  var canvas = document.getElementById('gl');
+  var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if(!gl){ document.getElementById('stage').innerHTML = '<p style="color:#eee;padding:40px">WebGL unavailable.</p>'; return; }
+
+  var VERT = 'attribute vec2 aPos;' +
+    'varying vec2 vUv;' +
+    'void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }';
+
+  var FRAG =
+    'precision mediump float;' +
+    'varying vec2 vUv;' +
+    'uniform sampler2D uDepth;' +
+    'uniform sampler2D uAlbedo;' +
+    'uniform vec2 uTexel;' +
+    'uniform vec3 uLightDir;' +
+    'uniform float uAmbient;' +
+    'uniform float uSpecular;' +
+    'uniform float uShadow;' +
+    'void main(){' +
+    '  float hL = texture2D(uDepth, vUv - vec2(uTexel.x,0.0)).r;' +
+    '  float hR = texture2D(uDepth, vUv + vec2(uTexel.x,0.0)).r;' +
+    '  float hD = texture2D(uDepth, vUv - vec2(0.0,uTexel.y)).r;' +
+    '  float hU = texture2D(uDepth, vUv + vec2(0.0,uTexel.y)).r;' +
+    '  float strength = 4.2;' +
+    '  vec3 normal = normalize(vec3((hL-hR)*strength, (hD-hU)*strength, 1.0));' +
+    '  float lambert = max(dot(normal, uLightDir), 0.0);' +
+    '  vec3 viewDir = vec3(0.0,0.0,1.0);' +
+    '  vec3 halfDir = normalize(uLightDir+viewDir);' +
+    '  float spec = pow(max(dot(normal,halfDir),0.0), 30.0) * uSpecular;' +
+    '  float h0 = texture2D(uDepth, vUv).r;' +
+    '  float shadow = 1.0;' +
+    '  vec2 dir2 = uLightDir.xy;' +
+    '  float dirLen = length(dir2);' +
+    '  if(dirLen > 0.001){' +
+    '    vec2 stepUv = normalize(dir2) * uTexel * 2.2;' +
+    '    float expected = h0;' +
+    '    for(int i=1;i<=6;i++){' +
+    '      vec2 sUv = vUv + stepUv * float(i);' +
+    '      float hs = texture2D(uDepth, sUv).r;' +
+    '      expected += uLightDir.z * 0.012;' +
+    '      if(hs > expected + 0.02){ shadow = 0.32; }' +
+    '    }' +
+    '  }' +
+    '  shadow = mix(1.0, shadow, uShadow);' +
+    '  vec3 albedo = texture2D(uAlbedo, vUv).rgb;' +
+    '  vec3 color = albedo * (uAmbient + lambert*shadow) + vec3(1.0,0.95,0.85) * spec * shadow;' +
+    '  gl_FragColor = vec4(color, 1.0);' +
+    '}';
+
+  function compile(type, src){
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+      console.error(gl.getShaderInfoLog(s));
+    }
+    return s;
+  }
+  var prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  var quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+  var buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+  var aPos = gl.getAttribLocation(prog, 'aPos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  var uDepth = gl.getUniformLocation(prog, 'uDepth');
+  var uAlbedo = gl.getUniformLocation(prog, 'uAlbedo');
+  var uTexel = gl.getUniformLocation(prog, 'uTexel');
+  var uLightDir = gl.getUniformLocation(prog, 'uLightDir');
+  var uAmbient = gl.getUniformLocation(prog, 'uAmbient');
+  var uSpecular = gl.getUniformLocation(prog, 'uSpecular');
+  var uShadow = gl.getUniformLocation(prog, 'uShadow');
+
+  var TEX_SIZE = 220;
+
+  var PALETTES = {
+    coin:   ['#2c1c08','#7a4e17','#e0aa3f','#fff3d0'],
+    ridges: ['#08111c','#173a52','#38bdf8','#eaffff'],
+    orbs:   ['#150c24','#3a1e63','#a78bfa','#f5ecff']
+  };
+
+  var SCENES = {
+    coin: function(nx, ny){
+      var r = Math.sqrt(nx*nx + ny*ny);
+      var ang = Math.atan2(ny, nx);
+      var h = 0.12;
+      if(r < 0.86){ h = 0.5 + 0.05*Math.sin(r*34); }
+      if(r >= 0.78 && r < 0.86){ h = 0.88; }
+      if(r < 0.42){ h += 0.22 * Math.max(0, Math.cos(ang*5)) * (1 - r/0.42); }
+      return Math.max(0, Math.min(1, h));
+    },
+    ridges: function(nx, ny){
+      var h = 0.5 + 0.4*Math.sin((nx*9 + ny*3.2)) + 0.09*Math.sin(nx*2.4 - ny*5.5);
+      return Math.max(0, Math.min(1, h));
+    },
+    orbs: (function(){
+      var orbs = [
+        {x:-0.32,y:-0.22,r:0.34,h:0.55},{x:0.28,y:-0.12,r:0.30,h:0.5},
+        {x:-0.05,y:0.32,r:0.38,h:0.6},{x:0.34,y:0.30,r:0.22,h:0.4},
+        {x:-0.42,y:0.18,r:0.2,h:0.35}
+      ];
+      return function(nx, ny){
+        var h = 0.1;
+        for(var i=0;i<orbs.length;i++){
+          var o = orbs[i];
+          var d = Math.sqrt((nx-o.x)*(nx-o.x) + (ny-o.y)*(ny-o.y)) / o.r;
+          h += Math.exp(-d*d*3.2) * o.h;
+        }
+        return Math.max(0, Math.min(1, h));
+      };
+    })()
+  };
+
+  function hexToRgb(hex){ var v=parseInt(hex.slice(1),16); return [(v>>16)&255,(v>>8)&255,v&255]; }
+  function colorForHeight(h, pal){
+    var n = pal.length;
+    var f = Math.min(0.9999, Math.max(0,h)) * (n-1);
+    var i0 = Math.floor(f), i1 = Math.min(n-1,i0+1), t = f-i0;
+    var c0 = hexToRgb(pal[i0]), c1 = hexToRgb(pal[i1]);
+    return [c0[0]+(c1[0]-c0[0])*t, c0[1]+(c1[1]-c0[1])*t, c0[2]+(c1[2]-c0[2])*t];
+  }
+
+  function buildTextures(sceneKey){
+    var fn = SCENES[sceneKey];
+    var pal = PALETTES[sceneKey];
+    var depthData = new Uint8Array(TEX_SIZE*TEX_SIZE*4);
+    var albedoData = new Uint8Array(TEX_SIZE*TEX_SIZE*4);
+    for(var y=0;y<TEX_SIZE;y++){
+      var ny = (y/(TEX_SIZE-1))*2-1;
+      for(var x=0;x<TEX_SIZE;x++){
+        var nx = (x/(TEX_SIZE-1))*2-1;
+        var h = fn(nx, ny);
+        var idx = (y*TEX_SIZE+x)*4;
+        var g = Math.round(h*255);
+        depthData[idx]=g; depthData[idx+1]=g; depthData[idx+2]=g; depthData[idx+3]=255;
+        var rgb = colorForHeight(h, pal);
+        albedoData[idx]=rgb[0]; albedoData[idx+1]=rgb[1]; albedoData[idx+2]=rgb[2]; albedoData[idx+3]=255;
+      }
+    }
+    return { depth: depthData, albedo: albedoData };
+  }
+
+  function makeTexture(data){
+    var tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEX_SIZE, TEX_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    return tex;
+  }
+
+  var depthTex = null, albedoTex = null;
+  function loadScene(key){
+    var tx = buildTextures(key);
+    if(depthTex) gl.deleteTexture(depthTex);
+    if(albedoTex) gl.deleteTexture(albedoTex);
+    depthTex = makeTexture(tx.depth);
+    albedoTex = makeTexture(tx.albedo);
+  }
+  loadScene('coin');
+
+  function resize(){
+    var dpr = Math.min(window.devicePixelRatio||1, 2);
+    var rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width*dpr);
+    canvas.height = Math.round(rect.height*dpr);
+    gl.viewport(0,0,canvas.width, canvas.height);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var ambient = 0.22, specular = 0.5, shadowAmt = 0.7;
+  var light = { x: -0.35, y: -0.35, z: 0.85 };
+  var targetLight = { x: -0.35, y: -0.35 };
+  var autoT = 0, userMoved = false;
+
+  function normLight(x,y,z){
+    var len = Math.sqrt(x*x+y*y+z*z) || 1;
+    return [x/len, y/len, z/len];
+  }
+
+  canvas.addEventListener('pointermove', function(e){
+    userMoved = true;
+    var r = canvas.getBoundingClientRect();
+    var nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+    var ny = ((e.clientY - r.top) / r.height) * 2 - 1;
+    targetLight.x = nx; targetLight.y = -ny;
+    hint.classList.add('hide');
+  });
+
+  var hint = document.getElementById('hint');
+
+  function render(){
+    if(!userMoved){
+      autoT += 0.012;
+      targetLight.x = 0.5*Math.sin(autoT);
+      targetLight.y = 0.4*Math.cos(autoT*0.8);
+    }
+    light.x += (targetLight.x - light.x) * 0.12;
+    light.y += (targetLight.y - light.y) * 0.12;
+    var L = normLight(light.x, light.y, light.z);
+
+    gl.clearColor(0,0,0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, depthTex); gl.uniform1i(uDepth, 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, albedoTex); gl.uniform1i(uAlbedo, 1);
+    gl.uniform2f(uTexel, 1/TEX_SIZE, 1/TEX_SIZE);
+    gl.uniform3f(uLightDir, L[0], L[1], L[2]);
+    gl.uniform1f(uAmbient, ambient);
+    gl.uniform1f(uSpecular, specular);
+    gl.uniform1f(uShadow, shadowAmt);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+
+  var ambSlider = document.getElementById('ambSlider'), specSlider = document.getElementById('specSlider'), shadSlider = document.getElementById('shadSlider');
+  var ambVal = document.getElementById('ambVal'), specVal = document.getElementById('specVal'), shadVal = document.getElementById('shadVal');
+  ambSlider.addEventListener('input', function(){ ambient = parseFloat(this.value); ambVal.textContent = ambient.toFixed(2); });
+  specSlider.addEventListener('input', function(){ specular = parseFloat(this.value); specVal.textContent = specular.toFixed(2); });
+  shadSlider.addEventListener('input', function(){ shadowAmt = parseFloat(this.value); shadVal.textContent = shadowAmt.toFixed(2); });
+
+  var sceneButtons = document.querySelectorAll('#scenes button');
+  sceneButtons.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      sceneButtons.forEach(function(b){ b.classList.toggle('active', b===btn); });
+      loadScene(btn.dataset.scene);
+    });
+  });
+
+  setTimeout(function(){ hint.classList.add('hide'); }, 4000);
+})();
+</script>
+</body>
+</html>
