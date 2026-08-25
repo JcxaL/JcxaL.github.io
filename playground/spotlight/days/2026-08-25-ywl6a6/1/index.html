@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CRT Flythrough — UI Spotlight</title>
+<style>
+  :root{ --bg:#050507; --glow:#5ef2ff; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:#eef;font-family:-apple-system,system-ui,sans-serif;
+    overflow-x:hidden;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:#fff;
+    background:rgba(20,20,28,0.55); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.15);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;
+  }
+  .hero{ height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 20px;}
+  .hero h1{ font-size:clamp(28px,6vw,52px); margin:0 0 10px; letter-spacing:1px;
+    text-shadow:0 0 24px var(--glow); }
+  .hero p{ color:#9aa; max-width:520px; margin:0 0 6px; font-size:14px;}
+  .hero .hint{ font-size:12px; color:#678; margin-top:24px; animation:bob 1.6s ease-in-out infinite; }
+  @keyframes bob{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(8px);} }
+
+  .scene-wrap{ height:400vh; position:relative; }
+  .stage{ position:sticky; top:0; height:100vh; overflow:hidden;
+    perspective:900px; perspective-origin:50% 50%; background:radial-gradient(ellipse at center, #0b0b14 0%, #030305 75%);}
+  .rig{ position:absolute; inset:0; transform-style:preserve-3d; }
+  .crt{
+    position:absolute; width:220px; height:160px; left:50%; top:50%;
+    margin:-80px 0 0 -110px; border-radius:14px; overflow:hidden;
+    background:#000; border:6px solid #1b1b22; box-shadow:0 0 40px rgba(94,242,255,0.25), inset 0 0 30px rgba(0,0,0,0.8);
+    transform-style:preserve-3d;
+  }
+  .crt canvas{ width:100%; height:100%; display:block; }
+  .crt .label{ position:absolute; bottom:4px; left:8px; font-size:9px; color:#7fe; opacity:0.8; font-family:monospace; letter-spacing:1px;}
+
+  .outro{ height:60vh; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; padding:0 20px;}
+  .outro h2{ font-size:22px; margin:0 0 8px; }
+  .outro p{ color:#89a; font-size:13px; max-width:460px; }
+
+  footer{ text-align:center; padding:22px 16px 40px; color:#556; font-size:11.5px; }
+  footer a{ color:#7fe; }
+
+  @media (max-width:600px){
+    .crt{ width:150px; height:110px; margin:-55px 0 0 -75px; }
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<section class="hero">
+  <h1>CRT FLYTHROUGH</h1>
+  <p>Scroll to fly through a wall of twenty synthesized CRT monitors, each running its own live scanline pattern.</p>
+  <div class="hint">↓ scroll ↓</div>
+</section>
+
+<div class="scene-wrap" id="sceneWrap">
+  <div class="stage">
+    <div class="rig" id="rig"></div>
+  </div>
+</div>
+
+<section class="outro">
+  <h2>End of the line.</h2>
+  <p>Camera depth was driven purely by scroll progress — each screen's Z position, scale and opacity are recomputed every frame from one 0–1 timeline value.</p>
+</section>
+
+<footer>Inspired by tympanus/codrops "Sixty Frames for the Record: A Three.js Game, Seven Fly-Throughs, and a Wall of CRTs" · UI Spotlight Day 100 · Drop #1</footer>
+
+<script>
+(function(){
+  'use strict';
+  var rig = document.getElementById('rig');
+  var sceneWrap = document.getElementById('sceneWrap');
+  var N = 20;
+  var screens = [];
+
+  var PATTERNS = ['scan','plasma','noise','grid'];
+
+  function rand(seed){ // deterministic-ish per-index variety
+    var x = Math.sin(seed*999)*10000;
+    return x - Math.floor(x);
+  }
+
+  for (var i=0;i<N;i++){
+    var el = document.createElement('div');
+    el.className = 'crt';
+    var canvas = document.createElement('canvas');
+    canvas.width = 220; canvas.height = 160;
+    el.appendChild(canvas);
+    var label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = 'CH-' + String(i+1).padStart(2,'0');
+    el.appendChild(label);
+    rig.appendChild(el);
+
+    var angle = (i / N) * Math.PI * 2 * 2.4; // spiral
+    var radiusBase = 260 + (i%5)*70;
+    screens.push({
+      el: el, canvas: canvas, ctx: canvas.getContext('2d'),
+      angle: angle,
+      radius: radiusBase,
+      zBase: -i * 420,
+      xJit: (rand(i)-0.5) * 160,
+      yJit: (rand(i+50)-0.5) * 140,
+      pattern: PATTERNS[i % PATTERNS.length],
+      hue: (i * 47) % 360
+    });
+  }
+
+  function drawScreen(s, t){
+    var ctx = s.ctx, w = s.canvas.width, h = s.canvas.height;
+    ctx.clearRect(0,0,w,h);
+    var hue = s.hue;
+    if (s.pattern === 'scan'){
+      ctx.fillStyle = 'hsl(' + hue + ',70%,8%)';
+      ctx.fillRect(0,0,w,h);
+      var lineY = (t*90 + s.hue) % h;
+      var grad = ctx.createLinearGradient(0,lineY-20,0,lineY+20);
+      grad.addColorStop(0,'transparent');
+      grad.addColorStop(0.5,'hsla(' + hue + ',90%,60%,0.9)');
+      grad.addColorStop(1,'transparent');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0,lineY-20,w,40);
+      ctx.font = '20px monospace';
+      ctx.fillStyle = 'hsla(' + hue + ',90%,70%,0.5)';
+      ctx.fillText('01', 10, 30);
+    } else if (s.pattern === 'plasma'){
+      var img = ctx.createImageData(w,h);
+      var step = 6;
+      for (var y=0;y<h;y+=step){
+        for (var x=0;x<w;x+=step){
+          var v = Math.sin(x*0.06+t) + Math.sin(y*0.08 - t*1.3) + Math.sin((x+y)*0.05 + t*0.7);
+          var b = (v+3)/6;
+          var col = 'hsl(' + ((hue + v*40)%360) + ',80%,' + Math.floor(20+b*40) + '%)';
+          ctx.fillStyle = col;
+          ctx.fillRect(x,y,step,step);
+        }
+      }
+    } else if (s.pattern === 'noise'){
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h);
+      for (var i2=0;i2<220;i2++){
+        var nx = Math.random()*w, ny = Math.random()*h;
+        ctx.fillStyle = Math.random() < 0.5 ? 'hsla(' + hue + ',80%,70%,0.5)' : 'rgba(255,255,255,0.15)';
+        ctx.fillRect(nx, ny, 2, 2);
+      }
+    } else {
+      ctx.fillStyle = 'hsl(' + hue + ',60%,7%)'; ctx.fillRect(0,0,w,h);
+      ctx.strokeStyle = 'hsla(' + hue + ',80%,60%,0.6)';
+      ctx.lineWidth = 1;
+      var off = (t*30) % 20;
+      for (var gx=-20; gx<w+20; gx+=20){
+        ctx.beginPath(); ctx.moveTo(gx+off,0); ctx.lineTo(gx+off-40,h); ctx.stroke();
+      }
+    }
+    // scanline overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    for (var yy=0; yy<h; yy+=3) ctx.fillRect(0,yy,w,1);
+  }
+
+  var progress = 0;
+  function updateScroll(){
+    var rect = sceneWrap.getBoundingClientRect();
+    var total = sceneWrap.offsetHeight - window.innerHeight;
+    var scrolled = -rect.top;
+    progress = Math.max(0, Math.min(1, scrolled/total || 0));
+  }
+  window.addEventListener('scroll', updateScroll, {passive:true});
+  updateScroll();
+
+  var depthTravel = N * 420 + 500;
+  function frame(tms){
+    var t = tms/1000;
+    var camZ = progress * depthTravel;
+    for (var i=0;i<screens.length;i++){
+      var s = screens[i];
+      var translateZ = s.zBase + camZ;
+      var op = 1;
+      if (translateZ < -1600 || translateZ > 700) op = 0;
+      else if (translateZ > 300) op = 1 - (translateZ-300)/400;
+      else if (translateZ < -1200) op = 1 - (-1200-translateZ)/400;
+      s.el.style.opacity = Math.max(0,Math.min(1,op));
+      s.el.style.transform =
+        'translate3d(' + (Math.cos(s.angle)*s.radius + s.xJit) + 'px,' +
+        (Math.sin(s.angle)*s.radius*0.6 + s.yJit) + 'px,' + translateZ + 'px) ' +
+        'rotateY(' + (Math.sin(s.angle)*10) + 'deg)';
+      if (op > 0.02) drawScreen(s, t + i*0.3);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

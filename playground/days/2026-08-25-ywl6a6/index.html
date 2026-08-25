@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Signage Foundry — Retro Display Studio</title>
+<style>
+  :root{
+    --bg:#07070b; --panel:#111119; --panel2:#181822; --line:#2a2a38;
+    --text:#e9e8f2; --dim:#8a8a9c; --accent:#f5b942;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    overflow-x:hidden; width:100%; height:100%;}
+  body{display:flex;flex-direction:column;min-height:100dvh;}
+
+  header{padding:14px 16px 8px; text-align:center; flex:0 0 auto;}
+  header h1{margin:0; font-size:20px; letter-spacing:0.5px; font-weight:700;}
+  header p{margin:4px 0 0; font-size:12.5px; color:var(--dim);}
+
+  .modes{display:flex; gap:6px; justify-content:center; padding:10px 12px; flex:0 0 auto;}
+  .mode-btn{
+    background:var(--panel); border:1px solid var(--line); color:var(--dim);
+    padding:9px 14px; border-radius:999px; font-size:13px; font-weight:600;
+    cursor:pointer; transition:all .15s ease; touch-action:manipulation;
+  }
+  .mode-btn.active{background:var(--accent); color:#1a1204; border-color:var(--accent);}
+
+  .stage-wrap{flex:1 1 auto; display:flex; align-items:center; justify-content:center;
+    padding:6px 12px; min-height:0;}
+  .stage{
+    width:100%; max-width:900px; aspect-ratio:16/7; background:#000;
+    border-radius:14px; border:1px solid var(--line);
+    box-shadow:0 20px 60px -20px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.02);
+    overflow:hidden; position:relative;
+  }
+  canvas#stageCanvas{width:100%; height:100%; display:block;}
+
+  .controls{flex:0 0 auto; padding:10px 12px 14px; max-width:900px; margin:0 auto; width:100%;}
+  .row{display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;}
+  .row label{font-size:11.5px; color:var(--dim); min-width:64px; flex:0 0 auto;}
+  input[type=text]{
+    flex:1 1 160px; min-width:0; background:var(--panel2); border:1px solid var(--line);
+    color:var(--text); padding:10px 12px; border-radius:10px; font-size:15px; outline:none;
+  }
+  input[type=text]:focus{border-color:var(--accent);}
+  input[type=range]{flex:1 1 100px; accent-color:var(--accent);}
+  select{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:8px 10px; border-radius:9px; font-size:13px; flex:0 0 auto;
+  }
+  .swatches{display:flex; gap:6px;}
+  .swatch{width:24px; height:24px; border-radius:50%; border:2px solid transparent; cursor:pointer; flex:0 0 auto;}
+  .swatch.active{border-color:#fff;}
+  .toggle-chip{
+    background:var(--panel2); border:1px solid var(--line); color:var(--dim);
+    padding:7px 11px; border-radius:9px; font-size:12px; cursor:pointer; flex:0 0 auto;
+  }
+  .toggle-chip.on{color:var(--accent); border-color:var(--accent);}
+
+  .actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .btn{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;
+    flex:1 1 auto; min-width:110px; text-align:center; touch-action:manipulation;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn.primary{background:var(--accent); color:#1a1204; border-color:var(--accent);}
+  .btn.danger{color:#ff7676;}
+
+  .preset-row{display:flex; gap:8px; margin-top:8px;}
+  .preset-row select{flex:1 1 auto;}
+
+  .toast{
+    position:fixed; left:50%; bottom:18px; transform:translate(-50%,20px);
+    background:#1c1c26; border:1px solid var(--line); color:var(--text);
+    padding:10px 16px; border-radius:10px; font-size:13px; opacity:0;
+    transition:all .25s ease; pointer-events:none; z-index:50; max-width:90vw; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translate(-50%,0);}
+
+  @media (max-width:520px){
+    header h1{font-size:17px;}
+    .row label{min-width:56px; font-size:11px;}
+    .btn{min-width:90px; font-size:12px; padding:9px 10px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Signage Foundry</h1>
+  <p>Type a message. Watch it live on an LED marquee, a split-flap board, or a VFD ticker.</p>
+</header>
+
+<div class="modes">
+  <button class="mode-btn active" data-mode="led">LED Matrix</button>
+  <button class="mode-btn" data-mode="flap">Split-Flap</button>
+  <button class="mode-btn" data-mode="vfd">VFD Tube</button>
+</div>
+
+<div class="stage-wrap">
+  <div class="stage"><canvas id="stageCanvas"></canvas></div>
+</div>
+
+<div class="controls">
+  <div class="row">
+    <label for="msgInput">Message</label>
+    <input type="text" id="msgInput" maxlength="64" value="SIGNAGE FOUNDRY" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="row">
+    <label for="speedRange">Speed</label>
+    <input type="range" id="speedRange" min="1" max="10" value="5" step="1">
+    <span class="toggle-chip" id="autoCycleChip">Auto-cycle</span>
+  </div>
+  <div class="row">
+    <label>Color</label>
+    <div class="swatches" id="swatches">
+      <div class="swatch active" data-color="amber" style="background:#f5b942"></div>
+      <div class="swatch" data-color="red" style="background:#ff4d4d"></div>
+      <div class="swatch" data-color="green" style="background:#4dff88"></div>
+      <div class="swatch" data-color="cyan" style="background:#4de0ff"></div>
+      <div class="swatch" data-color="white" style="background:#f4f4f8"></div>
+      <div class="swatch" data-color="pink" style="background:#ff6bc6"></div>
+    </div>
+    <select id="densitySelect" title="Detail">
+      <option value="low">Coarse</option>
+      <option value="med" selected>Medium</option>
+      <option value="high">Fine</option>
+    </select>
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="savePresetBtn">Save preset</button>
+    <button class="btn" id="shareBtn">Copy share link</button>
+    <button class="btn" id="pngBtn">Export PNG</button>
+    <button class="btn primary" id="loopBtn">Record loop (WebM)</button>
+  </div>
+  <div class="preset-row">
+    <select id="presetSelect"><option value="">— saved presets —</option></select>
+    <button class="btn" id="loadPresetBtn" style="flex:0 0 auto; min-width:70px;">Load</button>
+    <button class="btn danger" id="deletePresetBtn" style="flex:0 0 auto; min-width:70px;">Delete</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  var COLORS = {
+    amber: {main:'#f5b942', dim:'rgba(245,185,66,0.08)', glow:'rgba(245,185,66,0.55)', tile:'#2a2416', tileText:'#f5e2b0'},
+    red:   {main:'#ff4d4d', dim:'rgba(255,77,77,0.08)',  glow:'rgba(255,77,77,0.5)',  tile:'#2a1414', tileText:'#ffcccc'},
+    green: {main:'#4dff88', dim:'rgba(77,255,136,0.08)', glow:'rgba(77,255,136,0.5)', tile:'#122016', tileText:'#c8ffd8'},
+    cyan:  {main:'#4de0ff', dim:'rgba(77,224,255,0.08)', glow:'rgba(77,224,255,0.5)', tile:'#0f2026', tileText:'#c8f4ff'},
+    white: {main:'#f4f4f8', dim:'rgba(244,244,248,0.08)',glow:'rgba(244,244,248,0.45)',tile:'#1c1c22', tileText:'#f4f4f8'},
+    pink:  {main:'#ff6bc6', dim:'rgba(255,107,198,0.08)',glow:'rgba(255,107,198,0.5)', tile:'#26141f', tileText:'#ffd6ef'}
+  };
+  var DENSITY = { low:{cols:5,rows:7}, med:{cols:6,rows:8}, high:{cols:8,rows:10} };
+  var TILE_ALPHABET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,!?:-\'&%$#/';
+
+  var state = {
+    mode: 'led',
+    message: 'SIGNAGE FOUNDRY',
+    speed: 5,
+    color: 'amber',
+    density: 'med',
+    autoCycle: false
+  };
+
+  var canvas = document.getElementById('stageCanvas');
+  var ctx = canvas.getContext('2d');
+  var stageEl = canvas.parentElement;
+  var dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2.5));
+  var cw = 0, ch = 0;
+
+  function resize(){
+    var rect = stageEl.getBoundingClientRect();
+    cw = Math.max(1, Math.floor(rect.width));
+    ch = Math.max(1, Math.floor(rect.height));
+    canvas.width = Math.floor(cw * dpr);
+    canvas.height = Math.floor(ch * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  var ro = new ResizeObserver(resize);
+  ro.observe(stageEl);
+  resize();
+
+  // ---------- Glyph sampler: renders any character to an intensity grid ----------
+  var glyphCache = {};
+  var sampleCanvas = document.createElement('canvas');
+  var sampleCtx = sampleCanvas.getContext('2d', {willReadFrequently:true});
+
+  function getGlyphGrid(ch, cols, rows){
+    var key = ch + '|' + cols + 'x' + rows;
+    var cached = glyphCache[key];
+    if (cached) return cached;
+    var RES = 10;
+    var w = cols * RES, h = rows * RES;
+    sampleCanvas.width = w; sampleCanvas.height = h;
+    sampleCtx.clearRect(0,0,w,h);
+    if (ch !== ' '){
+      sampleCtx.fillStyle = '#fff';
+      sampleCtx.textAlign = 'center';
+      sampleCtx.textBaseline = 'middle';
+      sampleCtx.font = 'bold ' + Math.floor(h*0.92) + 'px "Courier New", monospace';
+      sampleCtx.fillText(ch, w/2, h/2 + h*0.03);
+    }
+    var data;
+    try { data = sampleCtx.getImageData(0,0,w,h).data; }
+    catch(e){ data = new Uint8ClampedArray(w*h*4); }
+    var grid = new Float32Array(cols*rows);
+    for (var r=0;r<rows;r++){
+      for (var c=0;c<cols;c++){
+        var sum=0, count=0;
+        var x0=c*RES, y0=r*RES;
+        for (var yy=0; yy<RES; yy+=2){
+          for (var xx=0; xx<RES; xx+=2){
+            var idx = ((y0+yy)*w + (x0+xx))*4 + 3;
+            sum += data[idx]; count++;
+          }
+        }
+        grid[r*cols+c] = count ? (sum/count)/255 : 0;
+      }
+    }
+    glyphCache[key] = grid;
+    return grid;
+  }
+
+  // ---------- Animation state ----------
+  var scrollX = 0;
+  var lastT = performance.now();
+  var flapTiles = []; // {current, target, progress, holdRandom}
+  var flapMessage = '';
+  var autoCycleTimer = 0;
+  var AUTO_MESSAGES = ['SIGNAGE FOUNDRY','NOW BOARDING','WELCOME ABOARD','NEXT STOP: HOME','SPECIAL TODAY','GATE B12 OPEN','FRESH BUILD','HAVE A GOOD DAY'];
+  var autoCycleIdx = 0;
+
+  function normMsg(s){
+    s = (s||'').toUpperCase();
+    var out = '';
+    for (var i=0;i<s.length;i++){
+      out += TILE_ALPHABET.indexOf(s[i]) >= 0 ? s[i] : ' ';
+    }
+    return out || ' ';
+  }
+
+  function setFlapTarget(msg){
+    flapMessage = msg;
+    var len = msg.length;
+    while (flapTiles.length < len) flapTiles.push({current:' ', target:' ', progress:1});
+    flapTiles.length = Math.max(len, 1);
+    for (var i=0;i<len;i++){
+      if (flapTiles[i].target !== msg[i]){
+        flapTiles[i].target = msg[i];
+        flapTiles[i].progress = 0;
+      }
+    }
+  }
+
+  // ---------- Renderers ----------
+  function renderLED(dt, colorSet){
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0,0,cw,ch);
+    var d = DENSITY[state.density];
+    var cols = d.cols, rows = d.rows;
+    var pitch = Math.max(3, Math.min(ch/(rows+3), 7));
+    var dotR = pitch*0.36;
+    var charW = cols*pitch + pitch*1.6;
+    var msg = normMsg(state.message) + '   ';
+    var totalW = msg.length * charW;
+    scrollX -= dt * (14 + state.speed*14);
+    if (-scrollX > totalW) scrollX += totalW;
+    var startY = (ch - rows*pitch)/2;
+
+    // background dim dot field
+    var visibleChars = Math.ceil(cw/charW) + 2;
+    var startIdx = Math.floor((-scrollX)/charW);
+    ctx.fillStyle = colorSet.dim;
+    for (var gx = -pitch; gx < cw+pitch; gx += pitch){
+      for (var gy = startY; gy < startY+rows*pitch; gy += pitch){
+        ctx.beginPath(); ctx.arc(gx+pitch/2, gy+pitch/2, dotR*0.7, 0, 7); ctx.fill();
+      }
+    }
+
+    ctx.shadowColor = colorSet.glow;
+    ctx.shadowBlur = pitch*0.9;
+    ctx.fillStyle = colorSet.main;
+    for (var i=0;i<visibleChars;i++){
+      var idx = (startIdx+i) % msg.length;
+      if (idx<0) idx += msg.length;
+      var ch2 = msg[idx];
+      var baseX = scrollX + (startIdx+i)*charW;
+      if (baseX > cw || baseX+charW < 0) continue;
+      var grid = getGlyphGrid(ch2, cols, rows);
+      for (var r=0;r<rows;r++){
+        for (var c=0;c<cols;c++){
+          var v = grid[r*cols+c];
+          if (v < 0.15) continue;
+          var px = baseX + c*pitch + pitch/2;
+          var py = startY + r*pitch + pitch/2;
+          ctx.globalAlpha = Math.min(1, v*1.3);
+          ctx.beginPath(); ctx.arc(px, py, dotR, 0, 7); ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  function renderFlap(dt, colorSet){
+    ctx.fillStyle = '#0a0a0d';
+    ctx.fillRect(0,0,cw,ch);
+    var msg = normMsg(state.message);
+    if (msg !== flapMessage) setFlapTarget(msg);
+
+    var pad = 6;
+    var tileGap = 4;
+    var minTileW = 30;
+    var perRow = Math.max(1, Math.floor((cw-pad*2+tileGap) / (minTileW+tileGap)));
+    var rows = Math.max(1, Math.ceil(flapTiles.length / perRow));
+    var tileW = (cw - pad*2 - tileGap*(perRow-1)) / perRow;
+    var tileH = Math.min((ch - pad*2 - tileGap*(rows-1)) / rows, tileW*1.15);
+    var gridW = perRow*tileW + (perRow-1)*tileGap;
+    var gridH = rows*tileH + (rows-1)*tileGap;
+    var offX = (cw-gridW)/2, offY = (ch-gridH)/2;
+
+    var speedFactor = 0.03 + state.speed*0.02;
+    for (var i=0;i<flapTiles.length;i++){
+      var t = flapTiles[i];
+      if (t.progress < 1){
+        t.progress = Math.min(1, t.progress + dt*speedFactor*20);
+        if (t.progress >= 1) t.current = t.target;
+      }
+      var col = i % perRow, row = Math.floor(i/perRow);
+      var x = offX + col*(tileW+tileGap);
+      var y = offY + row*(tileH+tileGap);
+
+      ctx.fillStyle = colorSet.tile;
+      roundRect(x, y, tileW, tileH, 4);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y+tileH/2); ctx.lineTo(x+tileW, y+tileH/2); ctx.stroke();
+
+      var showChar = t.progress >= 1 ? t.current :
+        (t.progress < 0.5 ? t.current : t.target);
+      var squash = t.progress < 1 ? Math.abs(Math.cos(t.progress*Math.PI)) : 1;
+
+      ctx.save();
+      ctx.translate(x+tileW/2, y+tileH/2);
+      ctx.scale(1, Math.max(0.08, squash));
+      ctx.fillStyle = colorSet.tileText;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '700 ' + Math.floor(tileH*0.62) + 'px "Courier New", monospace';
+      ctx.fillText(showChar === ' ' ? '' : showChar, 0, tileH*0.03);
+      ctx.restore();
+    }
+  }
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function renderVFD(dt, colorSet){
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,cw,ch);
+    var cols=5, rows=9;
+    var msg = normMsg(state.message) + ' ';
+    var pitch = Math.min(cw/(msg.length*(cols+1.6)), ch/(rows+3));
+    pitch = Math.max(pitch, 4);
+    var charW = cols*pitch + pitch*1.6;
+    var totalW = msg.length*charW;
+    var startX = Math.max(pad0(), (cw-totalW)/2);
+    var startY = (ch-rows*pitch)/2;
+    if (totalW > cw){
+      scrollX -= dt*(10+state.speed*10);
+      if (-scrollX > totalW) scrollX += totalW;
+      startX = scrollX;
+    } else {
+      scrollX = 0;
+    }
+    ctx.shadowColor = colorSet.glow;
+    ctx.shadowBlur = pitch*1.1;
+    for (var i=0;i<msg.length*2;i++){
+      var idx = i % msg.length;
+      var baseX = startX + i*charW;
+      if (baseX > cw+charW || baseX+charW < -charW) continue;
+      if (totalW <= cw && i>0) break;
+      var grid = getGlyphGrid(msg[idx], cols, rows);
+      var barW = pitch*0.62;
+      for (var r=0;r<rows;r++){
+        for (var c=0;c<cols;c++){
+          var v = grid[r*cols+c];
+          var px = baseX + c*pitch;
+          var py = startY + r*pitch;
+          ctx.fillStyle = v>0.15 ? colorSet.main : colorSet.dim;
+          ctx.globalAlpha = v>0.15 ? Math.min(1,0.5+v*0.5) : 1;
+          ctx.fillRect(px, py, barW, pitch*0.8);
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+  function pad0(){ return 0; }
+
+  function frame(t){
+    var dt = Math.min(0.05, (t-lastT)/1000);
+    lastT = t;
+    var colorSet = COLORS[state.color];
+
+    if (state.autoCycle){
+      autoCycleTimer += dt;
+      if (autoCycleTimer > 4.5){
+        autoCycleTimer = 0;
+        autoCycleIdx = (autoCycleIdx+1) % AUTO_MESSAGES.length;
+        state.message = AUTO_MESSAGES[autoCycleIdx];
+        document.getElementById('msgInput').value = state.message;
+      }
+    }
+
+    if (state.mode === 'led') renderLED(dt, colorSet);
+    else if (state.mode === 'flap') renderFlap(dt, colorSet);
+    else renderVFD(dt, colorSet);
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- UI wiring ----------
+  var msgInput = document.getElementById('msgInput');
+  msgInput.addEventListener('input', function(){
+    state.message = msgInput.value || ' ';
+    state.autoCycle = false;
+    document.getElementById('autoCycleChip').classList.remove('on');
+    persistLast();
+  });
+
+  var speedRange = document.getElementById('speedRange');
+  speedRange.addEventListener('input', function(){
+    state.speed = parseInt(speedRange.value,10);
+    persistLast();
+  });
+
+  document.querySelectorAll('.mode-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.mode-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.mode = btn.getAttribute('data-mode');
+      scrollX = 0;
+      persistLast();
+    });
+  });
+
+  document.querySelectorAll('.swatch').forEach(function(sw){
+    sw.addEventListener('click', function(){
+      document.querySelectorAll('.swatch').forEach(function(s){ s.classList.remove('active'); });
+      sw.classList.add('active');
+      state.color = sw.getAttribute('data-color');
+      persistLast();
+    });
+  });
+
+  var densitySelect = document.getElementById('densitySelect');
+  densitySelect.addEventListener('change', function(){
+    state.density = densitySelect.value;
+    persistLast();
+  });
+
+  var autoCycleChip = document.getElementById('autoCycleChip');
+  autoCycleChip.addEventListener('click', function(){
+    state.autoCycle = !state.autoCycle;
+    autoCycleChip.classList.toggle('on', state.autoCycle);
+    autoCycleTimer = 10; // trigger swap soon
+  });
+
+  function showToast(msg){
+    var toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function(){ toast.classList.remove('show'); }, 2200);
+  }
+
+  // ---------- Persistence ----------
+  var LAST_KEY = 'signage_foundry_last_v1';
+  var PRESETS_KEY = 'signage_foundry_presets_v1';
+
+  function persistLast(){
+    try { localStorage.setItem(LAST_KEY, JSON.stringify(state)); } catch(e){}
+  }
+  function loadLast(){
+    try {
+      var raw = localStorage.getItem(LAST_KEY);
+      if (!raw) return;
+      var saved = JSON.parse(raw);
+      if (saved && typeof saved === 'object'){
+        state.mode = saved.mode || state.mode;
+        state.message = saved.message || state.message;
+        state.speed = saved.speed || state.speed;
+        state.color = saved.color || state.color;
+        state.density = saved.density || state.density;
+      }
+    } catch(e){}
+  }
+  function getPresets(){
+    try {
+      var raw = localStorage.getItem(PRESETS_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch(e){ return []; }
+  }
+  function savePresets(arr){
+    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(arr)); } catch(e){}
+  }
+  function refreshPresetSelect(){
+    var sel = document.getElementById('presetSelect');
+    var presets = getPresets();
+    sel.innerHTML = '<option value="">— saved presets —</option>';
+    presets.forEach(function(p, i){
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  function applyStateToUI(){
+    document.querySelectorAll('.mode-btn').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-mode') === state.mode);
+    });
+    document.querySelectorAll('.swatch').forEach(function(s){
+      s.classList.toggle('active', s.getAttribute('data-color') === state.color);
+    });
+    msgInput.value = state.message;
+    speedRange.value = state.speed;
+    densitySelect.value = state.density;
+  }
+
+  document.getElementById('savePresetBtn').addEventListener('click', function(){
+    var name = prompt('Preset name?', state.message.slice(0,20) || 'Preset');
+    if (!name) return;
+    var presets = getPresets();
+    presets.push({ name: name, state: JSON.parse(JSON.stringify(state)) });
+    if (presets.length > 30) presets.shift();
+    savePresets(presets);
+    refreshPresetSelect();
+    showToast('Preset saved: ' + name);
+  });
+
+  document.getElementById('loadPresetBtn').addEventListener('click', function(){
+    var sel = document.getElementById('presetSelect');
+    if (sel.value === '') return;
+    var presets = getPresets();
+    var p = presets[parseInt(sel.value,10)];
+    if (!p) return;
+    Object.assign(state, p.state);
+    applyStateToUI();
+    flapMessage = ''; // force re-flip
+    persistLast();
+    showToast('Loaded: ' + p.name);
+  });
+
+  document.getElementById('deletePresetBtn').addEventListener('click', function(){
+    var sel = document.getElementById('presetSelect');
+    if (sel.value === '') return;
+    var idx = parseInt(sel.value,10);
+    var presets = getPresets();
+    var removed = presets.splice(idx,1);
+    savePresets(presets);
+    refreshPresetSelect();
+    if (removed[0]) showToast('Deleted: ' + removed[0].name);
+  });
+
+  document.getElementById('shareBtn').addEventListener('click', function(){
+    try {
+      var json = JSON.stringify(state);
+      var hash = btoa(encodeURIComponent(json));
+      var url = location.origin + location.pathname + '#s=' + hash;
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(function(){
+          showToast('Share link copied!');
+        }).catch(function(){
+          showToast(url);
+        });
+      } else {
+        window.prompt('Copy this link:', url);
+      }
+    } catch(e){ showToast('Could not build link'); }
+  });
+
+  function loadFromHash(){
+    var h = location.hash;
+    if (h.indexOf('#s=') !== 0) return;
+    try {
+      var json = decodeURIComponent(atob(h.slice(3)));
+      var saved = JSON.parse(json);
+      if (saved && typeof saved === 'object') Object.assign(state, saved);
+    } catch(e){}
+  }
+
+  document.getElementById('pngBtn').addEventListener('click', function(){
+    canvas.toBlob(function(blob){
+      if (!blob || blob.size === 0){ showToast('Export failed'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'signage-foundry-' + state.mode + '.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      showToast('PNG exported');
+    }, 'image/png');
+  });
+
+  var loopBtn = document.getElementById('loopBtn');
+  var recording = false;
+  loopBtn.addEventListener('click', function(){
+    if (recording) return;
+    if (typeof MediaRecorder === 'undefined' || !canvas.captureStream){
+      showToast('Recording not supported here');
+      return;
+    }
+    recording = true;
+    loopBtn.textContent = 'Recording…';
+    var stream = canvas.captureStream(30);
+    var mime = 'video/webm;codecs=vp9';
+    if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm;codecs=vp8';
+    if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm';
+    var chunks = [];
+    var recorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: mime });
+    } catch(e){
+      recording = false;
+      loopBtn.textContent = 'Record loop (WebM)';
+      showToast('Recorder init failed');
+      return;
+    }
+    recorder.ondataavailable = function(e){ if (e.data && e.data.size>0) chunks.push(e.data); };
+    recorder.onstop = function(){
+      recording = false;
+      loopBtn.textContent = 'Record loop (WebM)';
+      var blob = new Blob(chunks, {type:'video/webm'});
+      if (blob.size === 0){ showToast('Recording produced no data'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'signage-foundry-' + state.mode + '.webm';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 6000);
+      showToast('Loop exported (' + Math.round(blob.size/1024) + ' KB)');
+    };
+    recorder.start();
+    setTimeout(function(){ if (recorder.state !== 'inactive') recorder.stop(); }, 3200);
+  });
+
+  // ---------- Init ----------
+  loadFromHash();
+  if (!location.hash) loadLast();
+  applyStateToUI();
+  refreshPresetSelect();
+  window.addEventListener('resize', resize);
+})();
+</script>
+</body>
+</html>

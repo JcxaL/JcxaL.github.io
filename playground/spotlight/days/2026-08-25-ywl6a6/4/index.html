@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coalesced Ink — UI Spotlight</title>
+<style>
+  :root{ --bg:#0a0b0f; --panel:#14161c; --line:#262a34; --text:#eef; --dim:#8a90a0; --accent:#ffd166; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;background:var(--bg);color:var(--text); font-family:-apple-system,system-ui,sans-serif;
+    overscroll-behavior:none;}
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:40; text-decoration:none; color:#fff;
+    background:rgba(20,20,28,0.6); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.15);
+    padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;
+  }
+  main{ max-width:900px; margin:0 auto; padding:70px 18px 30px; }
+  h1{ font-size:22px; margin:0 0 6px; }
+  .sub{ color:var(--dim); font-size:13.5px; margin:0 0 16px; max-width:640px; }
+
+  .toolbar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .mode-btn{
+    background:var(--panel); border:1px solid var(--line); color:var(--dim); padding:9px 14px;
+    border-radius:999px; font-size:12.5px; font-weight:600; cursor:pointer;
+  }
+  .mode-btn.active{ background:var(--accent); color:#211705; border-color:var(--accent); }
+  .clear-btn{
+    background:transparent; border:1px solid var(--line); color:var(--text); padding:9px 14px;
+    border-radius:999px; font-size:12.5px; cursor:pointer; margin-left:auto;
+  }
+  .stats{ display:flex; gap:16px; font-size:12px; color:var(--dim); margin-bottom:10px; flex-wrap:wrap; }
+  .stats b{ color:var(--text); }
+
+  .canvas-wrap{
+    border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#000;
+    touch-action:none;
+  }
+  canvas{ display:block; width:100%; height:52vh; min-height:320px; }
+
+  .note{ font-size:12px; color:var(--dim); margin-top:14px; line-height:1.55; max-width:640px; }
+  code{ background:var(--panel); padding:2px 6px; border-radius:5px; font-size:11.5px; }
+  footer{ text-align:center; padding:22px 16px 40px; color:#556; font-size:11.5px; }
+  footer a{ color:#ffd166; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<main>
+  <h1>Coalesced Ink</h1>
+  <p class="sub">Draw fast with a mouse, finger, or stylus. Toggle between naive <code>pointermove</code> sampling and <code>getCoalescedEvents()</code> — the difference shows up as jagged corners versus a perfectly smooth line, and in the raw point counter below.</p>
+
+  <div class="toolbar">
+    <button class="mode-btn" id="naiveBtn">Naive pointermove</button>
+    <button class="mode-btn active" id="coalescedBtn">Coalesced (smooth)</button>
+    <button class="clear-btn" id="clearBtn">Clear canvas</button>
+  </div>
+  <div class="stats">
+    <span>Move events: <b id="moveCount">0</b></span>
+    <span>Points drawn: <b id="pointCount">0</b></span>
+    <span>Points per event: <b id="ppe">0.0</b></span>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="inkCanvas"></canvas>
+  </div>
+
+  <p class="note">
+    A browser coalesces several real pointer samples into one <code>pointermove</code> event to save work — great for scrolling, costly for ink. <code>event.getCoalescedEvents()</code> hands back every sample the OS actually captured since the last frame, so a fast stroke gets drawn through all of its true positions instead of just the last one. Try a quick flick in each mode: naive mode visibly cuts corners.
+  </p>
+</main>
+
+<footer>Inspired by "Smoother Interactions on the Web: getCoalescedEvents()" — nutrient.io blog · UI Spotlight Day 100 · Drop #4</footer>
+
+<script>
+(function(){
+  'use strict';
+  var canvas = document.getElementById('inkCanvas');
+  var ctx = canvas.getContext('2d');
+  var wrap = canvas.parentElement;
+  var dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2.5));
+
+  function resize(){
+    var rect = wrap.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width*dpr);
+    canvas.height = Math.floor(rect.height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0,0,rect.width,rect.height);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var mode = 'coalesced';
+  var naiveBtn = document.getElementById('naiveBtn');
+  var coalescedBtn = document.getElementById('coalescedBtn');
+  naiveBtn.addEventListener('click', function(){ mode='naive'; naiveBtn.classList.add('active'); coalescedBtn.classList.remove('active'); });
+  coalescedBtn.addEventListener('click', function(){ mode='coalesced'; coalescedBtn.classList.add('active'); naiveBtn.classList.remove('active'); });
+
+  document.getElementById('clearBtn').addEventListener('click', function(){
+    var rect = wrap.getBoundingClientRect();
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0,0,rect.width,rect.height);
+    moveCount = 0; pointCount = 0; updateStats();
+  });
+
+  var drawing = false;
+  var lastPos = null;
+  var moveCount = 0, pointCount = 0;
+  var moveEl = document.getElementById('moveCount');
+  var pointEl = document.getElementById('pointCount');
+  var ppeEl = document.getElementById('ppe');
+
+  function updateStats(){
+    moveEl.textContent = moveCount;
+    pointEl.textContent = pointCount;
+    ppeEl.textContent = moveCount ? (pointCount/moveCount).toFixed(1) : '0.0';
+  }
+
+  function localPoint(e){
+    var rect = canvas.getBoundingClientRect();
+    return { x: (e.clientX - rect.left), y: (e.clientY - rect.top) };
+  }
+
+  function drawSeg(a,b){
+    ctx.strokeStyle = mode === 'coalesced' ? '#ffd166' : '#ff6b6b';
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(a.x,a.y);
+    ctx.lineTo(b.x,b.y);
+    ctx.stroke();
+  }
+
+  canvas.addEventListener('pointerdown', function(e){
+    canvas.setPointerCapture(e.pointerId);
+    drawing = true;
+    lastPos = localPoint(e);
+    pointCount++;
+    updateStats();
+  });
+
+  canvas.addEventListener('pointermove', function(e){
+    if (!drawing) return;
+    moveCount++;
+    var pts = [];
+    if (mode === 'coalesced' && typeof e.getCoalescedEvents === 'function'){
+      var coalesced = e.getCoalescedEvents();
+      if (coalesced && coalesced.length){
+        for (var i=0;i<coalesced.length;i++) pts.push(localPoint(coalesced[i]));
+      } else {
+        pts.push(localPoint(e));
+      }
+    } else {
+      pts.push(localPoint(e));
+    }
+    for (var j=0;j<pts.length;j++){
+      drawSeg(lastPos, pts[j]);
+      lastPos = pts[j];
+      pointCount++;
+    }
+    updateStats();
+  });
+
+  function endStroke(e){
+    if (!drawing) return;
+    drawing = false;
+    lastPos = null;
+    if (e && e.pointerId !== undefined && canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)){
+      canvas.releasePointerCapture(e.pointerId);
+    }
+  }
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+  canvas.addEventListener('pointerleave', function(e){ if (e.buttons === 0) endStroke(e); });
+})();
+</script>
+</body>
+</html>
