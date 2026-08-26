@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Odometer Stat Cards — Drop 5</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%; background:#08080f; color:#f2f0f8; font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed; top:12px; left:12px; z-index:10; background:rgba(20,20,30,0.6); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.12); color:#fff; text-decoration:none; font-size:12px; font-weight:600;
+    padding:8px 14px; border-radius:999px;}
+  .panel{position:fixed; top:12px; right:12px; z-index:10; background:rgba(18,16,28,0.7); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:12px; width:190px; font-size:11px;}
+  .panel h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7;}
+  .panel button{display:block; width:100%; margin-bottom:8px; padding:8px; border-radius:8px; border:none;
+    background:linear-gradient(135deg,#a78bfa,#38bdf8); color:#0a0a12; font-weight:700; font-size:11px; cursor:pointer;}
+  .panel label{display:block; margin:8px 0 3px; opacity:.7;}
+  .panel input[type=range]{width:100%;}
+  .panel input[type=number]{width:100%; padding:6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06); color:#fff;}
+  @media (max-width:640px){ .panel{display:none;} }
+
+  main{max-width:900px; margin:0 auto; padding:100px 24px 60px;}
+  h1{font-size:28px; margin:0 0 6px;}
+  p.sub{opacity:.65; margin:0 0 34px; font-size:13px;}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px;}
+  .card{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.09); border-radius:16px; padding:20px;}
+  .card .lbl{font-size:11px; text-transform:uppercase; letter-spacing:.08em; opacity:.5; margin-bottom:10px;}
+  .odometer{display:flex; font-variant-numeric:tabular-nums; font-weight:800; font-size:40px; line-height:1;}
+  .digit-col{position:relative; height:1.1em; overflow:hidden; width:0.62em;}
+  .digit-strip{position:absolute; left:0; top:0; transition:transform .7s cubic-bezier(.2,.9,.25,1);}
+  .digit-strip div{height:1.1em; display:flex; align-items:center; justify-content:center;}
+  .suffix{align-self:flex-end; font-size:18px; opacity:.6; margin-left:2px;}
+  .trend{font-size:11px; margin-top:8px; opacity:.6;}
+  footer{text-align:center; font-size:10px; opacity:.4; padding:0 0 24px;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="panel">
+  <h3>Live Update</h3>
+  <button id="pulseBtn">⚡ Simulate update</button>
+  <label>Roll speed <span id="spVal">0.7s</span></label>
+  <input type="range" id="spSlider" min="3" max="15" value="7">
+  <label>Set "Users" to</label>
+  <input type="number" id="customVal" value="18420" step="1">
+</div>
+
+<main>
+  <h1>Odometer Stat Cards</h1>
+  <p class="sub">Each digit rolls independently on its own strip — the classic slot-machine mechanic, reframed as a live dashboard component.</p>
+  <div class="cards">
+    <div class="card"><div class="lbl">Active users</div><div class="odometer" id="stat-users" data-digits="6"></div><div class="trend">↑ 4.2% vs last hour</div></div>
+    <div class="card"><div class="lbl">Revenue today</div><div class="odometer" id="stat-rev" data-digits="6" data-prefix="$"></div><div class="trend">↑ steady growth</div></div>
+    <div class="card"><div class="lbl">Requests / sec</div><div class="odometer" id="stat-rps" data-digits="4"></div><div class="trend">→ within normal range</div></div>
+    <div class="card"><div class="lbl">Uptime</div><div class="odometer" id="stat-uptime" data-digits="3" data-suffix="%"></div><div class="trend">✓ all systems nominal</div></div>
+  </div>
+</main>
+<footer>Inspired by sloteffect (jauderho) · UI Spotlight Day 101 · Drop #5</footer>
+<script>
+(function(){
+"use strict";
+var rollMs = 700;
+
+function buildOdometer(el, digitCount){
+  el.innerHTML = "";
+  var prefix = el.dataset.prefix;
+  if(prefix){
+    var p = document.createElement("span");
+    p.textContent = prefix;
+    p.style.marginRight = "2px";
+    el.appendChild(p);
+  }
+  var cols = [];
+  for(var i=0;i<digitCount;i++){
+    var col = document.createElement("span");
+    col.className = "digit-col";
+    var strip = document.createElement("span");
+    strip.className = "digit-strip";
+    for(var d=0; d<10; d++){
+      var div = document.createElement("div");
+      div.textContent = d;
+      strip.appendChild(div);
+    }
+    col.appendChild(strip);
+    el.appendChild(col);
+    cols.push(strip);
+  }
+  var suffix = el.dataset.suffix;
+  if(suffix){
+    var s = document.createElement("span");
+    s.className = "suffix";
+    s.textContent = suffix;
+    el.appendChild(s);
+  }
+  el._cols = cols;
+  el._digitCount = digitCount;
+  el._current = 0;
+  setOdometer(el, 0, true);
+}
+
+function setOdometer(el, value, instant){
+  var digitCount = el._digitCount;
+  var str = String(Math.max(0, Math.round(value))).padStart(digitCount, "0").slice(-digitCount);
+  el._cols.forEach(function(strip, i){
+    var digit = parseInt(str[i], 10);
+    if(instant) strip.style.transitionDuration = "0ms";
+    else strip.style.transitionDuration = (rollMs/1000)+"s";
+    strip.style.transitionDelay = (i*40)+"ms";
+    strip.style.transform = "translateY(-" + (digit*1.1) + "em)";
+    if(instant){
+      // force reflow then restore duration for future animated updates
+      void strip.offsetWidth;
+      strip.style.transitionDuration = (rollMs/1000)+"s";
+    }
+  });
+  el._current = value;
+}
+
+var stats = {
+  users: { el: document.getElementById("stat-users"), digits:6, value:18420 },
+  rev:   { el: document.getElementById("stat-rev"), digits:6, value:392140 },
+  rps:   { el: document.getElementById("stat-rps"), digits:4, value:1240 },
+  uptime:{ el: document.getElementById("stat-uptime"), digits:3, value:999 }
+};
+
+Object.keys(stats).forEach(function(key){
+  var s = stats[key];
+  buildOdometer(s.el, s.digits);
+  setOdometer(s.el, s.value, true);
+});
+
+document.getElementById("spSlider").addEventListener("input", function(e){
+  rollMs = parseInt(e.target.value,10)*100;
+  document.getElementById("spVal").textContent = (rollMs/1000).toFixed(1)+"s";
+});
+
+document.getElementById("pulseBtn").addEventListener("click", function(){
+  Object.keys(stats).forEach(function(key){
+    var s = stats[key];
+    var delta = key==="uptime" ? Math.floor(Math.random()*2) : Math.floor(Math.random()*400)-100;
+    var next = key==="uptime" ? Math.min(999, Math.max(900, s.value+delta)) : Math.max(0, s.value+delta);
+    s.value = next;
+    setOdometer(s.el, next, false);
+  });
+});
+
+document.getElementById("customVal").addEventListener("change", function(e){
+  var v = parseInt(e.target.value,10) || 0;
+  stats.users.value = v;
+  setOdometer(stats.users.el, v, false);
+});
+})();
+</script>
+</body>
+</html>

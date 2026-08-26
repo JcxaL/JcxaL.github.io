@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chroma Lens — Drop 4</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#050308;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;}
+  canvas{display:block; width:100%; height:100%; touch-action:none;}
+  .back-link{position:fixed; top:12px; left:12px; z-index:10; background:rgba(20,20,30,0.6); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.12); color:#fff; text-decoration:none; font-size:12px; font-weight:600;
+    padding:8px 14px; border-radius:999px;}
+  .panel{position:fixed; top:12px; right:12px; z-index:10; background:rgba(18,16,28,0.7); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:12px; width:180px; font-size:11px; color:#fff;}
+  .panel h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7;}
+  .panel label{display:block; margin:8px 0 3px; opacity:.7;}
+  .panel input[type=range]{width:100%;}
+  .panel .row{display:flex; gap:6px;}
+  .panel button{flex:1; padding:7px 0; border-radius:8px; border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.05); color:#fff; font-size:10px; cursor:pointer;}
+  .panel button.active{background:#fff; color:#111;}
+  footer{position:fixed; bottom:8px; left:0; right:0; text-align:center; font-size:10px; color:rgba(255,255,255,0.35); z-index:5;}
+  .hint{position:fixed; bottom:36px; left:0; right:0; text-align:center; font-size:11px; color:rgba(255,255,255,0.4); z-index:5;}
+  @media (max-width:640px){ .panel{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<canvas id="c"></canvas>
+<div class="panel">
+  <h3>Lens</h3>
+  <div class="row">
+    <button data-s="circle" class="active">◯</button>
+    <button data-s="square">◻</button>
+    <button data-s="diamond">◇</button>
+  </div>
+  <label>Lens size <span id="szVal">120</span></label>
+  <input type="range" id="szSlider" min="60" max="220" value="120">
+  <label>Zoom <span id="zoomVal">1.8x</span></label>
+  <input type="range" id="zoomSlider" min="10" max="35" value="18">
+  <label>Chromatic shift <span id="shVal">6px</span></label>
+  <input type="range" id="shSlider" min="0" max="18" value="6">
+</div>
+<div class="hint">Move your cursor (or finger) over the field</div>
+<footer>Inspired by "Mouse-Following Square Lens" · Codrops · UI Spotlight Day 101 · Drop #4</footer>
+<script>
+(function(){
+"use strict";
+var canvas = document.getElementById("c");
+var ctx = canvas.getContext("2d");
+var dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+var W,H,bg,bgData;
+
+function buildBackground(){
+  bg = document.createElement("canvas");
+  bg.width = W; bg.height = H;
+  var bctx = bg.getContext("2d");
+  var grad = bctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0,"#1a0b2e"); grad.addColorStop(0.5,"#0d1b3d"); grad.addColorStop(1,"#3d0d2e");
+  bctx.fillStyle = grad; bctx.fillRect(0,0,W,H);
+  // scattered rings + grid so the lens distortion reads clearly
+  bctx.strokeStyle = "rgba(255,255,255,0.08)";
+  for(var gx=0; gx<W; gx+=40){ bctx.beginPath(); bctx.moveTo(gx,0); bctx.lineTo(gx,H); bctx.stroke(); }
+  for(var gy=0; gy<H; gy+=40){ bctx.beginPath(); bctx.moveTo(0,gy); bctx.lineTo(W,gy); bctx.stroke(); }
+  for(var i=0;i<28;i++){
+    var rx = Math.random()*W, ry = Math.random()*H, rr = 30+Math.random()*90;
+    bctx.strokeStyle = "hsla("+(Math.random()*360)+",80%,65%,0.5)";
+    bctx.lineWidth = 2;
+    bctx.beginPath(); bctx.arc(rx,ry,rr,0,Math.PI*2); bctx.stroke();
+  }
+  bctx.font = "bold 90px system-ui";
+  bctx.fillStyle = "rgba(255,255,255,0.08)";
+  bctx.fillText("SPOTLIGHT", W*0.05, H*0.5);
+  bgData = bctx.getImageData(0,0,W,H);
+}
+
+function resize(){
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  buildBackground();
+}
+window.addEventListener("resize", resize);
+resize();
+
+var lensShape = "circle", lensSize = 120, zoom = 1.8, shift = 6;
+var pointer = {x:-9999, y:-9999, active:false};
+
+document.querySelectorAll(".panel button[data-s]").forEach(function(b){
+  b.addEventListener("click", function(){
+    document.querySelectorAll(".panel button[data-s]").forEach(function(x){ x.classList.remove("active"); });
+    b.classList.add("active");
+    lensShape = b.dataset.s;
+  });
+});
+document.getElementById("szSlider").addEventListener("input", function(e){ lensSize = parseInt(e.target.value,10); document.getElementById("szVal").textContent = lensSize; });
+document.getElementById("zoomSlider").addEventListener("input", function(e){ zoom = parseInt(e.target.value,10)/10; document.getElementById("zoomVal").textContent = zoom.toFixed(1)+"x"; });
+document.getElementById("shSlider").addEventListener("input", function(e){ shift = parseInt(e.target.value,10); document.getElementById("shVal").textContent = shift+"px"; });
+
+function setPointer(clientX, clientY){
+  var rect = canvas.getBoundingClientRect();
+  pointer.x = clientX-rect.left; pointer.y = clientY-rect.top; pointer.active = true;
+}
+canvas.addEventListener("pointermove", function(e){ setPointer(e.clientX,e.clientY); }, {passive:true});
+canvas.addEventListener("pointerdown", function(e){ setPointer(e.clientX,e.clientY); }, {passive:true});
+canvas.addEventListener("pointerleave", function(){ pointer.active = false; });
+
+function clipLens(ctx, cx, cy, size){
+  ctx.beginPath();
+  if(lensShape === "circle"){
+    ctx.arc(cx,cy,size/2,0,Math.PI*2);
+  } else if(lensShape === "square"){
+    ctx.rect(cx-size/2, cy-size/2, size, size);
+  } else {
+    ctx.moveTo(cx, cy-size/2);
+    ctx.lineTo(cx+size/2, cy);
+    ctx.lineTo(cx, cy+size/2);
+    ctx.lineTo(cx-size/2, cy);
+    ctx.closePath();
+  }
+  ctx.clip();
+}
+
+// core chromatic-aberration lens: sample a magnified crop of the background
+// three times with a per-channel pixel offset, then recombine into one ImageData
+function drawLens(cx, cy){
+  var half = Math.ceil(lensSize/2);
+  var x0 = Math.max(0, Math.floor(cx-half)), y0 = Math.max(0, Math.floor(cy-half));
+  var x1 = Math.min(W, Math.ceil(cx+half)), y1 = Math.min(H, Math.ceil(cy+half));
+  var w = x1-x0, h = y1-y0;
+  if(w<=0||h<=0) return;
+
+  var out = ctx.createImageData(w,h);
+  var od = out.data;
+  var sw = bgData.width, sh = bgData.height;
+
+  for(var py=0; py<h; py++){
+    for(var px=0; px<w; px++){
+      var wx = x0+px, wy = y0+py;
+      // magnify around the lens center
+      var sx = cx + (wx-cx)/zoom;
+      var sy = cy + (wy-cy)/zoom;
+      var oi = (py*w+px)*4;
+      od[oi+3] = 255;
+      var rC = sampleChannel(sx-shift, sy, 0, sw, sh);
+      var gC = sampleChannel(sx, sy, 1, sw, sh);
+      var bC = sampleChannel(sx+shift, sy, 2, sw, sh);
+      od[oi] = rC; od[oi+1] = gC; od[oi+2] = bC;
+    }
+  }
+  ctx.save();
+  clipLens(ctx, cx, cy, lensSize);
+  ctx.putImageData(out, x0, y0);
+  ctx.restore();
+
+  ctx.save();
+  clipLens(ctx, cx, cy, lensSize);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.beginPath();
+  if(lensShape==="circle") ctx.arc(cx,cy,lensSize/2-1,0,Math.PI*2);
+  else if(lensShape==="square") ctx.rect(cx-lensSize/2+1,cy-lensSize/2+1,lensSize-2,lensSize-2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function sampleChannel(sx, sy, channel, sw, sh){
+  var ix = sx|0, iy = sy|0;
+  if(ix<0) ix=0; if(iy<0) iy=0; if(ix>=sw) ix=sw-1; if(iy>=sh) iy=sh-1;
+  return bgData.data[(iy*sw+ix)*4+channel];
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.drawImage(bg,0,0);
+  if(pointer.active){
+    drawLens(pointer.x, pointer.y);
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>
