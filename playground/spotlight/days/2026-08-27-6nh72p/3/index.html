@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Letter-Spacing Reveal — Drop 3</title>
+<style>
+  :root{ --start-spacing: 0.5em; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#08060f;color:#eef0f6;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;}
+  .back-link{position:fixed; top:12px; left:12px; z-index:10; background:rgba(20,20,30,0.6); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.12); color:#fff; text-decoration:none; font-size:12px; font-weight:600;
+    padding:8px 14px; border-radius:999px;}
+
+  .stage{position:fixed; inset:0; padding:70px 0 40px;}
+  .scrollarea{height:100%; overflow-y:auto; scroll-behavior:smooth;}
+  section{min-height:70vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px 24px;}
+  section .tag{font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:#7a7690; margin-bottom:14px;}
+
+  h2.reveal-text{
+    font-size:clamp(28px,6vw,56px); font-weight:800; margin:0; letter-spacing:var(--start-spacing); color:transparent;
+    -webkit-text-stroke:1px rgba(255,255,255,0.45); text-stroke:1px rgba(255,255,255,0.45);
+    animation-name:letterReveal; animation-duration:1ms; animation-fill-mode:both;
+    animation-timeline:view(); animation-range:entry 5% cover 45%;
+  }
+  h2.reveal-text.theme-a{ --fg:#38bdf8; }
+  h2.reveal-text.theme-b{ --fg:#ff6b9d; filter:blur(6px); animation-name:letterRevealBlur; }
+  @keyframes letterReveal{ from{ letter-spacing:var(--start-spacing); color:transparent; -webkit-text-stroke-width:1px; } to{ letter-spacing:normal; color:var(--fg,#eef0f6); -webkit-text-stroke-width:0px; } }
+  @keyframes letterRevealBlur{ from{ letter-spacing:var(--start-spacing); color:transparent; -webkit-text-stroke-width:1px; filter:blur(6px); } to{ letter-spacing:normal; color:var(--fg,#eef0f6); -webkit-text-stroke-width:0px; filter:blur(0px); } }
+
+  .word-line{font-size:clamp(24px,5vw,46px); font-weight:800; display:flex; flex-wrap:wrap; justify-content:center; gap:0.28em;}
+  .word-line span{ color:transparent; -webkit-text-stroke:1px rgba(255,255,255,0.45); letter-spacing:var(--start-spacing);
+    animation-name:letterReveal; animation-duration:1ms; animation-fill-mode:both;
+    animation-timeline:view(); animation-range:entry 5% cover 45%; --fg:#fbbf24; }
+
+  /* JS fallback path (no animation-timeline support): plain transitions toggled by IntersectionObserver */
+  .fallback .reveal-text, .fallback .word-line span{
+    animation:none !important; transition:letter-spacing .9s cubic-bezier(.2,.8,.2,1), color .9s ease, filter .9s ease, -webkit-text-stroke-width .9s ease;
+  }
+  .fallback .reveal-text.in-view, .fallback .word-line span.in-view{
+    letter-spacing:normal; color:var(--fg,#eef0f6); -webkit-text-stroke-width:0px; filter:blur(0px);
+  }
+
+  .panel{position:fixed; top:12px; right:12px; z-index:10; background:rgba(18,16,28,0.7); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:12px; width:200px; font-size:11px; color:#fff;}
+  .panel h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7;}
+  .panel label{display:block; margin:8px 0 3px; opacity:.7;}
+  .panel input[type=range]{width:100%;}
+  .panel .row{display:flex; justify-content:space-between; padding:4px 0; opacity:.85;}
+  .panel button{width:100%; margin-top:8px; padding:7px 0; border-radius:8px; border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.05); color:#fff; font-size:10px; cursor:pointer;}
+  footer{position:fixed; bottom:6px; left:0; right:0; text-align:center; font-size:10px; color:rgba(255,255,255,0.35); z-index:5;}
+  @media (max-width:640px){ .panel{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Reveal tuning</h3>
+  <div class="row"><span>Native support</span><span id="supportDot">—</span></div>
+  <label>Start spacing <span id="spVal">0.5em</span></label>
+  <input type="range" id="spSlider" min="0" max="120" value="50">
+  <button id="btnReplay">Replay (scroll to top)</button>
+</div>
+
+<div class="stage">
+  <div class="scrollarea" id="scrollArea">
+    <section>
+      <div class="tag">Scroll down ↓</div>
+      <h2 class="reveal-text theme-a">Letters Arrive</h2>
+    </section>
+    <section>
+      <div class="tag">Blur + color variant</div>
+      <h2 class="reveal-text theme-b">Focus Resolves</h2>
+    </section>
+    <section>
+      <div class="tag">Per-word stagger</div>
+      <div class="word-line" id="wordLine"></div>
+    </section>
+    <section>
+      <div class="tag">End of scroll</div>
+      <h2 class="reveal-text theme-a" style="--fg:#57e39a;">Now In Frame</h2>
+    </section>
+  </div>
+</div>
+
+<footer>Inspired by "Revealing Text With CSS letter-spacing" · css-tricks.com · UI Spotlight Day 102 · Drop #3</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var words = ["Every", "word", "tracks", "in", "on", "its", "own", "timeline"];
+  var wordLine = document.getElementById("wordLine");
+  wordLine.innerHTML = words.map(function(w, i){
+    return '<span style="animation-delay:0ms">'+w+'</span>';
+  }).join("");
+  // stagger via animation-range offsets per span so words settle in sequence while scrolling
+  wordLine.querySelectorAll("span").forEach(function(el, i){
+    var start = 5 + i*4, end = start + 40;
+    el.style.animationRangeStart = "entry " + start + "%";
+    el.style.animationRangeEnd = "cover " + end + "%";
+  });
+
+  var supported = false;
+  try { supported = CSS.supports("animation-timeline: view()"); } catch(e){ supported = false; }
+  document.getElementById("supportDot").textContent = supported ? "yes" : "no (using JS fallback)";
+
+  var scrollArea = document.getElementById("scrollArea");
+  var targets = document.querySelectorAll(".reveal-text, .word-line span");
+
+  function setupFallback(){
+    document.body.classList.add("fallback");
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        entry.target.classList.toggle("in-view", entry.isIntersecting);
+      });
+    }, { root: scrollArea, threshold: 0.5 });
+    targets.forEach(function(t){ obs.observe(t); });
+  }
+  if (!supported) setupFallback();
+
+  var spSlider = document.getElementById("spSlider");
+  var spVal = document.getElementById("spVal");
+  spSlider.addEventListener("input", function(){
+    var em = (parseInt(spSlider.value,10)/100).toFixed(2);
+    document.documentElement.style.setProperty("--start-spacing", em+"em");
+    spVal.textContent = em+"em";
+  });
+
+  document.getElementById("btnReplay").addEventListener("click", function(){
+    scrollArea.scrollTo({ top: 0, behavior: "smooth" });
+  });
+})();
+</script>
+</body>
+</html>
