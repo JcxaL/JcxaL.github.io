@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bento Composer — Drop 2</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:#07070d;color:#eef0f6;font-family:system-ui,-apple-system,sans-serif;}
+  .back-link{position:fixed; top:12px; left:12px; z-index:10; background:rgba(20,20,30,0.6); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.12); color:#fff; text-decoration:none; font-size:12px; font-weight:600;
+    padding:8px 14px; border-radius:999px;}
+  .wrap{max-width:900px; margin:0 auto; padding:70px 16px 60px;}
+  h1{font-size:16px; margin:0 0 4px; text-align:center;}
+  .lede{font-size:11.5px; color:#9a97ad; text-align:center; margin:0 auto 24px; max-width:560px;}
+
+  .board{display:grid; grid-template-columns:repeat(6, 1fr); grid-auto-rows:70px; gap:10px;}
+  .card{
+    border-radius:16px; padding:14px; position:relative; display:flex; flex-direction:column; justify-content:space-between;
+    color:#0a0a12; font-weight:700; cursor:grab; user-select:none; touch-action:none;
+    transition:box-shadow .15s, transform .12s;
+    background:linear-gradient(135deg, var(--c1), var(--c2));
+  }
+  .card:active{cursor:grabbing;}
+  .card.dragging{ opacity:.55; z-index:20; box-shadow:0 20px 50px rgba(0,0,0,.5); transform:scale(1.03); }
+  .card.dropTarget{ outline:2px dashed rgba(255,255,255,.7); outline-offset:-4px; }
+  .card .label{font-size:13px;}
+  .card .size{font-size:9px; opacity:.7; text-transform:uppercase; letter-spacing:.06em;}
+  .card .resize{position:absolute; bottom:6px; right:6px; display:flex; gap:3px;}
+  .card .resize button{width:20px; height:20px; border-radius:6px; border:none; background:rgba(0,0,0,.18); color:inherit; font-size:10px; cursor:pointer;}
+
+  .s1x1{grid-column:span 2; grid-row:span 1;}
+  .s2x1{grid-column:span 4; grid-row:span 1;}
+  .s1x2{grid-column:span 2; grid-row:span 2;}
+  .s2x2{grid-column:span 4; grid-row:span 2;}
+
+  .panel{position:fixed; top:12px; right:12px; z-index:10; background:rgba(18,16,28,0.72); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:12px; width:172px; font-size:11px; color:#fff;}
+  .panel h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7;}
+  .panel button{width:100%; margin-top:6px; padding:7px 0; border-radius:8px; border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.05); color:#fff; font-size:10.5px; cursor:pointer;}
+  footer{text-align:center; font-size:10px; color:rgba(255,255,255,0.35); padding:20px;}
+  @media (max-width:640px){
+    .panel{display:none;}
+    .board{grid-template-columns:repeat(4,1fr); grid-auto-rows:56px;}
+    .s2x1, .s2x2{grid-column:span 4;}
+    .s1x1, .s1x2{grid-column:span 2;}
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Bento Composer</h3>
+  <button id="shuffleBtn">🔀 Shuffle layout</button>
+  <button id="exportBtn">⬇ Export JSON</button>
+  <button id="resetBtn">↺ Reset</button>
+</div>
+
+<div class="wrap">
+  <h1>Bento Composer</h1>
+  <p class="lede">Drag any card onto another to swap places — a 6-column grid with live collision detection, no drag-and-drop library. Tap ⤢ to cycle a card's size.</p>
+  <div class="board" id="board"></div>
+</div>
+<footer>Inspired by aruntemme/bento-generator · UI Spotlight Day 103 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+var SIZES = ["s1x1","s2x1","s1x2","s2x2"];
+var PALETTE = [
+  ["#5ee6ff","#38bdf8"], ["#a78bfa","#7c3aed"], ["#fbbf24","#f59e0b"],
+  ["#34d399","#10b981"], ["#f472b6","#ec4899"], ["#93c5fd","#3b82f6"],
+  ["#fca5a5","#ef4444"], ["#86efac","#22c55e"]
+];
+var LABELS = ["Revenue","Users","Activity","Growth","Latency","Uptime","Signups","Errors","Traffic","Retention"];
+
+var DEFAULT_LAYOUT = [
+  {size:"s2x2", label:"Revenue"},
+  {size:"s2x1", label:"Users"},
+  {size:"s1x1", label:"Activity"},
+  {size:"s1x1", label:"Growth"},
+  {size:"s1x2", label:"Latency"},
+  {size:"s2x1", label:"Uptime"},
+  {size:"s1x1", label:"Signups"},
+  {size:"s1x1", label:"Errors"}
+];
+
+var board = document.getElementById("board");
+var cards = [];
+
+function makeCard(data, idx){
+  var el = document.createElement("div");
+  el.className = "card " + data.size;
+  var pal = PALETTE[idx % PALETTE.length];
+  el.style.setProperty("--c1", pal[0]);
+  el.style.setProperty("--c2", pal[1]);
+  el.innerHTML = '<div><div class="label">'+data.label+'</div><div class="size">'+data.size.replace("s","").replace("x"," × ")+'</div></div>' +
+    '<div class="resize"><button data-action="cycle">⤢</button></div>';
+  el.dataset.size = data.size;
+  el.dataset.label = data.label;
+  return el;
+}
+
+function renderBoard(layout){
+  board.innerHTML = "";
+  cards = [];
+  layout.forEach(function(data, idx){
+    var el = makeCard(data, idx);
+    board.appendChild(el);
+    cards.push(el);
+    attachDrag(el);
+  });
+}
+
+function cycleSize(el){
+  var i = SIZES.indexOf(el.dataset.size);
+  var next = SIZES[(i+1) % SIZES.length];
+  el.classList.remove(el.dataset.size);
+  el.classList.add(next);
+  el.dataset.size = next;
+  el.querySelector(".size").textContent = next.replace("s","").replace("x"," × ");
+}
+
+// ---- drag with pointer events, swap on drop over another card ----
+var dragEl = null, dragStartX=0, dragStartY=0, offsetX=0, offsetY=0;
+var currentTarget = null;
+
+function attachDrag(el){
+  el.addEventListener("click", function(e){
+    if(e.target.closest("[data-action='cycle']")){ cycleSize(el); }
+  });
+  el.addEventListener("pointerdown", function(e){
+    if(e.target.closest("[data-action='cycle']")) return;
+    dragEl = el;
+    dragStartX = e.clientX; dragStartY = e.clientY;
+    el.setPointerCapture(e.pointerId);
+    el._moved = false;
+  });
+  el.addEventListener("pointermove", function(e){
+    if(dragEl !== el) return;
+    var dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
+    if(Math.abs(dx)+Math.abs(dy) > 6){
+      el._moved = true;
+      el.classList.add("dragging");
+      el.style.transform = "translate("+dx+"px,"+dy+"px) scale(1.03)";
+    }
+    if(el._moved){
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      var targetCard = under ? under.closest(".card") : null;
+      if(currentTarget && currentTarget !== targetCard) currentTarget.classList.remove("dropTarget");
+      if(targetCard && targetCard !== el){
+        targetCard.classList.add("dropTarget");
+        currentTarget = targetCard;
+      } else {
+        currentTarget = null;
+      }
+    }
+  });
+  el.addEventListener("pointerup", function(e){
+    if(dragEl !== el) return;
+    el.classList.remove("dragging");
+    el.style.transform = "";
+    if(currentTarget){
+      swapCards(el, currentTarget);
+      currentTarget.classList.remove("dropTarget");
+      currentTarget = null;
+    }
+    dragEl = null;
+  });
+}
+
+function swapCards(a, b){
+  var aNext = a.nextSibling;
+  var bNext = b.nextSibling;
+  if(aNext === b){ board.insertBefore(b, a); return; }
+  if(bNext === a){ board.insertBefore(a, b); return; }
+  board.insertBefore(a, bNext);
+  board.insertBefore(b, aNext);
+}
+
+renderBoard(DEFAULT_LAYOUT);
+
+document.getElementById("shuffleBtn").addEventListener("click", function(){
+  var arr = cards.slice();
+  for(var i=arr.length-1;i>0;i--){
+    var j = Math.floor(Math.random()*(i+1));
+    board.insertBefore(arr[j], arr[i].nextSibling);
+    var tmp = arr[i]; arr[i]=arr[j]; arr[j]=tmp;
+  }
+});
+
+document.getElementById("resetBtn").addEventListener("click", function(){
+  renderBoard(DEFAULT_LAYOUT);
+});
+
+document.getElementById("exportBtn").addEventListener("click", function(){
+  var layout = Array.from(board.children).map(function(el){
+    return { label: el.dataset.label, size: el.dataset.size };
+  });
+  var blob = new Blob([JSON.stringify(layout, null, 2)], {type:"application/json"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = "bento-layout.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+});
+})();
+</script>
+</body>
+</html>

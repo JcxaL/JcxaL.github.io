@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Procedural Growth — Drop 1</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#07070d;color:#eef0f6;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none;}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair;}
+  .back-link{position:fixed; top:12px; left:12px; z-index:10; background:rgba(20,20,30,0.6); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.12); color:#fff; text-decoration:none; font-size:12px; font-weight:600;
+    padding:8px 14px; border-radius:999px;}
+  h1{position:fixed; top:14px; left:50%; transform:translateX(-50%); font-size:14px; margin:0; z-index:5; pointer-events:none;}
+  .lede{position:fixed; top:38px; left:50%; transform:translateX(-50%); font-size:11.5px; color:#9a97ad; margin:0; z-index:5; text-align:center; max-width:80vw; pointer-events:none;}
+  .panel{position:fixed; top:12px; right:12px; z-index:10; background:rgba(18,16,28,0.72); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:12px; width:190px; font-size:11px; color:#fff;}
+  .panel h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7;}
+  .row{display:flex; align-items:center; gap:6px; margin-bottom:8px;}
+  .row label{flex:0 0 56px; color:#aaa; font-size:10.5px;}
+  .row input[type=range]{flex:1; accent-color:#38bdf8;}
+  .shapeRow{display:flex; gap:5px; margin-bottom:8px;}
+  .shapeRow button{flex:1; padding:6px 0; border-radius:7px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:#fff; font-size:14px; cursor:pointer;}
+  .shapeRow button.active{background:#38bdf8; color:#06202e;}
+  .panel button.full{width:100%; margin-top:4px; padding:7px 0; border-radius:8px; border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.05); color:#fff; font-size:10.5px; cursor:pointer;}
+  footer{position:fixed; bottom:6px; left:0; right:0; text-align:center; font-size:10px; color:rgba(255,255,255,0.35); z-index:5;}
+  @media (max-width:640px){ .panel{display:none;} .lede{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<h1>Procedural Growth</h1>
+<p class="lede">Draw with your finger or mouse — shapes seed at even arc-length spacing along your stroke and grow in from a shared clock, not per-shape timers.</p>
+
+<div class="panel">
+  <h3>Growth controls</h3>
+  <div class="row"><label>Speed</label><input type="range" id="speed" min="0.3" max="3" step="0.1" value="1.2"></div>
+  <div class="row"><label>Density</label><input type="range" id="density" min="6" max="40" step="1" value="16"></div>
+  <div class="row"><label>Reveal</label><input type="range" id="reveal" min="0" max="1" step="0.01" value="1"></div>
+  <div class="shapeRow" id="shapeRow">
+    <button data-s="tri" class="active">▲</button>
+    <button data-s="hex">⬡</button>
+    <button data-s="diamond">◆</button>
+  </div>
+  <button class="full" id="autoBtn">✨ Auto-draw spiral</button>
+  <button class="full" id="clearBtn">🗑 Clear</button>
+</div>
+
+<canvas id="c"></canvas>
+<footer>Inspired by "Exploring Procedural Geometry with Three.js and WebGPU" · tympanus.net/codrops · UI Spotlight Day 103 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+var canvas = document.getElementById("c");
+var ctx = canvas.getContext("2d");
+var dpr = Math.min(window.devicePixelRatio||1, 2);
+
+function resize(){
+  canvas.width = innerWidth*dpr; canvas.height = innerHeight*dpr;
+  canvas.style.width = innerWidth+"px"; canvas.style.height = innerHeight+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+var GROW_WINDOW = 0.9;
+var instances = [];
+var globalClock = 0;
+var rank = 0;
+var pathStep = 16;
+var shape = "tri";
+var speed = 1.2;
+var reveal = 1;
+
+var COLORS = ["#38bdf8","#a78bfa","#f472b6","#34d399","#fbbf24"];
+
+var lastPt = null;
+var distAccum = 0;
+var drawing = false;
+
+function seedAt(x, y, angle){
+  instances.push({
+    x:x, y:y, angle: angle + (Math.random()-0.5)*0.6,
+    birth: globalClock,
+    scale: 0.6 + Math.random()*0.9,
+    color: COLORS[rank % COLORS.length],
+    rank: rank++,
+    spin: (Math.random()-0.5)*2.4
+  });
+}
+
+function addPoint(x, y){
+  if(lastPt){
+    var dx = x-lastPt.x, dy = y-lastPt.y;
+    var d = Math.hypot(dx,dy);
+    var angle = Math.atan2(dy,dx);
+    var remaining = d;
+    var cx = lastPt.x, cy = lastPt.y;
+    var dirx = d? dx/d : 0, diry = d? dy/d : 0;
+    while(distAccum + remaining >= pathStep){
+      var need = pathStep - distAccum;
+      cx += dirx*need; cy += diry*need;
+      seedAt(cx, cy, angle);
+      remaining -= need;
+      distAccum = 0;
+    }
+    distAccum += remaining;
+  }
+  lastPt = {x:x,y:y};
+}
+
+function easeOutBack(t){
+  var c1 = 1.70158, c3 = c1+1;
+  return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2);
+}
+
+function drawShape(inst, t){
+  var s = inst.scale * 26 * t;
+  ctx.save();
+  ctx.translate(inst.x, inst.y);
+  ctx.rotate(inst.angle + inst.spin*t*0.6);
+  ctx.globalAlpha = Math.min(1, t*1.6);
+  ctx.fillStyle = inst.color;
+  ctx.shadowColor = inst.color;
+  ctx.shadowBlur = 14*t;
+  ctx.beginPath();
+  if(shape==="tri"){
+    ctx.moveTo(0,-s); ctx.lineTo(s*0.87,s*0.5); ctx.lineTo(-s*0.87,s*0.5); ctx.closePath();
+  } else if(shape==="hex"){
+    for(var i=0;i<6;i++){
+      var a = Math.PI/3*i - Math.PI/2;
+      var px = Math.cos(a)*s, py = Math.sin(a)*s;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+  } else {
+    ctx.moveTo(0,-s); ctx.lineTo(s*0.7,0); ctx.lineTo(0,s); ctx.lineTo(-s*0.7,0); ctx.closePath();
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+var maxRankVisible = 0;
+function render(dt){
+  globalClock += dt*speed;
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+  ctx.fillStyle = "rgba(7,7,13,1)";
+  ctx.fillRect(0,0,innerWidth,innerHeight);
+
+  var visibleCount = Math.ceil(instances.length * reveal);
+  for(var i=0;i<instances.length;i++){
+    var inst = instances[i];
+    if(inst.rank >= visibleCount) continue;
+    var t = (globalClock - inst.birth) / GROW_WINDOW;
+    if(t <= 0) continue;
+    t = Math.min(t, 1);
+    var eased = easeOutBack(t);
+    drawShape(inst, eased);
+  }
+}
+
+var lastT = performance.now();
+function loop(now){
+  var dt = Math.min((now-lastT)/1000, 0.05);
+  lastT = now;
+  render(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function toLocal(e){
+  var r = canvas.getBoundingClientRect();
+  var cx = (e.touches? e.touches[0].clientX : e.clientX) - r.left;
+  var cy = (e.touches? e.touches[0].clientY : e.clientY) - r.top;
+  return {x:cx, y:cy};
+}
+
+canvas.addEventListener("pointerdown", function(e){
+  drawing = true; lastPt = null; distAccum = 0;
+  var p = toLocal(e);
+  addPoint(p.x, p.y);
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", function(e){
+  if(!drawing) return;
+  var p = toLocal(e);
+  addPoint(p.x, p.y);
+});
+window.addEventListener("pointerup", function(){ drawing = false; lastPt = null; });
+
+document.getElementById("speed").addEventListener("input", function(e){ speed = parseFloat(e.target.value); });
+document.getElementById("density").addEventListener("input", function(e){ pathStep = 46 - parseFloat(e.target.value); });
+document.getElementById("reveal").addEventListener("input", function(e){ reveal = parseFloat(e.target.value); });
+
+document.getElementById("shapeRow").addEventListener("click", function(e){
+  var btn = e.target.closest("button");
+  if(!btn) return;
+  shape = btn.dataset.s;
+  document.querySelectorAll("#shapeRow button").forEach(function(b){ b.classList.toggle("active", b===btn); });
+});
+
+document.getElementById("clearBtn").addEventListener("click", function(){
+  instances = []; rank = 0; globalClock = 0;
+});
+
+var autoTimer = null;
+document.getElementById("autoBtn").addEventListener("click", function(){
+  clearInterval(autoTimer);
+  instances = []; rank = 0; globalClock = 0; lastPt = null; distAccum = 0;
+  var cx = innerWidth/2, cy = innerHeight/2;
+  var maxR = Math.min(innerWidth, innerHeight)*0.38;
+  var steps = 220, i = 0;
+  autoTimer = setInterval(function(){
+    if(i > steps){ clearInterval(autoTimer); lastPt=null; return; }
+    var t = i/steps;
+    var ang = t * Math.PI*8;
+    var r = t*maxR;
+    var x = cx + Math.cos(ang)*r, y = cy + Math.sin(ang)*r;
+    addPoint(x,y);
+    i++;
+  }, 8);
+});
+})();
+</script>
+</body>
+</html>

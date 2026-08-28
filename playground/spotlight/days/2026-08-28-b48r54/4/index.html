@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pressure Press — Drop 4</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#07070d;color:#eef0f6;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none;}
+  .back-link{position:fixed; top:12px; left:12px; z-index:10; background:rgba(20,20,30,0.6); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.12); color:#fff; text-decoration:none; font-size:12px; font-weight:600;
+    padding:8px 14px; border-radius:999px;}
+  .stage{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:44px; padding:90px 16px 40px;}
+  h1{position:fixed; top:14px; left:50%; transform:translateX(-50%); font-size:14px; margin:0; z-index:5;}
+  .lede{position:fixed; top:38px; left:50%; transform:translateX(-50%); font-size:11.5px; color:#9a97ad; margin:0; z-index:5; text-align:center; max-width:80vw;}
+
+  .row{display:flex; gap:40px; align-items:center; flex-wrap:wrap; justify-content:center;}
+  .demo{display:flex; flex-direction:column; align-items:center; gap:10px;}
+  .demo .cap{font-size:10.5px; color:#7a7690; text-transform:uppercase; letter-spacing:.07em;}
+
+  .pressBtn{
+    width:120px; height:120px; border-radius:28px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#3a2405; font-weight:800; font-size:14px;
+    box-shadow:0 10px 0 #b8790a, 0 16px 30px rgba(0,0,0,.4);
+    transform:translateY(0) scale(1);
+    transition:transform .05s linear, box-shadow .05s linear;
+    touch-action:none;
+  }
+
+  .meterWrap{width:70px; height:180px; border-radius:16px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); position:relative; overflow:hidden; touch-action:none; cursor:pointer;}
+  .meterFill{position:absolute; left:0; right:0; bottom:0; height:0%; background:linear-gradient(180deg,#f472b6,#a78bfa); transition:height .05s linear;}
+  .meterLabel{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; mix-blend-mode:difference;}
+
+  .brushWrap{width:220px; height:120px; border-radius:16px; background:#0d0d16; border:1px solid rgba(255,255,255,.1); touch-action:none; cursor:crosshair;}
+
+  .panel{position:fixed; top:12px; right:12px; z-index:10; background:rgba(18,16,28,0.72); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:12px; width:186px; font-size:11px; color:#fff;}
+  .panel h3{margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7;}
+  .stat{display:flex; justify-content:space-between; padding:3px 0; opacity:.85;}
+  .row2{display:flex; align-items:center; gap:6px; margin-top:8px;}
+  .row2 label{flex:0 0 66px; color:#aaa; font-size:10.5px;}
+  .row2 input[type=range]{flex:1; accent-color:#fbbf24;}
+  footer{position:fixed; bottom:6px; left:0; right:0; text-align:center; font-size:10px; color:rgba(255,255,255,0.35); z-index:5;}
+  @media (max-width:640px){ .panel{display:none;} .row{gap:20px;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<h1>Pressure Press</h1>
+<p class="lede">Reads real <code>PointerEvent.pressure</code> from a stylus or force-trackpad — and for an ordinary mouse or finger, ramps a simulated pressure the longer you hold.</p>
+
+<div class="panel">
+  <h3>Live pointer</h3>
+  <div class="stat"><span>Type</span><span id="ptrType">—</span></div>
+  <div class="stat"><span>Pressure</span><span id="ptrPressure">0.00</span></div>
+  <div class="row2"><label>Ramp (ms)</label><input type="range" id="rampMs" min="150" max="1500" step="50" value="650"></div>
+</div>
+
+<div class="stage">
+  <div class="row">
+    <div class="demo">
+      <button class="pressBtn" id="pressBtn">PRESS</button>
+      <div class="cap">Squish button</div>
+    </div>
+    <div class="demo">
+      <div class="meterWrap" id="meterWrap"><div class="meterFill" id="meterFill"></div><div class="meterLabel" id="meterLabel">0%</div></div>
+      <div class="cap">Force meter</div>
+    </div>
+    <div class="demo">
+      <canvas class="brushWrap" id="brush" width="220" height="120"></canvas>
+      <div class="cap">Pressure-width brush</div>
+    </div>
+  </div>
+</div>
+<footer>Inspired by stuyam/pressure (Pointer/Force Touch pressure) · UI Spotlight Day 103 · Drop #4</footer>
+
+<script>
+(function(){
+"use strict";
+var rampMs = 650;
+document.getElementById("rampMs").addEventListener("input", function(e){ rampMs = parseFloat(e.target.value); });
+
+// Real hardware reports pressure !== 0.5 for stylus/force devices; mouse is pinned at 0.5 while down.
+function isRealPressure(e){
+  return e.pointerType === "pen" || (e.pointerType === "mouse" && e.pressure !== 0.5 && e.pressure !== 0);
+}
+
+function makeSimulatedPressure(el, onChange){
+  var active = false, startT = 0, raf = null;
+  function tick(){
+    if(!active) return;
+    var t = Math.min(1, (performance.now()-startT)/rampMs);
+    onChange(t, false);
+    raf = requestAnimationFrame(tick);
+  }
+  el.addEventListener("pointerdown", function(e){
+    if(isRealPressure(e)) return; // let real handler take over
+    active = true; startT = performance.now();
+    el.setPointerCapture(e.pointerId);
+    tick();
+  });
+  el.addEventListener("pointerup", function(){ active = false; cancelAnimationFrame(raf); onChange(0, false); });
+  el.addEventListener("pointercancel", function(){ active = false; cancelAnimationFrame(raf); onChange(0, false); });
+  el.addEventListener("pointermove", function(e){
+    if(isRealPressure(e)){
+      active = false; cancelAnimationFrame(raf);
+      onChange(e.pressure, true);
+    }
+  });
+}
+
+var ptrTypeEl = document.getElementById("ptrType");
+var ptrPressureEl = document.getElementById("ptrPressure");
+function reportGlobal(p, real, type){
+  ptrTypeEl.textContent = real ? (type||"pen")+" (real)" : "mouse/touch (simulated)";
+  ptrPressureEl.textContent = p.toFixed(2);
+}
+
+// --- Squish button ---
+var pressBtn = document.getElementById("pressBtn");
+function applyPress(t, real, e){
+  var scale = 1 - t*0.14;
+  var ty = t*10;
+  pressBtn.style.transform = "translateY("+ty+"px) scale("+scale+")";
+  pressBtn.style.boxShadow = "0 "+(10-ty)+"px 0 #b8790a, 0 "+(16-ty)+"px "+(30-ty*2)+"px rgba(0,0,0,.4)";
+  reportGlobal(t, real, e&&e.pointerType);
+}
+makeSimulatedPressure(pressBtn, function(t, real){ applyPress(t, real); });
+pressBtn.addEventListener("pointermove", function(e){ if(isRealPressure(e)) applyPress(e.pressure, true, e); });
+pressBtn.addEventListener("pointerdown", function(e){ if(isRealPressure(e)) applyPress(e.pressure, true, e); });
+pressBtn.addEventListener("pointerup", function(){ applyPress(0, false); });
+
+// --- Force meter ---
+var meterWrap = document.getElementById("meterWrap");
+var meterFill = document.getElementById("meterFill");
+var meterLabel = document.getElementById("meterLabel");
+function applyMeter(t, real, e){
+  meterFill.style.height = (t*100)+"%";
+  meterLabel.textContent = Math.round(t*100)+"%";
+  reportGlobal(t, real, e&&e.pointerType);
+}
+makeSimulatedPressure(meterWrap, function(t, real){ applyMeter(t, real); });
+meterWrap.addEventListener("pointermove", function(e){ if(isRealPressure(e)) applyMeter(e.pressure, true, e); });
+meterWrap.addEventListener("pointerdown", function(e){ if(isRealPressure(e)) applyMeter(e.pressure, true, e); });
+meterWrap.addEventListener("pointerup", function(){ applyMeter(0, false); });
+
+// --- Pressure-width brush ---
+var brush = document.getElementById("brush");
+var bctx = brush.getContext("2d");
+bctx.fillStyle = "#0d0d16"; bctx.fillRect(0,0,brush.width,brush.height);
+var drawing = false, lastX=0, lastY=0, currentPressure = 0.15, simActive = false, simStart = 0;
+
+function brushPoint(x,y,p){
+  bctx.strokeStyle = "#38bdf8";
+  bctx.lineCap = "round"; bctx.lineJoin = "round";
+  bctx.lineWidth = 1 + p*16;
+  bctx.beginPath();
+  bctx.moveTo(lastX,lastY);
+  bctx.lineTo(x,y);
+  bctx.stroke();
+  lastX = x; lastY = y;
+}
+function brushLocal(e){
+  var r = brush.getBoundingClientRect();
+  return { x:(e.clientX-r.left)*(brush.width/r.width), y:(e.clientY-r.top)*(brush.height/r.height) };
+}
+brush.addEventListener("pointerdown", function(e){
+  drawing = true;
+  var p = brushLocal(e);
+  lastX = p.x; lastY = p.y;
+  brush.setPointerCapture(e.pointerId);
+  if(!isRealPressure(e)){ simActive = true; simStart = performance.now(); }
+  else { currentPressure = e.pressure; reportGlobal(currentPressure, true, e.pointerType); }
+});
+brush.addEventListener("pointermove", function(e){
+  if(!drawing) return;
+  var p = brushLocal(e);
+  if(isRealPressure(e)){ simActive = false; currentPressure = e.pressure; reportGlobal(currentPressure, true, e.pointerType); }
+  else if(simActive){ currentPressure = Math.min(1, (performance.now()-simStart)/rampMs); reportGlobal(currentPressure, false); }
+  brushPoint(p.x, p.y, currentPressure);
+});
+window.addEventListener("pointerup", function(){ drawing = false; simActive = false; });
+})();
+</script>
+</body>
+</html>

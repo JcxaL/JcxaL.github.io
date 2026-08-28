@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>SDF Forge — Raymarched Scene Builder</title>
+<style>
+  :root{
+    --bg:#07070d; --panel:rgba(18,18,28,.86); --panel-b:rgba(255,255,255,.08);
+    --accent:#5ee6ff; --accent2:#a78bfa; --text:#e8e8f2; --muted:#8b8ba0;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:var(--bg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; color:var(--text); touch-action:none;}
+  canvas{position:fixed; inset:0; width:100%; height:100%; display:block;}
+
+  .glass{background:var(--panel); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid var(--panel-b); border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.4);}
+
+  #topbar{position:fixed; top:10px; left:10px; right:10px; display:flex; gap:8px; align-items:center; z-index:20; pointer-events:none;}
+  #topbar > *{pointer-events:auto;}
+  #brand{padding:8px 14px; font-weight:700; font-size:14px; letter-spacing:.3px; display:flex; align-items:center; gap:8px;}
+  #brand .dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2)); box-shadow:0 0 10px var(--accent);}
+  #topActions{margin-left:auto; display:flex; gap:6px;}
+
+  button{font:inherit; cursor:pointer; border:none; color:var(--text); background:transparent;}
+  .btn{padding:8px 12px; border-radius:10px; background:rgba(255,255,255,.06); border:1px solid var(--panel-b); font-size:12.5px; font-weight:600; white-space:nowrap; transition:transform .12s, background .15s;}
+  .btn:active{transform:scale(.94);}
+  .btn:hover{background:rgba(255,255,255,.12);}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#080810;}
+  .btn.small{padding:6px 9px; font-size:11px; border-radius:8px;}
+  .btn.icon{width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:16px;border-radius:10px;}
+  .btn.danger{color:#ff6b81;}
+
+  #addMenu{position:fixed; bottom:126px; left:10px; z-index:25; display:none; flex-direction:column; gap:6px; padding:8px; min-width:150px;}
+  #addMenu.open{display:flex;}
+  #addMenu button{padding:9px 12px; text-align:left; border-radius:9px; font-size:13px;}
+  #addMenu button:hover{background:rgba(255,255,255,.08);}
+
+  #fab{position:fixed; bottom:84px; left:10px; z-index:26; width:52px; height:52px; border-radius:50%; font-size:26px; display:flex; align-items:center;justify-content:center; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#080810; box-shadow:0 6px 20px rgba(94,230,255,.35);}
+  #fab:active{transform:scale(.92);}
+
+  #dock{position:fixed; left:10px; right:10px; bottom:10px; z-index:20; display:flex; flex-direction:column; gap:8px; max-height:52vh;}
+  #tabs{display:flex; gap:4px; padding:4px;}
+  #tabs button{flex:1; padding:8px 6px; border-radius:9px; font-size:11.5px; font-weight:700; color:var(--muted);}
+  #tabs button.active{background:rgba(255,255,255,.1); color:var(--text);}
+
+  #sheet{padding:12px; overflow-y:auto; max-height:38vh; display:none;}
+  #sheet.open{display:block;}
+  .pane{display:none;}
+  .pane.active{display:block;}
+
+  .row{display:flex; align-items:center; gap:8px; margin-bottom:9px;}
+  .row label{font-size:11px; color:var(--muted); width:64px; flex-shrink:0;}
+  .row input[type=range]{flex:1; accent-color:var(--accent);}
+  .row .val{font-size:10.5px; color:var(--muted); width:38px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums;}
+  input[type=color]{width:34px; height:26px; border-radius:7px; border:1px solid var(--panel-b); background:none; padding:0;}
+  input[type=text]{background:rgba(255,255,255,.06); border:1px solid var(--panel-b); border-radius:8px; color:var(--text); padding:7px 9px; font-size:13px; width:100%;}
+
+  #objList{display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:6px;}
+  .objChip{flex-shrink:0; padding:7px 11px; border-radius:9px; background:rgba(255,255,255,.05); border:1px solid var(--panel-b); font-size:11.5px; display:flex; align-items:center; gap:6px;}
+  .objChip.sel{border-color:var(--accent); background:rgba(94,230,255,.12);}
+  .swatch{width:10px;height:10px;border-radius:3px;}
+
+  .presetGrid{display:grid; grid-template-columns:1fr 1fr; gap:7px;}
+  .presetGrid button{padding:10px 8px; border-radius:10px; background:rgba(255,255,255,.05); border:1px solid var(--panel-b); font-size:12px; font-weight:600; text-align:center;}
+  .presetGrid button:hover{background:rgba(255,255,255,.1);}
+
+  .savedRow{display:flex; align-items:center; gap:6px; margin-bottom:6px;}
+  .savedRow .name{flex:1; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+  #hint{position:fixed; top:56px; left:50%; transform:translateX(-50%); padding:7px 14px; font-size:12px; color:var(--muted); z-index:15; pointer-events:none; opacity:0; transition:opacity .3s;}
+  #hint.show{opacity:1;}
+
+  #toast{position:fixed; top:56px; left:50%; transform:translateX(-50%) translateY(-8px); padding:9px 16px; font-size:12.5px; z-index:40; opacity:0; transition:all .25s; pointer-events:none;}
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  #fileInput{display:none;}
+
+  @media (max-width:480px){
+    #brand span.full{display:none;}
+    .row label{width:52px;}
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hint">Drag to orbit · pinch / scroll to zoom</div>
+<div id="toast"></div>
+
+<div id="topbar">
+  <div id="brand" class="glass"><span class="dot"></span><span class="full">SDF Forge</span></div>
+  <div id="topActions">
+    <button class="btn icon glass" id="btnUndo" title="Undo">↶</button>
+    <button class="btn icon glass" id="btnShare" title="Share link">🔗</button>
+    <button class="btn icon glass" id="btnPng" title="Export PNG">📷</button>
+  </div>
+</div>
+
+<button id="fab">+</button>
+<div id="addMenu" class="glass">
+  <button data-type="0">◯ Sphere</button>
+  <button data-type="1">▢ Box</button>
+  <button data-type="2">◎ Torus</button>
+  <button data-type="3">⬭ Capsule</button>
+</div>
+
+<div id="dock" class="glass">
+  <div id="tabs">
+    <button class="tabBtn active" data-pane="objects">Objects</button>
+    <button class="tabBtn" data-pane="material">Material</button>
+    <button class="tabBtn" data-pane="scene">Scene</button>
+    <button class="tabBtn" data-pane="save">Save</button>
+  </div>
+  <div id="sheet" class="open">
+    <div class="pane active" id="pane-objects">
+      <div id="objList"></div>
+      <div id="transformControls"></div>
+      <button class="btn danger small" id="btnDelete" style="margin-top:4px;">🗑 Delete selected</button>
+    </div>
+    <div class="pane" id="pane-material">
+      <div class="row"><label>Color</label><input type="color" id="matColor" value="#5ee6ff"></div>
+      <div class="row"><label>Glow</label><input type="range" id="matEmissive" min="0" max="1" step="0.02" value="0"><span class="val" id="matEmissiveVal">0</span></div>
+      <div class="row"><label>Shine</label><input type="range" id="matShine" min="0" max="1" step="0.02" value="0.4"><span class="val" id="matShineVal">.4</span></div>
+    </div>
+    <div class="pane" id="pane-scene">
+      <div class="row"><label>Blend</label><input type="range" id="sceneBlend" min="0" max="1" step="0.02" value="0.3"><span class="val" id="sceneBlendVal">.3</span></div>
+      <div class="row"><label>Sun Az</label><input type="range" id="sunAz" min="0" max="6.28" step="0.02" value="2.4"><span class="val" id="sunAzVal"></span></div>
+      <div class="row"><label>Sun El</label><input type="range" id="sunEl" min="0.1" max="1.5" step="0.02" value="0.9"><span class="val" id="sunElVal"></span></div>
+      <div class="row"><label>AO</label><input type="range" id="aoStrength" min="0" max="1" step="0.02" value="0.6"><span class="val" id="aoVal"></span></div>
+      <div class="row"><label>Sky</label><input type="color" id="skyColor" value="#0d1030"></div>
+      <div class="presetGrid" id="presetGrid" style="margin-top:8px;"></div>
+    </div>
+    <div class="pane" id="pane-save">
+      <div class="row"><input type="text" id="saveName" placeholder="Scene name…"></div>
+      <div class="row"><button class="btn small" id="btnSaveNamed" style="flex:1;">💾 Save</button><button class="btn small" id="btnExportJson" style="flex:1;">⬇ Export JSON</button><button class="btn small" id="btnImportJson" style="flex:1;">⬆ Import</button></div>
+      <div id="savedList" style="margin-top:8px;"></div>
+    </div>
+  </div>
+</div>
+<input type="file" id="fileInput" accept="application/json">
+
+<script>
+(function(){
+"use strict";
+
+// ---------- constants ----------
+var MAX_OBJ = 14;
+var TYPE_NAMES = ["Sphere","Box","Torus","Capsule"];
+var LS_KEY = "sdfforge_v1";
+var LS_SAVES_KEY = "sdfforge_saves_v1";
+
+// ---------- state ----------
+var state = {
+  objects: [],
+  blend: 0.3,
+  sunAz: 2.4, sunEl: 0.9, ao: 0.6,
+  sky: [0.05,0.06,0.19],
+  cam: { yaw: 0.7, pitch: 0.5, dist: 7 }
+};
+var selectedId = null;
+var nextId = 1;
+var undoStack = [];
+
+function makeObject(type){
+  return {
+    id: nextId++,
+    type: type,
+    x: (Math.random()-0.5)*1.4, y: 0.4+Math.random()*0.6, z: (Math.random()-0.5)*1.4,
+    sx: 0.6, sy: 0.6, sz: 0.6,
+    ry: 0,
+    r: 0.37, g: 0.9, b: 1.0,
+    emissive: 0, shine: 0.4
+  };
+}
+
+function pushUndo(){
+  undoStack.push(JSON.stringify({objects:state.objects, blend:state.blend}));
+  if(undoStack.length>30) undoStack.shift();
+}
+function undo(){
+  if(!undoStack.length) return toast("Nothing to undo");
+  var snap = JSON.parse(undoStack.pop());
+  state.objects = snap.objects; state.blend = snap.blend;
+  if(!state.objects.find(function(o){return o.id===selectedId;})) selectedId = state.objects.length? state.objects[0].id : null;
+  syncSceneUI(); render();
+}
+
+// ---------- presets ----------
+function preset(name){
+  var objs = [];
+  function add(t,x,y,z,sx,sy,sz,ry,r,g,b,e){
+    objs.push({id:nextId++, type:t, x:x,y:y,z:z, sx:sx,sy:sy,sz:sz, ry:ry||0, r:r,g:g,b:b, emissive:e||0, shine:0.4});
+  }
+  if(name==="atom"){
+    add(0,0,0.6,0, 0.55,0.55,0.55,0, 0.95,0.85,0.25, 0.35);
+    for(var i=0;i<3;i++){
+      var a = i*2.2;
+      add(2, Math.cos(a)*1.1, 0.6+Math.sin(a*1.3)*0.3, Math.sin(a)*1.1, 0.85,0.85,0.18, a, 0.3,0.7,1.0, 0.1);
+      add(0, Math.cos(a+1)*1.3, 0.6, Math.sin(a+1)*1.3, 0.16,0.16,0.16, 0, 1,0.4,0.6, 0.5);
+    }
+    state.blend = 0.15;
+  } else if(name==="blob"){
+    add(0,-0.3,0.5,0, 1.0,1.0,1.0,0, 0.4,0.85,0.5, 0);
+    add(0,0.6,0.9,0.3, 0.6,0.6,0.6,0, 0.5,0.9,0.6, 0);
+    add(0,-0.7,0.7,-0.4, 0.55,0.55,0.55,0, 0.35,0.8,0.45, 0);
+    add(0,0.2,0.4,-0.7, 0.45,0.45,0.45,0, 0.6,0.95,0.55, 0.05);
+    add(1,0,0.05,0, 2.2,0.08,2.2,0, 0.2,0.35,0.22, 0);
+    state.blend = 0.55;
+  } else if(name==="crystal"){
+    add(2,0,0.5,0, 0.15,1.1,1.1, 0, 0.7,0.5,1.0, 0.15);
+    add(1,0.5,0.7,0.4,0.3,0.5,0.3,0.6, 0.6,0.7,1.0, 0.2);
+    add(1,-0.6,0.9,-0.3,0.25,0.7,0.25,1.1, 0.8,0.5,1.0, 0.2);
+    add(1,0.1,1.3,-0.6,0.22,0.4,0.22,0.3, 0.55,0.6,1.0, 0.25);
+    add(0,0,0.05,0,1.6,0.04,1.6,0, 0.1,0.1,0.18, 0);
+    state.blend = 0.05;
+  } else if(name==="snowman"){
+    add(0,0,0.55,0, 0.65,0.65,0.65,0, 0.95,0.97,1.0,0);
+    add(0,0,1.35,0, 0.45,0.45,0.45,0, 0.95,0.97,1.0,0);
+    add(0,0,1.9,0, 0.3,0.3,0.3,0, 0.95,0.97,1.0,0);
+    add(3,0.2,1.9,0.28, 0.05,0.22,0.05,1.4, 0.95,0.6,0.1,0);
+    state.blend = 0.08;
+  } else {
+    add(0,-0.6,0.5,0, 0.5,0.5,0.5,0, 1,0.4,0.5,0.1);
+    add(1,0.6,0.5,0.2, 0.45,0.45,0.45,0.5, 0.4,0.6,1,0.1);
+    add(2,0,1.3,-0.3, 0.5,0.5,0.15,0, 1,0.85,0.3,0.1);
+    add(3,-0.2,0.35,0.9, 0.12,0.4,0.12,-0.4, 0.5,1,0.6,0.1);
+    state.blend = 0.35;
+  }
+  state.objects = objs;
+  selectedId = objs.length? objs[0].id : null;
+}
+
+// ---------- persistence ----------
+function serializeScene(){
+  return { v:1, blend:state.blend, sunAz:state.sunAz, sunEl:state.sunEl, ao:state.ao, sky:state.sky, objects:state.objects };
+}
+function loadScene(data){
+  if(!data || !data.objects) return false;
+  state.objects = data.objects.map(function(o){
+    o.id = nextId++;
+    return o;
+  });
+  state.blend = data.blend!=null?data.blend:0.3;
+  state.sunAz = data.sunAz!=null?data.sunAz:2.4;
+  state.sunEl = data.sunEl!=null?data.sunEl:0.9;
+  state.ao = data.ao!=null?data.ao:0.6;
+  state.sky = data.sky || [0.05,0.06,0.19];
+  selectedId = state.objects.length? state.objects[0].id : null;
+  return true;
+}
+function autosave(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(serializeScene())); }catch(e){}
+}
+function getSaves(){
+  try{ return JSON.parse(localStorage.getItem(LS_SAVES_KEY)||"{}"); }catch(e){ return {}; }
+}
+function setSaves(obj){
+  try{ localStorage.setItem(LS_SAVES_KEY, JSON.stringify(obj)); }catch(e){}
+}
+
+// ---------- toast ----------
+var toastTimer = null;
+function toast(msg){
+  var el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.classList.remove("show"); }, 1800);
+}
+function hint(msg){
+  var el = document.getElementById("hint");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(hint._t);
+  hint._t = setTimeout(function(){ el.classList.remove("show"); }, 2200);
+}
+
+// ---------- WebGL setup ----------
+var canvas = document.getElementById("gl");
+var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+if(!gl){ toast("WebGL not supported"); }
+
+var VERT_SRC = "attribute vec2 aPos; void main(){ gl_Position = vec4(aPos,0.0,1.0); }";
+
+var FRAG_SRC = [
+"precision highp float;",
+"uniform vec2 uRes;",
+"uniform vec3 uCamPos, uCamRight, uCamUp, uCamFwd;",
+"uniform int uCount;",
+"uniform int uType["+MAX_OBJ+"];",
+"uniform vec3 uPos["+MAX_OBJ+"];",
+"uniform vec3 uSize["+MAX_OBJ+"];",
+"uniform float uRot["+MAX_OBJ+"];",
+"uniform vec3 uColor["+MAX_OBJ+"];",
+"uniform float uEmissive["+MAX_OBJ+"];",
+"uniform float uShine["+MAX_OBJ+"];",
+"uniform float uBlend;",
+"uniform vec3 uSunDir;",
+"uniform float uAO;",
+"uniform vec3 uSky;",
+
+"float sdSpherePrim(vec3 p, float r){ return length(p)-r; }",
+"float sdBoxPrim(vec3 p, vec3 b){ vec3 q = abs(p)-b; return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0); }",
+"float sdTorusPrim(vec3 p, vec2 t){ vec2 q = vec2(length(p.xz)-t.x, p.y); return length(q)-t.y; }",
+"float sdCapsulePrim(vec3 p, float h, float r){ p.y -= clamp(p.y, 0.0, h); return length(p)-r; }",
+
+"mat2 rot2(float a){ float s=sin(a), c=cos(a); return mat2(c,-s,s,c); }",
+
+// NOTE: WebGL1/GLSL ES 1.00 forbids dynamically indexing a uniform array
+// through a variable passed as a function *parameter* (only the loop's own
+// index variable may index arrays directly at the call site). So every
+// uPos[i]/uSize[i]/etc lookup happens inline in the loop below, and only
+// the already-resolved values are passed into this helper.
+"float distToPrimitive(vec3 p, int otype, vec3 opos, vec3 osize, float orot){",
+"  vec3 lp = p - opos;",
+"  if(otype!=0){ lp.xz = rot2(-orot) * lp.xz; }",
+"  if(otype==0){ return sdSpherePrim(lp, osize.x); }",
+"  else if(otype==1){ return sdBoxPrim(lp, osize); }",
+"  else if(otype==2){ return sdTorusPrim(lp, vec2(osize.x, osize.y)); }",
+"  else { return sdCapsulePrim(lp - vec3(0.0,-osize.y*0.5,0.0), osize.y, osize.x); }",
+"}",
+
+"float smin(float a, float b, float k){",
+"  if(k<=0.0001) return min(a,b);",
+"  float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);",
+"  return mix(b,a,h) - k*h*(1.0-h);",
+"}",
+
+"vec2 mapScene(vec3 p){",
+"  float d = 1e5;",
+"  for(int i=0;i<"+MAX_OBJ+";i++){",
+"    if(i>=uCount) break;",
+"    float di = distToPrimitive(p, uType[i], uPos[i], uSize[i], uRot[i]);",
+"    d = smin(d, di, uBlend);",
+"  }",
+"  return vec2(d, 0.0);",
+"}",
+
+"vec3 mapColor(vec3 p){",
+"  float dmin = 1e5;",
+"  for(int i=0;i<"+MAX_OBJ+";i++){",
+"    if(i>=uCount) break;",
+"    float di = distToPrimitive(p, uType[i], uPos[i], uSize[i], uRot[i]);",
+"    dmin = min(dmin, di);",
+"  }",
+"  float wsum = 0.0; vec3 csum = vec3(0.0);",
+"  for(int i=0;i<"+MAX_OBJ+";i++){",
+"    if(i>=uCount) break;",
+"    float di = distToPrimitive(p, uType[i], uPos[i], uSize[i], uRot[i]);",
+"    float w = exp(-8.0*max(di-dmin,0.0));",
+"    wsum += w; csum += w*uColor[i];",
+"  }",
+"  if(wsum<0.0001) return vec3(1.0);",
+"  return csum/wsum;",
+"}",
+"float mapEmissive(vec3 p){",
+"  float dmin = 1e5;",
+"  for(int i=0;i<"+MAX_OBJ+";i++){",
+"    if(i>=uCount) break;",
+"    dmin = min(dmin, distToPrimitive(p, uType[i], uPos[i], uSize[i], uRot[i]));",
+"  }",
+"  float wsum=0.0, esum=0.0;",
+"  for(int i=0;i<"+MAX_OBJ+";i++){",
+"    if(i>=uCount) break;",
+"    float di = distToPrimitive(p, uType[i], uPos[i], uSize[i], uRot[i]);",
+"    float w = exp(-8.0*max(di-dmin,0.0));",
+"    wsum+=w; esum+=w*uEmissive[i];",
+"  }",
+"  return wsum>0.0001 ? esum/wsum : 0.0;",
+"}",
+"float mapShine(vec3 p){",
+"  float dmin = 1e5;",
+"  for(int i=0;i<"+MAX_OBJ+";i++){",
+"    if(i>=uCount) break;",
+"    dmin = min(dmin, distToPrimitive(p, uType[i], uPos[i], uSize[i], uRot[i]));",
+"  }",
+"  float wsum=0.0, ssum=0.0;",
+"  for(int i=0;i<"+MAX_OBJ+";i++){",
+"    if(i>=uCount) break;",
+"    float di = distToPrimitive(p, uType[i], uPos[i], uSize[i], uRot[i]);",
+"    float w = exp(-8.0*max(di-dmin,0.0));",
+"    wsum+=w; ssum+=w*uShine[i];",
+"  }",
+"  return wsum>0.0001 ? ssum/wsum : 0.4;",
+"}",
+
+"vec3 calcNormal(vec3 p){",
+"  vec2 e = vec2(0.0015,0.0);",
+"  return normalize(vec3(",
+"    mapScene(p+e.xyy).x - mapScene(p-e.xyy).x,",
+"    mapScene(p+e.yxy).x - mapScene(p-e.yxy).x,",
+"    mapScene(p+e.yyx).x - mapScene(p-e.yyx).x",
+"  ));",
+"}",
+
+"float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k){",
+"  float res = 1.0; float t = mint;",
+"  for(int i=0;i<28;i++){",
+"    if(t>maxt) break;",
+"    float h = mapScene(ro+rd*t).x;",
+"    if(h<0.001) return 0.0;",
+"    res = min(res, k*h/t);",
+"    t += clamp(h, 0.01, 0.3);",
+"  }",
+"  return clamp(res,0.0,1.0);",
+"}",
+
+"float calcAO(vec3 p, vec3 n){",
+"  float occ = 0.0; float sca = 1.0;",
+"  for(int i=0;i<5;i++){",
+"    float h = 0.02 + 0.10*float(i);",
+"    float d = mapScene(p + n*h).x;",
+"    occ += (h-d)*sca;",
+"    sca *= 0.7;",
+"  }",
+"  return clamp(1.0 - occ*uAO*1.6, 0.0, 1.0);",
+"}",
+
+"void main(){",
+"  vec2 uv = (gl_FragCoord.xy - 0.5*uRes) / uRes.y;",
+"  vec3 ro = uCamPos;",
+"  vec3 rd = normalize(uCamFwd + uv.x*uCamRight + uv.y*uCamUp);",
+
+"  float t = 0.0; float d; vec3 p; bool hit = false;",
+"  for(int i=0;i<128;i++){",
+"    p = ro + rd*t;",
+"    d = mapScene(p).x;",
+"    if(d < 0.0015){ hit = true; break; }",
+"    t += d*0.92;",
+"    if(t > 40.0) break;",
+"  }",
+
+"  vec3 col;",
+"  if(uCount==0 || !hit){",
+"    float g = 0.5 + 0.5*rd.y;",
+"    col = mix(uSky*1.6, uSky*0.35, g);",
+"    float sun = pow(max(dot(rd, uSunDir),0.0), 128.0);",
+"    col += vec3(1.0,0.92,0.75) * sun * 0.8;",
+"  } else {",
+"    vec3 n = calcNormal(p);",
+"    vec3 albedo = mapColor(p);",
+"    float emissive = mapEmissive(p);",
+"    float shine = mapShine(p);",
+"    float ao = calcAO(p, n);",
+"    float diff = max(dot(n, uSunDir), 0.0);",
+"    float shadow = softShadow(p + n*0.02, uSunDir, 0.02, 6.0, 8.0);",
+"    vec3 viewDir = normalize(ro - p);",
+"    vec3 halfV = normalize(uSunDir + viewDir);",
+"    float spec = pow(max(dot(n, halfV), 0.0), 16.0 + shine*80.0) * shine;",
+"    vec3 ambient = uSky * 1.3 * ao;",
+"    vec3 lighting = ambient + vec3(1.0,0.95,0.85) * diff * shadow * 1.1;",
+"    col = albedo * lighting + vec3(1.0) * spec * shadow;",
+"    col += albedo * emissive * 1.8;",
+"    float fog = 1.0 - exp(-0.012*t*t);",
+"    col = mix(col, uSky*1.2, fog*0.5);",
+"  }",
+"  col = col / (col + vec3(1.0));",
+"  col = pow(col, vec3(0.4545));",
+"  gl_FragColor = vec4(col, 1.0);",
+"}"
+].join("\n");
+
+function compileShader(src, type){
+  var sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+    console.error(gl.getShaderInfoLog(sh));
+    throw new Error("Shader compile failed");
+  }
+  return sh;
+}
+
+var program = null, uniforms = {};
+function initGL(){
+  var vs = compileShader(VERT_SRC, gl.VERTEX_SHADER);
+  var fs = compileShader(FRAG_SRC, gl.FRAGMENT_SHADER);
+  program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if(!gl.getProgramParameter(program, gl.LINK_STATUS)){
+    console.error(gl.getProgramInfoLog(program));
+    throw new Error("Program link failed");
+  }
+  gl.useProgram(program);
+
+  var buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  var aPos = gl.getAttribLocation(program, "aPos");
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  var names = ["uRes","uCamPos","uCamRight","uCamUp","uCamFwd","uCount","uBlend","uSunDir","uAO","uSky"];
+  names.forEach(function(n){ uniforms[n] = gl.getUniformLocation(program, n); });
+  ["uType","uPos","uSize","uRot","uColor","uEmissive","uShine"].forEach(function(n){
+    uniforms[n] = [];
+    for(var i=0;i<MAX_OBJ;i++){ uniforms[n][i] = gl.getUniformLocation(program, n+"["+i+"]"); }
+  });
+}
+
+function resize(){
+  var dpr = Math.min(window.devicePixelRatio||1, 2);
+  var w = window.innerWidth, h = window.innerHeight;
+  canvas.width = Math.round(w*dpr);
+  canvas.height = Math.round(h*dpr);
+  gl.viewport(0,0,canvas.width, canvas.height);
+}
+window.addEventListener("resize", resize);
+
+function camBasis(){
+  var yaw = state.cam.yaw, pitch = state.cam.pitch, dist = state.cam.dist;
+  pitch = Math.max(-1.4, Math.min(1.4, pitch));
+  var cy = Math.cos(yaw), sy = Math.sin(yaw);
+  var cp = Math.cos(pitch), sp = Math.sin(pitch);
+  var eye = [ dist*cp*sy, dist*sp + 0.7, dist*cp*cy ];
+  var target = [0,0.6,0];
+  var fwd = normalize3(sub3(target, eye));
+  var worldUp = [0,1,0];
+  var right = normalize3(cross3(fwd, worldUp));
+  var up = cross3(right, fwd);
+  var tanHalfFov = Math.tan(0.5 * 0.9);
+  right = scale3(right, tanHalfFov);
+  up = scale3(up, tanHalfFov);
+  return { eye:eye, fwd:fwd, right:right, up:up };
+}
+function sub3(a,b){ return [a[0]-b[0],a[1]-b[1],a[2]-b[2]]; }
+function cross3(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function scale3(a,s){ return [a[0]*s,a[1]*s,a[2]*s]; }
+function normalize3(a){ var l=Math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2])||1; return [a[0]/l,a[1]/l,a[2]/l]; }
+
+function render(){
+  if(!gl || !program) return;
+  gl.useProgram(program);
+  gl.uniform2f(uniforms.uRes, canvas.width, canvas.height);
+  var b = camBasis();
+  gl.uniform3fv(uniforms.uCamPos, b.eye);
+  gl.uniform3fv(uniforms.uCamRight, b.right);
+  gl.uniform3fv(uniforms.uCamUp, b.up);
+  gl.uniform3fv(uniforms.uCamFwd, b.fwd);
+  gl.uniform1i(uniforms.uCount, state.objects.length);
+  gl.uniform1f(uniforms.uBlend, state.blend);
+  var az = state.sunAz, el = state.sunEl;
+  var sunDir = normalize3([Math.cos(az)*Math.cos(el), Math.sin(el), Math.sin(az)*Math.cos(el)]);
+  gl.uniform3fv(uniforms.uSunDir, sunDir);
+  gl.uniform1f(uniforms.uAO, state.ao);
+  gl.uniform3fv(uniforms.uSky, state.sky);
+
+  for(var i=0;i<MAX_OBJ;i++){
+    var o = state.objects[i];
+    if(!o){
+      gl.uniform1i(uniforms.uType[i], 0);
+      gl.uniform3f(uniforms.uPos[i], 0,-999,0);
+      gl.uniform3f(uniforms.uSize[i], 0.001,0.001,0.001);
+      gl.uniform1f(uniforms.uRot[i], 0);
+      gl.uniform3f(uniforms.uColor[i], 0,0,0);
+      gl.uniform1f(uniforms.uEmissive[i], 0);
+      gl.uniform1f(uniforms.uShine[i], 0);
+      continue;
+    }
+    gl.uniform1i(uniforms.uType[i], o.type);
+    gl.uniform3f(uniforms.uPos[i], o.x, o.y, o.z);
+    gl.uniform3f(uniforms.uSize[i], o.sx, o.sy, o.sz);
+    gl.uniform1f(uniforms.uRot[i], o.ry);
+    gl.uniform3f(uniforms.uColor[i], o.r, o.g, o.b);
+    gl.uniform1f(uniforms.uEmissive[i], o.emissive);
+    gl.uniform1f(uniforms.uShine[i], o.shine);
+  }
+
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+var rafId = null;
+function scheduleRender(){
+  if(rafId) return;
+  rafId = requestAnimationFrame(function(){ rafId = null; render(); });
+}
+
+// ---------- input: orbit camera ----------
+var dragging = false, lastX=0, lastY=0, dragMoved=false;
+var pinchStartDist = null, pinchStartCamDist = null;
+
+function getSelected(){ return state.objects.find(function(o){ return o.id===selectedId; }); }
+
+canvas.addEventListener("pointerdown", function(e){
+  dragging = true; dragMoved = false; lastX = e.clientX; lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", function(e){
+  if(!dragging) return;
+  var dx = e.clientX-lastX, dy = e.clientY-lastY;
+  if(Math.abs(dx)+Math.abs(dy) > 2) dragMoved = true;
+  lastX = e.clientX; lastY = e.clientY;
+  state.cam.yaw -= dx*0.008;
+  state.cam.pitch += dy*0.008;
+  scheduleRender();
+});
+window.addEventListener("pointerup", function(){ dragging = false; });
+canvas.addEventListener("wheel", function(e){
+  e.preventDefault();
+  state.cam.dist = Math.max(2.5, Math.min(16, state.cam.dist + e.deltaY*0.01));
+  scheduleRender();
+}, {passive:false});
+
+// touch pinch zoom
+canvas.addEventListener("touchstart", function(e){
+  if(e.touches.length===2){
+    pinchStartDist = touchDist(e.touches);
+    pinchStartCamDist = state.cam.dist;
+  }
+}, {passive:true});
+canvas.addEventListener("touchmove", function(e){
+  if(e.touches.length===2 && pinchStartDist){
+    var d = touchDist(e.touches);
+    var scale = pinchStartDist / d;
+    state.cam.dist = Math.max(2.5, Math.min(16, pinchStartCamDist * scale));
+    scheduleRender();
+  }
+}, {passive:true});
+canvas.addEventListener("touchend", function(e){ if(e.touches.length<2) pinchStartDist = null; }, {passive:true});
+function touchDist(t){ var dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+
+// ---------- UI: tabs ----------
+document.querySelectorAll(".tabBtn").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".tabBtn").forEach(function(b){ b.classList.remove("active"); });
+    document.querySelectorAll(".pane").forEach(function(p){ p.classList.remove("active"); });
+    btn.classList.add("active");
+    document.getElementById("pane-"+btn.dataset.pane).classList.add("active");
+    document.getElementById("sheet").classList.add("open");
+    if(btn.dataset.pane==="save") renderSavedList();
+  });
+});
+
+// ---------- FAB / add menu ----------
+var fab = document.getElementById("fab");
+var addMenu = document.getElementById("addMenu");
+fab.addEventListener("click", function(){ addMenu.classList.toggle("open"); });
+addMenu.querySelectorAll("button").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    pushUndo();
+    var obj = makeObject(parseInt(btn.dataset.type,10));
+    if(state.objects.length >= MAX_OBJ){ toast("Max "+MAX_OBJ+" objects"); return; }
+    state.objects.push(obj);
+    selectedId = obj.id;
+    addMenu.classList.remove("open");
+    syncObjectUI(); autosave(); scheduleRender();
+  });
+});
+document.addEventListener("click", function(e){
+  if(!addMenu.contains(e.target) && e.target!==fab) addMenu.classList.remove("open");
+});
+
+// ---------- object list & transform ----------
+function syncObjectUI(){
+  var list = document.getElementById("objList");
+  list.innerHTML = "";
+  state.objects.forEach(function(o, idx){
+    var chip = document.createElement("div");
+    chip.className = "objChip" + (o.id===selectedId ? " sel":"");
+    var sw = document.createElement("div");
+    sw.className = "swatch";
+    sw.style.background = "rgb("+Math.round(o.r*255)+","+Math.round(o.g*255)+","+Math.round(o.b*255)+")";
+    chip.appendChild(sw);
+    var label = document.createElement("span");
+    label.textContent = TYPE_NAMES[o.type] + " " + (idx+1);
+    chip.appendChild(label);
+    chip.addEventListener("click", function(){ selectedId = o.id; syncObjectUI(); syncTransform(); syncMaterial(); });
+    list.appendChild(chip);
+  });
+  syncTransform();
+}
+
+function slider(container, id, label, min, max, step, value, fmt, onInput){
+  var row = document.createElement("div"); row.className = "row";
+  var lab = document.createElement("label"); lab.textContent = label; row.appendChild(lab);
+  var input = document.createElement("input");
+  input.type = "range"; input.min = min; input.max = max; input.step = step; input.value = value; input.id = id;
+  var valSpan = document.createElement("span"); valSpan.className = "val";
+  valSpan.textContent = fmt(value);
+  input.addEventListener("input", function(){
+    var v = parseFloat(input.value);
+    valSpan.textContent = fmt(v);
+    onInput(v);
+  });
+  row.appendChild(input); row.appendChild(valSpan);
+  container.appendChild(row);
+}
+
+function syncTransform(){
+  var container = document.getElementById("transformControls");
+  container.innerHTML = "";
+  var o = getSelected();
+  if(!o){ container.innerHTML = "<div style='color:var(--muted);font-size:12px;padding:6px 0;'>No object selected — tap + to add one.</div>"; return; }
+  var f1 = function(v){ return v.toFixed(1); };
+  slider(container, "tX", "X", -3, 3, 0.05, o.x, f1, function(v){ o.x=v; autosave(); scheduleRender(); });
+  slider(container, "tY", "Y", 0, 3, 0.05, o.y, f1, function(v){ o.y=v; autosave(); scheduleRender(); });
+  slider(container, "tZ", "Z", -3, 3, 0.05, o.z, f1, function(v){ o.z=v; autosave(); scheduleRender(); });
+  slider(container, "tScale", "Scale", 0.1, 1.4, 0.02, o.sx, f1, function(v){
+    var ratioY = o.sy/o.sx, ratioZ = o.sz/o.sx;
+    o.sx=v; o.sy=v*ratioY; o.sz=v*ratioZ; autosave(); scheduleRender();
+  });
+  if(o.type===1 || o.type===2){
+    slider(container, "tRot", "Rotate", 0, 6.28, 0.05, o.ry, f1, function(v){ o.ry=v; autosave(); scheduleRender(); });
+  }
+}
+
+document.getElementById("btnDelete").addEventListener("click", function(){
+  if(!selectedId) return;
+  pushUndo();
+  state.objects = state.objects.filter(function(o){ return o.id!==selectedId; });
+  selectedId = state.objects.length? state.objects[0].id : null;
+  syncObjectUI(); autosave(); scheduleRender();
+});
+
+document.getElementById("btnUndo").addEventListener("click", undo);
+
+// ---------- material pane ----------
+function syncMaterial(){
+  var o = getSelected();
+  var colorEl = document.getElementById("matColor");
+  var emEl = document.getElementById("matEmissive");
+  var shEl = document.getElementById("matShine");
+  if(!o) return;
+  colorEl.value = rgbToHex(o.r,o.g,o.b);
+  emEl.value = o.emissive; document.getElementById("matEmissiveVal").textContent = o.emissive.toFixed(2);
+  shEl.value = o.shine; document.getElementById("matShineVal").textContent = o.shine.toFixed(2);
+}
+function rgbToHex(r,g,b){
+  function h(v){ var s = Math.round(Math.max(0,Math.min(1,v))*255).toString(16); return s.length<2?"0"+s:s; }
+  return "#"+h(r)+h(g)+h(b);
+}
+function hexToRgb(hex){
+  var v = parseInt(hex.slice(1),16);
+  return [ ((v>>16)&255)/255, ((v>>8)&255)/255, (v&255)/255 ];
+}
+document.getElementById("matColor").addEventListener("input", function(e){
+  var o = getSelected(); if(!o) return;
+  var rgb = hexToRgb(e.target.value);
+  o.r=rgb[0]; o.g=rgb[1]; o.b=rgb[2];
+  syncObjectUI(); autosave(); scheduleRender();
+});
+document.getElementById("matEmissive").addEventListener("input", function(e){
+  var o = getSelected(); if(!o) return;
+  o.emissive = parseFloat(e.target.value);
+  document.getElementById("matEmissiveVal").textContent = o.emissive.toFixed(2);
+  autosave(); scheduleRender();
+});
+document.getElementById("matShine").addEventListener("input", function(e){
+  var o = getSelected(); if(!o) return;
+  o.shine = parseFloat(e.target.value);
+  document.getElementById("matShineVal").textContent = o.shine.toFixed(2);
+  autosave(); scheduleRender();
+});
+
+// ---------- scene pane ----------
+function syncSceneUI(){
+  document.getElementById("sceneBlend").value = state.blend;
+  document.getElementById("sceneBlendVal").textContent = state.blend.toFixed(2);
+  document.getElementById("sunAz").value = state.sunAz;
+  document.getElementById("sunAzVal").textContent = state.sunAz.toFixed(1);
+  document.getElementById("sunEl").value = state.sunEl;
+  document.getElementById("sunElVal").textContent = state.sunEl.toFixed(1);
+  document.getElementById("aoStrength").value = state.ao;
+  document.getElementById("aoVal").textContent = state.ao.toFixed(2);
+  document.getElementById("skyColor").value = rgbToHex(state.sky[0], state.sky[1], state.sky[2]);
+  syncObjectUI(); syncMaterial();
+}
+document.getElementById("sceneBlend").addEventListener("input", function(e){
+  state.blend = parseFloat(e.target.value);
+  document.getElementById("sceneBlendVal").textContent = state.blend.toFixed(2);
+  autosave(); scheduleRender();
+});
+document.getElementById("sunAz").addEventListener("input", function(e){
+  state.sunAz = parseFloat(e.target.value);
+  document.getElementById("sunAzVal").textContent = state.sunAz.toFixed(1);
+  autosave(); scheduleRender();
+});
+document.getElementById("sunEl").addEventListener("input", function(e){
+  state.sunEl = parseFloat(e.target.value);
+  document.getElementById("sunElVal").textContent = state.sunEl.toFixed(1);
+  autosave(); scheduleRender();
+});
+document.getElementById("aoStrength").addEventListener("input", function(e){
+  state.ao = parseFloat(e.target.value);
+  document.getElementById("aoVal").textContent = state.ao.toFixed(2);
+  autosave(); scheduleRender();
+});
+document.getElementById("skyColor").addEventListener("input", function(e){
+  state.sky = hexToRgb(e.target.value);
+  autosave(); scheduleRender();
+});
+
+var PRESET_LIST = [
+  {id:"atom", label:"⚛ Atom"},
+  {id:"blob", label:"🫧 Blob Garden"},
+  {id:"crystal", label:"💎 Crystal"},
+  {id:"snowman", label:"⛄ Snowman"}
+];
+var presetGrid = document.getElementById("presetGrid");
+PRESET_LIST.forEach(function(p){
+  var btn = document.createElement("button");
+  btn.textContent = p.label;
+  btn.addEventListener("click", function(){
+    pushUndo();
+    preset(p.id);
+    syncSceneUI(); autosave(); scheduleRender();
+    toast("Loaded " + p.label);
+  });
+  presetGrid.appendChild(btn);
+});
+
+// ---------- save / load / export ----------
+function renderSavedList(){
+  var wrap = document.getElementById("savedList");
+  wrap.innerHTML = "";
+  var saves = getSaves();
+  var keys = Object.keys(saves);
+  if(!keys.length){
+    wrap.innerHTML = "<div style='color:var(--muted);font-size:12px;'>No saved scenes yet.</div>";
+    return;
+  }
+  keys.forEach(function(k){
+    var row = document.createElement("div"); row.className = "savedRow";
+    var name = document.createElement("div"); name.className = "name"; name.textContent = k;
+    var loadBtn = document.createElement("button"); loadBtn.className="btn small"; loadBtn.textContent="Load";
+    loadBtn.addEventListener("click", function(){
+      pushUndo();
+      loadScene(saves[k]);
+      syncSceneUI(); autosave(); scheduleRender();
+      toast("Loaded \"" + k + "\"");
+    });
+    var delBtn = document.createElement("button"); delBtn.className="btn small danger"; delBtn.textContent="✕";
+    delBtn.addEventListener("click", function(){
+      delete saves[k]; setSaves(saves); renderSavedList();
+    });
+    row.appendChild(name); row.appendChild(loadBtn); row.appendChild(delBtn);
+    wrap.appendChild(row);
+  });
+}
+document.getElementById("btnSaveNamed").addEventListener("click", function(){
+  var nameInput = document.getElementById("saveName");
+  var name = nameInput.value.trim() || ("Scene " + new Date().toLocaleTimeString());
+  var saves = getSaves();
+  saves[name] = serializeScene();
+  setSaves(saves);
+  nameInput.value = "";
+  renderSavedList();
+  toast("Saved \"" + name + "\"");
+});
+document.getElementById("btnExportJson").addEventListener("click", function(){
+  var data = JSON.stringify(serializeScene(), null, 2);
+  var blob = new Blob([data], {type:"application/json"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = "sdf-scene.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  toast("Exported JSON");
+});
+document.getElementById("btnImportJson").addEventListener("click", function(){
+  document.getElementById("fileInput").click();
+});
+document.getElementById("fileInput").addEventListener("change", function(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    try{
+      var data = JSON.parse(reader.result);
+      pushUndo();
+      loadScene(data);
+      syncSceneUI(); autosave(); scheduleRender();
+      toast("Imported scene");
+    }catch(err){ toast("Invalid file"); }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+document.getElementById("btnPng").addEventListener("click", function(){
+  render();
+  canvas.toBlob(function(blob){
+    if(!blob){ toast("Export failed"); return; }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = "sdf-forge.png";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+    toast("PNG saved");
+  }, "image/png");
+});
+
+document.getElementById("btnShare").addEventListener("click", function(){
+  try{
+    var json = JSON.stringify(serializeScene());
+    var encoded = btoa(unescape(encodeURIComponent(json)));
+    var url = location.origin + location.pathname + "#s=" + encoded;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){ toast("Link copied!"); }).catch(function(){ toast("Copy failed — select from address bar"); });
+    }
+    history.replaceState(null,"","#s="+encoded);
+    toast("Share link ready");
+  }catch(e){ toast("Share failed"); }
+});
+
+// ---------- init ----------
+function loadFromHash(){
+  var m = location.hash.match(/s=([^&]+)/);
+  if(!m) return false;
+  try{
+    var json = decodeURIComponent(escape(atob(m[1])));
+    var data = JSON.parse(json);
+    return loadScene(data);
+  }catch(e){ return false; }
+}
+
+function init(){
+  if(!gl) return;
+  initGL();
+  resize();
+
+  if(!loadFromHash()){
+    try{
+      var saved = JSON.parse(localStorage.getItem(LS_KEY));
+      if(!loadScene(saved)) preset("default");
+    }catch(e){ preset("default"); }
+  }
+  if(!state.objects.length) preset("default");
+
+  syncSceneUI();
+  render();
+  hint("Drag to orbit · pinch / scroll to zoom");
+}
+
+init();
+})();
+</script>
+</body>
+</html>
