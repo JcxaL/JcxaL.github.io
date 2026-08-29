@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anchor-Size Spec Panel</title>
+<style>
+  :root{ --accent:#34d399; --bg:#05070d; --bg2:#0a0e18; --text:#e8ecf5; --sub:#8b93a8; --border:rgba(255,255,255,0.09); }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  body{ padding:96px 20px 90px; display:flex; flex-direction:column; align-items:center; gap:26px; }
+
+  .glass{background:rgba(14,18,30,0.8);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--border);border-radius:16px;}
+
+  .back-link{position:fixed;top:14px;left:14px;z-index:30;padding:9px 16px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;}
+  .back-link:hover{background:rgba(255,255,255,0.08);}
+
+  h1{font-size:22px;margin:0 0 4px;}
+  p.lede{color:var(--sub);font-size:13.5px;max-width:560px;text-align:center;margin:0 0 6px;line-height:1.5;}
+
+  #cards{ display:flex; gap:22px; flex-wrap:wrap; justify-content:center; max-width:980px; }
+  .card{
+    width:200px; background:linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border:1px solid var(--border); border-radius:16px; padding:16px; cursor:pointer;
+    transition:border-color .2s, transform .2s;
+    position:relative;
+  }
+  .card:hover{ border-color:rgba(52,211,153,0.5); transform:translateY(-2px); }
+  .card.selected{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), 0 10px 30px rgba(52,211,153,0.15); }
+  .card .swatch{ width:100%; height:90px; border-radius:10px; margin-bottom:12px; }
+  .card h3{ margin:0 0 4px; font-size:14.5px; }
+  .card .price{ color:var(--accent); font-weight:700; font-size:15px; }
+  .card .spec{ color:var(--sub); font-size:11.5px; margin-top:6px; }
+  .card .resizer{
+    position:absolute; right:6px; bottom:6px; width:16px; height:16px; cursor:ns-resize;
+    color:var(--sub); font-size:12px; opacity:.6; user-select:none;
+  }
+
+  /* --- The anchor-size() technique --- */
+  .card{ anchor-name: --card; }
+  #panel{
+    position:fixed;
+    position-anchor: --card;
+    position-area: right;
+    margin-left: 18px;
+    width: 260px;
+    /* the whole point: panel height locks to the anchor card's live height,
+       no ResizeObserver, no JS measuring — pure CSS anchor-size() */
+    height: anchor-size(height);
+    max-height: 90vh;
+    padding:18px;
+    opacity:0; pointer-events:none;
+    transition: opacity .22s ease, height .22s ease;
+    overflow:auto;
+  }
+  #panel.open{ opacity:1; pointer-events:auto; }
+  #panel h4{ margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub); }
+  #panel .big{ font-size:26px; font-weight:800; margin:2px 0 10px; }
+  #panel .row{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px dashed var(--border); font-size:12.5px; }
+  #panel .row span:last-child{ color:var(--text); font-weight:600; }
+  #panel .close{ position:absolute; top:10px; right:12px; background:none; border:none; color:var(--sub); font-size:16px; cursor:pointer; }
+
+  #fallback{ display:none; }
+  @supports not (height: anchor-size(height)){
+    #panel{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); height:auto; position-anchor:none; }
+    #fallback{ display:block; text-align:center; color:#fbbf24; font-size:12px; max-width:480px; }
+  }
+
+  footer{position:fixed;bottom:8px;left:0;right:0;text-align:center;font-size:10.5px;color:rgba(255,255,255,0.28);}
+  footer a{color:rgba(255,255,255,0.4);}
+
+  @media (max-width:640px){
+    #panel{ position:fixed; top:auto; bottom:0; left:0; right:0; width:100%; position-anchor:none; height:min(70vh, anchor-size(height)); border-radius:16px 16px 0 0; margin:0; }
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link glass">← All 5 drops</a>
+
+<h1>Anchor-Size Spec Panel</h1>
+<p class="lede">Click a card to open its spec sheet. The panel's <code>height</code> is set with CSS <code>anchor-size(height)</code> — it locks to the exact height of the card that opened it, live, with zero JavaScript measuring. Drag a card's ⠿ handle to resize it and watch the panel follow.</p>
+<p id="fallback" class="glass" style="padding:10px 16px;">Your browser doesn't support <code>anchor-size()</code> yet — showing a centered fallback panel instead. Try latest Chrome or Edge.</p>
+
+<div id="cards"></div>
+
+<div id="panel" class="glass">
+  <button class="close" id="closeBtn">✕</button>
+  <div id="panelBody"></div>
+</div>
+
+<footer>Inspired by the CSS <code>anchor-size()</code> spec · css-tricks.com/almanac/functions/a/anchor-size · UI Spotlight Day 104 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+
+const DATA = [
+  { name:'Aria Desk Lamp', price:'$89', color:'linear-gradient(135deg,#34d399,#0ea5e9)', specs:[['Material','Anodized aluminum'],['Light','2700–6500K tunable'],['Power','USB-C, 18W'],['Weight','620g']] },
+  { name:'Nimbus Chair', price:'$412', color:'linear-gradient(135deg,#fbbf24,#f97316)', specs:[['Material','Recycled mesh'],['Load','Up to 150kg'],['Recline','12–24°'],['Weight','9.4kg']] },
+  { name:'Vellum Notebook', price:'$24', color:'linear-gradient(135deg,#f472b6,#a78bfa)', specs:[['Paper','120gsm, dot grid'],['Pages','160'],['Binding','Lay-flat stitched'],['Weight','']] },
+  { name:'Kite Speaker', price:'$156', color:'linear-gradient(135deg,#818cf8,#38bdf8)', specs:[['Output','30W stereo'],['Battery','18 hrs'],['Input','Bluetooth 5.4, USB-C'],['Waterproof','IPX6']] }
+];
+
+const cardsEl = document.getElementById('cards');
+const panel = document.getElementById('panel');
+const panelBody = document.getElementById('panelBody');
+let activeCard = null;
+
+DATA.forEach((item, i)=>{
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.setProperty('--n', i);
+  card.innerHTML = `
+    <div class="swatch" style="background:${item.color}"></div>
+    <h3>${item.name}</h3>
+    <div class="price">${item.price}</div>
+    <div class="spec">${item.specs.length} specs · click to compare</div>
+    <div class="resizer" title="Drag to resize card, panel height follows">⠿</div>
+  `;
+  card.addEventListener('click', (e)=>{
+    if(e.target.classList.contains('resizer')) return;
+    openPanel(card, item);
+  });
+
+  // manual resize demo: dragging changes card content padding/height so
+  // anchor-size(height) on the panel visibly re-syncs in real time
+  const handle = card.querySelector('.resizer');
+  let dragging=false, startY=0, startPad=16;
+  handle.addEventListener('pointerdown', (e)=>{
+    dragging=true; startY=e.clientY; startPad=parseInt(getComputedStyle(card).paddingBottom)||16;
+    e.stopPropagation(); handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    const dy = e.clientY - startY;
+    card.style.paddingBottom = Math.max(16, Math.min(160, startPad+dy)) + 'px';
+  });
+  handle.addEventListener('pointerup', ()=> dragging=false);
+
+  cardsEl.appendChild(card);
+});
+
+function openPanel(card, item){
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+  card.classList.add('selected');
+  card.style.setProperty('--card-anchor', '1');
+  // give this specific card the shared anchor-name so the panel targets it
+  document.querySelectorAll('.card').forEach(c=> c.style.anchorName = '');
+  card.style.anchorName = '--card';
+  activeCard = card;
+
+  panelBody.innerHTML = `
+    <h4>Spec Sheet</h4>
+    <div class="big">${item.name}</div>
+    ${item.specs.filter(s=>s[1]).map(s=>`<div class="row"><span>${s[0]}</span><span>${s[1]}</span></div>`).join('')}
+    <div class="row"><span>Price</span><span>${item.price}</span></div>
+  `;
+  panel.classList.add('open');
+}
+document.getElementById('closeBtn').addEventListener('click', ()=>{
+  panel.classList.remove('open');
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+});
+
+// open the first card by default so the effect is visible immediately
+openPanel(cardsEl.children[0], DATA[0]);
+})();
+</script>
+</body>
+</html>

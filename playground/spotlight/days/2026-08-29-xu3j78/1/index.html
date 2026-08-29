@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Spiral Boot — Polar Preloader</title>
+<style>
+  :root{ --accent:#38bdf8; --bg:#05070d; --text:#e8ecf5; --sub:#8b93a8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{display:block;}
+
+  .glass{background:rgba(14,18,30,0.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,0.08);border-radius:14px;}
+
+  .back-link{position:fixed;top:14px;left:14px;z-index:30;padding:9px 16px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;display:inline-flex;align-items:center;gap:6px;}
+  .back-link:hover{background:rgba(255,255,255,0.08);}
+
+  #panel{position:fixed;top:14px;right:14px;z-index:30;padding:14px;width:210px;font-size:12px;}
+  #panel h3{margin:0 0 10px;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--sub);}
+  #panel label{display:flex;justify-content:space-between;margin:9px 0 3px;color:var(--sub);}
+  #panel input[type=range]{width:100%;accent-color:var(--accent);}
+  #panel .row{display:flex;gap:6px;margin-top:10px;}
+  #panel button{flex:1;padding:8px;border-radius:9px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:11.5px;font-weight:600;cursor:pointer;}
+  #panel button:hover{background:rgba(255,255,255,0.12);}
+  #panel button.primary{background:linear-gradient(135deg,var(--accent),#0284c7);border-color:transparent;color:#04202e;}
+
+  #hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:30;padding:9px 16px;font-size:12.5px;color:var(--sub);text-align:center;}
+
+  footer{position:fixed;bottom:6px;right:12px;z-index:30;font-size:10.5px;color:rgba(255,255,255,0.28);}
+  footer a{color:rgba(255,255,255,0.4);}
+
+  @media (max-width:640px){ #panel{display:none;} }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link glass">← All 5 drops</a>
+
+<div id="panel" class="glass">
+  <h3>Spiral Controls</h3>
+  <label>Tightness <span id="vTight">2.4</span></label>
+  <input type="range" id="tightness" min="0.8" max="4" step="0.1" value="2.4">
+  <label>Stagger <span id="vStag">0.09</span></label>
+  <input type="range" id="stagger" min="0.01" max="0.25" step="0.01" value="0.09">
+  <label>Rotations <span id="vRot">2.5</span></label>
+  <input type="range" id="rotations" min="1" max="5" step="0.5" value="2.5">
+  <div class="row">
+    <button class="primary" id="btnIn">↻ Spiral In</button>
+    <button id="btnOut">↺ Spiral Out</button>
+  </div>
+</div>
+
+<div id="hint" class="glass">Click any tile to snap it into a mini spiral · hover the button to replay the boot sequence</div>
+
+<div id="stage"><canvas id="c"></canvas></div>
+
+<footer>Inspired by Matt Stone — goodgrowth.com (via Codrops case study) · UI Spotlight Day 104 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let DPR = Math.min(window.devicePixelRatio||1, 2);
+let W,H;
+
+function resize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W*DPR; canvas.height = H*DPR;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  layoutGrid();
+}
+window.addEventListener('resize', resize);
+
+// ---- Tile grid ----
+const COLS = 6, ROWS = 4;
+let tiles = [];
+const PALETTE = ['#38bdf8','#818cf8','#34d399','#fbbf24','#f472b6','#a78bfa'];
+
+function layoutGrid(){
+  const gridW = Math.min(W*0.82, 860);
+  const gridH = gridW * (ROWS/COLS) * 0.62;
+  const cx = W/2, cy = H/2;
+  const cellW = gridW/COLS, cellH = gridH/ROWS;
+  const startX = cx - gridW/2 + cellW/2;
+  const startY = cy - gridH/2 + cellH/2;
+  tiles = [];
+  let i=0;
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const tx = startX + c*cellW;
+      const ty = startY + r*cellH;
+      tiles.push({
+        tx, ty, // target (grid) position
+        x: tx, y: ty, // current rendered position
+        size: Math.min(cellW,cellH)*0.72,
+        color: PALETTE[i % PALETTE.length],
+        // polar state relative to center, driving the spiral
+        angle: 0, radius: 0,
+        baseAngle: Math.atan2(ty-cy, tx-cx),
+        baseRadius: Math.hypot(tx-cx, ty-cy),
+        delay: i * 1, // index for stagger
+        hoverPulse: 0
+      });
+      i++;
+    }
+  }
+}
+
+// ---- Spiral animation engine ----
+// A spiral is angle increasing while radius decreases (or vice versa),
+// driven per-tile with an index-based stagger creating a trailing effect.
+let animPhase = 0; // 0 = settled, 1 = spiraling in, -1 = spiraling out
+let animStart = 0;
+let animDir = 1; // 1 = in (scatter->grid), -1 = out (grid->scatter)
+const DURATION = 1450;
+
+function getParams(){
+  return {
+    tightness: parseFloat(document.getElementById('tightness').value),
+    stagger: parseFloat(document.getElementById('stagger').value),
+    rotations: parseFloat(document.getElementById('rotations').value)
+  };
+}
+
+function startSpiral(dir){
+  animDir = dir;
+  animPhase = 1;
+  animStart = performance.now();
+}
+
+function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
+function easeInCubic(t){ return t*t*t; }
+
+function updateSpiral(now){
+  if(animPhase === 0) return;
+  const p = getParams();
+  const elapsed = now - animStart;
+  const cx = W/2, cy = H/2;
+  let allDone = true;
+
+  for(const t of tiles){
+    const localStart = t.delay * p.stagger * 1000;
+    const localT = Math.max(0, Math.min(1, (elapsed - localStart) / DURATION));
+    if(elapsed - localStart < DURATION) allDone = false;
+
+    const eased = animDir === 1 ? easeOutCubic(localT) : easeInCubic(localT);
+
+    if(animDir === 1){
+      // spiral IN: start scattered far away at big radius/angle offset, converge to baseAngle/baseRadius
+      const angle = t.baseAngle + (1-eased) * Math.PI * 2 * p.rotations;
+      const radius = t.baseRadius + (1-eased) * (Math.max(W,H) * 0.6) * p.tightness / 2.4;
+      t.x = cx + Math.cos(angle) * radius;
+      t.y = cy + Math.sin(angle) * radius;
+      t.opacity = eased;
+      t.scale = 0.3 + eased*0.7;
+    } else {
+      // spiral OUT: start at grid, scatter away with increasing angle, shrinking toward center-collapse then fade
+      const angle = t.baseAngle + eased * Math.PI * 2 * p.rotations;
+      const radius = t.baseRadius * (1 - eased * p.tightness/2.4);
+      t.x = cx + Math.cos(angle) * Math.max(radius, 0);
+      t.y = cy + Math.sin(angle) * Math.max(radius,0);
+      t.opacity = 1-eased;
+      t.scale = 1 - eased*0.7;
+    }
+  }
+  if(allDone){ animPhase = 0; }
+}
+
+// ---- Hover mini-spiral (per-tile, independent effect instance) ----
+function triggerHoverPulse(tile){
+  tile.hoverPulse = 1;
+  tile._pulseStart = performance.now();
+}
+function updateHoverPulses(now){
+  for(const t of tiles){
+    if(t.hoverPulse>0){
+      const el = (now - t._pulseStart)/500;
+      if(el>=1){ t.hoverPulse=0; t.pulseWobble=0; }
+      else{
+        t.pulseWobble = Math.sin(el*Math.PI) * 10 * (1-el);
+      }
+    }
+  }
+}
+
+// ---- Rendering ----
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*0.7);
+  bg.addColorStop(0,'#0b1020'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  for(const t of tiles){
+    const op = t.opacity===undefined ? 1 : t.opacity;
+    const sc = t.scale===undefined ? 1 : t.scale;
+    const wob = t.pulseWobble||0;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, op));
+    ctx.translate(t.x, t.y + (-wob));
+    ctx.rotate(wob*0.02);
+    ctx.scale(sc,sc);
+    const s = t.size/2;
+    const grad = ctx.createLinearGradient(-s,-s,s,s);
+    grad.addColorStop(0, t.color);
+    grad.addColorStop(1, shade(t.color, -30));
+    ctx.fillStyle = grad;
+    roundRect(ctx, -s, -s, s*2, s*2, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+  requestAnimationFrame(loop);
+}
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r);
+  c.arcTo(x,y,x+w,y,r);
+  c.closePath();
+}
+function shade(hex, amt){
+  const n = parseInt(hex.slice(1),16);
+  let r=(n>>16)+amt, g=((n>>8)&255)+amt, b=(n&255)+amt;
+  r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+  return `rgb(${r},${g},${b})`;
+}
+
+function loop(now){
+  updateSpiral(now);
+  updateHoverPulses(now);
+  draw();
+}
+
+// ---- UI wiring ----
+document.getElementById('tightness').addEventListener('input', e=> document.getElementById('vTight').textContent = e.target.value);
+document.getElementById('stagger').addEventListener('input', e=> document.getElementById('vStag').textContent = e.target.value);
+document.getElementById('rotations').addEventListener('input', e=> document.getElementById('vRot').textContent = e.target.value);
+document.getElementById('btnIn').addEventListener('click', ()=> startSpiral(1));
+document.getElementById('btnOut').addEventListener('click', ()=> startSpiral(-1));
+
+canvas.addEventListener('pointerdown', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  let hit=null, bd=Infinity;
+  for(const t of tiles){
+    const d = Math.hypot(t.x-mx, t.y-my);
+    if(d < t.size/1.6 && d<bd){ bd=d; hit=t; }
+  }
+  if(hit) triggerHoverPulse(hit);
+});
+
+resize();
+requestAnimationFrame(()=> startSpiral(1));
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

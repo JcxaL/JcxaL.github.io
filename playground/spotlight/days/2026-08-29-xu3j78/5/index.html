@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Safe Paste — Sanitizer API</title>
+<style>
+  :root{ --accent:#a78bfa; --bg:#05070d; --text:#e8ecf5; --sub:#8b93a8; --border:rgba(255,255,255,0.09); --danger:#f87171; --good:#34d399; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  body{ padding:90px 20px 60px; display:flex; flex-direction:column; align-items:center; gap:18px; }
+  .glass{background:rgba(14,18,30,0.8);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--border);border-radius:16px;}
+
+  .back-link{position:fixed;top:14px;left:14px;z-index:30;padding:9px 16px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;}
+  .back-link:hover{background:rgba(255,255,255,0.08);}
+
+  h1{font-size:22px;margin:0;}
+  p.lede{color:var(--sub);font-size:13.5px;max-width:640px;text-align:center;margin:0;line-height:1.5;}
+
+  #presets{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  #presets button{ padding:8px 14px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.05); color:var(--text); font-size:12px; font-weight:600; cursor:pointer; }
+  #presets button:hover{ border-color:rgba(167,139,250,0.5); }
+
+  #grid{ width:100%; max-width:1000px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:760px){ #grid{ grid-template-columns:1fr; } }
+
+  .pane{ padding:16px; display:flex; flex-direction:column; gap:8px; min-height:220px; }
+  .pane h4{ margin:0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub); display:flex; justify-content:space-between; align-items:center; }
+  .pane h4 .tag{ font-size:10px; padding:2px 8px; border-radius:20px; }
+  .pane.raw h4 .tag{ background:rgba(248,113,113,0.18); color:#ffb4b4; }
+  .pane.safe h4 .tag{ background:rgba(52,211,153,0.18); color:#7cf5c7; }
+
+  textarea{ width:100%; min-height:130px; background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:10px; color:#e8ecf5; font-family:ui-monospace,"SFMono-Regular",Menlo,monospace; font-size:12px; padding:10px; resize:vertical; }
+  #rawView{ background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace,monospace; font-size:11.5px; color:#ffb4b4; white-space:pre-wrap; word-break:break-word; max-height:140px; overflow:auto; }
+  #safeView{ background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:10px; padding:14px; min-height:130px; overflow:auto; }
+  #safeView a{ color:var(--accent); }
+
+  #diff{ width:100%; max-width:1000px; padding:14px 18px; font-size:12.5px; }
+  #diff h4{ margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub); }
+  #diff ul{ margin:0; padding-left:18px; }
+  #diff li{ color:#ffb4b4; margin:3px 0; }
+  #diff .clean{ color:var(--good); }
+
+  #engine{ font-size:11.5px; color:var(--sub); }
+  #engine b{ color:var(--accent); }
+
+  footer{position:fixed;bottom:8px;left:0;right:0;text-align:center;font-size:10.5px;color:rgba(255,255,255,0.28);}
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link glass">← All 5 drops</a>
+
+<h1>Safe Paste</h1>
+<p class="lede">Type or paste HTML on the left. It's <strong>never</strong> rendered raw — the right pane shows only what survives the <code>Sanitizer</code> API (native where supported, an allowlist fallback otherwise), with a live list of everything that was stripped.</p>
+<div id="engine" class="glass" style="padding:8px 16px;">Sanitizer engine: <b id="engineName">checking…</b></div>
+
+<div id="presets">
+  <button data-p="0">😈 Script injection</button>
+  <button data-p="1">😈 onerror image</button>
+  <button data-p="2">😈 javascript: link</button>
+  <button data-p="3">✅ Clean formatting</button>
+</div>
+
+<div id="grid">
+  <div class="pane raw glass">
+    <h4>Raw input <span class="tag">never rendered</span></h4>
+    <textarea id="rawInput" spellcheck="false"></textarea>
+    <div id="rawView"></div>
+  </div>
+  <div class="pane safe glass">
+    <h4>Sanitized render <span class="tag">safe to display</span></h4>
+    <div id="safeView"></div>
+  </div>
+</div>
+
+<div id="diff" class="glass">
+  <h4>What got stripped</h4>
+  <ul id="diffList"><li class="clean">Nothing yet — try a preset above.</li></ul>
+</div>
+
+<footer>Built on the <code>Sanitizer</code> API · developer.chrome.com/blog/new-in-chrome-146 · UI Spotlight Day 104 · Drop #5</footer>
+
+<script>
+(function(){
+"use strict";
+
+const PRESETS = [
+  `<p>Nice message!</p><script>alert('stolen cookies: ' + document.cookie)<\/script>`,
+  `<p>Check this photo:</p><img src="x" onerror="alert('pwned via onerror')">`,
+  `<p>Click here:</p><a href="javascript:alert('pwned via href')">Totally safe link</a>`,
+  `<p>This is <strong>bold</strong>, <em>italic</em>, and a <a href="https://example.com">real link</a>.</p><ul><li>Bullet one</li><li>Bullet two</li></ul>`
+];
+
+const rawInput = document.getElementById('rawInput');
+const rawView = document.getElementById('rawView');
+const safeView = document.getElementById('safeView');
+const diffList = document.getElementById('diffList');
+const engineName = document.getElementById('engineName');
+
+const nativeSupported = (typeof Element !== 'undefined') && ('setHTML' in Element.prototype);
+engineName.textContent = nativeSupported ? 'Native Sanitizer API (Element.setHTML)' : 'JS allowlist fallback (native API unavailable in this browser)';
+
+// ---- Detection pass: never executes anything, only inspects a DOMParser
+// document, which the HTML spec keeps inert (no scripts run, no handlers fire). ----
+const DANGEROUS_TAGS = ['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','LINK','META','FORM'];
+const ALLOWED_TAGS = ['P','B','STRONG','I','EM','U','A','BR','UL','OL','LI','H1','H2','H3','H4','BLOCKQUOTE','CODE','SPAN','MARK'];
+const ALLOWED_ATTRS = { A: ['href','title'] };
+
+function isSafeHref(href){
+  if(!href) return false;
+  const h = href.trim().toLowerCase();
+  return h.startsWith('http://') || h.startsWith('https://') || h.startsWith('mailto:') || h.startsWith('#') || h.startsWith('/');
+}
+
+function inspect(rawHtml){
+  const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+  const removed = [];
+
+  function walk(node){
+    for(const child of Array.from(node.childNodes)){
+      if(child.nodeType === 1){ // element
+        const tag = child.tagName;
+        if(DANGEROUS_TAGS.includes(tag)){
+          removed.push(`<${tag.toLowerCase()}> element removed`);
+        } else if(!ALLOWED_TAGS.includes(tag)){
+          removed.push(`<${tag.toLowerCase()}> unwrapped (not on allowlist)`);
+        }
+        for(const attr of Array.from(child.attributes)){
+          const name = attr.name.toLowerCase();
+          if(name.startsWith('on')){
+            removed.push(`${name}="…" event-handler attribute stripped from <${tag.toLowerCase()}>`);
+          } else if(name === 'style'){
+            removed.push(`style="…" attribute stripped from <${tag.toLowerCase()}>`);
+          } else if(tag === 'A' && name === 'href' && !isSafeHref(attr.value)){
+            removed.push(`href="${attr.value}" blocked (unsafe scheme) on <a>`);
+          } else if(ALLOWED_ATTRS[tag] && !ALLOWED_ATTRS[tag].includes(name)){
+            removed.push(`${name} attribute stripped from <${tag.toLowerCase()}>`);
+          } else if(!ALLOWED_ATTRS[tag]){
+            removed.push(`${name} attribute stripped from <${tag.toLowerCase()}>`);
+          }
+        }
+        walk(child);
+      }
+    }
+  }
+  walk(doc.body);
+  return removed;
+}
+
+// ---- Fallback sanitizer: builds a brand-new, safe DocumentFragment by
+// only cloning allowlisted tags/attrs. Never inserts the raw tree live. ----
+function fallbackSanitize(rawHtml){
+  const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+  const out = document.createDocumentFragment();
+
+  function clone(srcNode, destParent){
+    for(const child of Array.from(srcNode.childNodes)){
+      if(child.nodeType === 3){ // text
+        destParent.appendChild(document.createTextNode(child.textContent));
+      } else if(child.nodeType === 1){
+        const tag = child.tagName;
+        if(DANGEROUS_TAGS.includes(tag)){
+          continue; // drop entirely, including its text/content (e.g. script source)
+        }
+        if(!ALLOWED_TAGS.includes(tag)){
+          clone(child, destParent); // unwrap: keep safe children, drop the wrapper
+          continue;
+        }
+        const el = document.createElement(tag.toLowerCase());
+        if(tag === 'A'){
+          const href = child.getAttribute('href');
+          if(isSafeHref(href)) el.setAttribute('href', href);
+          el.setAttribute('rel', 'noopener noreferrer');
+          el.setAttribute('target', '_blank');
+        }
+        destParent.appendChild(el);
+        clone(child, el);
+      }
+    }
+  }
+  clone(doc.body, out);
+  return out;
+}
+
+function render(rawHtml){
+  rawView.textContent = rawHtml;
+
+  const removed = inspect(rawHtml);
+  diffList.innerHTML = '';
+  if(removed.length === 0){
+    diffList.innerHTML = '<li class="clean">✓ Nothing dangerous found — rendered as-is.</li>';
+  } else {
+    for(const r of removed){
+      const li = document.createElement('li');
+      li.textContent = '✕ ' + r;
+      diffList.appendChild(li);
+    }
+  }
+
+  safeView.innerHTML = '';
+  if(nativeSupported){
+    try{
+      safeView.setHTML(rawHtml); // browser's built-in Sanitizer, default safe config
+    }catch(e){
+      safeView.appendChild(fallbackSanitize(rawHtml));
+    }
+  } else {
+    safeView.appendChild(fallbackSanitize(rawHtml));
+  }
+}
+
+rawInput.addEventListener('input', ()=> render(rawInput.value));
+document.querySelectorAll('#presets button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const html = PRESETS[parseInt(btn.dataset.p,10)];
+    rawInput.value = html;
+    render(html);
+  });
+});
+
+rawInput.value = PRESETS[0];
+render(PRESETS[0]);
+})();
+</script>
+</body>
+</html>
