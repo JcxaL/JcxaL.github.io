@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Chip Tracker — 4-Channel Chiptune Sequencer</title>
+<style>
+  :root{
+    --bg:#0a0810; --panel:#141020; --panel2:#1c1730; --edge:#2e2648;
+    --p1:#ff5f7e; --p2:#38bdf8; --tri:#4ade80; --noise:#fbbf24;
+    --text:#f1ecff; --dim:#9d93bd; --accent:#c084fc;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent; overscroll-behavior:none;}
+  body{min-height:100vh; display:flex; flex-direction:column; padding-bottom:24px;}
+
+  header{padding:14px 16px 8px; text-align:center;}
+  header h1{margin:0; font-size:clamp(20px,5vw,28px); letter-spacing:1px;
+    background:linear-gradient(90deg,var(--p1),var(--p2),var(--tri),var(--noise));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    font-weight:800;}
+  header p{margin:4px 0 0; color:var(--dim); font-size:12.5px;}
+
+  .wrap{max-width:920px; margin:0 auto; width:100%; padding:0 12px; display:flex; flex-direction:column; gap:12px;}
+
+  .panel{background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:12px;}
+
+  /* Transport */
+  .transport{display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px;}
+  .playbtn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+    background:linear-gradient(135deg,var(--p1),var(--accent)); color:#100a1a;
+    font-size:20px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; box-shadow:0 4px 16px rgba(192,132,252,.35);}
+  .playbtn:active{transform:scale(.94);}
+  .field{display:flex; flex-direction:column; gap:2px; min-width:70px;}
+  .field label{font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px;}
+  .field .val{font-size:11px; color:var(--accent); font-variant-numeric:tabular-nums;}
+  input[type=range]{-webkit-appearance:none; appearance:none; height:20px; background:transparent; width:100%;}
+  input[type=range]::-webkit-slider-runnable-track{height:4px; background:var(--edge); border-radius:2px;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+    background:var(--accent); margin-top:-6px; border:2px solid #1c1730; cursor:pointer;}
+  input[type=range]::-moz-range-track{height:4px; background:var(--edge); border-radius:2px;}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid #1c1730; cursor:pointer;}
+
+  .btn{background:var(--panel2); border:1px solid var(--edge); color:var(--text);
+    border-radius:9px; padding:7px 12px; font-size:12.5px; cursor:pointer; white-space:nowrap;}
+  .btn:active{transform:scale(.96);}
+  .btn.small{padding:5px 9px; font-size:11px;}
+  .btn.on{background:var(--accent); color:#1a1128; border-color:var(--accent);}
+  .btn-row{display:flex; gap:8px; flex-wrap:wrap;}
+
+  /* Channels */
+  .channels{display:flex; flex-direction:column; gap:8px;}
+  .channel{background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:8px 10px;
+    display:flex; flex-direction:column; gap:6px;}
+  .ch-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .ch-name{font-weight:700; font-size:13px; width:44px; flex-shrink:0;}
+  .ch-p1 .ch-name{color:var(--p1);} .ch-p2 .ch-name{color:var(--p2);}
+  .ch-tri .ch-name{color:var(--tri);} .ch-noise .ch-name{color:var(--noise);}
+  .mutesolo{display:flex; gap:4px;}
+  .ms-btn{width:24px;height:24px;border-radius:6px;border:1px solid var(--edge);background:var(--panel2);
+    color:var(--dim); font-size:10px; font-weight:800; cursor:pointer; display:flex;align-items:center;justify-content:center;}
+  .ms-btn.active-m{background:#ef4444; color:#fff; border-color:#ef4444;}
+  .ms-btn.active-s{background:#fbbf24; color:#1a1128; border-color:#fbbf24;}
+  .mini-slider{flex:1; min-width:60px; max-width:110px;}
+  .mini-slider input{width:100%;}
+  .duty-wrap{display:flex; align-items:center; gap:5px; font-size:10px; color:var(--dim);}
+  .duty-wrap input{width:70px;}
+
+  .step-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px;}
+  .steps{display:grid; grid-auto-flow:column; gap:3px; width:max-content;}
+  .step{width:34px; height:38px; border-radius:6px; border:1px solid var(--edge); background:#100c1c;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none;
+    font-size:9px; color:var(--dim); position:relative; touch-action:manipulation; flex-shrink:0;}
+  .step.beat{border-left:2px solid #3a3060;}
+  .step.on-p1{background:var(--p1); color:#1a0a10; font-weight:700; border-color:var(--p1);}
+  .step.on-p2{background:var(--p2); color:#06202c; font-weight:700; border-color:var(--p2);}
+  .step.on-tri{background:var(--tri); color:#062a12; font-weight:700; border-color:var(--tri);}
+  .step.on-noise{background:var(--noise); color:#2a1c02; font-weight:700; border-color:var(--noise);}
+  .step.playing{outline:2px solid #fff; outline-offset:1px;}
+
+  /* Footer actions */
+  .actions{display:flex; flex-direction:column; gap:10px;}
+  .actions .btn-row{align-items:center;}
+  .save-row{display:flex; gap:6px; flex-wrap:wrap;}
+  .save-row input[type=text]{flex:1; min-width:120px; background:#100c1c; border:1px solid var(--edge);
+    color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px;}
+  .saved-list{display:flex; gap:6px; flex-wrap:wrap;}
+  .saved-chip{display:flex; align-items:center; gap:6px; background:var(--panel2); border:1px solid var(--edge);
+    border-radius:20px; padding:4px 4px 4px 12px; font-size:12px;}
+  .saved-chip button{background:none; border:none; color:var(--dim); cursor:pointer; font-size:13px; padding:2px 6px;}
+  select{background:var(--panel2); border:1px solid var(--edge); color:var(--text); border-radius:8px;
+    padding:7px 10px; font-size:12.5px;}
+  .toast{position:fixed; bottom:18px; left:50%; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:var(--panel2); border:1px solid var(--accent); color:var(--text); padding:9px 18px;
+    border-radius:20px; font-size:12.5px; transition:all .25s ease; pointer-events:none; z-index:50;}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  .hint{font-size:11px; color:var(--dim); text-align:center; margin-top:2px;}
+  footer{text-align:center; color:var(--dim); font-size:11px; padding:16px 12px 4px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CHIP TRACKER</h1>
+  <p>A 4-channel chiptune sequencer — pulse, pulse, triangle &amp; noise, just like the 8-bit era.</p>
+</header>
+
+<div class="wrap">
+
+  <div class="panel transport">
+    <button class="playbtn" id="playBtn" aria-label="Play">▶</button>
+    <div class="field" style="min-width:110px">
+      <label>Tempo</label>
+      <input type="range" id="bpmSlider" min="60" max="220" value="128" step="1">
+      <span class="val" id="bpmVal">128 BPM</span>
+    </div>
+    <div class="field" style="min-width:90px">
+      <label>Swing</label>
+      <input type="range" id="swingSlider" min="0" max="60" value="0" step="1">
+      <span class="val" id="swingVal">0%</span>
+    </div>
+    <div class="field" style="min-width:90px">
+      <label>Volume</label>
+      <input type="range" id="volSlider" min="0" max="100" value="80" step="1">
+      <span class="val" id="volVal">80%</span>
+    </div>
+    <div class="field" style="min-width:70px">
+      <label>Length</label>
+      <div class="btn-row">
+        <button class="btn small on" id="len16" data-len="16">16</button>
+        <button class="btn small" id="len32" data-len="32">32</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="channels" id="channels"></div>
+
+  <div class="panel actions">
+    <div class="btn-row">
+      <button class="btn" id="randomBtn">🎲 Random Riff</button>
+      <button class="btn" id="clearBtn">✕ Clear All</button>
+      <select id="presetSelect">
+        <option value="">Load preset…</option>
+        <option value="overworld">Sunny Overworld</option>
+        <option value="boss">Boss Rush</option>
+        <option value="lullaby">8-Bit Lullaby</option>
+      </select>
+      <select id="loopSelect" title="Export loop count">
+        <option value="1">Export ×1</option>
+        <option value="2" selected>Export ×2</option>
+        <option value="4">Export ×4</option>
+      </select>
+      <button class="btn" id="exportBtn">⬇ Export WAV</button>
+      <button class="btn" id="shareBtn">🔗 Copy Share Link</button>
+    </div>
+    <div class="save-row">
+      <input type="text" id="saveName" placeholder="Name this pattern…" maxlength="24">
+      <button class="btn" id="saveBtn">💾 Save</button>
+    </div>
+    <div class="saved-list" id="savedList"></div>
+    <div class="hint">Tap a step to cycle through the scale · tap again to clear · long patterns scroll horizontally</div>
+  </div>
+
+  <footer>Chip Tracker — Daily Playground · original pentatonic presets, no samples borrowed from anywhere</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Musical data ----------
+  var SCALE = [
+    {n:'C3',f:130.813},{n:'D3',f:146.832},{n:'E3',f:164.814},{n:'G3',f:195.998},{n:'A3',f:220.000},
+    {n:'C4',f:261.626},{n:'D4',f:293.665},{n:'E4',f:329.628},{n:'G4',f:391.995},{n:'A4',f:440.000},
+    {n:'C5',f:523.251},{n:'D5',f:587.330},{n:'E5',f:659.255}
+  ];
+  var NOISE_LABELS = ['','HAT','SNR','KIK'];
+  var CH_KEYS = ['P1','P2','TRI','NOISE'];
+  var CH_META = {
+    P1:{label:'P1', cls:'ch-p1', type:'pulse', duty:0.5},
+    P2:{label:'P2', cls:'ch-p2', type:'pulse', duty:0.25},
+    TRI:{label:'TRI', cls:'ch-tri', type:'triangle'},
+    NOISE:{label:'NSE', cls:'ch-noise', type:'noise'}
+  };
+  var STORE_KEY = 'chiptracker_v1';
+  var SAVED_KEY = 'chiptracker_saved_v1';
+
+  function emptyPattern(len){ var a=[]; for(var i=0;i<len;i++) a.push(0); return a; }
+
+  function defaultState(){
+    return {
+      bpm: 128, swing: 0, vol: 0.8, steps: 16,
+      duty: { P1: 0.5, P2: 0.25 },
+      vols: { P1:0.9, P2:0.75, TRI:0.9, NOISE:0.8 },
+      mute: { P1:false, P2:false, TRI:false, NOISE:false },
+      solo: { P1:false, P2:false, TRI:false, NOISE:false },
+      pattern: {
+        P1: emptyPattern(16), P2: emptyPattern(16), TRI: emptyPattern(16), NOISE: emptyPattern(16)
+      }
+    };
+  }
+
+  var PRESETS = {
+    overworld: {bpm:132, swing:8, steps:16,
+      duty:{P1:0.5,P2:0.25},
+      P1:[6,0,8,0,6,0,8,0,9,0,6,0,4,0,6,0],
+      P2:[0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
+      TRI:[6,0,0,6,0,0,4,0,6,0,0,6,0,0,4,0],
+      NOISE:[1,0,3,0,1,0,3,0,1,0,3,0,1,0,3,2]
+    },
+    boss: {bpm:168, swing:0, steps:16,
+      duty:{P1:0.5,P2:0.125},
+      P1:[13,0,10,0,13,0,10,8,13,0,10,0,13,10,8,6],
+      P2:[3,3,0,3,3,3,0,3,3,3,0,3,3,3,0,0],
+      TRI:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+      NOISE:[3,1,1,1,3,1,1,1,3,1,1,1,3,1,1,1]
+    },
+    lullaby: {bpm:78, swing:12, steps:16,
+      duty:{P1:0.5,P2:0.5},
+      P1:[6,0,0,8,0,0,10,0,9,0,0,8,0,0,6,0],
+      P2:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      TRI:[1,0,4,0,6,0,4,0,1,0,4,0,6,0,4,0],
+      NOISE:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0]
+    }
+  };
+
+  var state = loadAutosave() || defaultState();
+
+  // ---------- Audio engine ----------
+  var actx = null;
+  var noiseBuffer = null;
+  var master = null;
+
+  function ensureAudio(){
+    if (actx) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    actx = new AC();
+    master = actx.createGain();
+    master.gain.value = state.vol;
+    master.connect(actx.destination);
+    noiseBuffer = makeNoiseBuffer(actx);
+  }
+
+  function makeNoiseBuffer(ctx){
+    var len = ctx.sampleRate * 2;
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i=0;i<len;i++) d[i] = Math.random()*2-1;
+    return buf;
+  }
+
+  function pulseWave(ctx, duty){
+    var N = 24;
+    var real = new Float32Array(N+1);
+    var imag = new Float32Array(N+1);
+    for (var n=1; n<=N; n++){
+      real[n] = (2/(n*Math.PI)) * Math.sin(n*Math.PI*duty);
+    }
+    return ctx.createPeriodicWave(real, imag, {disableNormalization:false});
+  }
+
+  // Schedule a single step's sound into the given context/destination at time t, for stepDur seconds.
+  function playNote(ctx, dest, chKey, value, t, stepDur, vol){
+    if (!value) return;
+    var meta = CH_META[chKey];
+    if (meta.type === 'noise'){
+      playNoise(ctx, dest, value, t, stepDur, vol);
+      return;
+    }
+    var osc = ctx.createOscillator();
+    if (meta.type === 'pulse'){
+      var duty = chKey === 'P1' ? state.duty.P1 : state.duty.P2;
+      osc.setPeriodicWave(pulseWave(ctx, duty));
+    } else {
+      osc.type = 'triangle';
+    }
+    var scaleNote = SCALE[value-1];
+    osc.frequency.value = scaleNote.f;
+    var g = ctx.createGain();
+    var peak = vol * (meta.type==='triangle' ? 0.55 : 0.32);
+    var gateEnd = t + stepDur * (meta.type==='triangle' ? 0.92 : 0.78);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0008, gateEnd);
+    osc.connect(g); g.connect(dest);
+    osc.start(t);
+    osc.stop(gateEnd + 0.02);
+  }
+
+  function playNoise(ctx, dest, kind, t, stepDur, vol){
+    var src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    var g = ctx.createGain();
+    var filt = ctx.createBiquadFilter();
+    var dur = stepDur*0.8;
+    var peak = vol*0.5;
+    if (kind === 1){ // hat
+      filt.type='highpass'; filt.frequency.value=7000;
+      dur = Math.min(dur, 0.06); peak = vol*0.34;
+    } else if (kind === 2){ // snare
+      filt.type='bandpass'; filt.frequency.value=1800; filt.Q.value=0.7;
+      dur = Math.min(dur, 0.14); peak = vol*0.42;
+    } else { // kick
+      filt.type='lowpass'; filt.frequency.value=280;
+      dur = Math.min(dur, 0.18); peak = vol*0.6;
+    }
+    src.connect(filt); filt.connect(g); g.connect(dest);
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0008, t+dur);
+    src.start(t); src.stop(t+dur+0.02);
+
+    if (kind === 3){ // extra thump for kick
+      var osc = ctx.createOscillator();
+      osc.type='sine';
+      var og = ctx.createGain();
+      osc.frequency.setValueAtTime(150, t);
+      osc.frequency.exponentialRampToValueAtTime(45, t+0.12);
+      og.gain.setValueAtTime(peak*0.9, t);
+      og.gain.exponentialRampToValueAtTime(0.0008, t+0.15);
+      osc.connect(og); og.connect(dest);
+      osc.start(t); osc.stop(t+0.17);
+    }
+  }
+
+  function anySolo(){
+    return CH_KEYS.some(function(k){ return state.solo[k]; });
+  }
+  function channelAudible(k){
+    if (state.mute[k]) return false;
+    if (anySolo() && !state.solo[k]) return false;
+    return true;
+  }
+
+  // Render full song (playCount loops) into an OfflineAudioContext and return AudioBuffer.
+  function renderOffline(playCount){
+    var stepDur = 60/state.bpm/4;
+    var totalSteps = state.steps * playCount;
+    var totalTime = totalSteps * stepDur + 0.3;
+    var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    var octx = new OAC(2, Math.ceil(totalTime*44100), 44100);
+    var mgain = octx.createGain();
+    mgain.gain.value = state.vol;
+    mgain.connect(octx.destination);
+    var solo = anySolo();
+    for (var loop=0; loop<playCount; loop++){
+      for (var s=0; s<state.steps; s++){
+        var stepIdx = loop*state.steps + s;
+        var t = stepIdx*stepDur;
+        if (s % 2 === 1) t += (state.swing/100) * stepDur * 0.5;
+        CH_KEYS.forEach(function(k){
+          if (state.mute[k]) return;
+          if (solo && !state.solo[k]) return;
+          var val = state.pattern[k][s];
+          playNote(octx, mgain, k, val, t, stepDur, state.vols[k]);
+        });
+      }
+    }
+    return octx.startRendering();
+  }
+
+  function audioBufferToWav(buffer){
+    var numCh = buffer.numberOfChannels;
+    var len = buffer.length * numCh * 2 + 44;
+    var ab = new ArrayBuffer(len);
+    var view = new DataView(ab);
+    var sampleRate = buffer.sampleRate;
+    function writeStr(off, s){ for (var i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); }
+    writeStr(0,'RIFF'); view.setUint32(4, 36 + buffer.length*numCh*2, true);
+    writeStr(8,'WAVE'); writeStr(12,'fmt ');
+    view.setUint32(16,16,true); view.setUint16(20,1,true);
+    view.setUint16(22,numCh,true); view.setUint32(24,sampleRate,true);
+    view.setUint32(28, sampleRate*numCh*2, true); view.setUint16(32, numCh*2, true);
+    view.setUint16(34,16,true);
+    writeStr(36,'data'); view.setUint32(40, buffer.length*numCh*2, true);
+    var offset = 44;
+    var chans = []; for (var c=0;c<numCh;c++) chans.push(buffer.getChannelData(c));
+    for (var i=0;i<buffer.length;i++){
+      for (var c2=0;c2<numCh;c2++){
+        var sample = Math.max(-1, Math.min(1, chans[c2][i]));
+        view.setInt16(offset, sample<0 ? sample*0x8000 : sample*0x7FFF, true);
+        offset += 2;
+      }
+    }
+    return new Blob([ab], {type:'audio/wav'});
+  }
+
+  // ---------- Sequencer / scheduling ----------
+  var playing = false;
+  var timerID = null;
+  var nextStepTime = 0;
+  var currentStep = 0;
+  var LOOKAHEAD = 0.11, INTERVAL = 25;
+
+  function schedulerTick(){
+    while (nextStepTime < actx.currentTime + LOOKAHEAD){
+      var t = nextStepTime;
+      var stepDur = 60/state.bpm/4;
+      var scheduleT = t;
+      if (currentStep % 2 === 1) scheduleT += (state.swing/100) * stepDur * 0.5;
+      var stepAtSchedule = currentStep;
+      CH_KEYS.forEach(function(k){
+        if (!channelAudible(k)) return;
+        var val = state.pattern[k][stepAtSchedule];
+        playNote(actx, master, k, val, scheduleT, stepDur, state.vols[k]);
+      });
+      (function(stepForUI, when){
+        setTimeout(function(){ if (playing) highlightStep(stepForUI); }, Math.max(0, (when-actx.currentTime)*1000));
+      })(currentStep, scheduleT);
+      nextStepTime += stepDur;
+      currentStep = (currentStep+1) % state.steps;
+    }
+  }
+
+  function highlightStep(idx){
+    document.querySelectorAll('.step').forEach(function(el){
+      el.classList.toggle('playing', +el.dataset.step === idx);
+    });
+  }
+
+  function startPlay(){
+    ensureAudio();
+    if (actx.state === 'suspended') actx.resume();
+    playing = true;
+    currentStep = 0;
+    nextStepTime = actx.currentTime + 0.05;
+    timerID = setInterval(schedulerTick, INTERVAL);
+    document.getElementById('playBtn').textContent = '■';
+  }
+  function stopPlay(){
+    playing = false;
+    clearInterval(timerID); timerID = null;
+    document.getElementById('playBtn').textContent = '▶';
+    highlightStep(-1);
+  }
+
+  // ---------- UI ----------
+  var channelsEl = document.getElementById('channels');
+
+  function buildChannelsUI(){
+    channelsEl.innerHTML = '';
+    CH_KEYS.forEach(function(k){
+      var meta = CH_META[k];
+      var row = document.createElement('div');
+      row.className = 'channel ' + meta.cls;
+
+      var head = document.createElement('div');
+      head.className = 'ch-head';
+      var name = document.createElement('div'); name.className='ch-name'; name.textContent = meta.label;
+      head.appendChild(name);
+
+      var ms = document.createElement('div'); ms.className='mutesolo';
+      var mBtn = document.createElement('button'); mBtn.className='ms-btn'; mBtn.textContent='M';
+      mBtn.setAttribute('aria-label', meta.label+' mute');
+      mBtn.onclick = function(){ state.mute[k] = !state.mute[k]; render(); autosave(); };
+      var sBtn = document.createElement('button'); sBtn.className='ms-btn'; sBtn.textContent='S';
+      sBtn.setAttribute('aria-label', meta.label+' solo');
+      sBtn.onclick = function(){ state.solo[k] = !state.solo[k]; render(); autosave(); };
+      ms.appendChild(mBtn); ms.appendChild(sBtn);
+      head.appendChild(ms);
+
+      var volWrap = document.createElement('div'); volWrap.className='mini-slider';
+      var volInput = document.createElement('input');
+      volInput.type='range'; volInput.min=0; volInput.max=100; volInput.value=Math.round(state.vols[k]*100);
+      volInput.oninput = function(){ state.vols[k] = volInput.value/100; autosave(); };
+      volWrap.appendChild(volInput);
+      head.appendChild(volWrap);
+
+      if (meta.type === 'pulse'){
+        var dutyWrap = document.createElement('div'); dutyWrap.className='duty-wrap';
+        var dLabel = document.createElement('span'); dLabel.textContent='duty';
+        var dInput = document.createElement('input');
+        dInput.type='range'; dInput.min=5; dInput.max=95; dInput.value = Math.round(state.duty[k]*100);
+        dInput.oninput = function(){ state.duty[k] = dInput.value/100; autosave(); };
+        dutyWrap.appendChild(dLabel); dutyWrap.appendChild(dInput);
+        head.appendChild(dutyWrap);
+      }
+
+      row.appendChild(head);
+
+      var scroll = document.createElement('div'); scroll.className='step-scroll';
+      var steps = document.createElement('div'); steps.className='steps';
+      steps.style.gridTemplateColumns = 'repeat(' + state.steps + ', 34px)';
+      for (var i=0;i<state.steps;i++){
+        (function(i){
+          var cell = document.createElement('div');
+          cell.className = 'step' + (i%4===0?' beat':'');
+          cell.dataset.step = i;
+          cell.dataset.ch = k;
+          updateCellLabel(cell, k, state.pattern[k][i]);
+          cell.onclick = function(){
+            var max = meta.type==='noise' ? NOISE_LABELS.length-1 : SCALE.length;
+            state.pattern[k][i] = (state.pattern[k][i] + 1) % (max+1);
+            updateCellLabel(cell, k, state.pattern[k][i]);
+            autosave();
+            previewCell(k, state.pattern[k][i]);
+          };
+          steps.appendChild(cell);
+        })(i);
+      }
+      scroll.appendChild(steps);
+      row.appendChild(scroll);
+      channelsEl.appendChild(row);
+
+      updateMS(mBtn, sBtn, k);
+    });
+  }
+
+  function updateCellLabel(cell, k, val){
+    var meta = CH_META[k];
+    cell.className = cell.className.replace(/\son-\w+/g,'');
+    cell.textContent = '';
+    if (!val){ return; }
+    if (meta.type === 'noise'){
+      cell.textContent = NOISE_LABELS[val];
+    } else {
+      cell.textContent = SCALE[val-1].n;
+    }
+    cell.classList.add('on-' + (k==='P1'?'p1':k==='P2'?'p2':k==='TRI'?'tri':'noise'));
+  }
+
+  function updateMS(mBtn, sBtn, k){
+    mBtn.classList.toggle('active-m', state.mute[k]);
+    sBtn.classList.toggle('active-s', state.solo[k]);
+  }
+
+  function previewCell(k, val){
+    if (!val) return;
+    ensureAudio();
+    if (actx.state === 'suspended') actx.resume();
+    var stepDur = 60/state.bpm/4;
+    playNote(actx, master, k, val, actx.currentTime+0.01, Math.max(stepDur,0.2), state.vols[k]);
+  }
+
+  function render(){
+    buildChannelsUI();
+    document.getElementById('bpmSlider').value = state.bpm;
+    document.getElementById('bpmVal').textContent = state.bpm + ' BPM';
+    document.getElementById('swingSlider').value = state.swing;
+    document.getElementById('swingVal').textContent = state.swing + '%';
+    document.getElementById('volSlider').value = Math.round(state.vol*100);
+    document.getElementById('volVal').textContent = Math.round(state.vol*100) + '%';
+    document.getElementById('len16').classList.toggle('on', state.steps===16);
+    document.getElementById('len32').classList.toggle('on', state.steps===32);
+    renderSavedList();
+  }
+
+  // ---------- Persistence ----------
+  function autosave(){
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch(e){}
+  }
+  function loadAutosave(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || !parsed.pattern) return null;
+      return parsed;
+    } catch(e){ return null; }
+  }
+
+  function getSavedList(){
+    try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch(e){ return []; }
+  }
+  function setSavedList(list){
+    try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); } catch(e){}
+  }
+  function renderSavedList(){
+    var list = getSavedList();
+    var el = document.getElementById('savedList');
+    el.innerHTML = '';
+    list.forEach(function(item, idx){
+      var chip = document.createElement('div'); chip.className='saved-chip';
+      var span = document.createElement('span'); span.textContent = item.name;
+      span.style.cursor='pointer';
+      span.onclick = function(){ state = JSON.parse(JSON.stringify(item.state)); render(); autosave(); showToast('Loaded "' + item.name + '"'); };
+      var del = document.createElement('button'); del.textContent='×';
+      del.onclick = function(e){ e.stopPropagation(); list.splice(idx,1); setSavedList(list); renderSavedList(); };
+      chip.appendChild(span); chip.appendChild(del);
+      el.appendChild(chip);
+    });
+  }
+
+  function showToast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._id);
+    showToast._id = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  }
+
+  // ---------- Wire up controls ----------
+  document.getElementById('playBtn').onclick = function(){
+    ensureAudio();
+    if (actx.state === 'suspended') actx.resume();
+    if (playing) stopPlay(); else startPlay();
+  };
+
+  document.getElementById('bpmSlider').oninput = function(e){
+    state.bpm = +e.target.value;
+    document.getElementById('bpmVal').textContent = state.bpm + ' BPM';
+    autosave();
+  };
+  document.getElementById('swingSlider').oninput = function(e){
+    state.swing = +e.target.value;
+    document.getElementById('swingVal').textContent = state.swing + '%';
+    autosave();
+  };
+  document.getElementById('volSlider').oninput = function(e){
+    state.vol = e.target.value/100;
+    document.getElementById('volVal').textContent = e.target.value + '%';
+    if (master) master.gain.value = state.vol;
+    autosave();
+  };
+
+  function setLength(len){
+    if (state.steps === len) return;
+    CH_KEYS.forEach(function(k){
+      var p = state.pattern[k];
+      if (len > p.length){
+        while (p.length < len) p.push(0);
+      } else {
+        p.length = len;
+      }
+    });
+    state.steps = len;
+    render(); autosave();
+  }
+  document.getElementById('len16').onclick = function(){ setLength(16); };
+  document.getElementById('len32').onclick = function(){ setLength(32); };
+
+  document.getElementById('randomBtn').onclick = function(){
+    var scaleN = SCALE.length;
+    CH_KEYS.forEach(function(k){
+      var meta = CH_META[k];
+      for (var i=0;i<state.steps;i++){
+        var density = k==='NOISE' ? 0.35 : (k==='TRI' ? 0.45 : 0.5);
+        if (Math.random() < density){
+          state.pattern[k][i] = meta.type==='noise'
+            ? (1 + Math.floor(Math.random()*3))
+            : (1 + Math.floor(Math.random()*scaleN));
+        } else {
+          state.pattern[k][i] = 0;
+        }
+      }
+    });
+    render(); autosave();
+    showToast('Random riff generated');
+  };
+
+  document.getElementById('clearBtn').onclick = function(){
+    CH_KEYS.forEach(function(k){ state.pattern[k] = emptyPattern(state.steps); });
+    render(); autosave();
+    showToast('Cleared');
+  };
+
+  document.getElementById('presetSelect').onchange = function(e){
+    var p = PRESETS[e.target.value];
+    if (!p) return;
+    state.bpm = p.bpm; state.swing = p.swing; state.steps = p.steps;
+    state.duty.P1 = p.duty.P1; state.duty.P2 = p.duty.P2;
+    state.pattern.P1 = p.P1.slice();
+    state.pattern.P2 = p.P2.slice();
+    state.pattern.TRI = p.TRI.slice();
+    state.pattern.NOISE = p.NOISE.slice();
+    render(); autosave();
+    showToast('Preset loaded');
+    e.target.value = '';
+  };
+
+  document.getElementById('saveBtn').onclick = function(){
+    var input = document.getElementById('saveName');
+    var name = (input.value || '').trim();
+    if (!name) { showToast('Type a name first'); return; }
+    var list = getSavedList();
+    list.push({ name: name, state: JSON.parse(JSON.stringify(state)) });
+    if (list.length > 12) list.shift();
+    setSavedList(list);
+    input.value = '';
+    renderSavedList();
+    showToast('Saved "' + name + '"');
+  };
+
+  document.getElementById('exportBtn').onclick = function(){
+    ensureAudio();
+    var loops = +document.getElementById('loopSelect').value;
+    showToast('Rendering WAV…');
+    renderOffline(loops).then(function(buffer){
+      var blob = audioBufferToWav(buffer);
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'chip-tracker-' + Date.now() + '.wav';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      showToast('WAV exported (' + (blob.size/1024).toFixed(0) + ' KB)');
+    }).catch(function(err){
+      showToast('Export failed');
+    });
+  };
+
+  document.getElementById('shareBtn').onclick = function(){
+    try {
+      var json = JSON.stringify(state);
+      var hash = btoa(encodeURIComponent(json));
+      var url = location.origin + location.pathname + '#p=' + hash;
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(function(){
+          showToast('Share link copied!');
+        }).catch(function(){
+          history.replaceState(null,'',url);
+          showToast('Link ready in address bar');
+        });
+      } else {
+        history.replaceState(null,'',url);
+        showToast('Link ready in address bar');
+      }
+    } catch(e){ showToast('Could not build link'); }
+  };
+
+  function loadFromHash(){
+    if (location.hash && location.hash.indexOf('#p=') === 0){
+      try {
+        var json = decodeURIComponent(atob(location.hash.slice(3)));
+        var parsed = JSON.parse(json);
+        if (parsed && parsed.pattern) {
+          state = parsed;
+          showToast('Loaded pattern from link');
+          return true;
+        }
+      } catch(e){}
+    }
+    return false;
+  }
+
+  // ---------- Init ----------
+  loadFromHash();
+  render();
+})();
+</script>
+</body>
+</html>
