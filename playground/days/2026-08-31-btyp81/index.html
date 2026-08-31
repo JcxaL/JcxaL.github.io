@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Mycelia — Slime Mold Growth Studio</title>
+<style>
+  :root{
+    --bg:#050807;
+    --panel:rgba(14,20,17,0.86);
+    --panel-border:rgba(120,255,180,0.16);
+    --ink:#e9fbf1;
+    --dim:#8fb6a2;
+    --accent:#5cf2a0;
+    --accent2:#38bdf8;
+    --warn:#ffcf6b;
+    --danger:#ff6b6b;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:var(--ink);}
+  #stage{position:fixed;inset:0;width:100%;height:100%;touch-action:none;}
+  canvas{display:block;width:100%;height:100%;}
+
+  #topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;
+    gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));
+    background:linear-gradient(to bottom, rgba(4,8,6,0.85), rgba(4,8,6,0));pointer-events:none;}
+  #topbar > *{pointer-events:auto;}
+  .brand{display:flex;flex-direction:column;line-height:1.05;margin-right:auto;}
+  .brand b{font-size:15px;letter-spacing:0.02em;}
+  .brand span{font-size:10px;color:var(--dim);}
+  .iconbtn{width:38px;height:38px;border-radius:12px;border:1px solid var(--panel-border);
+    background:var(--panel);color:var(--ink);display:flex;align-items:center;justify-content:center;
+    font-size:16px;cursor:pointer;backdrop-filter:blur(10px);flex-shrink:0;}
+  .iconbtn:active{transform:scale(0.92);}
+  .iconbtn.on{background:rgba(92,242,160,0.22);border-color:var(--accent);}
+
+  #hint{position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:15;
+    background:var(--panel);border:1px solid var(--panel-border);padding:7px 14px;border-radius:999px;
+    font-size:12px;color:var(--dim);backdrop-filter:blur(10px);pointer-events:none;transition:opacity 0.6s;
+    white-space:nowrap;}
+
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:25;background:var(--panel);
+    border-top:1px solid var(--panel-border);border-radius:18px 18px 0 0;backdrop-filter:blur(16px);
+    transform:translateY(100%);transition:transform 0.32s cubic-bezier(.2,.9,.25,1);
+    max-height:78vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);}
+  #sheet.open{transform:translateY(0);}
+  #sheetHandle{width:36px;height:4px;border-radius:3px;background:rgba(255,255,255,0.2);margin:9px auto 4px;flex-shrink:0;}
+  #tabs{display:flex;gap:4px;padding:6px 12px;flex-shrink:0;overflow-x:auto;}
+  .tabbtn{flex:1;padding:8px 6px;border-radius:10px;border:none;background:transparent;color:var(--dim);
+    font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .tabbtn.active{background:rgba(92,242,160,0.16);color:var(--accent);}
+  #sheetBody{overflow-y:auto;padding:6px 16px 18px;}
+  .pane{display:none;flex-direction:column;gap:14px;}
+  .pane.active{display:flex;}
+  .row{display:flex;flex-direction:column;gap:6px;}
+  .row label{font-size:11.5px;color:var(--dim);display:flex;justify-content:space-between;}
+  .row label b{color:var(--ink);font-weight:600;}
+  input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:4px;
+    background:rgba(255,255,255,0.12);outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:2px solid #06120a;box-shadow:0 0 8px rgba(92,242,160,0.6);}
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--accent);
+    cursor:pointer;border:2px solid #06120a;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .chip{padding:9px 6px;border-radius:10px;border:1px solid var(--panel-border);background:rgba(255,255,255,0.03);
+    color:var(--ink);font-size:12px;text-align:center;cursor:pointer;}
+  .chip.active{background:rgba(92,242,160,0.18);border-color:var(--accent);color:var(--accent);}
+  .swatch{width:100%;aspect-ratio:2.2;border-radius:10px;border:2px solid transparent;cursor:pointer;}
+  .swatch.active{border-color:var(--ink);}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;
+    padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.03);}
+  .switch{position:relative;width:42px;height:24px;border-radius:14px;background:rgba(255,255,255,0.15);cursor:pointer;flex-shrink:0;}
+  .switch::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+    background:#fff;transition:transform 0.2s;}
+  .switch.on{background:var(--accent);}
+  .switch.on::after{transform:translateX(18px);}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;}
+  .btn{flex:1;min-width:100px;padding:11px 10px;border-radius:12px;border:1px solid var(--panel-border);
+    background:rgba(255,255,255,0.04);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:6px;}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#04140b;border:none;}
+  .btn.danger{color:var(--danger);}
+  .btn:active{transform:scale(0.97);}
+  #galleryGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .gcell{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--panel-border);
+    cursor:pointer;background:#0a0f0c;}
+  .gcell img{width:100%;height:100%;object-fit:cover;display:block;}
+  .gcell .del{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.6);
+    color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;}
+  .empty-note{font-size:12px;color:var(--dim);text-align:center;padding:20px 0;}
+  small.tag{font-size:10.5px;color:var(--dim);}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);z-index:60;
+    background:rgba(20,26,22,0.95);border:1px solid var(--panel-border);padding:10px 18px;border-radius:999px;
+    font-size:13px;opacity:0;transition:all 0.25s;pointer-events:none;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  @media (min-width:720px){
+    #sheet{left:auto;right:16px;bottom:16px;width:360px;border-radius:18px;max-height:76vh;
+      transform:translateY(120%);}
+    #sheet.open{transform:translateY(0);}
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="c"></canvas>
+</div>
+
+<div id="hint">tap anywhere to drop food · watch the veins grow</div>
+
+<div id="topbar">
+  <div class="brand"><b>🍄 Mycelia</b><span>slime mold growth studio</span></div>
+  <button class="iconbtn" id="btnPlay" title="Play/Pause">⏸</button>
+  <button class="iconbtn" id="btnReset" title="Reseed">↻</button>
+  <button class="iconbtn" id="btnSheet" title="Controls">⚙</button>
+</div>
+
+<div id="sheet">
+  <div id="sheetHandle"></div>
+  <div id="tabs">
+    <button class="tabbtn active" data-pane="species">Species</button>
+    <button class="tabbtn" data-pane="physics">Physics</button>
+    <button class="tabbtn" data-pane="look">Look</button>
+    <button class="tabbtn" data-pane="data">Save</button>
+  </div>
+  <div id="sheetBody">
+
+    <div class="pane active" id="pane-species">
+      <div class="row">
+        <label>Colony preset</label>
+        <div class="grid3" id="presetGrid"></div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div style="font-size:13px;font-weight:600;">Multi-species colonies</div>
+          <small class="tag">3 rival colonies compete for territory</small>
+        </div>
+        <div class="switch" id="toggleMulti"></div>
+      </div>
+      <div class="row" id="rivalryRow" style="display:none;">
+        <label>Rivalry strength <b id="valRivalry">0.50</b></label>
+        <input type="range" id="rivalry" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="row">
+        <label>Agent population <b id="valAgents">2400</b></label>
+        <input type="range" id="agentCount" min="400" max="6000" step="100" value="2400">
+      </div>
+      <div class="btnrow">
+        <button class="btn danger" id="btnClearFood">✕ Clear food</button>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-physics">
+      <div class="row">
+        <label>Sensor angle <b id="valSA">32°</b></label>
+        <input type="range" id="sensorAngle" min="8" max="90" step="1" value="32">
+      </div>
+      <div class="row">
+        <label>Sensor distance <b id="valSD">9</b></label>
+        <input type="range" id="sensorDist" min="3" max="24" step="1" value="9">
+      </div>
+      <div class="row">
+        <label>Turn speed <b id="valTS">0.30</b></label>
+        <input type="range" id="turnSpeed" min="0.05" max="1" step="0.01" value="0.3">
+      </div>
+      <div class="row">
+        <label>Step size <b id="valSS">1.0</b></label>
+        <input type="range" id="stepSize" min="0.3" max="3" step="0.1" value="1.0">
+      </div>
+      <div class="row">
+        <label>Deposit amount <b id="valDep">1.0</b></label>
+        <input type="range" id="deposit" min="0.2" max="3" step="0.1" value="1.0">
+      </div>
+      <div class="row">
+        <label>Trail decay <b id="valDecay">0.970</b></label>
+        <input type="range" id="decay" min="0.900" max="0.995" step="0.001" value="0.970">
+      </div>
+      <div class="row">
+        <label>Diffusion <b id="valDiff">0.55</b></label>
+        <input type="range" id="diffuse" min="0" max="1" step="0.01" value="0.55">
+      </div>
+      <div class="row">
+        <label>Simulation speed <b id="valSpeed">1×</b></label>
+        <input type="range" id="speed" min="1" max="4" step="1" value="1">
+      </div>
+    </div>
+
+    <div class="pane" id="pane-look">
+      <div class="row">
+        <label>Color palette</label>
+        <div class="grid3" id="paletteGrid"></div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div style="font-size:13px;font-weight:600;">Food glow</div>
+          <small class="tag">Highlight food sources in gold</small>
+        </div>
+        <div class="switch on" id="toggleFoodGlow"></div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div style="font-size:13px;font-weight:600;">Trail glow bloom</div>
+          <small class="tag">Soft additive glow pass</small>
+        </div>
+        <div class="switch on" id="toggleBloom"></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-data">
+      <div class="btnrow">
+        <button class="btn primary" id="btnSave">💾 Save recipe</button>
+        <button class="btn" id="btnPNG">🖼 Export PNG</button>
+      </div>
+      <div class="btnrow">
+        <button class="btn" id="btnShare">🔗 Copy share link</button>
+        <button class="btn" id="btnJSON">⬇ Export JSON</button>
+      </div>
+      <div class="row">
+        <label style="margin-top:4px;">Saved colonies</label>
+        <div id="galleryGrid"></div>
+        <div class="empty-note" id="galleryEmpty">No saved colonies yet — tune a growth, tap 💾 Save recipe.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+// ---------- canvas setup ----------
+var canvas = document.getElementById('c');
+var ctx = canvas.getContext('2d', {alpha:false});
+var DPR = Math.min(window.devicePixelRatio || 1, 2);
+var W=0, H=0;
+
+var simCanvas = document.createElement('canvas');
+var simCtx = simCanvas.getContext('2d');
+
+function resizeDisplay(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W*DPR);
+  canvas.height = Math.round(H*DPR);
+  canvas.style.width = W+'px';
+  canvas.style.height = H+'px';
+}
+
+// ---------- palettes ----------
+var PALETTES = [
+  {name:'Aurora Fungus', bg:[4,9,7], colors:[[80,255,170],[60,200,255],[255,220,120]]},
+  {name:'Ember Colony',  bg:[8,4,3], colors:[[255,140,60],[255,70,70],[255,220,90]]},
+  {name:'Bioluminescent',bg:[3,4,10], colors:[[130,110,255],[70,220,255],[255,110,220]]},
+  {name:'Neural Ink',    bg:[3,3,4],  colors:[[230,240,255],[120,160,255],[255,255,255]]},
+  {name:'Coral Reef',    bg:[3,7,8],  colors:[[255,120,160],[80,220,200],[255,210,120]]},
+  {name:'Toxic Bloom',   bg:[3,7,3],  colors:[[170,255,60],[60,255,130],[255,255,120]]}
+];
+var paletteIdx = 0;
+
+// ---------- species presets ----------
+var PRESETS = {
+  'Physarum':  {sensorAngle:32, sensorDist:9,  turnSpeed:0.30, stepSize:1.0, deposit:1.0, decay:0.970, diffuse:0.55},
+  'Coral':     {sensorAngle:55, sensorDist:6,  turnSpeed:0.45, stepSize:0.7, deposit:1.4, decay:0.955, diffuse:0.70},
+  'River':     {sensorAngle:18, sensorDist:16, turnSpeed:0.15, stepSize:1.6, deposit:0.7, decay:0.985, diffuse:0.35},
+  'Neural':    {sensorAngle:42, sensorDist:11, turnSpeed:0.55, stepSize:1.1, deposit:0.9, decay:0.965, diffuse:0.45},
+  'Bloom':     {sensorAngle:70, sensorDist:5,  turnSpeed:0.65, stepSize:0.6, deposit:1.8, decay:0.945, diffuse:0.8},
+  'Lattice':   {sensorAngle:25, sensorDist:13, turnSpeed:0.22, stepSize:1.3, deposit:0.8, decay:0.978, diffuse:0.4}
+};
+var presetNames = Object.keys(PRESETS);
+var currentPreset = 'Physarum';
+
+// ---------- state ----------
+var state = {
+  preset: 'Physarum',
+  multi: false,
+  rivalry: 0.5,
+  agentCount: 2400,
+  sensorAngle: 32,
+  sensorDist: 9,
+  turnSpeed: 0.30,
+  stepSize: 1.0,
+  deposit: 1.0,
+  decay: 0.970,
+  diffuse: 0.55,
+  speed: 1,
+  palette: 0,
+  foodGlow: true,
+  bloom: true,
+  seed: (Date.now() % 2147483647)
+};
+
+var running = true;
+var simW=160, simH=100;
+var NSPECIES = 1;
+var trails = [];      // array of Float32Array per species
+var scratch = null;   // scratch buffer for blur
+var foodMap = null;
+var agents = [];       // per species: {x,y,ang} typed arrays
+var rng = mulberry32(state.seed);
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+var CAP = 4.0; // max trail value
+
+function computeSimDims(){
+  var targetCells = 34000;
+  var aspect = W / H || 1.6;
+  var h = Math.sqrt(targetCells / aspect);
+  h = Math.max(90, Math.min(220, Math.round(h)));
+  var w = Math.round(h * aspect);
+  w = Math.max(120, Math.min(320, w));
+  return {w:w, h:h};
+}
+
+function allocSim(){
+  var d = computeSimDims();
+  simW = d.w; simH = d.h;
+  simCanvas.width = simW; simCanvas.height = simH;
+  var n = simW*simH;
+  trails = [];
+  for(var s=0;s<3;s++) trails.push(new Float32Array(n));
+  scratch = new Float32Array(n);
+  foodMap = new Float32Array(n);
+}
+
+function speciesColorSet(){
+  var pal = PALETTES[state.palette];
+  return pal.colors;
+}
+
+function initAgents(){
+  agents = [];
+  var perSpecies = state.multi ? Math.max(1, Math.floor(state.agentCount/3)) : state.agentCount;
+  NSPECIES = state.multi ? 3 : 1;
+  for(var s=0;s<NSPECIES;s++){
+    var n = perSpecies;
+    var xs = new Float32Array(n), ys = new Float32Array(n), an = new Float32Array(n);
+    var cx = simW*(0.3+0.4*rng()) , cy = simH*(0.3+0.4*rng());
+    for(var i=0;i<n;i++){
+      var ang = rng()*Math.PI*2;
+      var r = rng()*Math.min(simW,simH)*0.35;
+      xs[i] = ((cx + Math.cos(ang)*r) % simW + simW) % simW;
+      ys[i] = ((cy + Math.sin(ang)*r) % simH + simH) % simH;
+      an[i] = rng()*Math.PI*2;
+    }
+    agents.push({x:xs, y:ys, a:an, n:n});
+  }
+  for(var s2=0;s2<3;s2++) trails[s2].fill(0);
+}
+
+function paramsForSpecies(sIdx){
+  // jitter params slightly per species in multi mode for visual variety
+  var base = {
+    sensorAngle: state.sensorAngle * Math.PI/180,
+    sensorDist: state.sensorDist,
+    turnSpeed: state.turnSpeed,
+    stepSize: state.stepSize,
+    deposit: state.deposit
+  };
+  if(state.multi){
+    var jitter = [1, 1.28, 0.78][sIdx % 3];
+    var jitterAng = [1, 0.7, 1.4][sIdx % 3];
+    base.sensorDist *= jitter;
+    base.sensorAngle *= jitterAng;
+  }
+  return base;
+}
+
+function idx(x,y){
+  x = ((x|0) % simW + simW) % simW;
+  y = ((y|0) % simH + simH) % simH;
+  return y*simW+x;
+}
+
+function sample(map, x, y){
+  return map[idx(x,y)];
+}
+
+var FOOD_WEIGHT = 6.0;
+
+function stepAgents(){
+  for(var s=0;s<NSPECIES;s++){
+    var sp = agents[s];
+    var pr = paramsForSpecies(s);
+    var own = trails[s];
+    var rival1 = NSPECIES>1 ? trails[(s+1)%3] : null;
+    var rival2 = NSPECIES>2 ? trails[(s+2)%3] : null;
+    var riv = state.rivalry;
+    var n = sp.n, xs = sp.x, ys = sp.y, an = sp.a;
+    for(var i=0;i<n;i++){
+      var x=xs[i], y=ys[i], a=an[i];
+      var fA = a, lA = a - pr.sensorAngle, rA = a + pr.sensorAngle;
+      var fx = x + Math.cos(fA)*pr.sensorDist, fy = y + Math.sin(fA)*pr.sensorDist;
+      var lx = x + Math.cos(lA)*pr.sensorDist, ly = y + Math.sin(lA)*pr.sensorDist;
+      var rx = x + Math.cos(rA)*pr.sensorDist, ry = y + Math.sin(rA)*pr.sensorDist;
+
+      var fV = sample(own,fx,fy) + sample(foodMap,fx,fy)*FOOD_WEIGHT;
+      var lV = sample(own,lx,ly) + sample(foodMap,lx,ly)*FOOD_WEIGHT;
+      var rV = sample(own,rx,ry) + sample(foodMap,rx,ry)*FOOD_WEIGHT;
+
+      if(riv>0 && rival1){
+        fV -= sample(rival1,fx,fy)*riv; lV -= sample(rival1,lx,ly)*riv; rV -= sample(rival1,rx,ry)*riv;
+        fV -= sample(rival2,fx,fy)*riv; lV -= sample(rival2,lx,ly)*riv; rV -= sample(rival2,rx,ry)*riv;
+      }
+
+      if(fV > lV && fV > rV){
+        // straight, tiny jitter
+        a += (rng()-0.5)*0.06;
+      } else if(lV > rV){
+        a -= pr.turnSpeed;
+      } else if(rV > lV){
+        a += pr.turnSpeed;
+      } else {
+        a += (rng()-0.5)*pr.turnSpeed;
+      }
+
+      x += Math.cos(a)*pr.stepSize;
+      y += Math.sin(a)*pr.stepSize;
+      x = (x % simW + simW) % simW;
+      y = (y % simH + simH) % simH;
+
+      xs[i]=x; ys[i]=y; an[i]=a;
+      var id = idx(x,y);
+      var v = own[id] + pr.deposit;
+      own[id] = v > CAP ? CAP : v;
+    }
+  }
+}
+
+function boxBlur(src, dst, w, h){
+  // separable 3-tap blur, horizontal then vertical, wrapped edges
+  for(var y=0;y<h;y++){
+    var row = y*w;
+    for(var x=0;x<w;x++){
+      var xl=(x-1+w)%w, xr=(x+1)%w;
+      dst[row+x] = (src[row+xl]+src[row+x]+src[row+xr])/3;
+    }
+  }
+  for(var x2=0;x2<w;x2++){
+    for(var y2=0;y2<h;y2++){
+      var yu=(y2-1+h)%h, yd=(y2+1)%h;
+      var a = dst[yu*w+x2], b = dst[y2*w+x2], c = dst[yd*w+x2];
+      src[y2*w+x2] = (a+b+c)/3;
+    }
+  }
+}
+
+function diffuseAndDecay(){
+  for(var s=0;s<NSPECIES;s++){
+    var tr = trails[s];
+    if(state.diffuse > 0.001){
+      boxBlur(tr, scratch, simW, simH);
+    }
+    var decay = state.decay;
+    for(var i=0;i<tr.length;i++){
+      tr[i] *= decay;
+    }
+  }
+}
+
+// ---------- rendering ----------
+var imgData = null;
+function ensureImgData(){
+  imgData = simCtx.createImageData(simW, simH);
+}
+
+function render(){
+  var data = imgData.data;
+  var pal = PALETTES[state.palette];
+  var bg = pal.bg;
+  var cols = pal.colors;
+  var n = simW*simH;
+  for(var i=0;i<n;i++){
+    var r=bg[0], g=bg[1], b=bg[2];
+    for(var s=0;s<NSPECIES;s++){
+      var v = trails[s][i]/CAP;
+      if(v<=0) continue;
+      v = Math.min(1, v);
+      var c = cols[s % cols.length];
+      r += c[0]*v; g += c[1]*v; b += c[2]*v;
+    }
+    if(state.foodGlow){
+      var f = foodMap[i];
+      if(f>0.02){
+        var fv = Math.min(1,f*1.4);
+        r += 255*fv*0.5; g += 200*fv*0.4; b += 60*fv*0.15;
+      }
+    }
+    var o = i*4;
+    data[o]   = r>255?255:r;
+    data[o+1] = g>255?255:g;
+    data[o+2] = b>255?255:b;
+    data[o+3] = 255;
+  }
+  simCtx.putImageData(imgData, 0, 0);
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(simCanvas, 0, 0, canvas.width, canvas.height);
+
+  if(state.bloom){
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.35;
+    ctx.drawImage(simCanvas, -2, -2, canvas.width+4, canvas.height+4);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+// ---------- food placement ----------
+function placeFoodAt(clientX, clientY){
+  var rect = canvas.getBoundingClientRect();
+  var nx = (clientX - rect.left) / rect.width;
+  var ny = (clientY - rect.top) / rect.height;
+  var gx = Math.floor(nx * simW), gy = Math.floor(ny * simH);
+  var radius = Math.max(2, Math.round(Math.min(simW,simH)*0.035));
+  for(var dy=-radius; dy<=radius; dy++){
+    for(var dx=-radius; dx<=radius; dx++){
+      var d = Math.sqrt(dx*dx+dy*dy);
+      if(d>radius) continue;
+      var w = 1 - d/radius;
+      var id = idx(gx+dx, gy+dy);
+      foodMap[id] = Math.min(1.5, foodMap[id] + w*0.9);
+    }
+  }
+  hideHint();
+}
+
+function clearFood(){
+  foodMap.fill(0);
+  toast('Food cleared');
+}
+
+// ---------- main loop ----------
+var rafId = null;
+function loop(){
+  if(running){
+    var steps = state.speed;
+    for(var i=0;i<steps;i++){
+      stepAgents();
+      diffuseAndDecay();
+    }
+    render();
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+// ---------- UI wiring ----------
+var $ = function(id){ return document.getElementById(id); };
+
+function hideHint(){
+  var h = $('hint');
+  if(h && h.style.opacity !== '0'){ h.style.opacity='0'; }
+}
+
+var toastTimer=null;
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+}
+
+function buildPresetGrid(){
+  var el = $('presetGrid');
+  el.innerHTML = '';
+  presetNames.forEach(function(name){
+    var b = document.createElement('div');
+    b.className = 'chip' + (name===state.preset ? ' active' : '');
+    b.textContent = name;
+    b.addEventListener('click', function(){
+      state.preset = name;
+      var p = PRESETS[name];
+      state.sensorAngle = p.sensorAngle;
+      state.sensorDist = p.sensorDist;
+      state.turnSpeed = p.turnSpeed;
+      state.stepSize = p.stepSize;
+      state.deposit = p.deposit;
+      state.decay = p.decay;
+      state.diffuse = p.diffuse;
+      syncSlidersFromState();
+      buildPresetGrid();
+      reseed();
+    });
+    el.appendChild(b);
+  });
+}
+
+function buildPaletteGrid(){
+  var el = $('paletteGrid');
+  el.innerHTML = '';
+  PALETTES.forEach(function(pal, i){
+    var b = document.createElement('div');
+    b.className = 'swatch' + (i===state.palette?' active':'');
+    var c = pal.colors;
+    b.style.background = 'linear-gradient(90deg, rgb('+c[0].join(',')+'), rgb('+c[1].join(',')+'), rgb('+c[2].join(',')+'))';
+    b.title = pal.name;
+    b.addEventListener('click', function(){
+      state.palette = i;
+      buildPaletteGrid();
+    });
+    el.appendChild(b);
+  });
+}
+
+function syncSlidersFromState(){
+  $('sensorAngle').value = state.sensorAngle; $('valSA').textContent = Math.round(state.sensorAngle)+'°';
+  $('sensorDist').value = state.sensorDist;   $('valSD').textContent = Math.round(state.sensorDist);
+  $('turnSpeed').value = state.turnSpeed;     $('valTS').textContent = state.turnSpeed.toFixed(2);
+  $('stepSize').value = state.stepSize;       $('valSS').textContent = state.stepSize.toFixed(1);
+  $('deposit').value = state.deposit;         $('valDep').textContent = state.deposit.toFixed(1);
+  $('decay').value = state.decay;             $('valDecay').textContent = state.decay.toFixed(3);
+  $('diffuse').value = state.diffuse;         $('valDiff').textContent = state.diffuse.toFixed(2);
+  $('speed').value = state.speed;             $('valSpeed').textContent = state.speed+'×';
+  $('agentCount').value = state.agentCount;   $('valAgents').textContent = state.agentCount;
+  $('rivalry').value = state.rivalry;         $('valRivalry').textContent = state.rivalry.toFixed(2);
+}
+
+function wireSlider(id, key, fmt, onCommit){
+  var el = $(id);
+  el.addEventListener('input', function(){
+    var v = parseFloat(el.value);
+    state[key] = v;
+    document.getElementById('val'+id.charAt(0).toUpperCase()+id.slice(1)); // no-op guard
+    if(fmt) fmt(v);
+    if(onCommit) onCommit(v);
+  });
+}
+
+function reseed(){
+  state.seed = (Math.random()*2147483647)|0;
+  rng = mulberry32(state.seed);
+  allocSim();
+  ensureImgData();
+  initAgents();
+  foodMap.fill(0);
+  running = true;
+  $('btnPlay').textContent = '⏸';
+  toast('New colony seeded');
+}
+
+function applyAgentCountChange(){
+  initAgents(); // reset positions & clears trails when count/species changes
+}
+
+function init(){
+  resizeDisplay();
+  allocSim();
+  ensureImgData();
+  initAgents();
+  buildPresetGrid();
+  buildPaletteGrid();
+  syncSlidersFromState();
+  bindEvents();
+  loadAutosave();
+  refreshGallery();
+  applyHashIfPresent();
+  loop();
+  setTimeout(hideHint, 6000);
+}
+
+function bindEvents(){
+  // sliders
+  $('sensorAngle').addEventListener('input', function(){ state.sensorAngle=parseFloat(this.value); $('valSA').textContent=Math.round(state.sensorAngle)+'°'; });
+  $('sensorDist').addEventListener('input', function(){ state.sensorDist=parseFloat(this.value); $('valSD').textContent=Math.round(state.sensorDist); });
+  $('turnSpeed').addEventListener('input', function(){ state.turnSpeed=parseFloat(this.value); $('valTS').textContent=state.turnSpeed.toFixed(2); });
+  $('stepSize').addEventListener('input', function(){ state.stepSize=parseFloat(this.value); $('valSS').textContent=state.stepSize.toFixed(1); });
+  $('deposit').addEventListener('input', function(){ state.deposit=parseFloat(this.value); $('valDep').textContent=state.deposit.toFixed(1); });
+  $('decay').addEventListener('input', function(){ state.decay=parseFloat(this.value); $('valDecay').textContent=state.decay.toFixed(3); });
+  $('diffuse').addEventListener('input', function(){ state.diffuse=parseFloat(this.value); $('valDiff').textContent=state.diffuse.toFixed(2); });
+  $('speed').addEventListener('input', function(){ state.speed=parseInt(this.value,10); $('valSpeed').textContent=state.speed+'×'; });
+  $('rivalry').addEventListener('input', function(){ state.rivalry=parseFloat(this.value); $('valRivalry').textContent=state.rivalry.toFixed(2); });
+  $('agentCount').addEventListener('change', function(){
+    state.agentCount = parseInt(this.value,10); $('valAgents').textContent = state.agentCount;
+    applyAgentCountChange();
+  });
+  $('agentCount').addEventListener('input', function(){ $('valAgents').textContent = this.value; });
+
+  // toggles
+  $('toggleMulti').addEventListener('click', function(){
+    state.multi = !state.multi;
+    this.classList.toggle('on', state.multi);
+    $('rivalryRow').style.display = state.multi ? 'flex' : 'none';
+    initAgents();
+  });
+  $('toggleFoodGlow').addEventListener('click', function(){
+    state.foodGlow = !state.foodGlow;
+    this.classList.toggle('on', state.foodGlow);
+  });
+  $('toggleBloom').addEventListener('click', function(){
+    state.bloom = !state.bloom;
+    this.classList.toggle('on', state.bloom);
+  });
+
+  // top buttons
+  $('btnPlay').addEventListener('click', function(){
+    running = !running;
+    this.textContent = running ? '⏸' : '▶';
+  });
+  $('btnReset').addEventListener('click', reseed);
+  $('btnSheet').addEventListener('click', function(){
+    $('sheet').classList.toggle('open');
+    this.classList.toggle('on');
+  });
+  $('btnClearFood').addEventListener('click', clearFood);
+
+  // tabs
+  Array.prototype.forEach.call(document.querySelectorAll('.tabbtn'), function(btn){
+    btn.addEventListener('click', function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.tabbtn'),function(b){b.classList.remove('active');});
+      Array.prototype.forEach.call(document.querySelectorAll('.pane'),function(p){p.classList.remove('active');});
+      btn.classList.add('active');
+      $('pane-'+btn.dataset.pane).classList.add('active');
+    });
+  });
+
+  // canvas interaction: place food
+  canvas.addEventListener('pointerdown', function(e){
+    placeFoodAt(e.clientX, e.clientY);
+    canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', function(e){
+    if(e.pressure > 0 || e.buttons > 0){
+      placeFoodAt(e.clientX, e.clientY);
+    }
+  });
+
+  // keyboard
+  window.addEventListener('keydown', function(e){
+    if(e.code === 'Space'){ e.preventDefault(); $('btnPlay').click(); }
+    else if(e.key === 'r' || e.key === 'R'){ reseed(); }
+    else if(e.key === 's' || e.key === 'S'){ exportPNG(); }
+  });
+
+  // save/export/share
+  $('btnSave').addEventListener('click', saveRecipe);
+  $('btnPNG').addEventListener('click', exportPNG);
+  $('btnShare').addEventListener('click', copyShareLink);
+  $('btnJSON').addEventListener('click', exportJSON);
+
+  // resize
+  var resizeTimer=null;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function(){
+      resizeDisplay();
+      allocSim();
+      ensureImgData();
+      initAgents();
+    }, 250);
+  });
+}
+
+// ---------- persistence ----------
+var LS_STATE_KEY = 'mycelia_state_v1';
+var LS_GALLERY_KEY = 'mycelia_gallery_v1';
+
+function autosave(){
+  try{
+    localStorage.setItem(LS_STATE_KEY, JSON.stringify(state));
+  }catch(e){}
+}
+setInterval(autosave, 4000);
+
+function loadAutosave(){
+  try{
+    var raw = localStorage.getItem(LS_STATE_KEY);
+    if(!raw) return;
+    var saved = JSON.parse(raw);
+    Object.keys(saved).forEach(function(k){
+      if(k in state) state[k] = saved[k];
+    });
+    syncSlidersFromState();
+    $('toggleMulti').classList.toggle('on', state.multi);
+    $('rivalryRow').style.display = state.multi ? 'flex' : 'none';
+    $('toggleFoodGlow').classList.toggle('on', state.foodGlow);
+    $('toggleBloom').classList.toggle('on', state.bloom);
+    buildPresetGrid();
+    buildPaletteGrid();
+    initAgents();
+  }catch(e){}
+}
+
+function readGallery(){
+  try{
+    var raw = localStorage.getItem(LS_GALLERY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+function writeGallery(list){
+  try{ localStorage.setItem(LS_GALLERY_KEY, JSON.stringify(list)); }catch(e){}
+}
+
+function refreshGallery(){
+  var list = readGallery();
+  var grid = $('galleryGrid');
+  var empty = $('galleryEmpty');
+  grid.innerHTML = '';
+  if(list.length === 0){ empty.style.display='block'; return; }
+  empty.style.display = 'none';
+  list.forEach(function(item, i){
+    var cell = document.createElement('div');
+    cell.className = 'gcell';
+    var img = document.createElement('img');
+    img.src = item.thumb;
+    cell.appendChild(img);
+    var del = document.createElement('div');
+    del.className = 'del'; del.textContent = '×';
+    del.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var l = readGallery(); l.splice(i,1); writeGallery(l); refreshGallery();
+    });
+    cell.appendChild(del);
+    cell.addEventListener('click', function(){
+      Object.keys(item.cfg).forEach(function(k){ if(k in state) state[k] = item.cfg[k]; });
+      syncSlidersFromState();
+      $('toggleMulti').classList.toggle('on', state.multi);
+      $('rivalryRow').style.display = state.multi ? 'flex' : 'none';
+      buildPresetGrid(); buildPaletteGrid();
+      rng = mulberry32(state.seed);
+      allocSim(); ensureImgData(); initAgents(); foodMap.fill(0);
+      toast('Colony loaded');
+    });
+    grid.appendChild(cell);
+  });
+}
+
+function saveRecipe(){
+  var thumbCanvas = document.createElement('canvas');
+  thumbCanvas.width = 120; thumbCanvas.height = 80;
+  var tctx = thumbCanvas.getContext('2d');
+  tctx.drawImage(simCanvas, 0, 0, 120, 80);
+  var thumb = thumbCanvas.toDataURL('image/png');
+  var list = readGallery();
+  list.unshift({thumb: thumb, cfg: JSON.parse(JSON.stringify(state)), t: Date.now()});
+  if(list.length > 12) list = list.slice(0,12);
+  writeGallery(list);
+  refreshGallery();
+  toast('Recipe saved');
+}
+
+function exportPNG(){
+  canvas.toBlob(function(blob){
+    if(!blob || blob.size===0){ toast('Export failed'); return; }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'mycelia-'+Date.now()+'.png';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    toast('PNG exported ('+(blob.size/1024).toFixed(0)+' KB)');
+  }, 'image/png');
+}
+
+function exportJSON(){
+  var payload = JSON.stringify(state, null, 2);
+  var blob = new Blob([payload], {type:'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'mycelia-recipe-'+Date.now()+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  toast('Recipe JSON exported');
+}
+
+function copyShareLink(){
+  try{
+    var json = JSON.stringify(state);
+    var encoded = btoa(unescape(encodeURIComponent(json)));
+    var url = location.origin + location.pathname + '#c=' + encoded;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){
+        toast('Share link copied');
+      }).catch(function(){
+        promptFallback(url);
+      });
+    } else {
+      promptFallback(url);
+    }
+    history.replaceState(null, '', '#c='+encoded);
+  }catch(e){
+    toast('Could not build share link');
+  }
+}
+function promptFallback(url){
+  window.prompt('Copy this share link:', url);
+}
+
+function applyHashIfPresent(){
+  try{
+    var hash = location.hash;
+    if(hash && hash.indexOf('#c=') === 0){
+      var encoded = hash.slice(3);
+      var json = decodeURIComponent(escape(atob(encoded)));
+      var cfg = JSON.parse(json);
+      Object.keys(cfg).forEach(function(k){ if(k in state) state[k] = cfg[k]; });
+      syncSlidersFromState();
+      $('toggleMulti').classList.toggle('on', state.multi);
+      $('rivalryRow').style.display = state.multi ? 'flex' : 'none';
+      $('toggleFoodGlow').classList.toggle('on', state.foodGlow);
+      $('toggleBloom').classList.toggle('on', state.bloom);
+      buildPresetGrid(); buildPaletteGrid();
+      rng = mulberry32(state.seed);
+      allocSim(); ensureImgData(); initAgents(); foodMap.fill(0);
+      toast('Shared colony loaded');
+    }
+  }catch(e){ /* ignore malformed hash */ }
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>

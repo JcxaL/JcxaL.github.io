@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticky Grid Scroll</title>
+<style>
+  :root{ --bg:#08090c; --panel:rgba(16,20,17,0.9); --border:rgba(255,255,255,0.1); --ink:#f0f4f1; --dim:#8fa39a; --accent:#34d399; }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:60;padding:9px 16px;border-radius:999px;
+    background:rgba(255,255,255,0.06);border:1px solid var(--border);backdrop-filter:blur(10px);
+    color:var(--ink);font-size:13px;font-weight:600;}
+
+  .intro, .outro{height:70vh;display:flex;align-items:center;justify-content:center;flex-direction:column;
+    text-align:center;padding:0 24px;gap:10px;}
+  .intro h1, .outro h1{font-size:clamp(24px,4vw,38px);margin:0;}
+  .intro p, .outro p{color:var(--dim);max-width:480px;margin:0;}
+  .scrolldown{margin-top:18px;font-size:13px;color:var(--accent);animation:bob 1.6s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(8px);}}
+
+  .pin-wrapper{position:relative;height:420vh;}
+  .pin-inner{position:sticky;top:0;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+  .grid3{position:relative;width:min(90vw,900px);height:min(70vh,620px);display:grid;
+    grid-template-columns:repeat(3,1fr);gap:14px;will-change:transform;}
+  .col{display:flex;flex-direction:column;gap:14px;}
+  .tile{border-radius:16px;flex:1;position:relative;overflow:hidden;
+    display:flex;align-items:flex-end;padding:10px;font-size:12px;font-weight:700;color:rgba(255,255,255,0.85);
+    will-change:transform,opacity;box-shadow:0 12px 30px rgba(0,0,0,0.35);}
+  .tile span{position:relative;z-index:2;}
+  .tile::after{content:'';position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,0.45), transparent 60%);}
+
+  .overlay-content{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;pointer-events:none;opacity:0;gap:10px;padding:0 20px;}
+  .overlay-content h2{font-size:clamp(26px,4.5vw,48px);margin:0;
+    background:linear-gradient(120deg,#fff,#bdf5dd);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .overlay-content p{color:var(--dim);max-width:420px;margin:0;font-size:14px;}
+
+  #panel{position:fixed;top:16px;right:16px;z-index:60;width:210px;background:var(--panel);
+    border:1px solid var(--border);border-radius:16px;padding:14px 16px;backdrop-filter:blur(14px);font-size:12.5px;}
+  #panel h3{margin:0 0 10px;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:var(--dim);}
+  #panel label{display:flex;justify-content:space-between;margin:10px 0 4px;color:var(--dim);}
+  #panel label b{color:var(--ink);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  #panel button{width:100%;margin-top:10px;padding:9px;border-radius:9px;border:1px solid var(--border);
+    background:rgba(255,255,255,0.05);color:var(--ink);font-size:12px;cursor:pointer;}
+  @media (max-width:640px){ #panel{display:none;} }
+
+  .progress-track{position:fixed;left:16px;bottom:16px;z-index:60;width:120px;height:4px;
+    background:rgba(255,255,255,0.12);border-radius:3px;overflow:hidden;}
+  .progress-fill{height:100%;width:0%;background:var(--accent);}
+
+  footer.credit{padding:40px 0 60px;text-align:center;color:var(--dim);font-size:11.5px;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="intro">
+  <h1>Scroll to enter the grid</h1>
+  <p>This section pins itself in place and advances an internal animation timeline as you scroll through it —
+    the grid reveals, expands, then reveals a headline before releasing you.</p>
+  <div class="scrolldown">↓ scroll ↓</div>
+</div>
+
+<div class="pin-wrapper" id="pinWrapper">
+  <div class="pin-inner">
+    <div class="grid3" id="grid3">
+      <!-- columns injected -->
+      <div class="overlay-content" id="overlay">
+        <h2>Sticky Grid Scroll</h2>
+        <p>One pinned viewport, three animation phases, zero extra scroll distance wasted.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="outro">
+  <h1>Released.</h1>
+  <p>The pin only lasts as long as its wrapper is tall — everything above was driven by a single 0→1 scroll
+    progress value.</p>
+</div>
+
+<div id="panel">
+  <h3>Grid controls</h3>
+  <label>Stagger <b id="vStagger">70ms</b></label>
+  <input type="range" id="stagger" min="0" max="180" step="10" value="70">
+  <label>Zoom intensity <b id="vZoom">2.0×</b></label>
+  <input type="range" id="zoom" min="1.2" max="3" step="0.1" value="2.0">
+  <button id="btnAuto">▶ Auto-scroll demo</button>
+</div>
+
+<div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+<footer class="credit">Inspired by a Codrops scroll-driven grid tutorial · UI Spotlight Day 106 · Drop #2</footer>
+
+<script>
+(function(){
+"use strict";
+var GRADIENTS = [
+  'linear-gradient(135deg,#34d399,#0f766e)','linear-gradient(135deg,#38bdf8,#1d4ed8)',
+  'linear-gradient(135deg,#f472b6,#7c3aed)','linear-gradient(135deg,#fbbf24,#b45309)',
+  'linear-gradient(135deg,#a78bfa,#4c1d95)','linear-gradient(135deg,#f87171,#7f1d1d)',
+  'linear-gradient(135deg,#4ade80,#166534)','linear-gradient(135deg,#60a5fa,#1e3a8a)',
+  'linear-gradient(135deg,#fb923c,#7c2d12)'
+];
+var LABELS = ['01 · Field','02 · Motion','03 · Depth','04 · Grain','05 · Signal','06 · Tone','07 · Drift','08 · Pulse','09 · Frame'];
+
+var grid = document.getElementById('grid3');
+var overlay = document.getElementById('overlay');
+var wrapper = document.getElementById('pinWrapper');
+var progressFill = document.getElementById('progressFill');
+
+var stagger = 70; // ms equivalent, used as fraction of phase1
+var zoomIntensity = 2.0;
+
+var cols = [[],[],[]];
+function buildGrid(){
+  grid.querySelectorAll('.col').forEach(function(c){ c.remove(); });
+  cols = [[],[],[]];
+  for(var c=0;c<3;c++){
+    var colEl = document.createElement('div');
+    colEl.className = 'col';
+    for(var r=0;r<3;r++){
+      var idx = c*3+r;
+      var tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.style.background = GRADIENTS[idx % GRADIENTS.length];
+      var sp = document.createElement('span');
+      sp.textContent = LABELS[idx % LABELS.length];
+      tile.appendChild(sp);
+      colEl.appendChild(tile);
+      cols[c].push(tile);
+    }
+    grid.insertBefore(colEl, overlay);
+  }
+}
+buildGrid();
+
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
+function easeInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+function render(){
+  var rect = wrapper.getBoundingClientRect();
+  var total = rect.height - window.innerHeight;
+  var scrolled = -rect.top;
+  var progress = clamp01(total > 0 ? scrolled/total : 0);
+  progressFill.style.width = (progress*100).toFixed(1)+'%';
+
+  // Phase 1: 0 - 0.42 grid reveal (columns slide in staggered, from top/bottom alternating)
+  // Phase 2: 0.42 - 0.82 grid zoom + side columns shift horizontally, center shifts vertically
+  // Phase 3: 0.82 - 1.0 overlay content fades in, grid dims
+
+  var p1 = clamp01(progress/0.42);
+  var p2 = clamp01((progress-0.42)/0.40);
+  var p3 = clamp01((progress-0.82)/0.18);
+
+  var staggerFrac = stagger/500; // convert ms-ish value to a 0-0.36 fraction of phase1 budget
+
+  cols.forEach(function(colTiles, ci){
+    colTiles.forEach(function(tile, ri){
+      var order = ci + ri*3;
+      var localStart = Math.min(0.6, order * staggerFrac);
+      var localP = clamp01((p1 - localStart) / Math.max(0.15, 1-localStart));
+      var eased = easeOutCubic(localP);
+      var fromDir = (ci % 2 === 0) ? 1 : -1; // alternate direction per column
+      var revealY = (1-eased) * 60 * fromDir;
+      var revealOpacity = eased;
+
+      // phase 2 transforms
+      var zoomEase = easeInOutCubic(p2);
+      var scale = 1 + (zoomIntensity-1) * zoomEase;
+      var sideShift = ci === 1 ? 0 : (ci === 0 ? -1 : 1) * zoomEase * 60;
+      var centerShift = ci === 1 ? (ri === 1 ? 0 : (ri===0?-1:1)) * zoomEase * 50 : 0;
+
+      var dim = 1 - p3*0.75;
+
+      tile.style.transform = 'translateY('+revealY+'px) translateX('+sideShift+'px) translateY('+centerShift+'px) scale('+scale.toFixed(3)+')';
+      tile.style.opacity = (revealOpacity * dim).toFixed(3);
+    });
+  });
+
+  overlay.style.opacity = p3.toFixed(3);
+  overlay.style.transform = 'translateY(' + ((1-p3)*20) + 'px)';
+}
+
+var ticking = false;
+function onScroll(){
+  if(!ticking){
+    ticking = true;
+    requestAnimationFrame(function(){ render(); ticking = false; });
+  }
+}
+window.addEventListener('scroll', onScroll, {passive:true});
+window.addEventListener('resize', onScroll);
+render();
+
+document.getElementById('stagger').addEventListener('input', function(){
+  stagger = parseFloat(this.value);
+  document.getElementById('vStagger').textContent = stagger+'ms';
+  render();
+});
+document.getElementById('zoom').addEventListener('input', function(){
+  zoomIntensity = parseFloat(this.value);
+  document.getElementById('vZoom').textContent = zoomIntensity.toFixed(1)+'×';
+  render();
+});
+document.getElementById('btnAuto').addEventListener('click', function(){
+  var wrapRect = wrapper.getBoundingClientRect();
+  var targetY = window.scrollY + wrapRect.top;
+  var endY = targetY + wrapper.offsetHeight - window.innerHeight;
+  var duration = 4200;
+  var startY = window.scrollY;
+  var t0 = performance.now();
+  function step(now){
+    var t = clamp01((now-t0)/duration);
+    var eased = easeInOutCubic(t);
+    window.scrollTo(0, startY + (endY-startY)*eased);
+    if(t<1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beam Hub</title>
+<style>
+  :root{ --bg:#070a10; --panel:rgba(18,22,32,0.88); --border:rgba(255,255,255,0.1); --ink:#eef2fb; --dim:#8b93a7; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:
+    radial-gradient(circle at 50% 30%, #101a2a 0%, #070a10 65%);
+    color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;overflow:hidden;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:50;padding:9px 16px;border-radius:999px;
+    background:rgba(255,255,255,0.06);border:1px solid var(--border);backdrop-filter:blur(10px);
+    color:var(--ink);font-size:13px;font-weight:600;}
+  .stage{position:relative;width:100%;height:100vh;display:flex;align-items:center;justify-content:center;}
+  #svgLayer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+  .node{position:absolute;width:74px;height:74px;border-radius:20px;background:rgba(20,26,38,0.9);
+    border:1px solid rgba(255,255,255,0.14);display:flex;align-items:center;justify-content:center;
+    font-size:26px;box-shadow:0 10px 30px rgba(0,0,0,0.4);transition:box-shadow 0.3s, border-color 0.3s;}
+  .node.hub{width:96px;height:96px;font-size:34px;background:rgba(56,189,248,0.12);border-color:rgba(56,189,248,0.5);
+    box-shadow:0 0 40px rgba(56,189,248,0.25);}
+  .node.pulse{border-color:var(--accent);box-shadow:0 0 22px rgba(56,189,248,0.4);}
+  .caption{position:absolute;bottom:34px;left:0;right:0;text-align:center;color:var(--dim);font-size:13px;pointer-events:none;}
+  .caption b{color:var(--ink);}
+
+  #panel{position:fixed;top:16px;right:16px;z-index:50;width:216px;background:var(--panel);
+    border:1px solid var(--border);border-radius:16px;padding:14px 16px;backdrop-filter:blur(14px);font-size:12.5px;}
+  #panel h3{margin:0 0 10px;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:var(--dim);}
+  #panel label{display:flex;justify-content:space-between;margin:10px 0 4px;color:var(--dim);}
+  #panel label b{color:var(--ink);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .row2{display:flex;gap:8px;margin-top:10px;}
+  .row2 button{flex:1;padding:8px 6px;border-radius:8px;border:1px solid var(--border);
+    background:rgba(255,255,255,0.05);color:var(--ink);font-size:11.5px;cursor:pointer;}
+  .row2 button.active{background:rgba(56,189,248,0.22);border-color:var(--accent);color:var(--accent);}
+  @media (max-width:640px){ #panel{display:none;} }
+
+  footer.credit{position:fixed;bottom:8px;left:0;right:0;text-align:center;color:var(--dim);font-size:11px;
+    pointer-events:none;z-index:5;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="stage" id="stage">
+  <svg id="svgLayer"></svg>
+  <div class="node hub" id="hub" style="left:calc(50% - 48px); top:calc(50% - 48px);">🧠</div>
+  <!-- satellites placed by JS -->
+  <div class="caption">Data flows in from every node, converging on the hub — <b>a live SVG beam diagram</b></div>
+</div>
+
+<div id="panel">
+  <h3>Beam controls</h3>
+  <label>Nodes <b id="vNodes">5</b></label>
+  <input type="range" id="nodeCount" min="3" max="6" step="1" value="5">
+  <label>Speed <b id="vSpeed">1.6s</b></label>
+  <input type="range" id="speed" min="0.6" max="4" step="0.1" value="1.6">
+  <label>Curvature <b id="vCurve">40</b></label>
+  <input type="range" id="curve" min="-100" max="100" step="5" value="40">
+  <div class="row2">
+    <button id="btnDir" class="">⇄ Reverse</button>
+    <button id="btnColor" class="">🎨 Color</button>
+  </div>
+</div>
+
+<footer class="credit">Inspired by Magic UI's Animated Beam · UI Spotlight Day 106 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+var stage = document.getElementById('stage');
+var svg = document.getElementById('svgLayer');
+var hub = document.getElementById('hub');
+var NS = 'http://www.w3.org/2000/svg';
+
+var ICONS = ['📄','🖼️','🎧','💬','📊','🔗'];
+var colorSets = [
+  {a:'#38bdf8', b:'#a78bfa'},
+  {a:'#34d399', b:'#38bdf8'},
+  {a:'#f472b6', b:'#fbbf24'}
+];
+var colorIdx = 0;
+var reverse = false;
+var nodeCount = 5;
+var speed = 1.6;
+var curve = 40;
+
+var satellites = [];
+var beams = []; // {pathEl, glowEl, length, satEl}
+var rafId = null;
+var t0 = performance.now();
+
+function clearAll(){
+  satellites.forEach(function(n){ n.remove(); });
+  satellites = [];
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  beams = [];
+}
+
+function buildDefs(){
+  var defs = document.createElementNS(NS,'defs');
+  var grad = document.createElementNS(NS,'linearGradient');
+  grad.setAttribute('id','beamGrad');
+  grad.setAttribute('gradientUnits','userSpaceOnUse');
+  var stops = [
+    [0,'transparent'], [0.5, colorSets[colorIdx].a], [1,'transparent']
+  ];
+  stops.forEach(function(s){
+    var st = document.createElementNS(NS,'stop');
+    st.setAttribute('offset', s[0]);
+    st.setAttribute('stop-color', s[1]);
+    grad.appendChild(st);
+  });
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+}
+
+function layoutSatellites(){
+  var rect = stage.getBoundingClientRect();
+  var cx = rect.width/2, cy = rect.height/2;
+  var radius = Math.min(rect.width, rect.height) * (rect.width < 640 ? 0.32 : 0.36);
+  for(var i=0;i<nodeCount;i++){
+    var angle = (i/nodeCount) * Math.PI*2 - Math.PI/2;
+    var x = cx + Math.cos(angle)*radius;
+    var y = cy + Math.sin(angle)*radius;
+    var el = document.createElement('div');
+    el.className = 'node';
+    el.textContent = ICONS[i % ICONS.length];
+    el.style.left = (x-37)+'px';
+    el.style.top = (y-37)+'px';
+    stage.appendChild(el);
+    satellites.push(el);
+  }
+}
+
+function buildBeams(){
+  var rect = stage.getBoundingClientRect();
+  var hubRect = hub.getBoundingClientRect();
+  var hubX = hubRect.left - rect.left + hubRect.width/2;
+  var hubY = hubRect.top - rect.top + hubRect.height/2;
+
+  satellites.forEach(function(satEl, i){
+    var sRect = satEl.getBoundingClientRect();
+    var sx = sRect.left - rect.left + sRect.width/2;
+    var sy = sRect.top - rect.top + sRect.height/2;
+    var mx = (sx+hubX)/2, my = (sy+hubY)/2;
+    // perpendicular offset for curvature
+    var dx = hubX-sx, dy = hubY-sy;
+    var len = Math.sqrt(dx*dx+dy*dy) || 1;
+    var nx = -dy/len, ny = dx/len;
+    var cxp = mx + nx*curve, cyp = my + ny*curve;
+
+    var d = 'M '+sx+' '+sy+' Q '+cxp+' '+cyp+' '+hubX+' '+hubY;
+
+    var basePath = document.createElementNS(NS,'path');
+    basePath.setAttribute('d', d);
+    basePath.setAttribute('stroke', 'rgba(255,255,255,0.10)');
+    basePath.setAttribute('stroke-width', '1.5');
+    basePath.setAttribute('fill', 'none');
+    svg.appendChild(basePath);
+
+    var glowPath = document.createElementNS(NS,'path');
+    glowPath.setAttribute('d', d);
+    glowPath.setAttribute('stroke', colorSets[colorIdx].a);
+    glowPath.setAttribute('stroke-width', '2.5');
+    glowPath.setAttribute('fill', 'none');
+    glowPath.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(glowPath);
+
+    var totalLen = glowPath.getTotalLength();
+    var dashLen = totalLen * 0.22;
+    glowPath.setAttribute('stroke-dasharray', dashLen + ' ' + (totalLen - dashLen));
+
+    beams.push({ el: glowPath, length: totalLen, dash: dashLen, satEl: satEl, phase: i/nodeCount });
+  });
+}
+
+function rebuild(){
+  clearAll();
+  buildDefs();
+  layoutSatellites();
+  // wait a frame so layout is committed before measuring
+  requestAnimationFrame(buildBeams);
+}
+
+function animate(now){
+  var elapsed = (now - t0)/1000;
+  beams.forEach(function(b){
+    var cycle = (elapsed/speed + b.phase) % 1;
+    var offset = reverse ? cycle * b.length : -cycle * b.length;
+    b.el.setAttribute('stroke-dashoffset', offset);
+    // pulse the satellite node briefly when the beam completes near it
+    var proximity = reverse ? cycle : (1-cycle);
+    if(proximity > 0.94){
+      b.satEl.classList.add('pulse');
+    } else {
+      b.satEl.classList.remove('pulse');
+    }
+  });
+  rafId = requestAnimationFrame(animate);
+}
+
+function start(){
+  if(rafId) cancelAnimationFrame(rafId);
+  t0 = performance.now();
+  rafId = requestAnimationFrame(animate);
+}
+
+function init(){
+  rebuild();
+  start();
+
+  document.getElementById('nodeCount').addEventListener('input', function(){
+    nodeCount = parseInt(this.value,10);
+    document.getElementById('vNodes').textContent = nodeCount;
+    rebuild();
+  });
+  document.getElementById('speed').addEventListener('input', function(){
+    speed = parseFloat(this.value);
+    document.getElementById('vSpeed').textContent = speed.toFixed(1)+'s';
+  });
+  document.getElementById('curve').addEventListener('input', function(){
+    curve = parseFloat(this.value);
+    document.getElementById('vCurve').textContent = curve;
+    rebuild();
+  });
+  document.getElementById('btnDir').addEventListener('click', function(){
+    reverse = !reverse;
+    this.classList.toggle('active', reverse);
+  });
+  document.getElementById('btnColor').addEventListener('click', function(){
+    colorIdx = (colorIdx+1) % colorSets.length;
+    rebuild();
+  });
+
+  var resizeTimer=null;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(rebuild, 200);
+  });
+}
+
+init();
+})();
+</script>
+</body>
+</html>
