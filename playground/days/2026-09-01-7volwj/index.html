@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Brick Breaker Forge</title>
+<style>
+  :root{
+    --bg:#07080d; --panel:#11131c; --panel2:#161925; --border:rgba(255,255,255,0.09);
+    --ink:#eef1fb; --dim:#8b93a7; --accent:#5ee6ff; --accent2:#ff6b9d; --good:#4ade80; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:radial-gradient(circle at 50% -10%, #14182a 0%, #07080d 55%);
+    color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;overflow:hidden;}
+  button{font-family:inherit;cursor:pointer;}
+  .app{max-width:480px;margin:0 auto;height:100dvh;display:flex;flex-direction:column;padding:10px 10px 12px;gap:8px;}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  .brand{font-weight:800;font-size:16px;letter-spacing:-0.02em;
+    background:linear-gradient(120deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .modeToggle{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:3px;position:relative;}
+  .modeToggle button{position:relative;z-index:2;border:none;background:transparent;color:var(--dim);font-size:12.5px;font-weight:700;
+    padding:7px 14px;border-radius:999px;transition:color .2s;}
+  .modeToggle button.active{color:#04070a;}
+  .modeToggle .thumb{position:absolute;top:3px;left:3px;width:calc(50% - 3px);height:calc(100% - 6px);border-radius:999px;
+    background:linear-gradient(120deg,var(--accent),#8ff0ff);transition:transform .28s cubic-bezier(.34,1.56,.64,1);z-index:1;}
+  .modeToggle.editor .thumb{transform:translateX(100%);}
+
+  .statbar{display:flex;gap:8px;font-size:11.5px;color:var(--dim);}
+  .statbar b{color:var(--ink);font-size:13px;}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:6px 10px;flex:1;text-align:center;}
+
+  .stageWrap{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;}
+  .stageBox{position:relative;width:100%;max-height:100%;aspect-ratio:400/620;border-radius:16px;overflow:hidden;
+    border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.02);background:#050609;}
+  canvas{display:block;width:100%;height:100%;touch-action:none;}
+
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(5,6,9,0.72);backdrop-filter:blur(6px);text-align:center;padding:20px;gap:10px;}
+  #overlay[hidden]{display:none;}
+  #overlay h2{margin:0;font-size:22px;}
+  #overlay p{margin:0;color:var(--dim);font-size:13px;max-width:280px;line-height:1.5;}
+  #overlay button{margin-top:6px;background:linear-gradient(120deg,var(--accent),#8ff0ff);color:#04070a;border:none;
+    font-weight:800;font-size:14px;padding:12px 26px;border-radius:999px;}
+
+  .badges{position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:4px;pointer-events:none;}
+  .badge{font-size:10.5px;font-weight:800;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,0.5);
+    border:1px solid rgba(255,255,255,0.15);opacity:0;transform:translateX(-8px);transition:opacity .2s, transform .2s;}
+  .badge.show{opacity:1;transform:translateX(0);}
+
+  .controls{display:flex;gap:6px;flex-wrap:wrap;}
+  .controls button{flex:1;min-width:64px;background:var(--panel);border:1px solid var(--border);color:var(--ink);
+    font-size:12px;font-weight:700;padding:10px 6px;border-radius:10px;}
+  .controls button:active{background:var(--panel2);}
+  .controls button.primary{background:linear-gradient(120deg,var(--accent),#8ff0ff);color:#04070a;border:none;}
+  .controls button.danger{color:#ff8a8a;}
+
+  #playPanel, #editPanel{display:flex;flex-direction:column;gap:8px;}
+  #editPanel[hidden], #playPanel[hidden]{display:none;}
+
+  .palette{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;}
+  .swatch{flex:0 0 auto;width:40px;height:40px;border-radius:10px;border:2px solid var(--border);display:flex;
+    align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#04070a;}
+  .swatch.selected{outline:2px solid var(--accent);outline-offset:2px;}
+
+  select, .levelRow select{background:var(--panel);color:var(--ink);border:1px solid var(--border);border-radius:8px;
+    padding:8px;font-size:12px;flex:1;}
+  .row{display:flex;gap:6px;align-items:center;}
+
+  #shareBox{display:flex;gap:6px;}
+  #shareInput{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;
+    padding:8px;font-size:11px;}
+
+  footer{font-size:10.5px;color:var(--dim);text-align:center;line-height:1.5;}
+  a.homeLink{color:var(--dim);}
+  @media (max-width:360px){ .controls button{font-size:11px;padding:9px 4px;} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">🧱 Brick Breaker Forge</div>
+    <div class="modeToggle" id="modeToggle">
+      <div class="thumb"></div>
+      <button id="btnModePlay" class="active" type="button">Play</button>
+      <button id="btnModeEdit" type="button">Editor</button>
+    </div>
+  </header>
+
+  <div class="statbar">
+    <div class="stat">Score<br><b id="statScore">0</b></div>
+    <div class="stat">Lives<br><b id="statLives">3</b></div>
+    <div class="stat">Best<br><b id="statBest">0</b></div>
+    <div class="stat">Level<br><b id="statLevel">1</b></div>
+  </div>
+
+  <div class="stageWrap">
+    <div class="stageBox" id="stageBox">
+      <canvas id="game" width="400" height="620"></canvas>
+      <div class="badges" id="badges"></div>
+      <div id="overlay">
+        <h2 id="ovTitle">Brick Breaker Forge</h2>
+        <p id="ovText">Drag to move the paddle. Break every brick. Catch power-ups as they fall.</p>
+        <button id="ovBtn" type="button">Start</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="playPanel">
+    <div class="row">
+      <select id="levelSelect"></select>
+      <button id="btnPause" type="button">⏸</button>
+      <button id="btnRestart" type="button">↺</button>
+    </div>
+    <div class="controls">
+      <button id="btnShareLevel" type="button">🔗 Share Level</button>
+    </div>
+    <div id="shareBox" hidden><input id="shareInput" readonly></div>
+  </div>
+
+  <div id="editPanel" hidden>
+    <div class="palette" id="palette"></div>
+    <div class="row">
+      <select id="gridRows">
+        <option value="5">5 rows</option>
+        <option value="6" selected>6 rows</option>
+        <option value="7">7 rows</option>
+        <option value="8">8 rows</option>
+      </select>
+      <button id="btnClearGrid" type="button">Clear</button>
+      <button id="btnFillGrid" type="button">Fill</button>
+    </div>
+    <div class="controls">
+      <button id="btnSaveLevel" class="primary" type="button">💾 Save</button>
+      <button id="btnPlayCustom" type="button">▶ Test Play</button>
+      <button id="btnShareEdit" type="button">🔗 Share</button>
+    </div>
+    <div class="row">
+      <select id="customSelect"><option value="">— My Levels —</option></select>
+      <button id="btnDeleteCustom" class="danger" type="button">🗑</button>
+    </div>
+    <div id="editShareBox" hidden><input id="editShareInput" readonly></div>
+  </div>
+
+  <footer>
+    Drag/arrow-keys to move · tap/space to launch · catch <b style="color:var(--warn)">W</b>ide,
+    <b style="color:var(--accent)">M</b>ulti, <b style="color:#ff8a8a">L</b>aser &amp; <b style="color:var(--good)">1</b>-up drops ·
+    <a class="homeLink" href="../../">← Playground</a>
+  </footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- constants ---------- */
+var LOGICAL_W = 400, LOGICAL_H = 620;
+var COLS = 8;
+var CELL_W = LOGICAL_W / COLS;
+var CELL_H = 22;
+var GRID_TOP = 64;
+var PADDLE_Y = LOGICAL_H - 46;
+var PADDLE_H = 12;
+var BASE_BALL_R = 6;
+
+var BRICK_TYPES = {
+  '.': null,
+  '1': { hp:1, color:'#38bdf8', score:10 },
+  '2': { hp:2, color:'#a78bfa', score:20 },
+  '3': { hp:3, color:'#f472b6', score:35 },
+  'X': { hp:Infinity, color:'#3a4152', score:0 },
+  'E': { hp:1, color:'#f97316', score:25, explosive:true },
+  'P': { hp:1, color:'#4ade80', score:15, powerup:true }
+};
+// BRICK_TYPES[x].hp is each type's starting hit-count and must stay constant —
+// remaining hits per cell live in the parallel hpGrid below, not on the shared def.
+
+var LEVELS = [
+  { name:'First Wall', rows:[
+    '11111111','11111111','22222222','........','........','........' ] },
+  { name:'Checkerboard', rows:[
+    '1.1.1.1.','.1.1.1.1','2.2.2.2.','.2.2.2.2','P.......','........' ] },
+  { name:'Fortress', rows:[
+    'X333333X','X1P1P1PX','X222222X','X.XXXX.X','........','........' ] },
+  { name:'Minefield', rows:[
+    '2E2E2E2E','1111111P','E2E2E2E2','........','........','........' ] },
+  { name:'The Gauntlet', rows:[
+    'X3P3P3PX','333333XX','E1E1E1E1','2X2X2X2X','1111P111','........' ] }
+];
+
+var POWERUP_TYPES = ['wide','multi','slow','laser','life'];
+var POWERUP_LABEL = { wide:'W', multi:'M', slow:'S', laser:'L', life:'1' };
+var POWERUP_COLOR = { wide:'#fbbf24', multi:'#5ee6ff', slow:'#a78bfa', laser:'#ff6b9d', life:'#4ade80' };
+
+/* ---------- storage ---------- */
+var LS_CUSTOM = 'brickForge_customLevels_v1';
+var LS_SCORES = 'brickForge_scores_v1';
+
+function loadJSON(key, fallback){
+  try{ var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch(e){ return fallback; }
+}
+function saveJSON(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+}
+var customLevels = loadJSON(LS_CUSTOM, []);
+var scores = loadJSON(LS_SCORES, {});
+
+/* ---------- audio ---------- */
+var audioCtx = null;
+function ac(){
+  if(!audioCtx){
+    var AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function beep(freq, dur, type, gainPeak, when){
+  var c = ac();
+  var t0 = c.currentTime + (when||0);
+  var osc = c.createOscillator();
+  var gain = c.createGain();
+  osc.type = type || 'square';
+  osc.frequency.setValueAtTime(freq, t0);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(gainPeak||0.15, t0+0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  osc.connect(gain).connect(c.destination);
+  osc.start(t0);
+  osc.stop(t0+dur+0.02);
+}
+function sfxPaddle(){ beep(220,0.08,'triangle',0.18); }
+function sfxBrick(hp){ beep(520 + hp*60, 0.09,'square',0.14); }
+function sfxExplosion(){
+  var c = ac();
+  var dur = 0.35;
+  var bufSize = Math.floor(c.sampleRate*dur);
+  var buf = c.createBuffer(1, bufSize, c.sampleRate);
+  var data = buf.getChannelData(0);
+  for(var i=0;i<bufSize;i++){ data[i] = (Math.random()*2-1) * (1 - i/bufSize); }
+  var src = c.createBufferSource();
+  src.buffer = buf;
+  var gain = c.createGain();
+  gain.gain.setValueAtTime(0.25, c.currentTime);
+  var filt = c.createBiquadFilter();
+  filt.type='lowpass'; filt.frequency.value=1200;
+  src.connect(filt).connect(gain).connect(c.destination);
+  src.start();
+}
+function sfxPowerup(){ beep(660,0.07,'sine',0.16); beep(880,0.09,'sine',0.14,0.07); }
+function sfxWall(){ beep(160,0.05,'sine',0.08); }
+function sfxLose(){ beep(300,0.1,'sawtooth',0.15); beep(180,0.22,'sawtooth',0.15,0.1); }
+function sfxWin(){ [523,659,784,1047].forEach(function(f,i){ beep(f,0.16,'triangle',0.16,i*0.09); }); }
+
+/* ---------- state ---------- */
+var canvas = document.getElementById('game');
+var ctx = canvas.getContext('2d');
+var mode = 'play'; // 'play' | 'editor'
+var currentLevelId = 'built:0';
+var grid = [];      // 2D array of chars
+var hpGrid = [];     // 2D array of remaining hit points, parallel to grid
+var gridRows = 6;
+var bricksTotal = 0, bricksBroken = 0;
+
+var balls = [];
+var paddle = { x: LOGICAL_W/2 - 34, w: 68, h: PADDLE_H };
+var falling = [];   // powerup capsules
+var lasers = [];
+var effects = { wide:0, slow:0, laser:0 };
+var score = 0, lives = 3, running = false, paused = false, launched = false;
+var lastTime = 0;
+var rafId = null;
+var pointerX = null;
+
+/* editor state */
+var editGrid = [];
+var editRows = 6;
+var selectedTile = '1';
+
+/* ---------- DPR-aware canvas sizing ---------- */
+function fitCanvas(){
+  var dpr = Math.max(1, window.devicePixelRatio || 1);
+  canvas.width = LOGICAL_W * dpr;
+  canvas.height = LOGICAL_H * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+/* ---------- grid helpers ---------- */
+function parseLevel(rows){
+  return rows.map(function(r){ return r.split(''); });
+}
+function countBricks(g){
+  var n=0;
+  g.forEach(function(row){ row.forEach(function(ch){ if(ch!=='.' && ch!=='X' && BRICK_TYPES[ch]) n++; }); });
+  return n;
+}
+function brickRect(c,r){
+  return { x: c*CELL_W+2, y: GRID_TOP + r*CELL_H+2, w: CELL_W-4, h: CELL_H-4 };
+}
+function buildHpGrid(g){
+  return g.map(function(row){
+    return row.map(function(ch){
+      var def = BRICK_TYPES[ch];
+      return def ? def.hp : 0;
+    });
+  });
+}
+
+/* ---------- game setup ---------- */
+function levelList(){
+  var list = LEVELS.map(function(l,i){ return { id:'built:'+i, name:l.name, rows:l.rows }; });
+  customLevels.forEach(function(l,i){ list.push({ id:'custom:'+i, name:l.name, rows:l.rows }); });
+  return list;
+}
+function findLevel(id){
+  var list = levelList();
+  for(var i=0;i<list.length;i++) if(list[i].id===id) return list[i];
+  return list[0];
+}
+function newBall(){
+  return { x: LOGICAL_W/2, y: PADDLE_Y - BASE_BALL_R - 2, vx:0, vy:0, r: BASE_BALL_R, stuck:true };
+}
+function ballSpeed(){ return effects.slow>0 ? 150 : 230; }
+
+function loadLevel(id){
+  var lvl = findLevel(id);
+  currentLevelId = id;
+  grid = parseLevel(lvl.rows);
+  hpGrid = buildHpGrid(grid);
+  gridRows = grid.length;
+  bricksTotal = countBricks(grid);
+  bricksBroken = 0;
+  paddle.x = LOGICAL_W/2 - paddle.w/2;
+  balls = [newBall()];
+  falling = []; lasers = [];
+  effects = { wide:0, slow:0, laser:0 };
+  launched = false;
+  document.getElementById('statLevel').textContent = lvl.name;
+  document.getElementById('statBest').textContent = scores[id] || 0;
+  updateBadges();
+}
+
+function resetScoreLife(){ score=0; lives=3; updateStats(); }
+
+function updateStats(){
+  document.getElementById('statScore').textContent = score;
+  document.getElementById('statLives').textContent = lives;
+  var best = scores[currentLevelId]||0;
+  document.getElementById('statBest').textContent = Math.max(best, score);
+}
+
+function updateBadges(){
+  var el = document.getElementById('badges');
+  el.innerHTML = '';
+  ['wide','slow','laser'].forEach(function(k){
+    if(effects[k] > 0){
+      var b = document.createElement('div');
+      b.className = 'badge show';
+      b.style.color = POWERUP_COLOR[k];
+      b.style.borderColor = POWERUP_COLOR[k];
+      b.textContent = k.toUpperCase() + ' ' + Math.ceil(effects[k]) + 's';
+      el.appendChild(b);
+    }
+  });
+}
+
+/* ---------- overlay ---------- */
+function showOverlay(title, text, btnLabel){
+  document.getElementById('ovTitle').textContent = title;
+  document.getElementById('ovText').textContent = text;
+  document.getElementById('ovBtn').textContent = btnLabel || 'Start';
+  document.getElementById('overlay').hidden = false;
+}
+function hideOverlay(){ document.getElementById('overlay').hidden = true; }
+
+/* ---------- physics ---------- */
+function launchBall(){
+  if(!balls.length) return;
+  balls.forEach(function(b){
+    if(b.stuck){
+      b.stuck = false;
+      var ang = -Math.PI/2 + (Math.random()*0.5-0.25);
+      var s = ballSpeed();
+      b.vx = Math.cos(ang)*s; b.vy = Math.sin(ang)*s;
+    }
+  });
+  launched = true;
+}
+
+function spawnPowerup(x,y){
+  var type = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+  falling.push({ x:x, y:y, vy:90, type:type });
+}
+
+function breakBrick(c,r,cell){
+  var def = BRICK_TYPES[cell];
+  score += def.score;
+  bricksBroken++;
+  sfxBrick(1);
+  var rect = brickRect(c,r);
+  if(def.powerup || Math.random() < 0.14){
+    spawnPowerup(rect.x+rect.w/2, rect.y+rect.h/2);
+  }
+  if(def.explosive){
+    sfxExplosion();
+    [[c-1,r],[c+1,r],[c,r-1],[c,r+1]].forEach(function(n){
+      var nc=n[0], nr=n[1];
+      if(nr>=0 && nr<grid.length && nc>=0 && nc<COLS){
+        var ncell = grid[nr][nc];
+        if(ncell!=='.' && ncell!=='X' && BRICK_TYPES[ncell]){
+          score += BRICK_TYPES[ncell].score;
+          bricksBroken++;
+          grid[nr][nc] = '.';
+          hpGrid[nr][nc] = 0;
+        }
+      }
+    });
+  }
+  grid[r][c] = '.';
+  hpGrid[r][c] = 0;
+  updateStats();
+}
+
+function hitBrickAt(c,r){
+  if(r<0 || r>=grid.length || c<0 || c>=COLS) return false;
+  var cell = grid[r][c];
+  if(cell==='.' || !BRICK_TYPES[cell]) return false;
+  var hp = hpGrid[r][c];
+  if(hp === Infinity){ sfxWall(); return true; }
+  hp -= 1;
+  hpGrid[r][c] = hp;
+  if(hp <= 0){ breakBrick(c,r,cell); }
+  else { sfxBrick(hp); }
+  return true;
+}
+
+function ballBrickCollision(b){
+  var minC = Math.max(0, Math.floor((b.x-b.r)/CELL_W));
+  var maxC = Math.min(COLS-1, Math.floor((b.x+b.r)/CELL_W));
+  var minR = Math.max(0, Math.floor((b.y-b.r-GRID_TOP)/CELL_H));
+  var maxR = Math.min(grid.length-1, Math.floor((b.y+b.r-GRID_TOP)/CELL_H));
+  for(var r=minR;r<=maxR;r++){
+    for(var c=minC;c<=maxC;c++){
+      var cell = grid[r] ? grid[r][c] : '.';
+      if(cell==='.'||!BRICK_TYPES[cell]) continue;
+      var rect = brickRect(c,r);
+      var cx = Math.max(rect.x, Math.min(b.x, rect.x+rect.w));
+      var cy = Math.max(rect.y, Math.min(b.y, rect.y+rect.h));
+      var dx = b.x-cx, dy = b.y-cy;
+      if(dx*dx+dy*dy < b.r*b.r){
+        if(Math.abs(dx) > Math.abs(dy)){ b.vx *= -1; } else { b.vy *= -1; }
+        hitBrickAt(c,r);
+        return;
+      }
+    }
+  }
+}
+
+function step(dt){
+  if(paused || !running) return;
+
+  // decay effects
+  ['wide','slow','laser'].forEach(function(k){
+    if(effects[k]>0){ effects[k] -= dt; if(effects[k]<0) effects[k]=0; }
+  });
+  paddle.w = effects.wide>0 ? 104 : 68;
+  updateBadges();
+
+  // paddle target (pointer or keyboard handled elsewhere by setting pointerX)
+  if(pointerX!==null){
+    paddle.x += (pointerX - paddle.w/2 - paddle.x) * Math.min(1, dt*14);
+  }
+  paddle.x = Math.max(4, Math.min(LOGICAL_W-paddle.w-4, paddle.x));
+
+  // balls
+  for(var i=balls.length-1;i>=0;i--){
+    var b = balls[i];
+    if(b.stuck){ b.x = paddle.x + paddle.w/2; b.y = PADDLE_Y - b.r - 2; continue; }
+    b.x += b.vx*dt; b.y += b.vy*dt;
+    if(b.x - b.r < 0){ b.x=b.r; b.vx*=-1; sfxWall(); }
+    if(b.x + b.r > LOGICAL_W){ b.x=LOGICAL_W-b.r; b.vx*=-1; sfxWall(); }
+    if(b.y - b.r < 0){ b.y=b.r; b.vy*=-1; sfxWall(); }
+    // paddle collision
+    if(b.vy>0 && b.y+b.r >= PADDLE_Y && b.y+b.r <= PADDLE_Y+paddle.h+10 && b.x >= paddle.x-b.r && b.x <= paddle.x+paddle.w+b.r){
+      var hit = (b.x - (paddle.x+paddle.w/2)) / (paddle.w/2);
+      hit = Math.max(-1, Math.min(1, hit));
+      var speed = Math.hypot(b.vx,b.vy) || ballSpeed();
+      var ang = hit * (Math.PI*0.36) - Math.PI/2;
+      b.vx = Math.cos(ang)*speed;
+      b.vy = Math.sin(ang)*speed;
+      b.y = PADDLE_Y - b.r - 1;
+      sfxPaddle();
+    }
+    ballBrickCollision(b);
+    if(b.y - b.r > LOGICAL_H){ balls.splice(i,1); }
+  }
+  if(balls.length===0){
+    lives--;
+    updateStats();
+    if(lives<=0){ endGame(false); return; }
+    balls = [newBall()]; launched=false; sfxLose();
+  }
+
+  // falling powerups
+  for(var j=falling.length-1;j>=0;j--){
+    var p = falling[j];
+    p.y += p.vy*dt;
+    if(p.y > PADDLE_Y-6 && p.y < PADDLE_Y+paddle.h+8 && p.x > paddle.x-10 && p.x < paddle.x+paddle.w+10){
+      applyPowerup(p.type);
+      falling.splice(j,1);
+      continue;
+    }
+    if(p.y > LOGICAL_H) falling.splice(j,1);
+  }
+
+  // lasers
+  for(var k=lasers.length-1;k>=0;k--){
+    var lz = lasers[k];
+    lz.y -= 320*dt;
+    var c = Math.floor(lz.x/CELL_W);
+    var r = Math.floor((lz.y-GRID_TOP)/CELL_H);
+    if(r>=0 && r<grid.length && hitBrickAt(c,r)){ lasers.splice(k,1); continue; }
+    if(lz.y < 0) lasers.splice(k,1);
+  }
+
+  // win check
+  if(bricksTotal>0 && bricksBroken>=bricksTotal){ endGame(true); }
+}
+
+function applyPowerup(type){
+  sfxPowerup();
+  if(type==='wide'){ effects.wide = 10; }
+  else if(type==='slow'){ effects.slow = 8; }
+  else if(type==='laser'){ effects.laser = 10; }
+  else if(type==='life'){ lives++; updateStats(); }
+  else if(type==='multi'){
+    var extra = [];
+    balls.forEach(function(b){
+      if(b.stuck) return;
+      for(var n=0;n<2;n++){
+        var ang = Math.atan2(b.vy,b.vx) + (n===0?0.4:-0.4);
+        var s = Math.hypot(b.vx,b.vy);
+        extra.push({ x:b.x, y:b.y, vx:Math.cos(ang)*s, vy:Math.sin(ang)*s, r:BASE_BALL_R, stuck:false });
+      }
+    });
+    balls = balls.concat(extra).slice(0,9);
+  }
+  updateBadges();
+}
+
+function fireLaser(){
+  if(effects.laser<=0) return;
+  lasers.push({ x: paddle.x+paddle.w*0.25, y: PADDLE_Y });
+  lasers.push({ x: paddle.x+paddle.w*0.75, y: PADDLE_Y });
+  beep(900,0.05,'square',0.1);
+}
+
+function endGame(won){
+  running = false;
+  var best = scores[currentLevelId] || 0;
+  if(score > best){ scores[currentLevelId] = score; saveJSON(LS_SCORES, scores); }
+  updateStats();
+  if(won){ sfxWin(); showOverlay('Level Cleared! 🎉', 'Score: '+score+' — nice work. Pick another level or replay.', 'Play Again'); }
+  else { sfxLose(); showOverlay('Game Over', 'Final score: '+score+'. Every brick fights back — try again?', 'Retry'); }
+}
+
+/* ---------- render ---------- */
+function render(){
+  ctx.clearRect(0,0,LOGICAL_W,LOGICAL_H);
+  // bg grid subtle
+  ctx.fillStyle = '#050609'; ctx.fillRect(0,0,LOGICAL_W,LOGICAL_H);
+
+  // bricks
+  for(var r=0;r<grid.length;r++){
+    for(var c=0;c<COLS;c++){
+      var cell = grid[r][c];
+      if(cell==='.'||!BRICK_TYPES[cell]) continue;
+      var def = BRICK_TYPES[cell];
+      var rect = brickRect(c,r);
+      var hp = hpGrid[r][c];
+      ctx.fillStyle = def.color;
+      ctx.globalAlpha = hp===Infinity ? 1 : Math.min(1, 0.55 + hp*0.15);
+      roundRect(rect.x,rect.y,rect.w,rect.h,4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      if(def.explosive){
+        ctx.fillStyle='rgba(255,255,255,0.85)';
+        ctx.font='11px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('✷', rect.x+rect.w/2, rect.y+rect.h/2+4);
+      } else if(def.powerup){
+        ctx.fillStyle='rgba(255,255,255,0.85)';
+        ctx.font='10px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('★', rect.x+rect.w/2, rect.y+rect.h/2+3);
+      }
+    }
+  }
+
+  // falling powerups
+  falling.forEach(function(p){
+    ctx.fillStyle = POWERUP_COLOR[p.type];
+    roundRect(p.x-11,p.y-9,22,18,6); ctx.fill();
+    ctx.fillStyle='#04070a'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(POWERUP_LABEL[p.type], p.x, p.y+4);
+  });
+
+  // lasers
+  ctx.fillStyle = '#ff6b9d';
+  lasers.forEach(function(lz){ ctx.fillRect(lz.x-1.5, lz.y-8, 3, 12); });
+
+  // paddle
+  var grad = ctx.createLinearGradient(paddle.x,0,paddle.x+paddle.w,0);
+  grad.addColorStop(0,'#5ee6ff'); grad.addColorStop(1,'#8ff0ff');
+  ctx.fillStyle = grad;
+  roundRect(paddle.x, PADDLE_Y, paddle.w, paddle.h, 6); ctx.fill();
+
+  // balls
+  ctx.fillStyle = '#f1f3f8';
+  balls.forEach(function(b){
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+  });
+}
+function roundRect(x,y,w,h,rad){
+  ctx.beginPath();
+  ctx.moveTo(x+rad,y);
+  ctx.arcTo(x+w,y,x+w,y+h,rad);
+  ctx.arcTo(x+w,y+h,x,y+h,rad);
+  ctx.arcTo(x,y+h,x,y,rad);
+  ctx.arcTo(x,y,x+w,y,rad);
+  ctx.closePath();
+}
+
+/* ---------- editor render ---------- */
+function renderEditor(){
+  ctx.clearRect(0,0,LOGICAL_W,LOGICAL_H);
+  ctx.fillStyle = '#050609'; ctx.fillRect(0,0,LOGICAL_W,LOGICAL_H);
+  ctx.fillStyle='#8b93a7'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Tap cells to paint bricks', LOGICAL_W/2, 30);
+  for(var r=0;r<editRows;r++){
+    for(var c=0;c<COLS;c++){
+      var cell = editGrid[r][c];
+      var rect = brickRect(c,r);
+      if(cell==='.'){
+        ctx.strokeStyle='rgba(255,255,255,0.08)';
+        ctx.lineWidth=1;
+        roundRect(rect.x,rect.y,rect.w,rect.h,4); ctx.stroke();
+      } else {
+        var def = BRICK_TYPES[cell];
+        ctx.fillStyle = def.color;
+        roundRect(rect.x,rect.y,rect.w,rect.h,4); ctx.fill();
+        if(def.explosive){ ctx.fillStyle='#fff'; ctx.font='11px sans-serif'; ctx.fillText('✷', rect.x+rect.w/2, rect.y+rect.h/2+4); }
+        if(def.powerup){ ctx.fillStyle='#fff'; ctx.font='10px sans-serif'; ctx.fillText('★', rect.x+rect.w/2, rect.y+rect.h/2+3); }
+      }
+    }
+  }
+}
+
+/* ---------- main loop ---------- */
+function frame(t){
+  var dt = Math.min(0.033, (t-lastTime)/1000 || 0);
+  lastTime = t;
+  if(mode==='play'){ step(dt); render(); }
+  else { renderEditor(); }
+  rafId = requestAnimationFrame(frame);
+}
+
+/* ---------- input ---------- */
+function localX(clientX){
+  var rect = canvas.getBoundingClientRect();
+  return (clientX - rect.left) * (LOGICAL_W / rect.width);
+}
+function localY(clientY){
+  var rect = canvas.getBoundingClientRect();
+  return (clientY - rect.top) * (LOGICAL_H / rect.height);
+}
+
+canvas.addEventListener('pointerdown', function(e){
+  ac();
+  if(mode==='play'){
+    pointerX = localX(e.clientX);
+    if(!launched){ launchBall(); }
+    else if(effects.laser>0){ fireLaser(); }
+  } else {
+    editPaint(localX(e.clientX), localY(e.clientY));
+  }
+});
+canvas.addEventListener('pointermove', function(e){
+  if(mode!=='play') return;
+  if(e.buttons===0 && e.pointerType==='mouse'){ pointerX = localX(e.clientX); return; }
+  pointerX = localX(e.clientX);
+});
+window.addEventListener('keydown', function(e){
+  ac();
+  if(mode!=='play') return;
+  if(e.key==='ArrowLeft'){ pointerX = Math.max(0,(pointerX===null?paddle.x+paddle.w/2:pointerX)-24); }
+  if(e.key==='ArrowRight'){ pointerX = Math.min(LOGICAL_W,(pointerX===null?paddle.x+paddle.w/2:pointerX)+24); }
+  if(e.key===' '){ e.preventDefault(); if(!launched) launchBall(); else fireLaser(); }
+});
+
+/* ---------- editor logic ---------- */
+function emptyGrid(rows){
+  var g = [];
+  for(var r=0;r<rows;r++){ g.push(new Array(COLS).fill('.')); }
+  return g;
+}
+function editPaint(x,y){
+  var c = Math.floor(x/CELL_W);
+  var r = Math.floor((y-GRID_TOP)/CELL_H);
+  if(r<0||r>=editRows||c<0||c>=COLS) return;
+  editGrid[r][c] = editGrid[r][c]===selectedTile ? '.' : selectedTile;
+}
+function rebuildEditGrid(rows){
+  var old = editGrid;
+  editRows = rows;
+  editGrid = emptyGrid(rows);
+  for(var r=0;r<Math.min(rows, old.length);r++){
+    for(var c=0;c<COLS;c++){ editGrid[r][c] = old[r][c]; }
+  }
+}
+function gridToRows(g){ return g.map(function(row){ return row.join(''); }); }
+
+function buildPalette(){
+  var el = document.getElementById('palette');
+  el.innerHTML = '';
+  var tiles = [
+    ['.', '#232838', '⌫'],
+    ['1', BRICK_TYPES['1'].color, '1'],
+    ['2', BRICK_TYPES['2'].color, '2'],
+    ['3', BRICK_TYPES['3'].color, '3'],
+    ['X', BRICK_TYPES['X'].color, '∞'],
+    ['E', BRICK_TYPES['E'].color, '✷'],
+    ['P', BRICK_TYPES['P'].color, '★']
+  ];
+  tiles.forEach(function(t){
+    var b = document.createElement('div');
+    b.className = 'swatch' + (t[0]===selectedTile?' selected':'');
+    b.style.background = t[1];
+    b.textContent = t[2];
+    b.addEventListener('click', function(){ selectedTile = t[0]; buildPalette(); });
+    el.appendChild(b);
+  });
+}
+
+function refreshCustomSelect(){
+  var sel = document.getElementById('customSelect');
+  sel.innerHTML = '<option value="">— My Levels —</option>';
+  customLevels.forEach(function(l,i){
+    var o = document.createElement('option');
+    o.value = i; o.textContent = l.name;
+    sel.appendChild(o);
+  });
+}
+function refreshLevelSelect(){
+  var sel = document.getElementById('levelSelect');
+  sel.innerHTML = '';
+  levelList().forEach(function(l){
+    var o = document.createElement('option');
+    o.value = l.id; o.textContent = l.name;
+    sel.appendChild(o);
+  });
+  sel.value = currentLevelId;
+}
+
+/* ---------- share / URL hash ---------- */
+function encodeLevel(name, rows){
+  var payload = JSON.stringify({ n:name, r:rows });
+  return btoa(encodeURIComponent(payload).replace(/%([0-9A-F]{2})/g, function(_,p){ return String.fromCharCode('0x'+p); }));
+}
+function decodeLevel(str){
+  try{
+    var bin = atob(str);
+    var pct = bin.split('').map(function(ch){ return '%'+('0'+ch.charCodeAt(0).toString(16)).slice(-2); }).join('');
+    var json = decodeURIComponent(pct);
+    var obj = JSON.parse(json);
+    return { name: obj.n, rows: obj.r };
+  }catch(e){ return null; }
+}
+function shareCurrentLevel(){
+  var lvl = findLevel(currentLevelId);
+  var code = encodeLevel(lvl.name, lvl.rows);
+  var url = location.origin + location.pathname + '#lvl=' + code;
+  showShare('shareBox','shareInput', url);
+}
+function shareEditGrid(){
+  var name = 'Shared Level';
+  var code = encodeLevel(name, gridToRows(editGrid));
+  var url = location.origin + location.pathname + '#lvl=' + code;
+  showShare('editShareBox','editShareInput', url);
+}
+function showShare(boxId, inputId, url){
+  var box = document.getElementById(boxId);
+  var input = document.getElementById(inputId);
+  box.hidden = false;
+  input.value = url;
+  input.focus(); input.select();
+  if(navigator.clipboard){ navigator.clipboard.writeText(url).catch(function(){}); }
+}
+function loadFromHash(){
+  var m = location.hash.match(/lvl=([^&]+)/);
+  if(!m) return false;
+  var decoded = decodeLevel(m[1]);
+  if(!decoded) return false;
+  var exists = customLevels.some(function(l){ return l.name===decoded.name && l.rows.join('')===decoded.rows.join(''); });
+  if(!exists){ customLevels.push({ name: decoded.name+' (shared)', rows: decoded.rows }); saveJSON(LS_CUSTOM, customLevels); }
+  return true;
+}
+
+/* ---------- mode switching ---------- */
+function setMode(next){
+  mode = next;
+  document.getElementById('modeToggle').className = 'modeToggle' + (next==='editor' ? ' editor' : '');
+  document.getElementById('btnModePlay').classList.toggle('active', next==='play');
+  document.getElementById('btnModeEdit').classList.toggle('active', next==='editor');
+  document.getElementById('playPanel').hidden = next!=='play';
+  document.getElementById('editPanel').hidden = next!=='editor';
+  hideOverlay();
+  if(next==='play'){ running=false; paused=false; loadLevel(currentLevelId); showOverlay('Ready?', 'Drag to move the paddle, then tap the stage to launch.', 'Start'); }
+}
+
+/* ---------- wiring ---------- */
+document.getElementById('btnModePlay').addEventListener('click', function(){ setMode('play'); });
+document.getElementById('btnModeEdit').addEventListener('click', function(){ setMode('editor'); });
+
+document.getElementById('ovBtn').addEventListener('click', function(){
+  ac();
+  hideOverlay();
+  running = true; paused = false;
+  resetScoreLifeIfNeeded();
+  lastTime = performance.now();
+});
+function resetScoreLifeIfNeeded(){
+  if(!launched && balls.length===1 && balls[0].stuck && lives===3 && score===0){ /* fresh */ }
+  if(score===0 && lives===3){ /* keep */ }
+}
+
+document.getElementById('levelSelect').addEventListener('change', function(){
+  currentLevelId = this.value;
+  resetScoreLife();
+  loadLevel(currentLevelId);
+  running = false;
+  showOverlay('Ready?', 'Drag to move the paddle, then tap the stage to launch.', 'Start');
+});
+
+document.getElementById('btnPause').addEventListener('click', function(){
+  if(!running) return;
+  paused = !paused;
+  this.textContent = paused ? '▶' : '⏸';
+});
+document.getElementById('btnRestart').addEventListener('click', function(){
+  resetScoreLife();
+  loadLevel(currentLevelId);
+  running = false; paused = false;
+  document.getElementById('btnPause').textContent = '⏸';
+  showOverlay('Ready?', 'Drag to move the paddle, then tap the stage to launch.', 'Start');
+});
+document.getElementById('btnShareLevel').addEventListener('click', shareCurrentLevel);
+
+document.getElementById('gridRows').addEventListener('change', function(){
+  rebuildEditGrid(parseInt(this.value,10));
+});
+document.getElementById('btnClearGrid').addEventListener('click', function(){
+  editGrid = emptyGrid(editRows);
+});
+document.getElementById('btnFillGrid').addEventListener('click', function(){
+  for(var r=0;r<editRows;r++) for(var c=0;c<COLS;c++) if(editGrid[r][c]==='.') editGrid[r][c]='1';
+});
+document.getElementById('btnSaveLevel').addEventListener('click', function(){
+  var name = prompt('Name this level:', 'My Level '+(customLevels.length+1));
+  if(!name) return;
+  customLevels.push({ name: name, rows: gridToRows(editGrid) });
+  saveJSON(LS_CUSTOM, customLevels);
+  refreshCustomSelect();
+  refreshLevelSelect();
+});
+document.getElementById('btnPlayCustom').addEventListener('click', function(){
+  var tmpId = 'temp';
+  LEVELS_TEMP = { rows: gridToRows(editGrid), name: 'Test Play' };
+  currentLevelId = 'temp';
+  grid = parseLevel(LEVELS_TEMP.rows);
+  hpGrid = buildHpGrid(grid);
+  gridRows = grid.length;
+  bricksTotal = countBricks(grid);
+  bricksBroken = 0;
+  paddle.x = LOGICAL_W/2 - paddle.w/2;
+  balls = [newBall()]; falling=[]; lasers=[]; effects={wide:0,slow:0,laser:0};
+  launched = false;
+  resetScoreLife();
+  setMode('play');
+  document.getElementById('statLevel').textContent = 'Test Play';
+});
+var LEVELS_TEMP = null;
+
+document.getElementById('btnShareEdit').addEventListener('click', shareEditGrid);
+document.getElementById('customSelect').addEventListener('change', function(){
+  var idx = this.value;
+  if(idx==='') return;
+  var l = customLevels[idx];
+  editGrid = parseLevel(l.rows.slice());
+  editRows = editGrid.length;
+  document.getElementById('gridRows').value = String(editRows);
+});
+document.getElementById('btnDeleteCustom').addEventListener('click', function(){
+  var sel = document.getElementById('customSelect');
+  var idx = sel.value;
+  if(idx==='') return;
+  if(!confirm('Delete this level?')) return;
+  customLevels.splice(idx,1);
+  saveJSON(LS_CUSTOM, customLevels);
+  refreshCustomSelect();
+  refreshLevelSelect();
+});
+
+/* ---------- init ---------- */
+function init(){
+  buildPalette();
+  editGrid = emptyGrid(editRows);
+  loadFromHash();
+  refreshCustomSelect();
+  refreshLevelSelect();
+  var list = levelList();
+  currentLevelId = list.length ? list[0].id : 'built:0';
+  refreshLevelSelect();
+  loadLevel(currentLevelId);
+  showOverlay('Brick Breaker Forge', 'Drag to move the paddle, then tap the stage to launch. Break every brick to win.', 'Start');
+  rafId = requestAnimationFrame(frame);
+}
+init();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scroll-Settle Gallery</title>
+<style>
+  :root{ --bg:#070a10; --panel:rgba(18,22,32,0.88); --border:rgba(255,255,255,0.1); --ink:#eef2fb; --dim:#8b93a7; --accent:#38bdf8; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 0%, #101a2a 0%, #070a10 65%);
+    color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}
+  .back-link{position:fixed;top:16px;left:16px;z-index:50;padding:9px 16px;border-radius:999px;
+    background:rgba(255,255,255,0.06);border:1px solid var(--border);backdrop-filter:blur(10px);
+    color:var(--ink);font-size:13px;font-weight:600;text-decoration:none;}
+  .stage{padding:110px 0 60px;}
+  .hint{text-align:center;color:var(--dim);font-size:13px;max-width:420px;margin:0 auto 28px;padding:0 20px;line-height:1.5;}
+  .hint b{color:var(--ink);}
+  .status{text-align:center;font-size:13px;color:var(--accent);font-weight:700;margin-bottom:20px;min-height:18px;transition:opacity .2s;}
+
+  .rail{display:flex;gap:20px;overflow-x:auto;scroll-snap-type:x mandatory;padding:20px 40vw;
+    -webkit-overflow-scrolling:touch;}
+  .rail::-webkit-scrollbar{height:6px;}
+  .rail::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:99px;}
+  .card{flex:0 0 auto;width:min(64vw,260px);height:320px;scroll-snap-align:center;border-radius:20px;
+    background:linear-gradient(160deg, var(--c1), var(--c2));border:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    position:relative;transform:scale(0.92);opacity:0.55;transition:transform .5s cubic-bezier(.34,1.56,.64,1), opacity .4s, box-shadow .5s;}
+  .card .num{font-size:44px;font-weight:800;color:rgba(255,255,255,0.92);}
+  .card .lbl{font-size:12.5px;color:rgba(255,255,255,0.75);letter-spacing:0.04em;text-transform:uppercase;}
+  .card .ring{position:absolute;inset:-2px;border-radius:22px;border:2px solid rgba(255,255,255,0);
+    transition:border-color .4s, box-shadow .4s;pointer-events:none;}
+  .card.settled{transform:scale(1.06);opacity:1;box-shadow:0 24px 60px rgba(0,0,0,0.45);}
+  .card.settled .ring{border-color:rgba(255,255,255,0.85);box-shadow:0 0 30px var(--glow);animation:pulse 0.7s ease-out;}
+  @keyframes pulse{ 0%{ box-shadow:0 0 0 var(--glow); } 40%{ box-shadow:0 0 44px var(--glow); } 100%{ box-shadow:0 0 30px var(--glow); } }
+
+  .compareRow{max-width:640px;margin:60px auto 0;padding:0 20px;}
+  .compareRow h3{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:0.06em;margin:0 0 10px;text-align:center;}
+  .compareTrack{height:70px;border-radius:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);
+    position:relative;overflow:hidden;}
+  .compareBar{position:absolute;top:0;left:0;height:100%;width:0%;background:linear-gradient(90deg, var(--accent), #a78bfa);
+    transition:width .1s linear;}
+  .compareLbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--dim);}
+
+  #panel{position:fixed;top:16px;right:16px;z-index:50;width:210px;background:var(--panel);
+    border:1px solid var(--border);border-radius:16px;padding:14px 16px;backdrop-filter:blur(14px);font-size:12.5px;}
+  #panel h3{margin:0 0 10px;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:var(--dim);}
+  #panel label{display:flex;justify-content:space-between;margin:10px 0 4px;color:var(--dim);}
+  #panel label b{color:var(--ink);}
+  #settleCount{color:var(--accent);}
+  @media (max-width:640px){ #panel{display:none;} }
+
+  footer.credit{text-align:center;color:var(--dim);font-size:11px;padding-bottom:20px;}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="stage">
+  <p class="hint">Scroll the rail. Cards <b>don't</b> react while you're scrolling — each one settles with a punchy
+    pop the instant scrolling actually stops, driven by the <b>scrollend</b> event, not a continuous scroll-timeline.</p>
+  <div class="status" id="status">Scroll to settle a card…</div>
+  <div class="rail" id="rail"></div>
+
+  <div class="compareRow">
+    <h3>For contrast — a continuous scroll-driven bar (updates every frame while scrolling)</h3>
+    <div class="compareTrack"><div class="compareBar" id="compareBar"></div><div class="compareLbl">scroll progress, live</div></div>
+  </div>
+</div>
+
+<div id="panel">
+  <h3>Settle controls</h3>
+  <label>Settled count <b id="settleCount">0</b></label>
+  <label>Debounce fallback <b id="vFallback">auto</b></label>
+  <input type="range" id="fallbackMs" min="80" max="400" step="10" value="150">
+  <div style="margin-top:10px;color:var(--dim);font-size:11.5px;">
+    <span id="apiState">checking…</span>
+  </div>
+</div>
+
+<footer class="credit">Inspired by the MDN <code>scrollend</code> event reference · UI Spotlight Day 107 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+var COLORS = [
+  ['#3b82f6','#1d4ed8'], ['#8b5cf6','#6d28d9'], ['#ec4899','#be185d'], ['#f59e0b','#b45309'],
+  ['#10b981','#047857'], ['#38bdf8','#0369a1'], ['#f472b6','#a21caf'], ['#34d399','#065f46']
+];
+var rail = document.getElementById('rail');
+var status = document.getElementById('status');
+var settleCountEl = document.getElementById('settleCount');
+var compareBar = document.getElementById('compareBar');
+var fallbackSlider = document.getElementById('fallbackMs');
+var vFallback = document.getElementById('vFallback');
+var apiStateEl = document.getElementById('apiState');
+var cards = [];
+var settleCount = 0;
+var fallbackMs = 150;
+var hasNativeScrollend = 'onscrollend' in window;
+
+apiStateEl.textContent = hasNativeScrollend ? 'Native scrollend: supported ✓' : 'Native scrollend: unsupported — using debounce fallback';
+
+for(var i=0;i<COLORS.length;i++){
+  var card = document.createElement('div');
+  card.className = 'card';
+  card.style.setProperty('--c1', COLORS[i][0]);
+  card.style.setProperty('--c2', COLORS[i][1]);
+  card.style.setProperty('--glow', COLORS[i][0] + '99');
+  card.innerHTML = '<div class="ring"></div><div class="num">'+(i+1)+'</div><div class="lbl">Card '+(i+1)+'</div>';
+  rail.appendChild(card);
+  cards.push(card);
+}
+
+function nearestCard(){
+  var railRect = rail.getBoundingClientRect();
+  var centerX = railRect.left + railRect.width/2;
+  var best = null, bestDist = Infinity, bestIdx = -1;
+  cards.forEach(function(c, idx){
+    var r = c.getBoundingClientRect();
+    var cx = r.left + r.width/2;
+    var d = Math.abs(cx - centerX);
+    if(d < bestDist){ bestDist = d; best = c; bestIdx = idx; }
+  });
+  return { card: best, idx: bestIdx };
+}
+
+function settle(){
+  var res = nearestCard();
+  cards.forEach(function(c){ c.classList.remove('settled'); });
+  if(res.card){
+    // force reflow so the pulse keyframe restarts even if re-settling the same card
+    void res.card.offsetWidth;
+    res.card.classList.add('settled');
+    settleCount++;
+    settleCountEl.textContent = settleCount;
+    status.textContent = 'Settled on Card ' + (res.idx+1) + ' (via ' + (hasNativeScrollend ? 'scrollend event' : 'debounce fallback') + ')';
+  }
+}
+
+var debounceTimer = null;
+function onScroll(){
+  var railRect = rail.getBoundingClientRect();
+  var scrollableWidth = rail.scrollWidth - rail.clientWidth;
+  var progress = scrollableWidth > 0 ? rail.scrollLeft / scrollableWidth : 0;
+  compareBar.style.width = Math.max(0, Math.min(1, progress))*100 + '%';
+  status.textContent = 'Scrolling…';
+  cards.forEach(function(c){ c.classList.remove('settled'); });
+
+  if(!hasNativeScrollend){
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(settle, fallbackMs);
+  }
+}
+
+rail.addEventListener('scroll', onScroll, { passive:true });
+if(hasNativeScrollend){
+  rail.addEventListener('scrollend', settle);
+}
+
+fallbackSlider.addEventListener('input', function(){
+  fallbackMs = parseInt(this.value,10);
+  vFallback.textContent = fallbackMs + 'ms';
+});
+
+// settle the initial center card on load
+requestAnimationFrame(function(){ requestAnimationFrame(settle); });
+})();
+</script>
+</body>
+</html>
