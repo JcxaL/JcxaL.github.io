@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Text Decode Reveal</title>
+<style>
+  :root{ --bg:#0a0e1a; --accent:#f87171; --text:#eef2ff; --sub:#93a0c4; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif; min-height:100%;}
+  body{padding:70px 20px 40px;}
+  h1{font-size:clamp(22px,4vw,32px); margin:0 0 6px;}
+  p.lede{color:var(--sub); margin:0 0 36px; max-width:60ch;}
+
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:50; text-decoration:none; color:var(--text);
+    background:rgba(20,26,46,.75); border:1px solid rgba(255,255,255,.12); padding:8px 14px;
+    border-radius:999px; font-size:13px; backdrop-filter:blur(10px);
+  }
+
+  .stack{ max-width:820px; margin:0 auto; display:flex; flex-direction:column; gap:36px; }
+  .item{ }
+  .item .label{ font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:.1em; margin-bottom:8px; }
+  .decode{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-weight:700; letter-spacing:.01em; cursor:pointer; display:inline-block;
+  }
+  .decode .ch{ display:inline-block; }
+  .decode .ch.settled{ color:var(--text); }
+  .decode .ch.scrambling{ color:var(--accent); }
+  #big .decode{ font-size:clamp(26px,6vw,52px); }
+  #mid .decode{ font-size:clamp(18px,3vw,26px); color:#38bdf8; }
+  #small .decode{ font-size:15px; color:#a78bfa; }
+  .hint{ font-size:11px; color:var(--sub); margin-top:6px; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:50; background:rgba(20,26,46,.85); border:1px solid rgba(255,255,255,.12);
+    border-radius:14px; padding:12px 14px; font-size:11px; color:var(--sub); backdrop-filter:blur(10px); width:180px;
+  }
+  #panel h4{ margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
+  #panel .row{ display:flex; justify-content:space-between; margin-bottom:2px; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  @media (max-width:640px){ #panel{ display:none; } }
+
+  footer{ text-align:center; color:var(--sub); font-size:11px; margin-top:48px; opacity:.7; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Tune</h4>
+  <div class="row"><span>Stagger</span><span id="stagVal">28ms</span></div>
+  <input type="range" id="stagSlider" min="5" max="70" value="28">
+  <div class="row" style="margin-top:8px;"><span>Cycles</span><span id="cycVal">10</span></div>
+  <input type="range" id="cycSlider" min="3" max="24" value="10">
+</div>
+
+<h1>Text Decode Reveal</h1>
+<p class="lede">Hover (or tap) any headline — every character cycles through random glyphs before settling on the real letter, left to right. A staple "hacker terminal" effect that keeps resurfacing on portfolio and product sites.</p>
+
+<div class="stack">
+  <div class="item" id="big">
+    <div class="label">Hero headline</div>
+    <span class="decode" data-text="DECODE ON HOVER"></span>
+    <div class="hint">hover / tap to scramble</div>
+  </div>
+  <div class="item" id="mid">
+    <div class="label">Section title</div>
+    <span class="decode" data-text="Signal Found in the Noise"></span>
+    <div class="hint">hover / tap to scramble</div>
+  </div>
+  <div class="item" id="small">
+    <div class="label">Auto-decode on scroll into view</div>
+    <span class="decode" data-text="This line decodes itself once, the moment it enters the viewport." data-auto="1"></span>
+  </div>
+</div>
+
+<footer>Inspired by the classic CodePen "Text Scramble Effect" technique (soulwire &amp; community variants) · UI Spotlight Day 108 · Drop #3</footer>
+
+<script>
+(function(){
+  "use strict";
+  var CHARS = '!<>-_\\/[]{}—=+*^?#________';
+  var params = { stagger:28, cycles:10 };
+
+  function Scrambler(el){
+    this.el = el;
+    this.text = el.getAttribute('data-text');
+    this.frame = null;
+    this.build();
+  }
+  Scrambler.prototype.build = function(){
+    var self = this;
+    this.el.innerHTML = '';
+    this.spans = this.text.split('').map(function(ch){
+      var span = document.createElement('span');
+      span.className = 'ch settled';
+      span.textContent = ch === ' ' ? ' ' : ch;
+      self.el.appendChild(span);
+      return span;
+    });
+  };
+  Scrambler.prototype.run = function(){
+    var self = this;
+    if(this.frame) cancelAnimationFrame(this.frame);
+    var n = this.spans.length;
+    var revealAt = this.spans.map(function(_, i){ return i * params.stagger; });
+    var start = performance.now();
+    var perCharDuration = params.cycles * 40;
+
+    function tick(now){
+      var elapsed = now - start;
+      var doneCount = 0;
+      for(var i=0;i<n;i++){
+        var span = self.spans[i];
+        var localT = elapsed - revealAt[i];
+        var ch = self.text[i];
+        if(ch === ' '){ span.textContent = ' '; span.className='ch settled'; doneCount++; continue; }
+        if(localT < 0){
+          span.className = 'ch settled';
+          span.textContent = ch;
+        } else if(localT < perCharDuration){
+          span.className = 'ch scrambling';
+          if(Math.floor(localT/40) % 2 === 0){
+            span.textContent = CHARS[Math.floor(Math.random()*CHARS.length)];
+          }
+        } else {
+          span.className = 'ch settled';
+          span.textContent = ch;
+          doneCount++;
+        }
+      }
+      if(doneCount < n){
+        self.frame = requestAnimationFrame(tick);
+      }
+    }
+    self.frame = requestAnimationFrame(tick);
+  };
+
+  var scramblers = [];
+  document.querySelectorAll('.decode').forEach(function(el){
+    var s = new Scrambler(el);
+    scramblers.push(s);
+    if(el.getAttribute('data-auto')){
+      var seen = false;
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          if(entry.isIntersecting && !seen){ seen = true; s.run(); }
+        });
+      }, { threshold: 0.5 });
+      io.observe(el);
+    } else {
+      el.addEventListener('mouseenter', function(){ s.run(); });
+      el.addEventListener('touchstart', function(){ s.run(); }, {passive:true});
+    }
+  });
+
+  document.getElementById('stagSlider').addEventListener('input', function(e){
+    params.stagger = +e.target.value;
+    document.getElementById('stagVal').textContent = params.stagger+'ms';
+  });
+  document.getElementById('cycSlider').addEventListener('input', function(e){
+    params.cycles = +e.target.value;
+    document.getElementById('cycVal').textContent = params.cycles;
+  });
+})();
+</script>
+</body>
+</html>

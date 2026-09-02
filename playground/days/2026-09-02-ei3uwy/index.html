@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Verlet Rig — Soft-Body Physics Sandbox</title>
+<style>
+  :root{
+    --bg1:#0b0f1a; --bg2:#141a2e; --accent:#7ce0ff; --accent2:#ff8a7c;
+    --panel-bg:rgba(18,22,38,.82); --panel-border:rgba(255,255,255,.09);
+    --text:#eef2ff; --sub:#9aa4c7;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg1);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);}
+  canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block;}
+
+  #toolbar{
+    position:fixed; top:10px; left:10px; right:10px; z-index:20;
+    display:flex; gap:8px; align-items:center;
+    overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    padding:6px; background:var(--panel-bg); border:1px solid var(--panel-border);
+    border-radius:16px; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  }
+  #toolbar::-webkit-scrollbar{display:none;}
+  .tool-btn{
+    flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:2px;
+    background:transparent; border:1px solid transparent; color:var(--sub);
+    padding:7px 10px; border-radius:11px; font-size:10px; font-weight:600;
+    letter-spacing:.02em; cursor:pointer; min-width:56px;
+  }
+  .tool-btn .ic{font-size:16px; line-height:1;}
+  .tool-btn.active{background:rgba(124,224,255,.16); border-color:rgba(124,224,255,.4); color:var(--accent);}
+  .tool-sep{width:1px; align-self:stretch; background:var(--panel-border); flex:0 0 auto; margin:2px 0;}
+  #presetSel{
+    flex:0 0 auto; background:rgba(255,255,255,.06); color:var(--text); border:1px solid var(--panel-border);
+    border-radius:10px; padding:8px 8px; font-size:12px; font-weight:600; max-width:110px;
+  }
+  #gearBtn{
+    flex:0 0 auto; margin-left:auto; background:rgba(255,255,255,.06); border:1px solid var(--panel-border);
+    color:var(--text); border-radius:11px; width:38px; height:38px; font-size:17px; cursor:pointer;
+  }
+
+  #panel{
+    position:fixed; top:64px; right:10px; width:250px; max-height:calc(100% - 84px);
+    overflow-y:auto; background:var(--panel-bg); border:1px solid var(--panel-border);
+    border-radius:16px; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    padding:14px; z-index:19; transform:translateX(280px); opacity:0; pointer-events:none;
+    transition:transform .28s cubic-bezier(.2,.9,.3,1), opacity .28s;
+  }
+  #panel.open{transform:translateX(0); opacity:1; pointer-events:auto;}
+  #panel h4{margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--sub);}
+  #panel .sect{margin-bottom:16px;}
+  .row{display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--sub); margin-bottom:2px;}
+  input[type=range]{width:100%; accent-color:var(--accent); height:18px;}
+  .chk{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); margin-top:4px;}
+  .mini-btn{
+    background:rgba(255,255,255,.07); border:1px solid var(--panel-border); color:var(--text);
+    border-radius:9px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; width:100%;
+    margin-top:6px;
+  }
+  .mini-btn.primary{background:linear-gradient(135deg,var(--accent),#5ab8e0); color:#0a0f1a;}
+  .mini-btn:active{transform:scale(.97);}
+  #saveName{
+    width:100%; background:rgba(255,255,255,.06); border:1px solid var(--panel-border); color:var(--text);
+    border-radius:9px; padding:8px; font-size:12px; margin-top:6px;
+  }
+  .rigChip{
+    display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,.05);
+    border-radius:8px; padding:6px 8px; margin-top:6px; font-size:11px;
+  }
+  .rigChip button{background:none; border:none; color:var(--accent); font-size:11px; cursor:pointer; padding:2px 4px;}
+  .rigChip button.del{color:var(--accent2);}
+  #stats{font-size:10px; color:var(--sub); margin-top:2px;}
+  #fileImport{display:none;}
+
+  #hint{
+    position:fixed; left:50%; bottom:18px; transform:translate(-50%,0); z-index:18;
+    background:var(--panel-bg); border:1px solid var(--panel-border); color:var(--text);
+    padding:8px 14px; border-radius:20px; font-size:12px; backdrop-filter:blur(10px);
+    max-width:88vw; text-align:center; opacity:0; transition:opacity .3s; pointer-events:none;
+  }
+  #hint.show{opacity:1;}
+
+  #toast{
+    position:fixed; top:64px; left:50%; transform:translate(-50%,-8px); z-index:30;
+    background:rgba(124,224,255,.16); border:1px solid rgba(124,224,255,.4); color:var(--accent);
+    padding:8px 16px; border-radius:12px; font-size:12px; font-weight:600; opacity:0;
+    transition:opacity .25s, transform .25s; pointer-events:none;
+  }
+  #toast.show{opacity:1; transform:translate(-50%,0);}
+
+  @media (max-width:560px){
+    #panel{width:min(86vw,300px);}
+    .tool-btn{min-width:48px; padding:6px 8px;}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="toolbar">
+  <button class="tool-btn active" data-tool="drag"><span class="ic">✋</span>Drag</button>
+  <button class="tool-btn" data-tool="add-node"><span class="ic">➕</span>Node</button>
+  <button class="tool-btn" data-tool="add-spring"><span class="ic">🔗</span>Spring</button>
+  <button class="tool-btn" data-tool="pin"><span class="ic">📌</span>Pin</button>
+  <button class="tool-btn" data-tool="delete"><span class="ic">✂️</span>Cut</button>
+  <div class="tool-sep"></div>
+  <select id="presetSel">
+    <option value="blank">Blank</option>
+    <option value="cloth" selected>Cloth Swatch</option>
+    <option value="rope">Hanging Rope</option>
+    <option value="blob">Soft Blob</option>
+    <option value="pendulum">Pendulum Chain</option>
+  </select>
+  <button id="gearBtn">⚙️</button>
+</div>
+
+<aside id="panel">
+  <div class="sect">
+    <h4>Physics</h4>
+    <div class="row"><span>Gravity</span><span id="gravVal"></span></div>
+    <input type="range" id="gravity" min="0" max="2200" value="1000">
+    <div class="row"><span>Wind</span><span id="windVal"></span></div>
+    <input type="range" id="wind" min="0" max="1200" value="0">
+    <div class="row"><span>Stiffness</span><span id="stiffVal"></span></div>
+    <input type="range" id="stiffness" min="1" max="14" value="6">
+    <div class="row"><span>Damping</span><span id="dampVal"></span></div>
+    <input type="range" id="damping" min="950" max="999" value="988">
+    <label class="chk"><input type="checkbox" id="floorChk" checked> Floor collision</label>
+  </div>
+  <div class="sect">
+    <h4>Save Rig</h4>
+    <input id="saveName" placeholder="Rig name…" maxlength="24">
+    <button class="mini-btn primary" id="saveBtn">💾 Save to browser</button>
+    <div id="rigList"></div>
+  </div>
+  <div class="sect">
+    <h4>Export / Share</h4>
+    <button class="mini-btn" id="exportBtn">⬇️ Download JSON</button>
+    <button class="mini-btn" id="importBtn">⬆️ Import JSON</button>
+    <input type="file" id="fileImport" accept="application/json,.json">
+    <button class="mini-btn" id="shareBtn">🔗 Copy share link</button>
+    <button class="mini-btn" id="pngBtn">🖼️ Export PNG</button>
+  </div>
+  <div class="sect">
+    <h4>Canvas</h4>
+    <button class="mini-btn" id="clearBtn">🗑️ Clear all</button>
+    <div id="stats"></div>
+  </div>
+</aside>
+
+<div id="hint"></div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+  var W=0, H=0;
+
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W*DPR);
+    canvas.height = Math.round(H*DPR);
+    canvas.style.width = W+'px';
+    canvas.style.height = H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- Physics state ----------
+  var nodes = [];   // {x,y,px,py,pinned,drag}
+  var springs = []; // {a,b,rest}
+  var params = { gravity:1000, wind:0, stiffness:6, damping:0.988, floor:true };
+
+  function addNode(x,y,pinned){
+    nodes.push({x:x,y:y,px:x,py:y,pinned:!!pinned,drag:false});
+    return nodes.length-1;
+  }
+  function addSpring(a,b,restOverride){
+    if(a===b) return;
+    var na=nodes[a], nb=nodes[b];
+    var rest = (typeof restOverride==='number') ? restOverride : dist(na,nb);
+    springs.push({a:a,b:b,rest:rest});
+  }
+  function dist(a,b){ var dx=a.x-b.x, dy=a.y-b.y; return Math.sqrt(dx*dx+dy*dy); }
+
+  function clearAll(){ nodes=[]; springs=[]; }
+
+  // ---------- Presets ----------
+  function buildCloth(){
+    clearAll();
+    var cols=14, rows=10, sp=Math.min(W/(cols+2), 40);
+    var ox = W/2 - (cols-1)*sp/2, oy = Math.max(90, H*0.14);
+    var idx = function(r,c){ return r*cols+c; };
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var pin = (r===0) && (c%2===0);
+        addNode(ox+c*sp, oy+r*sp, pin);
+      }
+    }
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        if(c<cols-1) addSpring(idx(r,c), idx(r,c+1));
+        if(r<rows-1) addSpring(idx(r,c), idx(r+1,c));
+        if(r<rows-1 && c<cols-1){ addSpring(idx(r,c), idx(r+1,c+1)); addSpring(idx(r,c+1), idx(r+1,c)); }
+      }
+    }
+  }
+  function buildRope(){
+    clearAll();
+    var n=26, x0=W*0.15, x1=W*0.85, y=H*0.22;
+    var prev=-1;
+    for(var i=0;i<n;i++){
+      var t=i/(n-1);
+      var id = addNode(x0+(x1-x0)*t, y, i===0||i===n-1);
+      if(prev>=0) addSpring(prev,id);
+      prev=id;
+    }
+  }
+  function buildBlob(){
+    clearAll();
+    var n=16, cx=W/2, cy=H*0.35, r=Math.min(W,H)*0.16;
+    var center = addNode(cx,cy,false);
+    var ring=[];
+    for(var i=0;i<n;i++){
+      var a = i/n*Math.PI*2;
+      ring.push(addNode(cx+Math.cos(a)*r, cy+Math.sin(a)*r, false));
+    }
+    for(var i=0;i<n;i++){
+      addSpring(ring[i], ring[(i+1)%n]);
+      addSpring(ring[i], center);
+      addSpring(ring[i], ring[(i+2)%n]);
+    }
+  }
+  function buildPendulum(){
+    clearAll();
+    var n=7, x=W/2, y0=H*0.12, seg=Math.min(70,H*0.09);
+    var prev = addNode(x,y0,true);
+    for(var i=1;i<n;i++){
+      var id = addNode(x + (i%2===0? 40:-40), y0+i*seg, false);
+      addSpring(prev,id);
+      prev=id;
+    }
+  }
+  var presets = { blank:clearAll, cloth:buildCloth, rope:buildRope, blob:buildBlob, pendulum:buildPendulum };
+
+  // ---------- Serialization ----------
+  function serialize(){
+    return {
+      v:1,
+      nodes: nodes.map(function(n){ return [Math.round(n.x), Math.round(n.y), n.pinned?1:0]; }),
+      springs: springs.map(function(s){ return [s.a, s.b, Math.round(s.rest*10)/10]; }),
+      p: params
+    };
+  }
+  function loadData(data){
+    if(!data || !data.nodes) return false;
+    clearAll();
+    data.nodes.forEach(function(n){ addNode(n[0], n[1], !!n[2]); });
+    (data.springs||[]).forEach(function(s){ addSpring(s[0], s[1], s[2]); });
+    if(data.p){
+      params.gravity = data.p.gravity!=null?data.p.gravity:params.gravity;
+      params.wind = data.p.wind!=null?data.p.wind:params.wind;
+      params.stiffness = data.p.stiffness!=null?data.p.stiffness:params.stiffness;
+      params.damping = data.p.damping!=null?data.p.damping:params.damping;
+      params.floor = data.p.floor!=null?data.p.floor:params.floor;
+      syncSliders();
+    }
+    return true;
+  }
+
+  // ---------- Simulation step ----------
+  var floorY = 0;
+  function updateFloor(){ floorY = H - 24; }
+  updateFloor();
+  window.addEventListener('resize', updateFloor);
+
+  var t=0;
+  function step(dt){
+    t += dt;
+    var g = params.gravity, wind = params.wind;
+    for(var i=0;i<nodes.length;i++){
+      var n = nodes[i];
+      if(n.pinned || n.drag) { n.px=n.x; n.py=n.y; continue; }
+      var vx = (n.x - n.px) * params.damping;
+      var vy = (n.y - n.py) * params.damping;
+      var ax = Math.sin(t*1.7 + n.y*0.01) * wind;
+      var ay = g;
+      var nx = n.x + vx + ax*dt*dt;
+      var ny = n.y + vy + ay*dt*dt;
+      n.px = n.x; n.py = n.y;
+      n.x = nx; n.y = ny;
+    }
+    var iters = Math.round(params.stiffness);
+    for(var k=0;k<iters;k++){
+      for(var s=0;s<springs.length;s++){
+        var sp = springs[s];
+        var a = nodes[sp.a], b = nodes[sp.b];
+        if(!a||!b) continue;
+        var dx=b.x-a.x, dy=b.y-a.y;
+        var d = Math.sqrt(dx*dx+dy*dy) || 0.0001;
+        var diff = (d - sp.rest) / d;
+        var aFree = !(a.pinned||a.drag), bFree = !(b.pinned||b.drag);
+        var share = (aFree && bFree) ? 0.5 : 1;
+        if(aFree){ a.x += dx*0.5*diff*share; a.y += dy*0.5*diff*share; }
+        if(bFree){ b.x -= dx*0.5*diff*share; b.y -= dy*0.5*diff*share; }
+      }
+      if(params.floor){
+        for(var i2=0;i2<nodes.length;i2++){
+          var nn = nodes[i2];
+          if(nn.pinned||nn.drag) continue;
+          if(nn.y > floorY){ nn.y = floorY; nn.py = nn.py + (nn.y-nn.py)*0.35; }
+          if(nn.x < 4) nn.x = 4; if(nn.x > W-4) nn.x = W-4;
+        }
+      }
+    }
+  }
+
+  // ---------- Rendering ----------
+  var hueBase = 205;
+  function render(){
+    var g = ctx.createLinearGradient(0,0,0,H);
+    var hue = (hueBase + Math.sin(t*0.05)*14);
+    g.addColorStop(0, 'hsl('+hue+',48%,9%)');
+    g.addColorStop(1, 'hsl('+(hue+18)+',52%,4%)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+
+    if(params.floor){
+      ctx.strokeStyle='rgba(255,255,255,.08)';
+      ctx.setLineDash([6,8]);
+      ctx.beginPath(); ctx.moveTo(0,floorY+0.5); ctx.lineTo(W,floorY+0.5); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    for(var s=0;s<springs.length;s++){
+      var sp = springs[s];
+      var a = nodes[sp.a], b = nodes[sp.b];
+      if(!a||!b) continue;
+      var d = dist(a,b);
+      var strain = Math.min(1.6, d/sp.rest);
+      var hueS = strain<1 ? 150 : (150 - (strain-1)*220);
+      ctx.strokeStyle = 'hsla('+Math.max(-10,hueS)+',85%,62%,.75)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    }
+    for(var i=0;i<nodes.length;i++){
+      var n = nodes[i];
+      if(n.pinned){
+        ctx.fillStyle='#ffcf7c';
+        ctx.beginPath(); ctx.arc(n.x,n.y,5.5,0,7); ctx.fill();
+        ctx.strokeStyle='rgba(255,207,124,.4)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(n.x,n.y,9,0,7); ctx.stroke();
+      } else {
+        ctx.fillStyle = n.drag ? '#ff8a7c' : '#7ce0ff';
+        ctx.beginPath(); ctx.arc(n.x,n.y, n.drag?5.5:3.4, 0, 7); ctx.fill();
+      }
+    }
+
+    if(activeTool==='add-spring' && springAnchor!=null && nodes[springAnchor]){
+      var an = nodes[springAnchor];
+      ctx.strokeStyle='rgba(124,224,255,.5)'; ctx.lineWidth=2; ctx.setLineDash([4,5]);
+      ctx.beginPath(); ctx.moveTo(an.x,an.y); ctx.lineTo(pointerX,pointerY); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // ---------- Main loop ----------
+  var lastTime = performance.now();
+  var acc = 0;
+  var STEP = 1/60;
+  function loop(now){
+    var dt = Math.min(0.05, (now-lastTime)/1000);
+    lastTime = now;
+    acc += dt;
+    var guard=0;
+    while(acc >= STEP && guard<5){ step(STEP); acc -= STEP; guard++; }
+    render();
+    document.getElementById('stats').textContent = nodes.length+' nodes · '+springs.length+' springs';
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- Tools & interaction ----------
+  var activeTool = 'drag';
+  var springAnchor = null;
+  var pointerX=0, pointerY=0;
+  var dragIdx = -1;
+  var HIT = 22;
+
+  function nearestNode(x,y,maxD){
+    var best=-1, bd=maxD||HIT;
+    for(var i=0;i<nodes.length;i++){
+      var n=nodes[i]; var d=Math.hypot(n.x-x,n.y-y);
+      if(d<bd){ bd=d; best=i; }
+    }
+    return best;
+  }
+  function nearestSpring(x,y,maxD){
+    var best=-1, bd=maxD||14;
+    for(var i=0;i<springs.length;i++){
+      var s=springs[i], a=nodes[s.a], b=nodes[s.b];
+      if(!a||!b) continue;
+      var d = pointToSeg(x,y,a.x,a.y,b.x,b.y);
+      if(d<bd){ bd=d; best=i; }
+    }
+    return best;
+  }
+  function pointToSeg(px,py,x1,y1,x2,y2){
+    var dx=x2-x1, dy=y2-y1;
+    var len2 = dx*dx+dy*dy || 1;
+    var t = Math.max(0,Math.min(1, ((px-x1)*dx+(py-y1)*dy)/len2));
+    var cx=x1+dx*t, cy=y1+dy*t;
+    return Math.hypot(px-cx,py-cy);
+  }
+
+  function removeNodeAt(idx){
+    nodes.splice(idx,1);
+    springs = springs.filter(function(s){ return s.a!==idx && s.b!==idx; })
+      .map(function(s){ return { a: s.a>idx?s.a-1:s.a, b: s.b>idx?s.b-1:s.b, rest:s.rest }; });
+    if(dragIdx===idx) dragIdx=-1;
+  }
+
+  function showHint(text, ms){
+    var h = document.getElementById('hint');
+    h.textContent = text;
+    h.classList.add('show');
+    clearTimeout(showHint._t);
+    showHint._t = setTimeout(function(){ h.classList.remove('show'); }, ms||1800);
+  }
+  var toolHints = {
+    drag:'Drag any node around', 'add-node':'Tap empty space to add a node',
+    'add-spring':'Tap a node, then tap another to connect them',
+    pin:'Tap a node to pin / unpin it', delete:'Tap a node or spring to remove it'
+  };
+
+  document.querySelectorAll('.tool-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.tool-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      activeTool = btn.getAttribute('data-tool');
+      springAnchor = null;
+      showHint(toolHints[activeTool]);
+    });
+  });
+
+  canvas.addEventListener('pointerdown', function(e){
+    var x = e.clientX, y = e.clientY;
+    pointerX=x; pointerY=y;
+    if(activeTool==='drag'){
+      var idx = nearestNode(x,y);
+      if(idx>=0){ dragIdx=idx; nodes[idx].drag=true; canvas.setPointerCapture(e.pointerId); }
+    } else if(activeTool==='add-node'){
+      var hit = nearestNode(x,y,HIT);
+      if(hit<0) addNode(x,y,false);
+    } else if(activeTool==='add-spring'){
+      var idx2 = nearestNode(x,y);
+      if(idx2>=0){
+        if(springAnchor==null) springAnchor = idx2;
+        else { addSpring(springAnchor, idx2); springAnchor=null; }
+      }
+    } else if(activeTool==='pin'){
+      var idx3 = nearestNode(x,y);
+      if(idx3>=0) nodes[idx3].pinned = !nodes[idx3].pinned;
+    } else if(activeTool==='delete'){
+      var idx4 = nearestNode(x,y);
+      if(idx4>=0) removeNodeAt(idx4);
+      else { var si = nearestSpring(x,y); if(si>=0) springs.splice(si,1); }
+    }
+  }, {passive:true});
+
+  canvas.addEventListener('pointermove', function(e){
+    pointerX = e.clientX; pointerY = e.clientY;
+    if(dragIdx>=0){
+      nodes[dragIdx].x = e.clientX;
+      nodes[dragIdx].y = e.clientY;
+    }
+  }, {passive:true});
+
+  function endDrag(e){
+    if(dragIdx>=0){ nodes[dragIdx].drag=false; dragIdx=-1; }
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // ---------- Panel / sliders ----------
+  var panel = document.getElementById('panel');
+  document.getElementById('gearBtn').addEventListener('click', function(){ panel.classList.toggle('open'); });
+
+  function syncSliders(){
+    document.getElementById('gravity').value = params.gravity;
+    document.getElementById('wind').value = params.wind;
+    document.getElementById('stiffness').value = params.stiffness;
+    document.getElementById('damping').value = Math.round(params.damping*1000);
+    document.getElementById('floorChk').checked = params.floor;
+    document.getElementById('gravVal').textContent = params.gravity;
+    document.getElementById('windVal').textContent = params.wind;
+    document.getElementById('stiffVal').textContent = params.stiffness;
+    document.getElementById('dampVal').textContent = params.damping.toFixed(3);
+  }
+  document.getElementById('gravity').addEventListener('input', function(e){ params.gravity=+e.target.value; document.getElementById('gravVal').textContent=params.gravity; });
+  document.getElementById('wind').addEventListener('input', function(e){ params.wind=+e.target.value; document.getElementById('windVal').textContent=params.wind; });
+  document.getElementById('stiffness').addEventListener('input', function(e){ params.stiffness=+e.target.value; document.getElementById('stiffVal').textContent=params.stiffness; });
+  document.getElementById('damping').addEventListener('input', function(e){ params.damping=(+e.target.value)/1000; document.getElementById('dampVal').textContent=params.damping.toFixed(3); });
+  document.getElementById('floorChk').addEventListener('change', function(e){ params.floor = e.target.checked; });
+  syncSliders();
+
+  document.getElementById('presetSel').addEventListener('change', function(e){
+    var fn = presets[e.target.value];
+    if(fn) fn();
+    springAnchor=null; dragIdx=-1;
+  });
+  document.getElementById('clearBtn').addEventListener('click', function(){ clearAll(); showToast('Canvas cleared'); });
+
+  // ---------- Toast ----------
+  function showToast(msg){
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function(){ el.classList.remove('show'); }, 1800);
+  }
+
+  // ---------- Save / Load (localStorage) ----------
+  var LS_KEY = 'verletRigs_v1';
+  function getRigs(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }catch(e){ return {}; } }
+  function setRigs(obj){ try{ localStorage.setItem(LS_KEY, JSON.stringify(obj)); }catch(e){} }
+  function renderRigList(){
+    var rigs = getRigs();
+    var box = document.getElementById('rigList');
+    box.innerHTML='';
+    Object.keys(rigs).forEach(function(name){
+      var chip = document.createElement('div');
+      chip.className='rigChip';
+      var span = document.createElement('span'); span.textContent = name;
+      var btns = document.createElement('div');
+      var loadBtn = document.createElement('button'); loadBtn.textContent='Load';
+      loadBtn.addEventListener('click', function(){ loadData(rigs[name]); showToast('Loaded "'+name+'"'); });
+      var delBtn = document.createElement('button'); delBtn.textContent='✕'; delBtn.className='del';
+      delBtn.addEventListener('click', function(){ var r=getRigs(); delete r[name]; setRigs(r); renderRigList(); });
+      btns.appendChild(loadBtn); btns.appendChild(delBtn);
+      chip.appendChild(span); chip.appendChild(btns);
+      box.appendChild(chip);
+    });
+  }
+  document.getElementById('saveBtn').addEventListener('click', function(){
+    var nameInput = document.getElementById('saveName');
+    var name = (nameInput.value||'').trim() || ('rig-'+Date.now().toString(36));
+    var rigs = getRigs();
+    rigs[name] = serialize();
+    setRigs(rigs);
+    nameInput.value='';
+    renderRigList();
+    showToast('Saved "'+name+'"');
+  });
+  renderRigList();
+
+  // ---------- Export / Import JSON ----------
+  document.getElementById('exportBtn').addEventListener('click', function(){
+    var data = JSON.stringify(serialize());
+    var blob = new Blob([data], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'verlet-rig-'+Date.now()+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+    showToast('Rig downloaded');
+  });
+  document.getElementById('importBtn').addEventListener('click', function(){ document.getElementById('fileImport').click(); });
+  document.getElementById('fileImport').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var data = JSON.parse(reader.result);
+        if(loadData(data)) showToast('Rig imported');
+        else showToast('Invalid rig file');
+      }catch(err){ showToast('Could not parse JSON'); }
+    };
+    reader.readAsText(file);
+    e.target.value='';
+  });
+
+  // ---------- Share link ----------
+  function b64EncodeUnicode(str){
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(_,p1){ return String.fromCharCode('0x'+p1); }));
+  }
+  function b64DecodeUnicode(str){
+    return decodeURIComponent(Array.prototype.map.call(atob(str), function(c){
+      return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+  }
+  document.getElementById('shareBtn').addEventListener('click', function(){
+    var packed = b64EncodeUnicode(JSON.stringify(serialize()));
+    var url = location.origin + location.pathname + '#rig=' + packed;
+    history.replaceState(null,'',url);
+    var done = function(){ showToast('Share link copied'); };
+    var fail = function(){
+      var ta = document.createElement('textarea');
+      ta.value = url; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); done(); }catch(e){ showToast('Copy failed — link in address bar'); }
+      document.body.removeChild(ta);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(done).catch(fail);
+    } else fail();
+  });
+
+  // ---------- PNG export ----------
+  document.getElementById('pngBtn').addEventListener('click', function(){
+    canvas.toBlob(function(blob){
+      if(!blob){ showToast('Export failed'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'verlet-rig-'+Date.now()+'.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      showToast('Snapshot saved');
+    }, 'image/png');
+  });
+
+  // ---------- Boot ----------
+  function boot(){
+    if(location.hash && location.hash.indexOf('#rig=')===0){
+      try{
+        var data = JSON.parse(b64DecodeUnicode(location.hash.slice(5)));
+        if(loadData(data)){ showHint('Loaded a shared rig — drag it around!', 2600); return; }
+      }catch(e){ /* fall through to default preset */ }
+    }
+    buildCloth();
+    showHint('Drag the cloth — try other presets above', 2600);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

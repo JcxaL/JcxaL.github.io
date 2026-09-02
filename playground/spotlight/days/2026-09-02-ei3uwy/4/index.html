@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Swipe-to-Reveal Actions</title>
+<style>
+  :root{ --bg:#0a0e1a; --card:#141a2e; --accent:#fbbf24; --danger:#ff6b6b; --ok:#34d399; --text:#eef2ff; --sub:#93a0c4; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif; min-height:100%;}
+  body{padding:70px 20px 40px;}
+  h1{font-size:clamp(22px,4vw,32px); margin:0 0 6px;}
+  p.lede{color:var(--sub); margin:0 0 28px; max-width:60ch;}
+
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:50; text-decoration:none; color:var(--text);
+    background:rgba(20,26,46,.75); border:1px solid rgba(255,255,255,.12); padding:8px 14px;
+    border-radius:999px; font-size:13px; backdrop-filter:blur(10px);
+  }
+
+  .list{ max-width:520px; margin:0 auto; display:flex; flex-direction:column; gap:10px; }
+  .swipe-row{
+    position:relative; border-radius:14px; overflow:hidden; height:64px;
+    touch-action:pan-y;
+  }
+  .actions{
+    position:absolute; inset:0; display:flex; justify-content:flex-end; align-items:stretch;
+  }
+  .actions button{
+    width:76px; border:none; color:#0a0e1a; font-size:12px; font-weight:700; cursor:pointer;
+  }
+  .actions .archive{ background:var(--accent); }
+  .actions .delete{ background:var(--danger); color:#2a0a0a; }
+  .front{
+    position:relative; background:var(--card); border:1px solid rgba(255,255,255,.07); border-radius:14px;
+    height:64px; display:flex; align-items:center; gap:12px; padding:0 16px; cursor:grab;
+    will-change:transform;
+  }
+  .front.dragging{ cursor:grabbing; }
+  .avatar{ width:36px; height:36px; border-radius:50%; flex:0 0 auto; }
+  .front .meta{ flex:1; min-width:0; }
+  .front .name{ font-weight:600; font-size:14px; }
+  .front .preview{ font-size:12px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .front .time{ font-size:11px; color:var(--sub); flex:0 0 auto; }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:50; background:rgba(20,26,46,.85); border:1px solid rgba(255,255,255,.12);
+    border-radius:14px; padding:12px 14px; font-size:11px; color:var(--sub); backdrop-filter:blur(10px); width:180px;
+  }
+  #panel h4{ margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
+  #panel .row{ display:flex; justify-content:space-between; margin-bottom:2px; }
+  #panel input[type=range]{ width:100%; accent-color:var(--accent); }
+  @media (max-width:640px){ #panel{ display:none; } }
+
+  footer{ text-align:center; color:var(--sub); font-size:11px; margin-top:40px; opacity:.7; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="panel">
+  <h4>Tune</h4>
+  <div class="row"><span>Reveal width</span><span id="wVal">152px</span></div>
+  <input type="range" id="wSlider" min="90" max="220" value="152">
+  <div class="row" style="margin-top:8px;"><span>Rubber-band</span><span id="rVal">0.35</span></div>
+  <input type="range" id="rSlider" min="10" max="70" value="35">
+</div>
+
+<h1>Swipe-to-Reveal Actions</h1>
+<p class="lede">Drag any row left — actions slide out from behind it with rubber-band resistance past the reveal point, then spring to a clean open or closed rest state on release. Mouse-drag and touch both work.</p>
+
+<div class="list" id="list"></div>
+
+<footer>Inspired by the iOS Mail / Android Wear swipe-to-reveal pattern &amp; Motion.dev spring-physics swipe tutorial · UI Spotlight Day 108 · Drop #4</footer>
+
+<script>
+(function(){
+  "use strict";
+  var DATA = [
+    { name:'Priya Shah', preview:'Can you review the deck before standup?', time:'9:41', hue:200 },
+    { name:'Marcus Lee', preview:'Shipped the fix — CI is green now.', time:'9:12', hue:20 },
+    { name:'Ada Osei', preview:'Lunch at 12:30? found a new spot.', time:'Yesterday', hue:140 },
+    { name:'Felix Nowak', preview:'Design review notes attached below.', time:'Yesterday', hue:270 },
+    { name:'June Park', preview:'Thanks for the quick turnaround!', time:'Mon', hue:330 }
+  ];
+  var REVEAL = 152;
+  var RUBBER = 0.35;
+
+  var list = document.getElementById('list');
+  var openRow = null;
+
+  DATA.forEach(function(item){
+    var row = document.createElement('div');
+    row.className = 'swipe-row';
+    row.innerHTML =
+      '<div class="actions">' +
+        '<button class="archive">Archive</button>' +
+        '<button class="delete">Delete</button>' +
+      '</div>' +
+      '<div class="front">' +
+        '<div class="avatar" style="background:linear-gradient(135deg,hsl('+item.hue+',70%,55%),hsl('+(item.hue+40)+',70%,35%))"></div>' +
+        '<div class="meta"><div class="name">'+item.name+'</div><div class="preview">'+item.preview+'</div></div>' +
+        '<div class="time">'+item.time+'</div>' +
+      '</div>';
+    list.appendChild(row);
+
+    var front = row.querySelector('.front');
+    var archiveBtn = row.querySelector('.archive');
+    var deleteBtn = row.querySelector('.delete');
+    var startX = 0, curX = 0, dragging = false, baseX = 0;
+
+    function setX(x, animate){
+      front.style.transition = animate ? 'transform 260ms cubic-bezier(.22,1,.36,1)' : 'none';
+      front.style.transform = 'translateX('+x+'px)';
+      curX = x;
+    }
+    function openIt(animate){
+      if(openRow && openRow !== row) openRow.close();
+      setX(-REVEAL, animate !== false);
+      openRow = row;
+    }
+    function closeIt(animate){
+      setX(0, animate !== false);
+      if(openRow === row) openRow = null;
+    }
+    row.close = closeIt;
+
+    function onDown(clientX){
+      dragging = true;
+      startX = clientX;
+      baseX = curX;
+      front.classList.add('dragging');
+      front.style.transition = 'none';
+    }
+    function onMove(clientX){
+      if(!dragging) return;
+      var dx = clientX - startX;
+      var target = baseX + dx;
+      if(target > 0){ target = target * RUBBER * 0.4; }
+      else if(target < -REVEAL){ target = -REVEAL + (target + REVEAL) * RUBBER; }
+      setX(target, false);
+    }
+    function onUp(){
+      if(!dragging) return;
+      dragging = false;
+      front.classList.remove('dragging');
+      if(curX < -REVEAL * 0.4) openIt(true);
+      else closeIt(true);
+    }
+
+    front.addEventListener('pointerdown', function(e){
+      front.setPointerCapture(e.pointerId);
+      onDown(e.clientX);
+    });
+    front.addEventListener('pointermove', function(e){ onMove(e.clientX); });
+    front.addEventListener('pointerup', onUp);
+    front.addEventListener('pointercancel', onUp);
+
+    archiveBtn.addEventListener('click', function(){
+      row.style.transition = 'opacity 260ms, max-height 260ms, margin 260ms';
+      row.style.maxHeight = row.offsetHeight+'px';
+      requestAnimationFrame(function(){
+        row.style.opacity = '0'; row.style.maxHeight = '0px'; row.style.marginBottom = '0px';
+      });
+      setTimeout(function(){ row.remove(); }, 280);
+    });
+    deleteBtn.addEventListener('click', function(){
+      archiveBtn.click();
+    });
+  });
+
+  function updateReveal(){
+    document.querySelectorAll('.actions button').forEach(function(b){ b.style.width = (REVEAL/2)+'px'; });
+  }
+  updateReveal();
+
+  document.getElementById('wSlider').addEventListener('input', function(e){
+    REVEAL = +e.target.value;
+    document.getElementById('wVal').textContent = REVEAL+'px';
+    updateReveal();
+  });
+  document.getElementById('rSlider').addEventListener('input', function(e){
+    RUBBER = (+e.target.value)/100;
+    document.getElementById('rVal').textContent = RUBBER.toFixed(2);
+  });
+})();
+</script>
+</body>
+</html>

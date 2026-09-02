@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Shared-Element Morph — View Transitions</title>
+<style>
+  :root{ --bg:#0a0e1a; --card:#141a2e; --accent:#7ce0ff; --text:#eef2ff; --sub:#93a0c4; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif; min-height:100%;}
+  body{padding:70px 20px 40px;}
+  h1{font-size:clamp(22px,4vw,32px); margin:0 0 6px;}
+  p.lede{color:var(--sub); margin:0 0 28px; max-width:60ch;}
+
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:50; text-decoration:none; color:var(--text);
+    background:rgba(20,26,46,.75); border:1px solid rgba(255,255,255,.12); padding:8px 14px;
+    border-radius:999px; font-size:13px; backdrop-filter:blur(10px);
+  }
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; max-width:960px; margin:0 auto; }
+  .card{
+    background:var(--card); border-radius:16px; overflow:hidden; cursor:pointer; border:1px solid rgba(255,255,255,.06);
+    display:flex; flex-direction:column;
+  }
+  .card .swatch{ height:110px; }
+  .card .body{ padding:12px 14px; }
+  .card h3{ margin:0 0 4px; font-size:14px; }
+  .card p{ margin:0; font-size:12px; color:var(--sub); }
+
+  #detail{
+    position:fixed; inset:0; background:var(--bg); z-index:40; display:none;
+    flex-direction:column; padding:70px 24px 40px; overflow:auto;
+  }
+  #detail.open{ display:flex; }
+  #detail .swatch{ height:min(40vh,320px); border-radius:20px; margin-bottom:20px; }
+  #detail h2{ margin:0 0 10px; font-size:clamp(24px,5vw,38px); }
+  #detail p{ color:var(--sub); max-width:60ch; line-height:1.6; }
+  #closeBtn{
+    align-self:flex-start; margin-top:24px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14);
+    color:var(--text); padding:10px 18px; border-radius:12px; cursor:pointer; font-size:13px;
+  }
+
+  #panel{
+    position:fixed; top:14px; right:14px; z-index:50; background:rgba(20,26,46,.85); border:1px solid rgba(255,255,255,.12);
+    border-radius:14px; padding:10px 14px; font-size:11px; color:var(--sub); backdrop-filter:blur(10px);
+  }
+  #panel b{ color:var(--accent); }
+  @media (max-width:640px){ #panel{ display:none; } }
+
+  footer{ text-align:center; color:var(--sub); font-size:11px; margin-top:40px; opacity:.7; }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div id="panel">View Transitions: <b id="supportLabel">checking…</b></div>
+
+<h1>Shared-Element Morph</h1>
+<p class="lede">Tap any card — the browser morphs it into a full detail view with zero manual animation code. Powered by <code>document.startViewTransition()</code> and matching <code>view-transition-name</code> values.</p>
+
+<div class="grid" id="grid"></div>
+
+<div id="detail">
+  <div class="swatch" id="detailSwatch"></div>
+  <h2 id="detailTitle"></h2>
+  <p id="detailBody"></p>
+  <button id="closeBtn">← Back to grid</button>
+</div>
+
+<footer>Inspired by the View Transitions API (MDN) &amp; vtbag.dev shared-element guide · UI Spotlight Day 108 · Drop #1</footer>
+
+<script>
+(function(){
+  "use strict";
+  var ITEMS = [
+    { id:1, title:'Aurora Deck', hue:200, body:'A layered gradient study exploring how translucent bands of color read differently against warm and cool backdrops.' },
+    { id:2, title:'Granite Study', hue:20, body:'Texture-first composition: rough, matte surfaces contrasted with a single glossy highlight to draw the eye.' },
+    { id:3, title:'Cobalt Drift', hue:230, body:'A slow-motion color drift concept for ambient backgrounds — designed to never quite repeat.' },
+    { id:4, title:'Ember Line', hue:10, body:'Thin glowing linework over dark space, inspired by long-exposure light trails.' },
+    { id:5, title:'Verdant Grid', hue:140, body:'A modular grid of greens meant to evoke satellite imagery of farmland at dusk.' },
+    { id:6, title:'Violet Hour', hue:270, body:'The exact ten minutes after sunset, rendered as a gradient instead of a photograph.' }
+  ];
+  var supported = typeof document.startViewTransition === 'function';
+  document.getElementById('supportLabel').textContent = supported ? 'supported ✓' : 'unsupported (instant fallback)';
+
+  var grid = document.getElementById('grid');
+  var detail = document.getElementById('detail');
+  var detailSwatch = document.getElementById('detailSwatch');
+  var detailTitle = document.getElementById('detailTitle');
+  var detailBody = document.getElementById('detailBody');
+  var openId = null;
+
+  function swatchGradient(hue){
+    return 'linear-gradient(135deg, hsl('+hue+',70%,55%), hsl('+(hue+40)+',70%,30%))';
+  }
+
+  ITEMS.forEach(function(item){
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      '<div class="swatch" style="background:'+swatchGradient(item.hue)+'"></div>' +
+      '<div class="body"><h3>'+item.title+'</h3><p>Tap to expand →</p></div>';
+    card.addEventListener('click', function(){ openDetail(item, card); });
+    grid.appendChild(card);
+  });
+
+  function cardSwatchFor(item){
+    return document.querySelector('.card:nth-child('+(ITEMS.indexOf(item)+1)+') .swatch');
+  }
+
+  function fillDetail(item){
+    detailSwatch.style.background = swatchGradient(item.hue);
+    detailTitle.textContent = item.title;
+    detailBody.textContent = item.body;
+  }
+
+  // Only one element may carry a given view-transition-name at a time, so the
+  // name is moved from the card's swatch to the detail's swatch (and back)
+  // inside the DOM-mutation callback rather than held on both at once.
+  function openDetail(item){
+    openId = item.id;
+    var swatch = cardSwatchFor(item);
+    var run = function(){
+      if(swatch) swatch.style.viewTransitionName = '';
+      fillDetail(item);
+      detail.classList.add('open');
+      detailSwatch.style.viewTransitionName = 'swatch-'+item.id;
+      detailTitle.style.viewTransitionName = 'title-'+item.id;
+    };
+    if(supported){
+      if(swatch) swatch.style.viewTransitionName = 'swatch-'+item.id;
+      document.startViewTransition(run);
+    } else {
+      run();
+    }
+  }
+
+  document.getElementById('closeBtn').addEventListener('click', function(){
+    var item = ITEMS.filter(function(i){ return i.id === openId; })[0];
+    if(!item){ detail.classList.remove('open'); return; }
+    var swatch = cardSwatchFor(item);
+    var run = function(){
+      detailSwatch.style.viewTransitionName = '';
+      detailTitle.style.viewTransitionName = '';
+      detail.classList.remove('open');
+      if(swatch) swatch.style.viewTransitionName = 'swatch-'+item.id;
+    };
+    if(supported){
+      var t = document.startViewTransition(run);
+      t.finished.finally(function(){ if(swatch) swatch.style.viewTransitionName = ''; });
+    } else {
+      run();
+    }
+  });
+})();
+</script>
+</body>
+</html>
