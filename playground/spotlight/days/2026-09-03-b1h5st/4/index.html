@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Precision Lock</title>
+<style>
+  :root{ color-scheme: dark; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%; background:#07080d; color:#eef1ff; overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;}
+
+  .glass{ background:rgba(20,22,36,.6); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.1); border-radius:14px; }
+  .back-link{ position:fixed; top:16px; left:16px; z-index:20; padding:9px 14px; font-size:12.5px; text-decoration:none; color:#eef2ff; }
+  #panelToggle{ position:fixed; top:16px; right:16px; z-index:20; width:40px; height:40px;
+    display:flex; align-items:center; justify-content:center; font-size:17px; cursor:pointer; }
+  #panel{ position:fixed; top:64px; right:16px; z-index:19; width:250px; padding:14px;
+    display:flex; flex-direction:column; gap:12px; font-size:12px;
+    transition:opacity .25s ease, transform .25s ease; }
+  #panel.collapsed{ opacity:0; transform:translateY(-8px) scale(.95); pointer-events:none; }
+  #panel h4{margin:0 0 2px; font-size:10px; text-transform:uppercase; letter-spacing:1px; opacity:.55;}
+  #panel .row{display:flex; justify-content:space-between; align-items:center; gap:6px;}
+  #panel input[type=range]{flex:1;}
+  #panel label.switch{display:flex; align-items:center; gap:8px;}
+
+  main{ height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:20px; }
+
+  .tabs{ display:flex; gap:8px; padding:6px; }
+  .tabs button{ font:inherit; font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:999px;
+    border:none; background:transparent; color:#aab2d0; cursor:pointer; }
+  .tabs button.active{ background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#231a03; }
+
+  .stage{ width:min(90vw, 620px); height:min(56vh, 420px); position:relative; border-radius:22px;
+    overflow:hidden; touch-action:none; cursor:crosshair; background:radial-gradient(circle at 50% 40%, #131627, #05060a 75%); }
+  .stage.locked{ cursor:none; }
+
+  .reticle{ position:absolute; width:26px; height:26px; border-radius:50%; border:2px solid #fbbf24;
+    box-shadow:0 0 16px rgba(251,191,36,.6); left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
+  .reticle::before, .reticle::after{ content:""; position:absolute; background:#fbbf24; }
+  .reticle::before{ left:50%; top:-9px; width:2px; height:8px; transform:translateX(-1px); }
+  .reticle::after{ left:-9px; top:50%; width:8px; height:2px; transform:translateY(-1px); }
+
+  .target{ position:absolute; width:34px; height:34px; border-radius:50%; border:2px solid #38bdf8;
+    display:flex; align-items:center; justify-content:center; font-size:11px; color:#38bdf8; }
+
+  .knobWrap{ display:flex; flex-direction:column; align-items:center; gap:10px; pointer-events:none; }
+  .knob{ width:120px; height:120px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #2a2f4a, #12131f 70%);
+    border:2px solid rgba(255,255,255,.15); position:relative; }
+  .knobDot{ position:absolute; width:8px; height:8px; border-radius:50%; background:#38bdf8; left:50%; top:8px;
+    transform-origin:4px 52px; margin-left:-4px; box-shadow:0 0 10px #38bdf8; }
+  .knobVal{ font-variant-numeric:tabular-nums; font-size:13px; opacity:.75; }
+
+  .padCanvas{ width:100%; height:100%; display:block; }
+
+  .hud{ display:flex; gap:16px; font-size:11.5px; opacity:.7; }
+  .hud b{ color:#fbbf24; }
+
+  .lockBtn{ font:inherit; font-size:13px; font-weight:700; padding:11px 22px; border-radius:999px; border:none;
+    background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#231a03; cursor:pointer; }
+  .lockBtn.exit{ background:rgba(255,255,255,.12); color:#eef1ff; }
+
+  .msg{ font-size:11.5px; opacity:.55; text-align:center; max-width:420px; }
+
+  footer.credit{ position:fixed; bottom:10px; left:0; right:0; text-align:center; font-size:10.5px; opacity:.4; }
+  footer.credit a{ color:inherit; }
+
+  @media (max-width:640px){ #panel{width:min(260px, calc(100vw - 24px));} }
+</style>
+</head>
+<body>
+
+<a class="back-link glass" href="../">← All 5 drops</a>
+<div id="panelToggle" class="glass" title="Toggle controls">☰</div>
+<div id="panel" class="glass collapsed">
+  <h4>Precision</h4>
+  <div class="row"><label>Sensitivity</label><input id="sens" type="range" min="0.2" max="2.5" step="0.05" value="1"><span id="sensVal">1.00×</span></div>
+  <label class="switch"><input type="checkbox" id="fineChk"> Fine-tune (÷4 speed)</label>
+  <div style="opacity:.55; line-height:1.5;">Uses the Promise-based Pointer Lock 2.0 API when available, with an unlocked-mouse fallback so the demo always works.</div>
+</div>
+
+<main>
+  <div class="tabs glass" id="tabs">
+    <button class="active" data-mode="aim">Aim Reticle</button>
+    <button data-mode="dial">Fine Dial</button>
+    <button data-mode="pad">Infinite Pad</button>
+  </div>
+
+  <div class="stage glass" id="stage">
+    <div id="aimLayer"></div>
+    <div class="knobWrap" id="dialLayer" style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <div class="knob"><div class="knobDot" id="knobDot"></div></div>
+        <div class="knobVal"><span id="knobDeg">0</span>°</div>
+      </div>
+    </div>
+    <canvas class="padCanvas" id="padLayer" style="display:none;"></canvas>
+  </div>
+
+  <div class="hud">
+    <span>Mode: <b id="lockState">unlocked</b></span>
+    <span id="scoreHud">Hits: <b id="hits">0</b></span>
+  </div>
+
+  <button class="lockBtn" id="lockBtn">🔒 Engage Pointer Lock</button>
+  <p class="msg" id="msg">Click "Engage" to lock the cursor to the stage — raw <code>movementX/Y</code> deltas drive every control here with no OS acceleration or edge-of-screen clipping. Press Esc to exit.</p>
+</main>
+
+<footer class="credit glass" style="display:inline-block; position:fixed; bottom:14px; left:50%; transform:translateX(-50%); padding:7px 14px;">
+  Inspired by the W3C Pointer Lock 2.0 spec &amp; MDN Pointer Lock API · UI Spotlight Day 109 · Drop #4 ·
+  <a href="https://www.w3.org/TR/pointerlock-2/" target="_blank" rel="noopener">w3.org/TR/pointerlock-2</a>
+</footer>
+
+<script>
+(function(){
+  var stage = document.getElementById('stage');
+  var reticleParent = document.getElementById('aimLayer');
+  var dialLayer = document.getElementById('dialLayer');
+  var padLayer = document.getElementById('padLayer');
+  var knobDot = document.getElementById('knobDot');
+  var knobDeg = document.getElementById('knobDeg');
+  var lockBtn = document.getElementById('lockBtn');
+  var lockState = document.getElementById('lockState');
+  var msg = document.getElementById('msg');
+  var hitsEl = document.getElementById('hits');
+  var sensEl = document.getElementById('sens'), sensVal = document.getElementById('sensVal');
+  var fineChk = document.getElementById('fineChk');
+  var tabs = document.getElementById('tabs');
+
+  var mode = 'aim';
+  var hits = 0;
+  var pos = { x: 0, y: 0 }; // relative to stage center, px
+  var angle = 0; // degrees
+  var stageRect = { w: 0, h: 0 };
+  var ctx = padLayer.getContext('2d');
+  var padPos = { x: 0, y: 0 };
+  var supportsLock = 'requestPointerLock' in Element.prototype;
+
+  function resizeStage(){
+    var r = stage.getBoundingClientRect();
+    stageRect.w = r.width; stageRect.h = r.height;
+    padLayer.width = r.width; padLayer.height = r.height;
+    ctx.fillStyle = '#05060a'; ctx.fillRect(0,0,padLayer.width, padLayer.height);
+    padPos.x = padLayer.width/2; padPos.y = padLayer.height/2;
+  }
+  window.addEventListener('resize', resizeStage);
+
+  var reticle = document.createElement('div');
+  reticle.className = 'reticle';
+  reticleParent.appendChild(reticle);
+  reticleParent.style.position = 'absolute'; reticleParent.style.inset = '0';
+
+  var targets = [];
+  function spawnTarget(){
+    var t = document.createElement('div');
+    t.className = 'target';
+    var x = 30 + Math.random() * (stageRect.w - 60);
+    var y = 30 + Math.random() * (stageRect.h - 60);
+    t.style.left = x + 'px'; t.style.top = y + 'px';
+    t.textContent = '';
+    reticleParent.appendChild(t);
+    targets.push({ el:t, x:x+17, y:y+17 });
+    if (targets.length > 3) {
+      var old = targets.shift();
+      old.el.remove();
+    }
+  }
+  for (var i=0;i<3;i++) setTimeout(spawnTarget, i*30);
+
+  function checkHits(){
+    var cx = stageRect.w/2 + pos.x, cy = stageRect.h/2 + pos.y;
+    for (var i = targets.length-1; i>=0; i--){
+      var t = targets[i];
+      var d = Math.hypot(t.x-cx, t.y-cy);
+      if (d < 20){
+        t.el.remove();
+        targets.splice(i,1);
+        hits++; hitsEl.textContent = hits;
+        spawnTarget();
+      }
+    }
+  }
+
+  function applyDelta(dx, dy){
+    var sens = parseFloat(sensEl.value) * (fineChk.checked ? 0.25 : 1);
+    dx *= sens; dy *= sens;
+    if (mode === 'aim'){
+      pos.x = Math.max(-stageRect.w/2+13, Math.min(stageRect.w/2-13, pos.x + dx));
+      pos.y = Math.max(-stageRect.h/2+13, Math.min(stageRect.h/2-13, pos.y + dy));
+      reticle.style.left = (stageRect.w/2 + pos.x) + 'px';
+      reticle.style.top = (stageRect.h/2 + pos.y) + 'px';
+      checkHits();
+    } else if (mode === 'dial'){
+      angle = (angle + dx * 0.6) % 360;
+      if (angle < 0) angle += 360;
+      knobDot.style.transform = 'rotate(' + angle + 'deg)';
+      knobDeg.textContent = Math.round(angle);
+    } else if (mode === 'pad'){
+      var nx = Math.max(0, Math.min(padLayer.width, padPos.x + dx));
+      var ny = Math.max(0, Math.min(padLayer.height, padPos.y + dy));
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(padPos.x, padPos.y);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+      padPos.x = nx; padPos.y = ny;
+    }
+  }
+
+  // ---- Pointer lock (with graceful fallback) ----
+  var locked = false;
+
+  function onLockedMove(e){
+    applyDelta(e.movementX || 0, e.movementY || 0);
+  }
+  function onLockChange(){
+    locked = document.pointerLockElement === stage;
+    stage.classList.toggle('locked', locked);
+    lockState.textContent = locked ? 'locked' : 'unlocked';
+    lockBtn.textContent = locked ? '🔓 Exit Lock (Esc)' : '🔒 Engage Pointer Lock';
+    lockBtn.classList.toggle('exit', locked);
+  }
+  document.addEventListener('pointerlockchange', onLockChange);
+  document.addEventListener('mousemove', function(e){ if (locked) onLockedMove(e); });
+
+  var fallbackActive = false;
+  var lastFallback = null;
+  function unlockedMove(e){
+    if (locked || !fallbackActive) return;
+    var r = stage.getBoundingClientRect();
+    var x = e.clientX - r.left, y = e.clientY - r.top;
+    if (lastFallback){ applyDelta(x - lastFallback.x, y - lastFallback.y); }
+    lastFallback = { x:x, y:y };
+  }
+  stage.addEventListener('mousemove', unlockedMove);
+  stage.addEventListener('mouseleave', function(){ lastFallback = null; });
+
+  lockBtn.addEventListener('click', function(){
+    if (locked){
+      document.exitPointerLock();
+      return;
+    }
+    if (!supportsLock){
+      fallbackActive = true;
+      msg.textContent = 'Pointer Lock isn\'t available here — using regular mouse deltas inside the stage instead.';
+      return;
+    }
+    var req = stage.requestPointerLock({ unadjustedMovement: true });
+    if (req && typeof req.then === 'function'){
+      req.then(function(){
+        msg.textContent = 'Locked. Move anywhere — the cursor never hits a screen edge. Esc to release.';
+      }).catch(function(err){
+        fallbackActive = true;
+        msg.textContent = 'Lock was denied (' + (err && err.name || 'blocked') + ') — falling back to regular mouse deltas inside the stage.';
+      });
+    } else {
+      // legacy callback-style browsers
+      fallbackActive = true;
+    }
+  });
+
+  // ---- touch fallback (mobile) ----
+  var touchLast = null;
+  stage.addEventListener('touchstart', function(e){
+    var t = e.touches[0];
+    touchLast = { x:t.clientX, y:t.clientY };
+  }, { passive:true });
+  stage.addEventListener('touchmove', function(e){
+    var t = e.touches[0];
+    if (touchLast){ applyDelta((t.clientX-touchLast.x)*1.4, (t.clientY-touchLast.y)*1.4); }
+    touchLast = { x:t.clientX, y:t.clientY };
+  }, { passive:true });
+  stage.addEventListener('touchend', function(){ touchLast = null; });
+
+  // ---- tabs ----
+  tabs.addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-mode]');
+    if (!btn) return;
+    mode = btn.dataset.mode;
+    Array.from(tabs.children).forEach(function(b){ b.classList.toggle('active', b === btn); });
+    reticleParent.style.display = mode === 'aim' ? 'block' : 'none';
+    dialLayer.style.display = mode === 'dial' ? 'flex' : 'none';
+    padLayer.style.display = mode === 'pad' ? 'block' : 'none';
+  });
+
+  // ---- panel ----
+  var toggle = document.getElementById('panelToggle'), panel = document.getElementById('panel');
+  var open = false;
+  toggle.addEventListener('click', function(){ open = !open; panel.classList.toggle('collapsed', !open); });
+  sensEl.addEventListener('input', function(){ sensVal.textContent = parseFloat(sensEl.value).toFixed(2) + '×'; });
+
+  resizeStage();
+  setTimeout(resizeStage, 50);
+
+  window.__precisionLock = {
+    supportsLock: supportsLock,
+    applyDelta: applyDelta,
+    getMode: function(){ return mode; },
+    setMode: function(m){ tabs.querySelector('[data-mode="'+m+'"]').click(); },
+    getPos: function(){ return pos; },
+    getAngle: function(){ return angle; },
+    getHits: function(){ return hits; },
+    enableFallback: function(){ fallbackActive = true; }
+  };
+})();
+</script>
+</body>
+</html>
