@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Skyward — Constellation Compass</title>
+<style>
+  :root{
+    --bg1:#05070d; --bg2:#0b1330; --star:#cfe3ff; --accentA:#f4c95d; --accentB:#7dd3fc;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif; color:#eaf0ff;}
+  #sky{position:fixed; inset:0; width:100%; height:100%; touch-action:none; cursor:grab;}
+  #sky.dragging{cursor:grabbing;}
+  #sky.drawMode{cursor:crosshair;}
+
+  .glass{
+    background:rgba(18,20,32,.58); backdrop-filter:blur(14px) saturate(140%);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);
+    border:1px solid rgba(255,255,255,.10); border-radius:16px;
+    box-shadow:0 8px 30px rgba(0,0,0,.35);
+  }
+
+  #hint{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+    padding:10px 16px; font-size:12.5px; letter-spacing:.2px; opacity:.92;
+    pointer-events:none; transition:opacity .6s ease; text-align:center; max-width:88vw;
+  }
+  #hint.hidden{opacity:0;}
+
+  #title{
+    position:fixed; top:16px; left:16px; padding:9px 14px; font-size:13px;
+    display:flex; align-items:center; gap:8px; z-index:5; user-select:none;
+  }
+  #title b{font-weight:650; letter-spacing:.3px;}
+  #title span{opacity:.55; font-size:11px;}
+
+  #panelToggle{
+    position:fixed; top:16px; right:16px; z-index:8; width:42px; height:42px;
+    display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer;
+    user-select:none;
+  }
+
+  #panel{
+    position:fixed; top:66px; right:16px; width:290px; max-height:calc(100vh - 90px);
+    overflow-y:auto; padding:14px; z-index:7; display:flex; flex-direction:column; gap:12px;
+    transition:transform .28s cubic-bezier(.2,.9,.3,1), opacity .28s ease;
+    transform-origin:top right;
+  }
+  #panel.collapsed{transform:scale(.92) translateY(-8px); opacity:0; pointer-events:none;}
+  #panel::-webkit-scrollbar{width:6px;}
+  #panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15); border-radius:3px;}
+
+  .sec{display:flex; flex-direction:column; gap:8px;}
+  .sec h4{margin:0; font-size:10.5px; text-transform:uppercase; letter-spacing:1.1px; opacity:.55; font-weight:650;}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px;}
+  .row label{opacity:.85;}
+  .row .val{opacity:.6; font-variant-numeric:tabular-nums; min-width:34px; text-align:right;}
+  input[type=range]{
+    flex:1; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
+    background:rgba(255,255,255,.16); outline:none; margin:0 8px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:15px; height:15px; border-radius:50%;
+    background:#eaf0ff; border:2px solid rgba(0,0,0,.3); cursor:pointer;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:15px; height:15px; border-radius:50%; background:#eaf0ff; border:2px solid rgba(0,0,0,.3); cursor:pointer;
+  }
+
+  .btnrow{display:flex; flex-wrap:wrap; gap:6px;}
+  button, .btn{
+    font:inherit; font-size:11.5px; font-weight:600; letter-spacing:.2px; color:#eaf0ff;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14);
+    border-radius:9px; padding:7px 10px; cursor:pointer; transition:background .15s ease, transform .1s ease;
+  }
+  button:hover{background:rgba(255,255,255,.16);}
+  button:active{transform:scale(.96);}
+  button.primary{background:linear-gradient(135deg,var(--accentB),var(--accentA)); color:#0a0a12; border:none;}
+  button.primary:hover{filter:brightness(1.08);}
+  button.ghost{background:transparent;}
+  button.danger{color:#ff9a9a;}
+  button:disabled{opacity:.35; cursor:default; pointer-events:none;}
+  button.active-toggle{background:linear-gradient(135deg,var(--accentB),#a78bfa); color:#0a0a12; border:none;}
+
+  .swatches{display:flex; gap:8px;}
+  .swatch{
+    width:28px; height:28px; border-radius:50%; cursor:pointer; border:2px solid rgba(255,255,255,.15);
+    flex-shrink:0; position:relative;
+  }
+  .swatch.selected{border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.25);}
+
+  input[type=text]{
+    font:inherit; font-size:12px; color:#eaf0ff; background:rgba(255,255,255,.07);
+    border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:7px 9px; width:100%; outline:none;
+  }
+  input[type=color]{width:32px; height:32px; border:none; border-radius:8px; background:none; padding:0; cursor:pointer;}
+  select{
+    font:inherit; font-size:12px; color:#eaf0ff; background:rgba(255,255,255,.07);
+    border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:6px 8px; width:100%;
+  }
+  select option{background:#14162a; color:#eaf0ff;}
+
+  .conRow{display:flex; align-items:center; gap:7px; font-size:11.5px; padding:5px 7px;
+    background:rgba(255,255,255,.05); border-radius:8px;}
+  .conDot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+  .conName{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .conDel{cursor:pointer; opacity:.55; font-size:13px; padding:0 3px;}
+  .conDel:hover{opacity:1;}
+  .miniNote{font-size:10.5px; opacity:.5; line-height:1.4;}
+
+  #toast{
+    position:fixed; left:50%; bottom:70px; transform:translateX(-50%) translateY(10px);
+    padding:9px 16px; font-size:12px; opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease;
+    z-index:20;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  #shareBox{display:none; gap:6px;}
+  #shareBox.show{display:flex;}
+
+  @media (max-width:640px){
+    #panel{width:min(320px, calc(100vw - 24px)); top:64px; right:12px; max-height:calc(100vh - 84px);}
+    #hint{font-size:11.5px; bottom:16px;}
+    #title{font-size:12px;}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="sky"></canvas>
+
+<div id="title" class="glass"><b>✦ Skyward</b><span>constellation compass</span></div>
+
+<div id="panelToggle" class="glass" title="Toggle controls">☰</div>
+
+<div id="panel" class="glass collapsed">
+
+  <div class="sec">
+    <h4>Mode</h4>
+    <div class="btnrow">
+      <button id="modeBtn" style="flex:1">👁 Look Mode</button>
+    </div>
+    <div class="miniNote" id="modeNote">Drag the sky to look around.</div>
+  </div>
+
+  <div class="sec" id="drawSec" style="display:none">
+    <h4>Constellation</h4>
+    <input type="text" id="conNameInput" placeholder="Name this constellation…">
+    <div class="row"><label>Line color</label><input type="color" id="conColorInput" value="#7dd3fc"></div>
+    <div class="btnrow">
+      <button id="undoPtBtn">↶ Undo point</button>
+      <button id="finishBtn" class="primary">✓ Finish</button>
+    </div>
+    <div class="miniNote" id="pathNote">Tap a star to begin.</div>
+    <div id="conList" style="display:flex; flex-direction:column; gap:5px;"></div>
+    <button id="clearAllBtn" class="danger ghost" style="align-self:flex-start">Clear all constellations</button>
+  </div>
+
+  <div class="sec">
+    <h4>Sky</h4>
+    <div class="row"><label>Hour</label><input type="range" id="hourSlider" min="0" max="24" step="0.1" value="21"><span class="val" id="hourVal">21.0</span></div>
+    <div class="row"><label>Latitude</label><input type="range" id="latSlider" min="-90" max="90" step="1" value="40"><span class="val" id="latVal">40°</span></div>
+    <div class="row"><label>Density</label><input type="range" id="densSlider" min="0" max="1" step="0.01" value="0.55"><span class="val" id="densVal">55%</span></div>
+    <div class="row"><label>Auto-drift</label><input type="checkbox" id="driftChk"></div>
+  </div>
+
+  <div class="sec">
+    <h4>Palette</h4>
+    <div class="swatches" id="swatches"></div>
+  </div>
+
+  <div class="sec">
+    <h4>Save &amp; Export</h4>
+    <div class="btnrow">
+      <button id="reshuffleBtn">🔀 New sky</button>
+      <button id="exportBtn">⬇ PNG</button>
+    </div>
+    <div class="btnrow">
+      <input type="text" id="saveNameInput" placeholder="Name this sky…" style="flex:1; min-width:110px">
+      <button id="saveNamedBtn">💾 Save</button>
+    </div>
+    <select id="gallerySelect"><option value="">— saved skies —</option></select>
+    <div class="btnrow">
+      <button id="loadGalleryBtn">Load</button>
+      <button id="delGalleryBtn" class="danger">Delete</button>
+    </div>
+    <div class="btnrow">
+      <button id="shareBtn" style="flex:1">🔗 Share link</button>
+    </div>
+    <div id="shareBox">
+      <input type="text" id="shareLink" readonly>
+      <button id="copyBtn">Copy</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="hint" class="glass">Drag to look around the sky · toggle Draw Mode to connect stars into your own constellations</div>
+<div id="toast" class="glass"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- utility: seeded RNG ---------- */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+var PALETTES = [
+  { name:"Midnight",  bg1:"#05070d", bg2:"#0b1330", star:"#cfe3ff", accentA:"#f4c95d", accentB:"#7dd3fc" },
+  { name:"Nebula",    bg1:"#0a0518", bg2:"#20103f", star:"#e7d6ff", accentA:"#ff9ecf", accentB:"#a78bfa" },
+  { name:"Aurora",    bg1:"#020b08", bg2:"#0a2a1e", star:"#baffe0", accentA:"#ffe066", accentB:"#34d399" },
+  { name:"Ember",     bg1:"#100404", bg2:"#341008", star:"#ffd9c9", accentA:"#ffb454", accentB:"#f87171" },
+  { name:"Monochrome",bg1:"#050505", bg2:"#1c1c1c", star:"#ffffff", accentA:"#cfcfcf", accentB:"#8f8f8f" }
+];
+
+var STAR_COUNT = 420;
+var STORAGE_KEY = "skyward_state_v1";
+var GALLERY_KEY = "skyward_gallery_v1";
+
+/* ---------- DOM refs ---------- */
+var canvas = document.getElementById("sky");
+var ctx = canvas.getContext("2d");
+var panel = document.getElementById("panel");
+var panelToggle = document.getElementById("panelToggle");
+var hint = document.getElementById("hint");
+var toastEl = document.getElementById("toast");
+var modeBtn = document.getElementById("modeBtn");
+var modeNote = document.getElementById("modeNote");
+var drawSec = document.getElementById("drawSec");
+var conNameInput = document.getElementById("conNameInput");
+var conColorInput = document.getElementById("conColorInput");
+var undoPtBtn = document.getElementById("undoPtBtn");
+var finishBtn = document.getElementById("finishBtn");
+var pathNote = document.getElementById("pathNote");
+var conList = document.getElementById("conList");
+var clearAllBtn = document.getElementById("clearAllBtn");
+var hourSlider = document.getElementById("hourSlider");
+var hourVal = document.getElementById("hourVal");
+var latSlider = document.getElementById("latSlider");
+var latVal = document.getElementById("latVal");
+var densSlider = document.getElementById("densSlider");
+var densVal = document.getElementById("densVal");
+var driftChk = document.getElementById("driftChk");
+var swatchesEl = document.getElementById("swatches");
+var reshuffleBtn = document.getElementById("reshuffleBtn");
+var exportBtn = document.getElementById("exportBtn");
+var saveNameInput = document.getElementById("saveNameInput");
+var saveNamedBtn = document.getElementById("saveNamedBtn");
+var gallerySelect = document.getElementById("gallerySelect");
+var loadGalleryBtn = document.getElementById("loadGalleryBtn");
+var delGalleryBtn = document.getElementById("delGalleryBtn");
+var shareBtn = document.getElementById("shareBtn");
+var shareBox = document.getElementById("shareBox");
+var shareLink = document.getElementById("shareLink");
+var copyBtn = document.getElementById("copyBtn");
+
+/* ---------- state ---------- */
+var state = {
+  seed: 1337,
+  hour: 21,
+  lat: 40,
+  density: 0.55,
+  fov: 62 * Math.PI/180,
+  az: 0.4,
+  el: 0.15,
+  paletteIndex: 0,
+  drift: false,
+  constellations: []
+};
+
+var stars = [];          // {x0,y0,z0, bright, size, alpha, twPhase, twSpeed, visible}
+var activePath = null;   // {name, color, points:[idx,...]}
+var lastProjections = []; // per-frame cache for hit testing
+var dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+var W = 0, H = 0, cx = 0, cy = 0;
+var drawMode = false;
+var driftAngle = 0;
+var lastT = performance.now();
+var saveTimer = null;
+
+/* ---------- star field generation ---------- */
+function generateStars(seed){
+  var rng = mulberry32(seed >>> 0);
+  var arr = [];
+  for (var i = 0; i < STAR_COUNT; i++){
+    var ra = rng() * Math.PI * 2;
+    var dec = Math.asin(rng() * 2 - 1);
+    var bright = Math.pow(rng(), 3.1); // skew dim, few bright
+    arr.push({
+      x0: Math.cos(dec) * Math.cos(ra),
+      y0: Math.sin(dec),
+      z0: Math.cos(dec) * Math.sin(ra),
+      bright: bright,
+      size: 0.55 + bright * 2.3,
+      alpha: 0.32 + bright * 0.68,
+      twPhase: rng() * Math.PI * 2,
+      twSpeed: 0.5 + rng() * 1.6,
+      visible: true
+    });
+  }
+  arr.sort(function(a,b){ return b.bright - a.bright; });
+  return arr;
+}
+
+function applyDensity(){
+  var count = Math.round(28 + state.density * (stars.length - 28));
+  for (var i = 0; i < stars.length; i++) stars[i].visible = i < count;
+}
+
+/* ---------- resize ---------- */
+function resize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  cx = W/2; cy = H/2;
+}
+window.addEventListener("resize", resize);
+
+/* ---------- camera / projection ---------- */
+function clampEl(e){ return Math.max(-1.5, Math.min(1.5, e)); }
+
+function getForwardRightUp(){
+  var az = state.az, el = clampEl(state.el);
+  var fx = Math.cos(el) * Math.sin(az);
+  var fy = Math.sin(el);
+  var fz = Math.cos(el) * Math.cos(az);
+  // right = normalize(forward x worldUp)
+  var rx = fz, rz = -fx; // cross((fx,fy,fz),(0,1,0)) = (fy*0-fz*1, fz*0-fx*0, fx*1-fy*0) = (-fz,0,fx) -> use consistent handedness
+  var rlen = Math.sqrt(rx*rx + rz*rz) || 1;
+  rx = -fz/rlen; var ry = 0; rz = fx/rlen;
+  // up = right x forward
+  var ux = ry*fz - rz*fy;
+  var uy = rz*fx - rx*fz;
+  var uz = rx*fy - ry*fx;
+  return { f:[fx,fy,fz], r:[rx,ry,rz], u:[ux,uy,uz] };
+}
+
+function project(star, cam, spinCos, spinSin, tiltCos, tiltSin, scale){
+  // spin around Y (hour angle + drift), then tilt around X (latitude)
+  var x1 = star.x0*spinCos + star.z0*spinSin;
+  var z1 = -star.x0*spinSin + star.z0*spinCos;
+  var y1 = star.y0;
+  var y2 = y1*tiltCos - z1*tiltSin;
+  var z2 = y1*tiltSin + z1*tiltCos;
+  var x2 = x1;
+
+  var camX = x2*cam.r[0] + y2*cam.r[1] + z2*cam.r[2];
+  var camY = x2*cam.u[0] + y2*cam.u[1] + z2*cam.u[2];
+  var camZ = x2*cam.f[0] + y2*cam.f[1] + z2*cam.f[2];
+
+  if (camZ <= 0.04) return null;
+  return {
+    x: cx + (camX/camZ) * scale,
+    y: cy - (camY/camZ) * scale,
+    camZ: camZ
+  };
+}
+
+/* ---------- render loop ---------- */
+function render(now){
+  var dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+
+  if (state.drift) driftAngle += dt * 0.035;
+
+  var pal = PALETTES[state.paletteIndex];
+  var grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0, pal.bg2);
+  grad.addColorStop(1, pal.bg1);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  var cam = getForwardRightUp();
+  var scale = (H/2) / Math.tan(state.fov/2);
+  var hourAngle = (state.hour/24) * Math.PI * 2 + driftAngle;
+  var tiltAngle = (state.lat) * Math.PI/180;
+  var spinCos = Math.cos(hourAngle), spinSin = Math.sin(hourAngle);
+  var tiltCos = Math.cos(tiltAngle), tiltSin = Math.sin(tiltAngle);
+
+  lastProjections.length = 0;
+  var t = now/1000;
+
+  ctx.save();
+  for (var i=0; i<stars.length; i++){
+    var s = stars[i];
+    if (!s.visible) continue;
+    var p = project(s, cam, spinCos, spinSin, tiltCos, tiltSin, scale);
+    if (!p) continue;
+    if (p.x < -20 || p.x > W+20 || p.y < -20 || p.y > H+20) continue;
+    lastProjections.push({ idx:i, x:p.x, y:p.y, camZ:p.camZ });
+
+    var tw = 0.72 + 0.28 * Math.sin(t*s.twSpeed + s.twPhase);
+    var a = s.alpha * tw;
+    ctx.globalAlpha = Math.max(0, Math.min(1, a));
+    ctx.fillStyle = pal.star;
+    if (s.bright > 0.72){
+      ctx.shadowBlur = 10; ctx.shadowColor = pal.star;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, s.size, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // constellations
+  function starScreen(idx){
+    for (var k=0;k<lastProjections.length;k++) if (lastProjections[k].idx===idx) return lastProjections[k];
+    var s = stars[idx];
+    return project(s, cam, spinCos, spinSin, tiltCos, tiltSin, scale);
+  }
+
+  function drawPath(points, color, dashed){
+    if (points.length < 1) return;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.6;
+    ctx.shadowBlur = 8; ctx.shadowColor = color;
+    if (dashed) ctx.setLineDash([5,5]); else ctx.setLineDash([]);
+    ctx.beginPath();
+    var started = false;
+    for (var i=0;i<points.length;i++){
+      var p = starScreen(points[i]);
+      if (!p) { started = false; continue; }
+      if (!started){ ctx.moveTo(p.x,p.y); started = true; }
+      else ctx.lineTo(p.x,p.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    // markers
+    ctx.fillStyle = color;
+    for (var j=0;j<points.length;j++){
+      var pp = starScreen(points[j]);
+      if (!pp) continue;
+      ctx.beginPath();
+      ctx.arc(pp.x, pp.y, 3, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  for (var c=0; c<state.constellations.length; c++){
+    var con = state.constellations[c];
+    drawPath(con.points, con.color, false);
+    var first = starScreen(con.points[0]);
+    if (first){
+      ctx.save();
+      ctx.fillStyle = "rgba(255,255,255,.85)";
+      ctx.font = "600 11px -apple-system,system-ui,sans-serif";
+      ctx.shadowBlur = 4; ctx.shadowColor = "rgba(0,0,0,.8)";
+      ctx.fillText(con.name, first.x + 8, first.y - 8);
+      ctx.restore();
+    }
+  }
+  if (activePath && activePath.points.length){
+    drawPath(activePath.points, activePath.color, true);
+  }
+
+  requestAnimationFrame(render);
+}
+
+/* ---------- pointer / interaction ---------- */
+var pointers = new Map();
+var dragging = false;
+var moved = 0;
+var downTime = 0;
+var lastDragX=0, lastDragY=0;
+var azVel = 0, elVel = 0;
+var pinchStartDist = 0, pinchStartFov = 0;
+
+function pointerDown(e){
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (pointers.size === 1){
+    dragging = true; moved = 0; downTime = performance.now();
+    lastDragX = e.clientX; lastDragY = e.clientY;
+    azVel = 0; elVel = 0;
+    canvas.classList.add("dragging");
+    hideHintSoon();
+  } else if (pointers.size === 2){
+    var pts = Array.from(pointers.values());
+    pinchStartDist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    pinchStartFov = state.fov;
+  }
+}
+function pointerMove(e){
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if (pointers.size === 2){
+    var pts = Array.from(pointers.values());
+    var d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    if (pinchStartDist > 10){
+      var ratio = pinchStartDist / Math.max(20,d);
+      state.fov = Math.max(20*Math.PI/180, Math.min(100*Math.PI/180, pinchStartFov * ratio));
+    }
+    return;
+  }
+
+  if (!dragging) return;
+  var dx = e.clientX - lastDragX;
+  var dy = e.clientY - lastDragY;
+  moved += Math.abs(dx) + Math.abs(dy);
+  var sens = 0.0032 * state.fov / (Math.PI/3);
+  state.az -= dx * sens;
+  state.el = clampEl(state.el + dy * sens);
+  azVel = -dx*sens; elVel = dy*sens;
+  lastDragX = e.clientX; lastDragY = e.clientY;
+}
+function pointerUp(e){
+  var wasTap = dragging && moved < 7 && (performance.now()-downTime) < 400 && pointers.size === 1;
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0){
+    dragging = false;
+    canvas.classList.remove("dragging");
+  }
+  if (wasTap){
+    handleTap(e.clientX, e.clientY);
+  }
+  scheduleSave();
+}
+canvas.addEventListener("pointerdown", pointerDown);
+canvas.addEventListener("pointermove", pointerMove);
+window.addEventListener("pointerup", pointerUp);
+window.addEventListener("pointercancel", pointerUp);
+canvas.addEventListener("wheel", function(e){
+  e.preventDefault();
+  state.fov = Math.max(20*Math.PI/180, Math.min(100*Math.PI/180, state.fov + e.deltaY*0.0006));
+  scheduleSave();
+}, {passive:false});
+
+function inertiaTick(){
+  azVel *= 0.9; elVel *= 0.9;
+  if (!dragging && (Math.abs(azVel) > 0.00005 || Math.abs(elVel) > 0.00005)){
+    state.az -= azVel;
+    state.el = clampEl(state.el + elVel);
+  }
+  requestAnimationFrame(inertiaTick);
+}
+requestAnimationFrame(inertiaTick);
+
+function handleTap(clientX, clientY){
+  if (!drawMode) return;
+  var best = null, bestD = 26;
+  for (var i=0;i<lastProjections.length;i++){
+    var p = lastProjections[i];
+    var d = Math.hypot(p.x-clientX, p.y-clientY);
+    if (d < bestD){ bestD = d; best = p; }
+  }
+  if (!best) return;
+  addPointToPath(best.idx);
+}
+
+function addPointToPath(idx){
+  if (!activePath){
+    activePath = { name: conNameInput.value.trim() || ("Constellation " + (state.constellations.length+1)), color: conColorInput.value, points:[idx] };
+  } else {
+    if (activePath.points[activePath.points.length-1] !== idx) activePath.points.push(idx);
+  }
+  updateDrawUI();
+}
+
+/* ---------- UI wiring ---------- */
+function setDrawMode(on){
+  drawMode = on;
+  drawSec.style.display = on ? "flex" : "none";
+  modeBtn.textContent = on ? "✎ Draw Mode" : "👁 Look Mode";
+  modeBtn.classList.toggle("active-toggle", on);
+  modeNote.textContent = on ? "Tap stars to link them into a constellation." : "Drag the sky to look around.";
+  canvas.classList.toggle("drawMode", on);
+  if (!on && activePath && activePath.points.length < 2) activePath = null;
+  updateDrawUI();
+}
+modeBtn.addEventListener("click", function(){ setDrawMode(!drawMode); });
+
+function updateDrawUI(){
+  var n = activePath ? activePath.points.length : 0;
+  pathNote.textContent = n === 0 ? "Tap a star to begin." : (n + " star" + (n===1?"":"s") + " linked.");
+  finishBtn.disabled = n < 2;
+  undoPtBtn.disabled = n === 0;
+  conList.innerHTML = "";
+  state.constellations.forEach(function(con, i){
+    var row = document.createElement("div");
+    row.className = "conRow";
+    var dot = document.createElement("span");
+    dot.className = "conDot"; dot.style.background = con.color;
+    var name = document.createElement("span");
+    name.className = "conName"; name.textContent = con.name + " (" + con.points.length + ")";
+    var del = document.createElement("span");
+    del.className = "conDel"; del.textContent = "✕";
+    del.addEventListener("click", function(){
+      state.constellations.splice(i,1); updateDrawUI(); scheduleSave();
+    });
+    row.appendChild(dot); row.appendChild(name); row.appendChild(del);
+    conList.appendChild(row);
+  });
+}
+
+undoPtBtn.addEventListener("click", function(){
+  if (!activePath) return;
+  activePath.points.pop();
+  if (activePath.points.length === 0) activePath = null;
+  updateDrawUI();
+});
+finishBtn.addEventListener("click", function(){
+  if (!activePath || activePath.points.length < 2) return;
+  activePath.name = conNameInput.value.trim() || activePath.name;
+  activePath.color = conColorInput.value;
+  state.constellations.push(activePath);
+  activePath = null;
+  conNameInput.value = "";
+  updateDrawUI();
+  scheduleSave();
+  showToast("Constellation saved");
+});
+clearAllBtn.addEventListener("click", function(){
+  if (state.constellations.length === 0 && !activePath) return;
+  if (!confirm("Clear every constellation you've drawn?")) return;
+  state.constellations = [];
+  activePath = null;
+  updateDrawUI();
+  scheduleSave();
+});
+
+hourSlider.addEventListener("input", function(){
+  state.hour = parseFloat(hourSlider.value);
+  hourVal.textContent = state.hour.toFixed(1);
+  scheduleSave();
+});
+latSlider.addEventListener("input", function(){
+  state.lat = parseFloat(latSlider.value);
+  latVal.textContent = state.lat + "°";
+  scheduleSave();
+});
+densSlider.addEventListener("input", function(){
+  state.density = parseFloat(densSlider.value);
+  densVal.textContent = Math.round(state.density*100) + "%";
+  applyDensity();
+  scheduleSave();
+});
+driftChk.addEventListener("change", function(){
+  state.drift = driftChk.checked;
+  scheduleSave();
+});
+
+function buildSwatches(){
+  swatchesEl.innerHTML = "";
+  PALETTES.forEach(function(p, i){
+    var sw = document.createElement("div");
+    sw.className = "swatch" + (i===state.paletteIndex ? " selected" : "");
+    sw.style.background = "linear-gradient(135deg," + p.bg2 + "," + p.star + ")";
+    sw.title = p.name;
+    sw.addEventListener("click", function(){
+      state.paletteIndex = i;
+      Array.from(swatchesEl.children).forEach(function(el,idx){ el.classList.toggle("selected", idx===i); });
+      scheduleSave();
+    });
+    swatchesEl.appendChild(sw);
+  });
+}
+
+reshuffleBtn.addEventListener("click", function(){
+  if (state.constellations.length && !confirm("Starting a new sky clears your constellations. Continue?")) return;
+  state.seed = Math.floor(Math.random()*1e9);
+  state.constellations = [];
+  activePath = null;
+  stars = generateStars(state.seed);
+  applyDensity();
+  updateDrawUI();
+  scheduleSave();
+  showToast("New sky generated");
+});
+
+exportBtn.addEventListener("click", function(){ exportPNG(); });
+function exportPNG(cb){
+  canvas.toBlob(function(blob){
+    if (!blob){ if (cb) cb(null); return; }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = "skyward-" + Date.now() + ".png";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+    showToast("PNG exported");
+    if (cb) cb(blob);
+  }, "image/png");
+}
+
+/* ---------- gallery ---------- */
+function readGallery(){
+  try { return JSON.parse(localStorage.getItem(GALLERY_KEY) || "[]"); } catch(e){ return []; }
+}
+function writeGallery(g){
+  try { localStorage.setItem(GALLERY_KEY, JSON.stringify(g.slice(-20))); } catch(e){}
+}
+function refreshGallerySelect(){
+  var g = readGallery();
+  gallerySelect.innerHTML = '<option value="">— saved skies (' + g.length + ') —</option>';
+  g.forEach(function(item){
+    var opt = document.createElement("option");
+    opt.value = item.id; opt.textContent = item.name;
+    gallerySelect.appendChild(opt);
+  });
+}
+saveNamedBtn.addEventListener("click", function(){
+  var name = saveNameInput.value.trim();
+  if (!name){ showToast("Give your sky a name first"); return; }
+  var g = readGallery();
+  g.push({ id: Date.now().toString(36), name: name, savedAt: Date.now(), state: JSON.parse(JSON.stringify(state)) });
+  writeGallery(g);
+  refreshGallerySelect();
+  saveNameInput.value = "";
+  showToast("Sky saved to gallery");
+});
+loadGalleryBtn.addEventListener("click", function(){
+  var id = gallerySelect.value;
+  if (!id) return;
+  var g = readGallery();
+  var item = g.find(function(x){ return x.id === id; });
+  if (!item) return;
+  applyState(item.state);
+  showToast("Loaded \"" + item.name + "\"");
+});
+delGalleryBtn.addEventListener("click", function(){
+  var id = gallerySelect.value;
+  if (!id) return;
+  var g = readGallery().filter(function(x){ return x.id !== id; });
+  writeGallery(g);
+  refreshGallerySelect();
+});
+
+/* ---------- share link ---------- */
+shareBtn.addEventListener("click", function(){
+  var payload = {
+    seed: state.seed, hour: state.hour, lat: state.lat, density: state.density,
+    paletteIndex: state.paletteIndex, drift: state.drift,
+    az: state.az, el: state.el, fov: state.fov,
+    constellations: state.constellations
+  };
+  var encoded;
+  try { encoded = btoa(encodeURIComponent(JSON.stringify(payload))); }
+  catch(e){ showToast("Could not encode link"); return; }
+  var url = location.origin + location.pathname + "#s=" + encoded;
+  shareLink.value = url;
+  shareBox.classList.add("show");
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){
+      showToast("Link copied to clipboard");
+    }).catch(function(){
+      shareLink.select();
+      showToast("Link ready — copy it manually");
+    });
+  } else {
+    shareLink.select();
+    showToast("Link ready — copy it manually");
+  }
+});
+copyBtn.addEventListener("click", function(){
+  shareLink.select();
+  try { document.execCommand("copy"); showToast("Copied"); } catch(e){}
+});
+
+/* ---------- persistence ---------- */
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){}
+  }, 350);
+}
+function readAutosave(){
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch(e){ return null; }
+}
+function readHashState(){
+  var h = location.hash;
+  if (!h || h.indexOf("#s=") !== 0) return null;
+  try {
+    var json = decodeURIComponent(atob(h.slice(3)));
+    return JSON.parse(json);
+  } catch(e){ return null; }
+}
+function applyState(partial){
+  state = Object.assign({}, state, partial || {});
+  if (typeof state.constellations === "undefined" || !Array.isArray(state.constellations)) state.constellations = [];
+  stars = generateStars(state.seed);
+  applyDensity();
+  syncControlsFromState();
+  activePath = null;
+  updateDrawUI();
+  scheduleSave();
+}
+function syncControlsFromState(){
+  hourSlider.value = state.hour; hourVal.textContent = (+state.hour).toFixed(1);
+  latSlider.value = state.lat; latVal.textContent = state.lat + "°";
+  densSlider.value = state.density; densVal.textContent = Math.round(state.density*100) + "%";
+  driftChk.checked = !!state.drift;
+  buildSwatches();
+}
+
+/* ---------- panel toggle / hint ---------- */
+var panelOpen = window.innerWidth > 640;
+function setPanelOpen(v){
+  panelOpen = v;
+  panel.classList.toggle("collapsed", !v);
+}
+setPanelOpen(panelOpen);
+panelToggle.addEventListener("click", function(){ setPanelOpen(!panelOpen); });
+
+var hintHidden = false;
+function hideHintSoon(){
+  if (hintHidden) return;
+  hintHidden = true;
+  setTimeout(function(){ hint.classList.add("hidden"); }, 400);
+}
+setTimeout(hideHintSoon, 6000);
+
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(function(){ toastEl.classList.remove("show"); }, 1800);
+}
+
+/* ---------- init ---------- */
+function init(){
+  resize();
+
+  var initial = readHashState() || readAutosave();
+  if (initial) state = Object.assign({}, state, initial);
+  if (!Array.isArray(state.constellations)) state.constellations = [];
+
+  stars = generateStars(state.seed);
+  applyDensity();
+  syncControlsFromState();
+  updateDrawUI();
+
+  requestAnimationFrame(render);
+
+  // expose a minimal debug/test hook (non-intrusive)
+  window.__skyward = {
+    getState: function(){ return state; },
+    addStarByIndex: addPointToPath,
+    finish: function(){ finishBtn.click(); },
+    setDrawMode: setDrawMode,
+    exportPNG: exportPNG,
+    reshuffle: function(){ reshuffleBtn.click(); }
+  };
+}
+init();
+
+})();
+</script>
+</body>
+</html>
