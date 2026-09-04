@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Electric Border — UI Spotlight</title>
+<style>
+  :root{ color-scheme: dark; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%; background:radial-gradient(circle at 50% 0%, #14101c, #06050a 60%); color:#f2eefc;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;}
+  body{padding:96px 20px 80px; display:flex; flex-direction:column; align-items:center; gap:20px;}
+
+  .glass{ background:rgba(20,18,30,.6); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.1); border-radius:14px; }
+
+  .back-link{ position:fixed; top:16px; left:16px; z-index:9; padding:9px 14px; font-size:12.5px;
+    text-decoration:none; color:#f2eefc; display:inline-flex; align-items:center; gap:6px; }
+
+  #panelToggle{ position:fixed; top:16px; right:16px; z-index:9; width:40px; height:40px;
+    display:flex; align-items:center; justify-content:center; font-size:17px; cursor:pointer; }
+  #panel{ position:fixed; top:64px; right:16px; z-index:8; width:230px; padding:14px;
+    display:flex; flex-direction:column; gap:12px; font-size:12px;
+    transition:opacity .25s ease, transform .25s ease; }
+  #panel.collapsed{ opacity:0; transform:translateY(-8px) scale(.95); pointer-events:none; }
+  #panel h4{margin:0 0 2px; font-size:10px; text-transform:uppercase; letter-spacing:1px; opacity:.55;}
+  #panel .row{display:flex; justify-content:space-between; align-items:center; gap:6px;}
+  #panel input[type=range]{flex:1;}
+  @media (max-width:640px){ #panel{width:min(230px, calc(100vw - 24px));} }
+
+  h1{ font-size:clamp(1.6rem,4.5vw,2.4rem); margin:0 0 4px; text-align:center; letter-spacing:-.01em; }
+  p.lede{ max-width:520px; text-align:center; opacity:.65; line-height:1.6; font-size:14px; margin:0 0 20px; }
+
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:22px; width:min(920px,94vw); }
+  .ecard{ position:relative; border-radius:18px; padding:28px 22px; min-height:180px; display:flex;
+    flex-direction:column; justify-content:flex-end; gap:6px; background:linear-gradient(160deg,#151220,#0b0a12); overflow:visible; }
+  .ecard .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.55; }
+  .ecard h3{ margin:0; font-size:19px; }
+  .ecard p{ margin:0; font-size:12.5px; opacity:.6; line-height:1.5; }
+  .ecard svg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+
+  .edge-glow{ filter:blur(3px); }
+  @keyframes dash{ to{ stroke-dashoffset:-260; } }
+
+  footer{ margin-top:24px; font-size:11px; opacity:.45; text-align:center; }
+  footer a{ color:inherit; }
+</style>
+</head>
+<body>
+
+<a class="back-link glass" href="../">← All 5 drops</a>
+<div id="panelToggle" class="glass" title="Toggle controls">☰</div>
+<div id="panel" class="glass collapsed">
+  <h4>Distortion</h4>
+  <div class="row"><label>Scale</label><input id="scale" type="range" min="0" max="16" step="0.5" value="7"><span id="scaleVal">7</span></div>
+  <h4>Current speed</h4>
+  <div class="row"><label>Duration</label><input id="speed" type="range" min="1" max="8" step="0.2" value="3.2"><span id="speedVal">3.2s</span></div>
+  <h4>Accent</h4>
+  <select id="accent">
+    <option value="0">Cyan</option>
+    <option value="1" selected>Magenta</option>
+    <option value="2">Amber</option>
+  </select>
+</div>
+
+<h1>Electric Border</h1>
+<p class="lede">A live current crackles around each card's edge — SVG <code>feTurbulence</code> generates animated noise, <code>feDisplacementMap</code> warps the outline, and a dashed stroke races along the wobbling path.</p>
+
+<div class="cards" id="cards"></div>
+
+<footer>Inspired by reactbits.dev — Electric Border · UI Spotlight Day 110 · Drop #1<br>
+<a href="https://reactbits.dev/animations/electric-border" target="_blank" rel="noopener">reactbits.dev/animations/electric-border</a></footer>
+
+<script>
+(function(){
+  "use strict";
+  var ACCENTS = ['#22d3ee', '#f472b6', '#fbbf24'];
+  var CARDS = [
+    { eyebrow:'01 · Assistant', title:'AI Assistant', desc:'Answers, drafts and searches in one live thread.' },
+    { eyebrow:'02 · Sync', title:'Cloud Sync', desc:'Every device, one state, zero merge conflicts.' },
+    { eyebrow:'03 · Insight', title:'Realtime Analytics', desc:'Dashboards that update as fast as you can look at them.' }
+  ];
+
+  var cardsEl = document.getElementById('cards');
+  var scaleEl = document.getElementById('scale'), scaleVal = document.getElementById('scaleVal');
+  var speedEl = document.getElementById('speed'), speedVal = document.getElementById('speedVal');
+  var accentEl = document.getElementById('accent');
+  var toggle = document.getElementById('panelToggle'), panel = document.getElementById('panel');
+
+  var filterIds = [];
+
+  function svgNS(tag){ return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+  function buildCard(data, idx){
+    var card = document.createElement('div');
+    card.className = 'ecard';
+
+    var eyebrow = document.createElement('div'); eyebrow.className = 'eyebrow'; eyebrow.textContent = data.eyebrow;
+    var h3 = document.createElement('h3'); h3.textContent = data.title;
+    var p = document.createElement('p'); p.textContent = data.desc;
+
+    var svg = svgNS('svg');
+    var filterId = 'warp-' + idx;
+    filterIds.push(filterId);
+    var defs = svgNS('defs');
+    var filter = svgNS('filter'); filter.setAttribute('id', filterId); filter.setAttribute('x','-20%'); filter.setAttribute('y','-20%'); filter.setAttribute('width','140%'); filter.setAttribute('height','140%');
+    var turb = svgNS('feTurbulence');
+    turb.setAttribute('type', 'fractalNoise');
+    turb.setAttribute('baseFrequency', '0.012 0.05');
+    turb.setAttribute('numOctaves', '2');
+    turb.setAttribute('result', 'noise');
+    turb.setAttribute('seed', String(idx * 7 + 3));
+    var animFreq = svgNS('animate');
+    animFreq.setAttribute('attributeName', 'baseFrequency');
+    animFreq.setAttribute('values', '0.012 0.05;0.019 0.075;0.012 0.05');
+    animFreq.setAttribute('dur', '6s');
+    animFreq.setAttribute('repeatCount', 'indefinite');
+    turb.appendChild(animFreq);
+    var disp = svgNS('feDisplacementMap');
+    disp.setAttribute('in', 'SourceGraphic');
+    disp.setAttribute('in2', 'noise');
+    disp.setAttribute('scale', '7');
+    disp.setAttribute('xChannelSelector', 'R');
+    disp.setAttribute('yChannelSelector', 'G');
+    disp.classList.add('disp-' + idx);
+    filter.appendChild(turb);
+    filter.appendChild(disp);
+    defs.appendChild(filter);
+    svg.appendChild(defs);
+
+    function makeRect(cls, strokeWidth, opacity, useFilter){
+      var r = svgNS('rect');
+      r.setAttribute('x', 3); r.setAttribute('y', 3);
+      r.setAttribute('rx', 16);
+      r.setAttribute('fill', 'none');
+      r.setAttribute('stroke-width', strokeWidth);
+      r.setAttribute('opacity', opacity);
+      r.setAttribute('pathLength', '260');
+      r.setAttribute('class', cls);
+      if (useFilter) r.setAttribute('filter', 'url(#' + filterId + ')');
+      return r;
+    }
+
+    var base = makeRect('edge-base', 1, 0.22, false);
+    var crisp = makeRect('edge-crisp anim-' + idx, 1.4, 0.9, true);
+    var glow = makeRect('edge-glow anim-' + idx, 3.5, 0.55, true);
+    [base, crisp, glow].forEach(function(r){ svg.appendChild(r); });
+
+    card.appendChild(svg);
+    card.appendChild(eyebrow);
+    card.appendChild(h3);
+    card.appendChild(p);
+    cardsEl.appendChild(card);
+
+    // size the svg + rect to the card's actual box once laid out
+    requestAnimationFrame(function sizeIt(){
+      var w = card.offsetWidth, h = card.offsetHeight;
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      [base, crisp, glow].forEach(function(r){
+        r.setAttribute('width', Math.max(0, w - 6));
+        r.setAttribute('height', Math.max(0, h - 6));
+      });
+      var perim = 2 * ((w - 6) + (h - 6));
+      [crisp, glow].forEach(function(r){
+        r.setAttribute('stroke-dasharray', (perim * 0.18).toFixed(0) + ' ' + (perim * 0.82).toFixed(0));
+      });
+    });
+
+    return { card:card, filterId:filterId };
+  }
+
+  var built = CARDS.map(buildCard);
+
+  var styleEl = document.createElement('style');
+  document.head.appendChild(styleEl);
+
+  function applyAccent(colorIdx){
+    var color = ACCENTS[colorIdx];
+    document.querySelectorAll('rect[class*="anim-"]').forEach(function(r){ r.setAttribute('stroke', color); });
+    document.querySelectorAll('rect.edge-base').forEach(function(r){ r.setAttribute('stroke', color); });
+  }
+  function applyScale(v){
+    document.querySelectorAll('feDisplacementMap').forEach(function(d){ d.setAttribute('scale', v); });
+  }
+  function applySpeed(v){
+    var css = '';
+    built.forEach(function(_, idx){
+      css += '.anim-' + idx + '{ animation: dash ' + v + 's linear infinite; }\n';
+    });
+    styleEl.textContent = css;
+  }
+
+  applyAccent(1);
+  applyScale(7);
+  applySpeed(3.2);
+
+  scaleEl.addEventListener('input', function(){ scaleVal.textContent = scaleEl.value; applyScale(scaleEl.value); });
+  speedEl.addEventListener('input', function(){ speedVal.textContent = speedEl.value + 's'; applySpeed(speedEl.value); });
+  accentEl.addEventListener('change', function(){ applyAccent(parseInt(accentEl.value, 10)); });
+  toggle.addEventListener('click', function(){
+    var open = panel.classList.toggle('collapsed');
+    void open;
+  });
+
+  // pause the current when scrolled fully out of view
+  if ('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        entry.target.style.animationPlayState = entry.isIntersecting ? 'running' : 'paused';
+      });
+    }, { threshold: 0.05 });
+    document.querySelectorAll('[class*="anim-"]').forEach(function(el){ io.observe(el); });
+  }
+
+  window.__electricBorder = { cardCount: CARDS.length, filters: filterIds };
+})();
+</script>
+</body>
+</html>
