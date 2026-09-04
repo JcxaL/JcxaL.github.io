@@ -18,9 +18,11 @@ the page**. Every past day is preserved forever in Time Machine drawers.
 Today's date: use `date +%Y-%m-%d` as the date portion of new folder names.
 
 ## Repository state when you arrive
-- **Push to:** `main` branch (playground and the Next.js site now share one
+- **Push to:** `main` branch (playground and the Next.js site share one
   branch and one deploy).
-- **Develop on:** `claude/<session-slug>` (auto-assigned). Merge → push.
+- **Develop on:** `claude/<session-slug>` (auto-assigned). Merge → push →
+  **delete the session branch** (Step 9). Skipping that cleanup is how the
+  repo accumulated 24 stale branches once already.
 - **GitHub Pages** auto-deploys `main` via `.github/workflows/deploy.yml`.
   That workflow validates BOTH manifests AND the 5-drop spotlight structure
   (presence of `1/`..`5/index.html`, meta.json `drops` array length), then
@@ -30,9 +32,29 @@ Today's date: use `date +%Y-%m-%d` as the date portion of new folder names.
 - **Next.js source** (`src/`, `package.json`, etc.) lives on the same branch
   and IS deployed (at the site root, separate from `/playground/`). Leave
   it alone regardless.
+- **`CNAME` must exist at the repo root** containing `jccl.me`. The deploy
+  step copies it into the build output; without it GitHub Pages drops the
+  custom domain. It was deleted once (2026-07-31) and the workflow's
+  `if [ -f CNAME ]` guard skipped it silently for weeks. Never delete it.
 - **Persistent infrastructure** — iOS mode-toggle, welcome popup, and both
   Time Machine hubs live in `playground/index.html` and
   `playground/spotlight/index.html`. Don't modify casually.
+
+## The three long-lived branches
+| Branch | Role | Who writes to it |
+|---|---|---|
+| `main` | The deployed page — daily playground at `/playground/` plus the live Next.js site at the root. | The daily routine (direct push) and merged PRs. |
+| `dev` | The owner's travel-feature work: the full "JccL Line" transit site (`src/`, `__tests__/`, `docs/`, `tokens/`, `scripts/`). A strict superset of `main`. | The owner, and feature PRs. **Not the daily routine.** |
+| `pilot/main` | Frozen archive of the original 2024-06-28 lineage. Read-only. | Nobody — never push to it. |
+
+**Never run the daily routine on `dev` or `pilot/main`.** Daily playground
+work goes to `main` only.
+
+The repository used to carry two histories with no common ancestor: on
+2026-07-30 a session started a fresh orphan root, and `main` descends from
+it, which stranded the travel site on the old lineage. `dev` merged the two
+on 2026-09-04, so `dev` → `main` is now an ordinary merge — never pass
+`--allow-unrelated-histories` again.
 
 ## Non-daily changes (features, infra, site work) — PR + auto-review flow
 The direct-push-to-`main` rule above applies ONLY to the daily playground
@@ -333,6 +355,11 @@ git add playground/days/manifest.json
 git add playground/spotlight/manifest.json
 git commit -m "feat(day-N): <playground-title> + 5 spotlights (<5-bucket-summary>)"
 git push -u origin main
+
+# Branch hygiene — the session branch has served its purpose. Do this every
+# day; it is the single step whose omission produced 24 stale branches.
+git branch -D "claude/<session-slug>"
+git push origin --delete "claude/<session-slug>"
 ```
 
 The `deploy.yml` workflow runs:
@@ -386,6 +413,10 @@ work, the "Non-daily changes" PR flow above takes precedence.
 - Don't touch `src/`, `package.json`, or anything outside `playground/` —
   that's the real Next.js site; changes there go through the PR flow
 - Don't open a PR for daily playground content — push directly to `main`
+- Don't push daily work to `dev` or `pilot/main` — `main` only
+- Don't delete `CNAME`, and don't relax the deploy step's CNAME copy
+- Don't leave your `claude/<session-slug>` branch behind — delete it after
+  the push (Step 9)
 - Don't claim a Spotlight pattern as your own — always credit `source_url`
 - Don't ship without verifying (Step 3 + Step 6 verification)
 - Don't write a README per day — meta.json is the record
