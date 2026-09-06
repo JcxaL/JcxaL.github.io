@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bleed Control — UI Spotlight</title>
+<style>
+  :root{ color-scheme:dark; --gap:1rem; --measure:52ch }
+  *{box-sizing:border-box}
+  html{overflow-x:clip}
+  html,body{margin:0;min-height:100%;
+    background:radial-gradient(950px 600px at 78% -12%,#0c2b23,#05070c 60%);
+    color:#e9f3ee;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  body{padding:92px 0 70px;container:page / inline-size}
+  .glass{background:rgba(14,22,20,.64);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.11);border-radius:14px}
+  .back-link{position:fixed;top:16px;left:16px;z-index:9;padding:9px 14px;font-size:12.5px;text-decoration:none;color:#e9f3ee}
+  #panelToggle{position:fixed;top:16px;right:16px;z-index:10;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  #panel{position:fixed;top:64px;right:16px;z-index:9;width:242px;padding:14px;display:flex;flex-direction:column;gap:11px;font-size:12px;
+    transition:opacity .22s ease,transform .22s ease}
+  #panel.collapsed{opacity:0;transform:translateY(-8px) scale(.96);pointer-events:none}
+  #panel h4{margin:0;font-size:10px;letter-spacing:.11em;text-transform:uppercase;opacity:.55}
+  #panel .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  #panel input[type=range]{flex:1;accent-color:#34d399}
+
+  /* ── the breakout grid: one definition, four named lanes ── */
+  .prose{
+    display:grid;
+    grid-template-columns:
+      [full-start] minmax(var(--gap),1fr)
+      [feature-start] minmax(0,2.5rem)
+      [popout-start] minmax(0,2.5rem)
+      [content-start] min(var(--measure),100% - var(--gap) * 2) [content-end]
+      minmax(0,2.5rem) [popout-end]
+      minmax(0,2.5rem) [feature-end]
+      minmax(var(--gap),1fr) [full-end];
+    row-gap:18px;position:relative
+  }
+  .prose > *{grid-column:content}
+  .prose > .popout{grid-column:popout}
+  .prose > .feature{grid-column:feature}
+  .prose > .full{grid-column:full}
+
+  .block{position:relative;border-radius:16px;transition:background .25s ease,box-shadow .25s ease}
+  .block[data-lane]{cursor:pointer}
+  .block:hover{box-shadow:0 0 0 1px rgba(52,211,153,.4)}
+  .lane-tag{position:absolute;top:8px;right:10px;font:700 9.5px/1 ui-monospace,Menlo,monospace;
+    letter-spacing:.14em;text-transform:uppercase;color:#062018;background:#34d399;padding:5px 8px;border-radius:99px;
+    opacity:.9;pointer-events:none}
+  h1{font-size:clamp(1.7rem,4.6vw,2.5rem);margin:0;letter-spacing:-.025em}
+  p.lede{opacity:.66;line-height:1.65;font-size:15px;margin:0}
+  p{line-height:1.75;font-size:14.5px;opacity:.82;margin:0}
+  .pull{padding:20px 22px;background:linear-gradient(150deg,#12241f,#0b1512);border:1px solid rgba(255,255,255,.08);
+    font-size:16px;line-height:1.6}
+  .figure{aspect-ratio:16/6;border-radius:16px;background:
+      repeating-linear-gradient(115deg,#0f2a24 0 26px,#123a30 26px 52px);
+    display:grid;place-items:center;font:700 12px/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;
+    text-transform:uppercase;color:#8ff0cd;border:1px solid rgba(255,255,255,.07)}
+  .banner{padding:26px 20px;text-align:center;background:linear-gradient(100deg,#34d399,#0ea5e9);
+    color:#04150f;font-weight:800;letter-spacing:-.01em;font-size:clamp(15px,2.6vw,22px);border-radius:0}
+
+  /* grid line overlay */
+  .guides{position:absolute;inset:0;pointer-events:none;display:grid;grid-template-columns:inherit;opacity:0;transition:opacity .25s}
+  .guides.on{opacity:1}
+  .guides i{display:block;border-left:1px dashed rgba(52,211,153,.45);border-right:1px dashed rgba(52,211,153,.45);height:100%}
+  .guides i:nth-child(odd){background:rgba(52,211,153,.05)}
+
+  /* vw vs cqi laboratory */
+  .lab{margin-top:36px}
+  .lab .frame{container:frame / inline-size;overflow:hidden;border:1px solid rgba(255,255,255,.12);
+    border-radius:16px;background:#0a1512;padding:14px;position:relative}
+  .lab .bar{height:44px;border-radius:10px;display:flex;align-items:center;padding:0 14px;
+    font:700 11.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:#04150f;white-space:nowrap;margin-bottom:10px}
+  .bar.vw{width:100vw;margin-inline-start:calc(50% - 50vw);background:linear-gradient(90deg,#f87171,#fbbf24)}
+  .bar.cqi{inline-size:100cqi;margin-inline-start:calc(50% - 50cqi);background:linear-gradient(90deg,#34d399,#38bdf8)}
+  .lab .frame::after{content:"container";position:absolute;bottom:6px;right:10px;font:10px/1 ui-monospace,Menlo,monospace;opacity:.4}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:6px}
+  .toolbar button{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.4);color:#e9f3ee;
+    border-radius:999px;padding:9px 15px;font:600 12.5px/1 system-ui,sans-serif;cursor:pointer}
+  .toolbar button[aria-pressed="true"]{background:#34d399;color:#06120e;border-color:#34d399}
+  .readout{font:11.5px/1.7 ui-monospace,Menlo,monospace;color:#8fb3a7;background:rgba(10,18,16,.72);
+    border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:12px 14px;white-space:pre-wrap}
+  footer{margin-top:26px;font-size:11px;opacity:.45;text-align:center}
+  footer a{color:inherit}
+  @media (max-width:640px){ #panel{width:min(242px,calc(100vw - 24px))} }
+</style>
+</head>
+<body>
+
+<a class="back-link glass" href="../">← All 5 drops</a>
+<div id="panelToggle" class="glass" title="Toggle controls">☰</div>
+<div id="panel" class="glass collapsed">
+  <h4>Grid</h4>
+  <div class="row"><label for="measure">Measure</label><input id="measure" type="range" min="30" max="80" step="1" value="52"><span id="measureV">52ch</span></div>
+  <div class="row"><label for="gap">Edge gap</label><input id="gap" type="range" min="0" max="4" step="0.25" value="1"><span id="gapV">1rem</span></div>
+  <h4>Overlay</h4>
+  <div class="row"><label for="guides">Show lanes</label><input id="guides" type="checkbox"></div>
+  <div class="row"><label for="tags">Lane tags</label><input id="tags" type="checkbox" checked></div>
+</div>
+
+<div class="prose" id="prose">
+  <div class="guides" id="guides"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+  <h1 class="block" data-lane="content">Bleed Control</h1>
+  <p class="lede block" data-lane="content">One grid definition, four named lanes. Every block below opts into <code>content</code>, <code>popout</code>, <code>feature</code> or <code>full</code> by name — no wrapper divs, no negative margins. Click any block to move it out a lane.</p>
+
+  <p class="block" data-lane="content">The columns are named in pairs — <code>[full-start]</code> … <code>[full-end]</code>, <code>[feature-start]</code> … and so on — so a child only has to say <code>grid-column: feature</code>. The reading measure stays capped with <code>min(52ch, 100% - 2rem)</code> while the outer tracks absorb whatever space is left.</p>
+
+  <div class="pull block" data-lane="popout">“A popout is the same grid, one lane wider. Nothing about the block itself changes — only which named line it starts and ends on.”</div>
+
+  <p class="block" data-lane="content">Because the lanes are part of one grid, blocks stay aligned to each other at every width. Change the measure or the edge gap in the panel and the entire article re-flows together, including the full-bleed strips.</p>
+
+  <div class="figure block" data-lane="feature">feature lane · 16 / 6</div>
+
+  <p class="block" data-lane="content">Full-bleed is where this pattern usually breaks. The old trick reaches for <code>100vw</code>, which counts the scrollbar and ignores any container the element sits inside — so it overflows by a few pixels on Windows, and by a lot inside a narrow parent.</p>
+
+  <div class="banner block" data-lane="full">full lane — edge to edge, still inside the same grid</div>
+
+  <p class="block" data-lane="content">The fix below swaps viewport units for container query units: <code>inline-size: 100cqi</code> with <code>margin-inline-start: calc(50% - 50cqi)</code>, measured against a real container instead of the window.</p>
+</div>
+
+<div class="prose lab">
+  <div class="block" data-fixed style="grid-column:content">
+    <div class="toolbar">
+      <button id="squeeze">Squeeze the container</button>
+      <button id="showBoth" aria-pressed="true">Both bars</button>
+    </div>
+  </div>
+  <div class="frame" id="frame" style="grid-column:feature">
+    <div class="bar vw" id="barVW">width: 100vw — overflows its container</div>
+    <div class="bar cqi" id="barCQI">inline-size: 100cqi — fits exactly</div>
+  </div>
+  <div class="readout" id="readout" style="grid-column:content"></div>
+</div>
+
+<footer>Inspired by David Bushell’s <a href="https://dbushell.com/2026/07/03/fixing-full-bleed-css/" target="_blank" rel="noopener">“Fixing full-bleed CSS”</a> · UI Spotlight Day 111 · Drop #2</footer>
+
+<script>
+(function(){
+  var LANES = ['content','popout','feature','full'];
+  var prose = document.getElementById('prose');
+  var readout = document.getElementById('readout');
+  var showTags = true;
+
+  function paint(){
+    prose.querySelectorAll('.block[data-lane]').forEach(function(b){
+      LANES.forEach(function(l){ b.classList.remove(l); });
+      if(b.dataset.lane !== 'content') b.classList.add(b.dataset.lane);
+      var tag = b.querySelector('.lane-tag');
+      if(showTags){
+        if(!tag){ tag = document.createElement('span'); tag.className = 'lane-tag'; b.appendChild(tag); }
+        tag.textContent = b.dataset.lane;
+      }else if(tag) tag.remove();
+    });
+  }
+  prose.addEventListener('click', function(e){
+    var b = e.target.closest('.block[data-lane]');
+    if(!b) return;
+    b.dataset.lane = LANES[(LANES.indexOf(b.dataset.lane) + 1) % LANES.length];
+    paint(); report();
+  });
+
+  function report(){
+    var frame = document.getElementById('frame');
+    var cs = getComputedStyle(frame);
+    /* cqi resolves against the container's content box, so measure that */
+    var fw = Math.round(frame.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    var vw = Math.round(document.getElementById('barVW').getBoundingClientRect().width);
+    var cq = Math.round(document.getElementById('barCQI').getBoundingClientRect().width);
+    var counts = {};
+    prose.querySelectorAll('.block[data-lane]').forEach(function(b){ counts[b.dataset.lane] = (counts[b.dataset.lane] || 0) + 1; });
+    readout.textContent =
+      'container inner width : ' + fw + 'px\n' +
+      '100vw  bar            : ' + vw + 'px   ' + (vw > fw ? '← overflows by ' + (vw - fw) + 'px' : '(fits)') + '\n' +
+      '100cqi bar            : ' + cq + 'px   ' + (Math.abs(cq - fw) <= 1 ? '← matches the container' : '(off by ' + (cq - fw) + 'px)') + '\n' +
+      'lanes in use          : ' + LANES.filter(function(l){ return counts[l]; }).map(function(l){ return l + '×' + counts[l]; }).join('  ');
+  }
+
+  var squeezed = false;
+  document.getElementById('squeeze').addEventListener('click', function(e){
+    squeezed = !squeezed;
+    document.getElementById('frame').style.gridColumn = squeezed ? 'content' : 'feature';
+    e.target.textContent = squeezed ? 'Widen the container' : 'Squeeze the container';
+    requestAnimationFrame(report);
+  });
+  document.getElementById('showBoth').addEventListener('click', function(e){
+    var on = e.target.getAttribute('aria-pressed') !== 'true';
+    e.target.setAttribute('aria-pressed', on);
+    document.getElementById('barVW').style.display = on ? '' : 'none';
+    e.target.textContent = on ? 'Both bars' : 'cqi only';
+    requestAnimationFrame(report);
+  });
+
+  function bind(id, fn){ var el = document.getElementById(id); el.addEventListener('input', function(){ fn(el.value, el); }); }
+  bind('measure', function(v){ document.documentElement.style.setProperty('--measure', v + 'ch'); document.getElementById('measureV').textContent = v + 'ch'; report(); });
+  bind('gap', function(v){ document.documentElement.style.setProperty('--gap', v + 'rem'); document.getElementById('gapV').textContent = v + 'rem'; report(); });
+  bind('guides', function(_, el){ document.getElementById('guides').classList.toggle('on', el.checked); });
+  bind('tags', function(_, el){ showTags = el.checked; paint(); });
+  document.getElementById('panelToggle').addEventListener('click', function(){
+    document.getElementById('panel').classList.toggle('collapsed');
+  });
+  window.addEventListener('resize', report);
+
+  paint(); report();
+})();
+</script>
+</body>
+</html>

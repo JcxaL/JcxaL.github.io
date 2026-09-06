@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hold to Confirm — UI Spotlight</title>
+<style>
+  :root{ color-scheme:dark; --hold:1400ms; --ring:#fbbf24 }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;
+    background:radial-gradient(900px 560px at 50% -10%,#2a1d05,#07060b 62%);
+    color:#f6f1e6;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  body{padding:92px 18px 80px;display:flex;flex-direction:column;align-items:center}
+  .glass{background:rgba(22,18,12,.66);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.12);border-radius:14px}
+  .back-link{position:fixed;top:16px;left:16px;z-index:9;padding:9px 14px;font-size:12.5px;text-decoration:none;color:#f6f1e6}
+  #panelToggle{position:fixed;top:16px;right:16px;z-index:10;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  #panel{position:fixed;top:64px;right:16px;z-index:9;width:238px;padding:14px;display:flex;flex-direction:column;gap:11px;font-size:12px;
+    transition:opacity .22s ease,transform .22s ease}
+  #panel.collapsed{opacity:0;transform:translateY(-8px) scale(.96);pointer-events:none}
+  #panel h4{margin:0;font-size:10px;letter-spacing:.11em;text-transform:uppercase;opacity:.55}
+  #panel .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  #panel input[type=range]{flex:1;accent-color:#fbbf24}
+  h1{font-size:clamp(1.6rem,4.6vw,2.4rem);margin:0 0 6px;text-align:center;letter-spacing:-.02em}
+  p.lede{max-width:580px;text-align:center;opacity:.62;line-height:1.6;font-size:14px;margin:0 0 34px}
+
+  .rack{display:flex;flex-wrap:wrap;gap:26px;justify-content:center;align-items:flex-start;width:min(960px,95vw)}
+  .unit{display:flex;flex-direction:column;align-items:center;gap:10px;min-width:200px}
+  .unit .cap{font-size:11px;letter-spacing:.13em;text-transform:uppercase;opacity:.5}
+  .unit .msg{font-size:12px;min-height:16px;opacity:.75;transition:color .25s ease}
+  .unit.done .msg{color:#4ade80}
+
+  /* shared conic progress ring: --p is 0..1 */
+  .hold{position:relative;border:0;cursor:pointer;color:inherit;font:inherit;
+    -webkit-user-select:none;user-select:none;touch-action:none;
+    transition:transform .18s cubic-bezier(.34,1.5,.4,1),box-shadow .25s ease}
+  .hold::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:3px;
+    background:conic-gradient(var(--ring) calc(var(--p,0) * 360deg), rgba(255,255,255,.12) 0);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude}
+  .hold::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    box-shadow:0 0 0 0 var(--ring);opacity:0;transition:box-shadow .5s ease,opacity .5s ease}
+  .hold.fired::after{box-shadow:0 0 0 18px var(--ring);opacity:0}
+  .hold.holding{transform:scale(.965)}
+  .hold.fired{animation:pop .5s cubic-bezier(.2,1.5,.4,1)}
+  @keyframes pop{ 0%{transform:scale(.94)} 55%{transform:scale(1.06)} 100%{transform:scale(1)} }
+  .hold.cancelled{animation:shake .34s ease}
+  @keyframes shake{ 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 60%{transform:translateX(4px)} }
+
+  .danger{--ring:#f87171;width:230px;height:56px;border-radius:14px;background:#1c1216;
+    display:flex;align-items:center;justify-content:center;gap:9px;font-weight:650;font-size:14px;letter-spacing:.01em}
+  .pill{--ring:#38bdf8;width:230px;height:52px;border-radius:999px;background:#0e1724;
+    display:flex;align-items:center;justify-content:center;gap:9px;font-weight:650;font-size:13.5px}
+  .orb{--ring:#a78bfa;width:132px;height:132px;border-radius:50%;background:radial-gradient(circle at 50% 35%,#241c3c,#120e1e);
+    display:grid;place-items:center;font-weight:800;font-size:13px;letter-spacing:.04em}
+  .orb .pct{font:800 26px/1 system-ui;letter-spacing:-.02em}
+  .orb small{display:block;font-size:10px;letter-spacing:.16em;opacity:.55;margin-top:3px;text-transform:uppercase}
+
+  .log{margin-top:34px;width:min(680px,95vw);font:11.5px/1.7 ui-monospace,Menlo,monospace;color:#c9b98f;
+    background:rgba(18,14,8,.7);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:12px 14px;
+    max-height:132px;overflow:auto}
+  .note{margin-top:14px;font-size:11.5px;opacity:.5;text-align:center;max-width:600px}
+  footer{margin-top:22px;font-size:11px;opacity:.45;text-align:center}
+  footer a{color:inherit}
+  @media (max-width:640px){ #panel{width:min(238px,calc(100vw - 24px))} }
+</style>
+</head>
+<body>
+
+<a class="back-link glass" href="../">← All 5 drops</a>
+<div id="panelToggle" class="glass" title="Toggle controls">☰</div>
+<div id="panel" class="glass collapsed">
+  <h4>Hold</h4>
+  <div class="row"><label for="dur">Duration</label><input id="dur" type="range" min="400" max="4000" step="100" value="1400"><span id="durV">1.4s</span></div>
+  <h4>Release</h4>
+  <div class="row"><label for="decay">Rewind speed</label><input id="decay" type="range" min="1" max="8" step="0.5" value="3"><span id="decayV">3×</span></div>
+  <div class="row"><label for="haptic">Haptics</label><input id="haptic" type="checkbox" checked></div>
+</div>
+
+<h1>Hold to Confirm</h1>
+<p class="lede">A press-and-hold beats a confirmation dialog: the intent is in the gesture, and letting go cancels it. A conic-gradient ring fills as you hold, then rewinds if you release early.</p>
+
+<div class="rack">
+  <div class="unit">
+    <span class="cap">destructive</span>
+    <button class="hold danger" id="h1">🗑 Hold to delete</button>
+    <span class="msg" id="m1">Release early to cancel</span>
+  </div>
+  <div class="unit">
+    <span class="cap">unlock</span>
+    <button class="hold pill" id="h2">🔓 Hold to unlock</button>
+    <span class="msg" id="m2">Ready</span>
+  </div>
+  <div class="unit">
+    <span class="cap">charge</span>
+    <button class="hold orb" id="h3"><span><span class="pct" id="p3">0%</span><small>hold</small></span></button>
+    <span class="msg" id="m3">Charge it up</span>
+  </div>
+</div>
+
+<div class="log" id="log"></div>
+<div class="note">Each button owns one pointer via <code>setPointerCapture</code>, so a drag off the button still counts as a hold — but pointer-cancel (a scroll starting, a call arriving) aborts cleanly.</div>
+
+<footer>Inspired by Piotr Działowski’s <a href="https://www.dzialowski.eu/hold-to-confirm-button/" target="_blank" rel="noopener">“Implementing hold to confirm button”</a> · UI Spotlight Day 111 · Drop #4</footer>
+
+<script>
+(function(){
+  var cfg = { hold:1400, decay:3, haptic:true };
+  var logEl = document.getElementById('log');
+  function log(msg){
+    var t = new Date().toLocaleTimeString([], {hour12:false});
+    logEl.insertAdjacentHTML('afterbegin', '<div>' + t + '  ' + msg + '</div>');
+    while(logEl.children.length > 40) logEl.removeChild(logEl.lastChild);
+  }
+  function buzz(ms){
+    if(!cfg.haptic) return;
+    try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){}
+  }
+
+  function makeHold(btn, msgEl, label, onFire, onProgress){
+    var p = 0, holding = false, last = 0, raf = 0, fired = false;
+
+    function set(v){
+      p = Math.max(0, Math.min(1, v));
+      btn.style.setProperty('--p', p.toFixed(4));
+      if(onProgress) onProgress(p);
+    }
+    function loop(now){
+      var dt = Math.min(64, now - last); last = now;
+      if(holding){
+        set(p + dt / cfg.hold);
+        if(p >= 1 && !fired){
+          fired = true; holding = false;
+          btn.classList.remove('holding');
+          btn.classList.add('fired');
+          buzz([12, 40, 22]);
+          onFire();
+          setTimeout(function(){ btn.classList.remove('fired'); set(0); fired = false; }, 900);
+          raf = 0; return;
+        }
+      }else{
+        set(p - (dt / cfg.hold) * cfg.decay);
+        if(p <= 0){ raf = 0; return; }
+      }
+      raf = requestAnimationFrame(loop);
+    }
+    function start(ev){
+      if(fired) return;
+      ev.preventDefault();
+      try{ btn.setPointerCapture(ev.pointerId); }catch(e){}
+      holding = true; last = performance.now();
+      btn.classList.add('holding'); btn.classList.remove('cancelled');
+      msgEl.textContent = 'Keep holding…';
+      buzz(8);
+      if(!raf) raf = requestAnimationFrame(loop);
+    }
+    function stop(cancelled){
+      if(!holding) return;
+      holding = false;
+      btn.classList.remove('holding');
+      last = performance.now();
+      if(p > 0.04 && !fired){
+        btn.classList.add('cancelled');
+        msgEl.textContent = cancelled ? 'Interrupted' : 'Cancelled at ' + Math.round(p * 100) + '%';
+        msgEl.parentElement.classList.remove('done');
+        log(label + ': cancelled at ' + Math.round(p * 100) + '%');
+      }
+      if(!raf) raf = requestAnimationFrame(loop);
+    }
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', function(){ stop(false); });
+    btn.addEventListener('pointercancel', function(){ stop(true); });
+    btn.addEventListener('lostpointercapture', function(){ stop(true); });
+    btn.addEventListener('keydown', function(e){ if((e.key === ' ' || e.key === 'Enter') && !e.repeat) start(e); });
+    btn.addEventListener('keyup', function(e){ if(e.key === ' ' || e.key === 'Enter') stop(false); });
+    btn.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    set(0);
+    return { reset:function(){ set(0); } };
+  }
+
+  var u1 = document.getElementById('h1').closest('.unit');
+  makeHold(document.getElementById('h1'), document.getElementById('m1'), 'delete', function(){
+    document.getElementById('m1').textContent = 'Deleted — undo in 5s';
+    u1.classList.add('done');
+    log('delete: confirmed');
+    setTimeout(function(){ u1.classList.remove('done'); document.getElementById('m1').textContent = 'Release early to cancel'; }, 2600);
+  });
+
+  var u2 = document.getElementById('h2').closest('.unit');
+  makeHold(document.getElementById('h2'), document.getElementById('m2'), 'unlock', function(){
+    document.getElementById('h2').textContent = '🔒 Unlocked';
+    document.getElementById('m2').textContent = 'Access granted';
+    u2.classList.add('done');
+    log('unlock: confirmed');
+    setTimeout(function(){
+      document.getElementById('h2').textContent = '🔓 Hold to unlock';
+      document.getElementById('m2').textContent = 'Ready';
+      u2.classList.remove('done');
+    }, 2600);
+  });
+
+  var u3 = document.getElementById('h3').closest('.unit');
+  makeHold(document.getElementById('h3'), document.getElementById('m3'), 'charge', function(){
+    document.getElementById('m3').textContent = 'Fully charged ⚡';
+    u3.classList.add('done');
+    log('charge: full');
+    setTimeout(function(){ u3.classList.remove('done'); document.getElementById('m3').textContent = 'Charge it up'; }, 2600);
+  }, function(p){
+    document.getElementById('p3').textContent = Math.round(p * 100) + '%';
+  });
+
+  function bind(id, fn){ var el = document.getElementById(id); el.addEventListener('input', function(){ fn(el.value, el); }); }
+  bind('dur', function(v){ cfg.hold = +v; document.getElementById('durV').textContent = (v / 1000).toFixed(1) + 's'; });
+  bind('decay', function(v){ cfg.decay = +v; document.getElementById('decayV').textContent = v + '×'; });
+  bind('haptic', function(_, el){ cfg.haptic = el.checked; });
+  document.getElementById('panelToggle').addEventListener('click', function(){
+    document.getElementById('panel').classList.toggle('collapsed');
+  });
+  log('ready — hold any control');
+})();
+</script>
+</body>
+</html>
