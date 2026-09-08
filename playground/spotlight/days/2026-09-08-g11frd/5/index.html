@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pop-Out Widgets — UI Spotlight Day 113</title>
+<style>
+  :root{
+    --bg:#07060f; --ink:#efeaff; --dim:#9b93c4; --acc:#a78bfa;
+    --glass:rgba(20,17,38,.68); --line:rgba(167,139,250,.24);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{min-height:100%;margin:0}
+  body{
+    background:radial-gradient(900px 620px at 50% -12%, #1d1740 0%, transparent 62%), var(--bg);
+    color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;overflow-x:hidden;
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:30;display:inline-flex;align-items:center;gap:6px;
+    padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:12.5px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);transition:.2s;
+  }
+  .back-link:hover{border-color:var(--acc);color:#fff}
+
+  .status{
+    position:fixed;top:14px;right:14px;z-index:30;width:224px;padding:12px;border-radius:14px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);font-size:11.5px;color:var(--dim);
+  }
+  .status h3{margin:0 0 8px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .status b{color:var(--ink);font-weight:600}
+  .pill{display:inline-block;margin-top:6px;padding:3px 9px;border-radius:999px;font-size:10.5px;
+        border:1px solid var(--line);background:rgba(167,139,250,.12);color:var(--ink)}
+  .pill.no{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.14);color:#fecaca}
+
+  main{flex:1;width:min(1000px,100%);margin:0 auto;padding:78px 18px 24px;display:flex;flex-direction:column;gap:22px}
+  .lede h1{margin:0 0 8px;font-size:clamp(24px,5vw,34px);letter-spacing:-.025em}
+  .lede p{margin:0;color:var(--dim);font-size:13.5px;max-width:64ch}
+  .lede em{color:var(--acc);font-style:normal}
+
+  .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .card{border:1px solid var(--line);border-radius:18px;background:rgba(18,15,34,.6);padding:14px;display:flex;flex-direction:column;gap:12px}
+  .card header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .card h2{margin:0;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .pop{
+    font:inherit;font-size:11.5px;color:var(--ink);background:rgba(167,139,250,.16);
+    border:1px solid var(--line);border-radius:9px;padding:6px 10px;cursor:pointer;transition:.16s;white-space:nowrap;
+  }
+  .pop:hover{border-color:var(--acc);background:rgba(167,139,250,.3)}
+  .dock{min-height:150px;display:flex}
+  .dock:empty::after{
+    content:"in its own window ↗";flex:1;display:grid;place-items:center;border-radius:14px;
+    border:1px dashed var(--line);color:var(--dim);font-size:11.5px;
+  }
+
+  /* ---- the widget itself — styled so it survives in either window ---- */
+  .widget{
+    flex:1;border-radius:14px;background:linear-gradient(160deg,rgba(167,139,250,.16),rgba(56,189,248,.07));
+    border:1px solid rgba(167,139,250,.24);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0;
+  }
+  .widget .big{font-size:34px;font-weight:650;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
+  .widget .sub{font-size:11.5px;color:var(--dim)}
+  .widget button{
+    font:inherit;font-size:12px;color:var(--ink);background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:7px 11px;cursor:pointer;
+  }
+  .widget button:hover{border-color:var(--acc)}
+  .rowb{display:flex;gap:8px;flex-wrap:wrap}
+  .widget canvas{width:100%;height:76px;display:block;border-radius:10px;background:rgba(0,0,0,.25)}
+  .tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+  .tasks li{display:flex;align-items:center;gap:9px;font-size:13px}
+  .tasks input{accent-color:var(--acc);width:15px;height:15px}
+  .tasks li.done{color:var(--dim);text-decoration:line-through}
+
+  /* the in-page fallback window */
+  .float{
+    position:fixed;z-index:60;width:300px;border-radius:16px;padding:10px;
+    background:rgba(16,13,30,.95);border:1px solid var(--acc);box-shadow:0 24px 60px rgba(0,0,0,.6);
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .float .bar{display:flex;align-items:center;justify-content:space-between;cursor:grab;font-size:11px;color:var(--dim);touch-action:none}
+  .float .bar button{background:none;border:0;color:var(--dim);font-size:15px;cursor:pointer;padding:0 4px}
+
+  footer{padding:16px 16px 28px;text-align:center;color:var(--dim);font-size:11.5px}
+  footer a{color:var(--dim)}
+
+  @media (max-width:900px){
+    .status{position:static;width:min(100%,430px);margin:0 auto}
+    main{padding:66px 12px 18px}
+    .cards{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="status">
+  <h3>Document PiP</h3>
+  <div id="supText">checking support…</div>
+  <span class="pill" id="supPill">…</span>
+  <div style="margin-top:9px">Currently out: <b id="outName">nothing</b></div>
+</div>
+
+<main>
+  <div class="lede">
+    <h1>Pop-Out Widgets</h1>
+    <p>The Document Picture-in-Picture API opens a small always-on-top window that takes <em>real DOM</em>,
+       not a video frame. Each widget below is <em>moved</em> — the same node, the same running timers —
+       so state never resets on the way out or back.</p>
+  </div>
+
+  <section class="cards">
+    <article class="card">
+      <header><h2>Focus timer</h2><button class="pop" data-w="timer">Pop out ↗</button></header>
+      <div class="dock" id="dock-timer">
+        <div class="widget" id="w-timer">
+          <div class="big" id="clock">25:00</div>
+          <div class="sub" id="clockState">paused · pomodoro</div>
+          <div class="rowb">
+            <button id="tStart">Start</button>
+            <button id="tReset">Reset</button>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card">
+      <header><h2>Live metric</h2><button class="pop" data-w="metric">Pop out ↗</button></header>
+      <div class="dock" id="dock-metric">
+        <div class="widget" id="w-metric">
+          <div class="big" id="mVal">0</div>
+          <div class="sub">requests / second · sampled at 8 Hz</div>
+          <canvas id="spark" width="520" height="152"></canvas>
+        </div>
+      </div>
+    </article>
+
+    <article class="card">
+      <header><h2>Checklist</h2><button class="pop" data-w="tasks">Pop out ↗</button></header>
+      <div class="dock" id="dock-tasks">
+        <div class="widget" id="w-tasks">
+          <ul class="tasks" id="taskList"></ul>
+          <div class="sub" id="taskCount">0 of 4 done</div>
+        </div>
+      </div>
+    </article>
+  </section>
+</main>
+
+<footer>
+  Inspired by “Creating Web Widgets Using the Document Picture-in-Picture API” on
+  <a href="https://css-tricks.com/creating-web-widgets-using-the-document-picture-in-picture-api/">CSS-Tricks</a>
+  · UI Spotlight Day 113 · Drop #5
+</footer>
+
+<script>
+"use strict";
+(function () {
+
+  var supported = "documentPictureInPicture" in window;
+  document.getElementById("supText").textContent = supported
+    ? "requestWindow() is available here — widgets open in a real OS window."
+    : "Not available in this browser/context — widgets fall back to a draggable in-page window.";
+  var pill = document.getElementById("supPill");
+  pill.textContent = supported ? "native window" : "in-page fallback";
+  if (!supported) pill.classList.add("no");
+
+  /* ---------------- widget logic (runs wherever the node lives) ------- */
+
+  // 1 — timer
+  var total = 25 * 60, left = total, running = false;
+  var clock = document.getElementById("clock"), clockState = document.getElementById("clockState");
+  var tStart = document.getElementById("tStart");
+  function fmt(s) { return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+  setInterval(function () {
+    if (running && left > 0) { left--; clock.textContent = fmt(left); }
+    if (left === 0 && running) { running = false; clockState.textContent = "done · take a break"; }
+  }, 1000);
+  tStart.addEventListener("click", function () {
+    running = !running;
+    tStart.textContent = running ? "Pause" : "Start";
+    clockState.textContent = (running ? "running" : "paused") + " · pomodoro";
+  });
+  document.getElementById("tReset").addEventListener("click", function () {
+    left = total; running = false; clock.textContent = fmt(left);
+    clockState.textContent = "paused · pomodoro";
+    tStart.textContent = "Start";
+  });
+
+  // 2 — sparkline (every node is cached up front: the widget keeps working
+  // once it has moved into another document, where getElementById would miss it)
+  var spark = document.getElementById("spark"), sctx = spark.getContext("2d");
+  var mVal = document.getElementById("mVal");
+  var series = [], v = 42;
+  setInterval(function () {
+    v = Math.max(4, Math.min(96, v + (Math.random() - 0.48) * 14));
+    series.push(v);
+    if (series.length > 90) series.shift();
+    mVal.textContent = Math.round(v);
+    var w = spark.width, h = spark.height;
+    sctx.clearRect(0, 0, w, h);
+    sctx.beginPath();
+    series.forEach(function (n, i) {
+      var x = i / Math.max(1, series.length - 1) * w;
+      var y = h - (n / 100) * (h - 12) - 6;
+      i ? sctx.lineTo(x, y) : sctx.moveTo(x, y);
+    });
+    sctx.strokeStyle = "#a78bfa"; sctx.lineWidth = 3; sctx.lineJoin = "round"; sctx.stroke();
+    sctx.lineTo(w, h); sctx.lineTo(0, h); sctx.closePath();
+    sctx.fillStyle = "rgba(167,139,250,.18)"; sctx.fill();
+  }, 125);
+
+  // 3 — checklist
+  var TASKS = ["Ship the PiP widget", "Copy the stylesheets", "Move, don't clone", "Restore on pagehide"];
+  var list = document.getElementById("taskList"), count = document.getElementById("taskCount");
+  TASKS.forEach(function (label, i) {
+    var li = document.createElement("li");
+    var cb = document.createElement("input");
+    cb.type = "checkbox"; cb.id = "t" + i;
+    var lb = document.createElement("label");
+    lb.setAttribute("for", "t" + i); lb.textContent = label;
+    cb.addEventListener("change", function () { li.classList.toggle("done", cb.checked); tally(); });
+    li.appendChild(cb); li.appendChild(lb); list.appendChild(li);
+  });
+  function tally() {
+    var done = list.querySelectorAll("input:checked").length;
+    count.textContent = done + " of " + TASKS.length + " done";
+  }
+  tally();
+
+  /* ---------------- the pop-out mechanics ---------------------------- */
+
+  function copyStyles(target) {
+    Array.prototype.forEach.call(document.styleSheets, function (sheet) {
+      try {
+        var css = Array.prototype.map.call(sheet.cssRules, function (r) { return r.cssText; }).join("\n");
+        var style = target.document.createElement("style");
+        style.textContent = css;
+        target.document.head.appendChild(style);
+      } catch (e) {
+        if (sheet.href) {
+          var link = target.document.createElement("link");
+          link.rel = "stylesheet"; link.href = sheet.href;
+          target.document.head.appendChild(link);
+        }
+      }
+    });
+    var base = target.document.createElement("style");
+    base.textContent =
+      "html,body{margin:0;height:100%}" +
+      "body{background:#0b0918;color:#efeaff;padding:12px;" +
+      "font:14px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;display:flex}" +
+      ".widget{flex:1}";
+    target.document.head.appendChild(base);
+  }
+
+  var outName = document.getElementById("outName");
+  var openPip = null, openFloat = null, openKey = null;
+
+  // cached once — after a move these ids no longer resolve in this document
+  var WIDGETS = {};
+  ["timer", "metric", "tasks"].forEach(function (k) {
+    WIDGETS[k] = { node: document.getElementById("w-" + k), dock: document.getElementById("dock-" + k) };
+  });
+
+  function restore(key) {
+    var w = WIDGETS[key];
+    if (w && w.node && w.dock && w.node.parentElement !== w.dock) w.dock.appendChild(w.node);
+    if (openKey === key) { openKey = null; outName.textContent = "nothing"; }
+  }
+
+  function closeAll() {
+    if (openPip) { try { openPip.close(); } catch (e) {} openPip = null; }
+    if (openFloat) { openFloat.remove(); openFloat = null; }
+    if (openKey) restore(openKey);
+  }
+
+  function floatOut(key, node) {
+    var box = document.createElement("div");
+    box.className = "float";
+    box.style.left = "calc(50% - 150px)";
+    box.style.top = "120px";
+    var bar = document.createElement("div");
+    bar.className = "bar";
+    bar.innerHTML = "<span>" + key + " · in-page window</span>";
+    var x = document.createElement("button");
+    x.textContent = "×"; x.title = "send back";
+    x.addEventListener("click", closeAll);
+    bar.appendChild(x);
+    box.appendChild(bar);
+    box.appendChild(node);
+    document.body.appendChild(box);
+    openFloat = box;
+
+    var drag = null;
+    bar.addEventListener("pointerdown", function (e) {
+      if (e.target === x) return;
+      drag = { x: e.clientX - box.offsetLeft, y: e.clientY - box.offsetTop };
+      bar.setPointerCapture(e.pointerId);
+    });
+    bar.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      box.style.left = Math.max(4, Math.min(window.innerWidth - box.offsetWidth - 4, e.clientX - drag.x)) + "px";
+      box.style.top = Math.max(4, Math.min(window.innerHeight - 60, e.clientY - drag.y)) + "px";
+    });
+    bar.addEventListener("pointerup", function () { drag = null; });
+  }
+
+  function popOut(key) {
+    var node = WIDGETS[key] && WIDGETS[key].node;
+    if (!node) return;
+    if (openKey === key) { closeAll(); return; }
+    closeAll();
+    openKey = key;
+    outName.textContent = key;
+
+    if (!supported) { floatOut(key, node); return; }
+
+    window.documentPictureInPicture.requestWindow({ width: 320, height: 280 }).then(function (pip) {
+      openPip = pip;
+      copyStyles(pip);
+      pip.document.body.appendChild(node);
+      pip.addEventListener("pagehide", function () {
+        openPip = null;
+        restore(key);
+      });
+    })["catch"](function () {
+      // gesture or secure-context refusal — degrade to the in-page window
+      floatOut(key, node);
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".pop"), function (b) {
+    b.addEventListener("click", function () { popOut(b.dataset.w); });
+  });
+
+  window.__pip = { popOut: popOut, closeAll: closeAll, supported: supported };
+})();
+</script>
+</body>
+</html>
