@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snap State Choreography — UI Spotlight Day 114</title>
+<style>
+  :root{
+    --bg:#04070f; --ink:#e9f4ff; --dim:#7d92b8; --acc:#38bdf8;
+    --glass:rgba(13,21,38,.68); --line:rgba(120,160,220,.22);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{min-height:100%;margin:0}
+  body{
+    background:radial-gradient(900px 620px at 50% -12%, #10233f 0%, transparent 62%), var(--bg);
+    color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;overflow-x:hidden;
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:40;
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 14px;border-radius:999px;text-decoration:none;
+    color:var(--ink);font-size:12.5px;background:var(--glass);
+    border:1px solid var(--line);backdrop-filter:blur(14px);transition:.2s;
+  }
+  .back-link:hover{border-color:var(--acc);color:#fff}
+
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:40;width:222px;padding:12px;border-radius:14px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);
+  }
+  .panel h3{margin:0 0 9px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .row{display:flex;align-items:center;gap:8px;margin:8px 0}
+  .row label{flex:0 0 62px;font-size:11px;color:var(--dim)}
+  .row output{flex:0 0 32px;text-align:right;font-size:11px;color:var(--acc);font-variant-numeric:tabular-nums}
+  input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:3px;border-radius:3px;background:rgba(140,180,235,.28);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--acc);border:2px solid #071018;cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--acc);border:2px solid #071018;cursor:pointer}
+  .panel button{
+    width:100%;margin-top:6px;font:inherit;font-size:11.5px;color:var(--ink);
+    background:rgba(56,189,248,.14);border:1px solid var(--line);border-radius:9px;padding:7px;cursor:pointer;transition:.15s;
+  }
+  .panel button:hover{border-color:var(--acc);background:rgba(56,189,248,.24)}
+  .badge{
+    display:block;margin-top:9px;font-size:10.5px;line-height:1.35;color:var(--dim);
+    border-top:1px solid var(--line);padding-top:8px;
+  }
+  .badge b{color:var(--acc);font-weight:600}
+
+  main{flex:1;display:flex;flex-direction:column;align-items:center;padding:70px 16px 30px;gap:26px;width:100%}
+  .lede{max-width:700px;text-align:center}
+  .lede h1{margin:0 0 8px;font-size:clamp(22px,4.6vw,32px);letter-spacing:-.02em}
+  .lede p{margin:0;color:var(--dim);font-size:13.5px}
+  .lede em{color:var(--acc);font-style:normal}
+
+  .demo{width:min(1040px,100%);border-radius:20px;border:1px solid var(--line);background:rgba(9,15,28,.6);overflow:hidden}
+  .demo > h2{
+    margin:0;padding:13px 18px;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;
+    color:var(--dim);font-weight:600;border-bottom:1px solid var(--line);
+  }
+  .demo > h2 code{color:var(--acc);letter-spacing:0;text-transform:none;font-size:11.5px}
+
+  /* ---- 1 · snapped: x ------------------------------------------------ */
+  .rail{
+    display:flex;gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;
+    padding:34px 50%;scrollbar-width:thin;scroll-behavior:smooth;
+  }
+  .rail::-webkit-scrollbar{height:6px}
+  .rail::-webkit-scrollbar-thumb{background:rgba(120,160,220,.3);border-radius:6px}
+  /* The card is the *container*; a query only ever matches its
+     descendants, so all the visual state lives on .face inside it. */
+  .card{
+    container-type:scroll-state;
+    scroll-snap-align:center;flex:0 0 190px;height:238px;position:relative;
+  }
+  .face{
+    position:absolute;inset:0;border-radius:18px;
+    border:1px solid var(--line);background:linear-gradient(160deg,#101b30,#0a1120);
+    display:grid;place-items:center;
+    transition:transform var(--dur,.5s) cubic-bezier(.2,.9,.25,1),
+               filter var(--dur,.5s) ease, border-color .35s, box-shadow .45s;
+    transform:scale(.82) translateY(10px);filter:saturate(.25) brightness(.72);
+  }
+  .face .n{
+    font-size:54px;font-weight:800;letter-spacing:-.04em;
+    background:linear-gradient(150deg,var(--c1),var(--c2));-webkit-background-clip:text;background-clip:text;color:transparent;
+    transition:transform var(--dur,.5s) cubic-bezier(.2,.9,.25,1);
+  }
+  .face .tag{
+    position:absolute;bottom:14px;font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
+    opacity:0;transition:opacity .4s .08s, transform .4s .08s;transform:translateY(6px);
+  }
+  /* native scroll-state query … */
+  @container scroll-state(snapped: x){
+    .face{transform:scale(1) translateY(0);filter:none;border-color:var(--acc);box-shadow:0 22px 60px -22px var(--c1)}
+    .face .n{transform:scale(1.06)}
+    .face .tag{opacity:1;transform:none}
+  }
+  /* … and the JS shim's mirror class, for engines without it */
+  .card.is-snapped .face{transform:scale(1) translateY(0);filter:none;border-color:var(--acc);box-shadow:0 22px 60px -22px var(--c1)}
+  .card.is-snapped .face .n{transform:scale(1.06)}
+  .card.is-snapped .face .tag{opacity:1;transform:none}
+
+  /* ---- 2 · stuck: top ------------------------------------------------ */
+  .scroller{height:270px;overflow-y:auto;scrollbar-width:thin;position:relative}
+  .scroller::-webkit-scrollbar{width:6px}
+  .scroller::-webkit-scrollbar-thumb{background:rgba(120,160,220,.3);border-radius:6px}
+  .stickyWrap{container-type:scroll-state;position:sticky;top:0;z-index:5}
+  .stickyBar{
+    display:flex;align-items:center;gap:10px;padding:12px 18px;
+    background:rgba(8,14,26,.55);backdrop-filter:blur(2px);
+    border-bottom:1px solid transparent;transition:.4s cubic-bezier(.3,.9,.3,1);
+  }
+  .stickyBar .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);transition:.4s}
+  .stickyBar b{font-size:13px;letter-spacing:-.01em;transition:.4s}
+  .stickyBar .state{margin-left:auto;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim)}
+  .stickyBar .state::after{content:'scrolling'}
+  @container scroll-state(stuck: top){
+    .stickyBar{background:rgba(9,18,34,.94);border-bottom-color:var(--acc);
+               box-shadow:0 16px 34px -22px #000;padding-block:9px;backdrop-filter:blur(16px)}
+    .stickyBar .dot{background:var(--acc);box-shadow:0 0 0 5px rgba(56,189,248,.16)}
+    .stickyBar b{letter-spacing:.02em}
+    .stickyBar .state::after{content:'stuck: top'}
+  }
+  .stickyWrap.is-stuck .stickyBar{background:rgba(9,18,34,.94);border-bottom-color:var(--acc);
+      box-shadow:0 16px 34px -22px #000;padding-block:9px;backdrop-filter:blur(16px)}
+  .stickyWrap.is-stuck .stickyBar .dot{background:var(--acc);box-shadow:0 0 0 5px rgba(56,189,248,.16)}
+  .stickyWrap.is-stuck .stickyBar .state::after{content:'stuck: top'}
+  .lines{padding:16px 18px 26px;display:grid;gap:11px}
+  .lines i{display:block;height:11px;border-radius:6px;background:rgba(125,146,184,.16)}
+
+  /* ---- 3 · scrollable: top / bottom ----------------------------------
+     The fades are sticky, zero-height children *inside* the container —
+     a query never matches the container element itself. */
+  .fadeBox{container-type:scroll-state size;position:relative;height:270px;overflow:auto;scrollbar-width:thin;padding:18px}
+  .fadeBox::-webkit-scrollbar{width:6px}
+  .fadeBox::-webkit-scrollbar-thumb{background:rgba(120,160,220,.3);border-radius:6px}
+  .edge{position:sticky;height:0;z-index:3;pointer-events:none;opacity:0;transition:opacity .35s}
+  .edge.t{top:-18px}
+  .edge.b{bottom:-18px}
+  .edge > div{
+    position:absolute;left:-18px;right:-18px;height:58px;
+    display:flex;justify-content:center;font-size:10px;letter-spacing:1.4px;
+    text-transform:uppercase;color:var(--acc);
+  }
+  .edge.t > div{top:0;align-items:flex-start;padding-top:7px;background:linear-gradient(#0a1120,transparent)}
+  .edge.b > div{bottom:0;align-items:flex-end;padding-bottom:7px;background:linear-gradient(transparent,#0a1120)}
+  @container scroll-state(scrollable: top){ .edge.t{opacity:1} }
+  @container scroll-state(scrollable: bottom){ .edge.b{opacity:1} }
+  .fadeBox.can-top .edge.t{opacity:1}
+  .fadeBox.can-bottom .edge.b{opacity:1}
+  .para{margin:0 0 13px;color:var(--dim);font-size:13px;max-width:62ch}
+  .para b{color:var(--ink);font-weight:600}
+
+  footer{padding:16px 16px 30px;text-align:center;color:var(--dim);font-size:11.5px}
+  footer a{color:var(--dim)}
+
+  @media (max-width:760px){
+    .panel{position:static;width:min(360px,100%);margin:0 auto}
+    main{padding-top:64px}
+    .rail{padding-inline:38%}
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<main>
+  <div class="lede">
+    <h1>Snap State Choreography</h1>
+    <p>Three animations that no scroll listener drives. <em>container-type: scroll-state</em> lets an element
+       ask the scroller about itself — <em>snapped</em>, <em>stuck</em>, <em>scrollable</em> — and plain
+       <em>@container</em> rules do the rest.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Choreography</h3>
+    <div class="row"><label>Settle</label><input type="range" id="dur" min="120" max="900" step="20" value="500"><output id="durV">500</output></div>
+    <button id="cycle">Advance the rail</button>
+    <button id="mode">Force the JS shim</button>
+    <span class="badge" id="badge">checking engine…</span>
+  </div>
+
+  <section class="demo">
+    <h2>1 · <code>@container scroll-state(snapped: x)</code></h2>
+    <div class="rail" id="rail"></div>
+  </section>
+
+  <section class="demo">
+    <h2>2 · <code>@container scroll-state(stuck: top)</code></h2>
+    <div class="scroller" id="scroller">
+      <div class="stickyWrap" id="stickyWrap">
+        <div class="stickyBar"><span class="dot"></span><b>Release notes</b><span class="state"></span></div>
+      </div>
+      <div class="lines" id="lines"></div>
+    </div>
+  </section>
+
+  <section class="demo">
+    <h2>3 · <code>@container scroll-state(scrollable: top | bottom)</code></h2>
+    <div class="fadeBox" id="fadeBox">
+      <div class="edge t"><div>▲ more above</div></div>
+      <div class="paras" id="paras"></div>
+      <div class="edge b"><div>more below ▼</div></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Inspired by Una Kravets &amp; Adam Argyle's
+  <a href="https://developer.chrome.com/blog/css-scroll-state-queries">CSS scroll-state queries</a>
+  on Chrome for Developers · UI Spotlight Day 114 · Drop #1
+</footer>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------
+   Native support test. Chrome 133+ ships scroll-state container
+   queries; everywhere else a small shim mirrors the same three states
+   onto classes so the identical CSS still fires.
+------------------------------------------------------------------ */
+const NATIVE = CSS.supports('container-type', 'scroll-state');
+let useShim = !NATIVE;
+
+const $ = id => document.getElementById(id);
+const badge = $('badge');
+
+/* ---- build the snap rail ---- */
+const HUES = [
+  ['#38bdf8', '#6366f1', 'snap · scale'],
+  ['#34d399', '#0ea5e9', 'snap · glow'],
+  ['#fbbf24', '#f97316', 'snap · lift'],
+  ['#f87171', '#e11d48', 'snap · focus'],
+  ['#a78bfa', '#7c3aed', 'snap · tint'],
+  ['#22d3ee', '#0891b2', 'snap · settle'],
+  ['#f472b6', '#be185d', 'snap · bloom']
+];
+const rail = $('rail');
+HUES.forEach((h, i) => {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.style.setProperty('--c1', h[0]);
+  el.style.setProperty('--c2', h[1]);
+  el.innerHTML = '<div class="face"><span class="n">' + (i + 1) +
+                 '</span><span class="tag">' + h[2] + '</span></div>';
+  rail.appendChild(el);
+});
+const cards = [...rail.querySelectorAll('.card')];
+
+/* ---- filler content ---- */
+const lines = $('lines');
+for (let i = 0; i < 16; i++){
+  const b = document.createElement('i');
+  b.style.width = (44 + Math.round(Math.random() * 52)) + '%';
+  lines.appendChild(b);
+}
+const COPY = [
+  ['A query, not a callback.', 'The element declares <b>container-type: scroll-state</b> and every descendant can ask about its position in the scroller — no listener, no observer, no layout reads on the main thread.'],
+  ['Three states.', '<b>stuck</b> reports which edge a sticky element is pinned to. <b>snapped</b> reports whether this snap target is the one the scroller settled on. <b>scrollable</b> reports which directions still have overflow left.'],
+  ['Why it feels better.', 'Because the state lives in style resolution, the transition starts on the same frame the scroller commits — the half-frame lag of a scroll handler simply is not there.'],
+  ['Progressive by construction.', 'An unsupported engine ignores the @container block, so the element keeps its base style. That is a design decision, not a fallback: pick a base that already reads correctly.'],
+  ['Scroll me to the very bottom.', 'The lower fade will switch off the moment <b>scrollable: bottom</b> stops matching — that is the whole mechanism, one boolean per direction.']
+];
+const fadeBox = $('fadeBox'), paras = $('paras');
+COPY.forEach(c => {
+  const p = document.createElement('p');
+  p.className = 'para';
+  p.innerHTML = '<b>' + c[0] + '</b> ' + c[1];
+  paras.appendChild(p);
+});
+
+/* ---- the shim: same three states, class-mirrored ---- */
+const stickyWrap = $('stickyWrap'), scroller = $('scroller');
+
+function shimSnap(){
+  const mid = rail.scrollLeft + rail.clientWidth / 2;
+  let best = null, bd = Infinity;
+  for (const c of cards){
+    const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid);
+    if (d < bd){ bd = d; best = c; }
+  }
+  for (const c of cards) c.classList.toggle('is-snapped', useShim && c === best && bd < c.offsetWidth);
+}
+function shimStuck(){
+  stickyWrap.classList.toggle('is-stuck', useShim && scroller.scrollTop > 1);
+}
+function shimScrollable(){
+  const top = useShim && fadeBox.scrollTop > 2;
+  const bot = useShim && fadeBox.scrollTop + fadeBox.clientHeight < fadeBox.scrollHeight - 2;
+  fadeBox.classList.toggle('can-top', top);
+  fadeBox.classList.toggle('can-bottom', bot);
+}
+function shimAll(){ shimSnap(); shimStuck(); shimScrollable(); }
+
+rail.addEventListener('scroll', shimSnap, {passive:true});
+scroller.addEventListener('scroll', shimStuck, {passive:true});
+fadeBox.addEventListener('scroll', shimScrollable, {passive:true});
+addEventListener('resize', shimAll);
+
+/* ---- controls ---- */
+$('dur').addEventListener('input', e => {
+  $('durV').textContent = e.target.value;
+  document.documentElement.style.setProperty('--dur', e.target.value + 'ms');
+});
+$('cycle').addEventListener('click', () => {
+  const step = cards[0].offsetWidth + 18;
+  const max = rail.scrollWidth - rail.clientWidth;
+  rail.scrollTo({left: rail.scrollLeft + step > max - 4 ? 0 : rail.scrollLeft + step, behavior:'smooth'});
+});
+$('mode').addEventListener('click', () => {
+  if (!NATIVE) return;                       // nothing to switch back to
+  useShim = !useShim;
+  shimAll();
+  paintBadge();
+});
+function paintBadge(){
+  if (!NATIVE){
+    badge.innerHTML = 'This engine has no <b>scroll-state</b> queries — the JS shim is driving the identical CSS.';
+    $('mode').disabled = true;
+    $('mode').style.opacity = .45;
+    $('mode').textContent = 'Shim is the only path here';
+  } else if (useShim){
+    badge.innerHTML = 'Forced <b>JS shim</b> — scroll handlers mirror the states onto classes.';
+    $('mode').textContent = 'Back to native queries';
+  } else {
+    badge.innerHTML = 'Running on <b>native scroll-state</b> queries — zero scroll listeners.';
+    $('mode').textContent = 'Force the JS shim';
+  }
+}
+paintBadge();
+
+/* centre the middle card so the effect is visible immediately */
+requestAnimationFrame(() => {
+  rail.scrollLeft = cards[3].offsetLeft + cards[3].offsetWidth / 2 - rail.clientWidth / 2;
+  shimAll();
+});
+</script>
+</body>
+</html>
