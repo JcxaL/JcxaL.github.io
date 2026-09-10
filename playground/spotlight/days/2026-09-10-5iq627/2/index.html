@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>App Chrome Regions — UI Spotlight Day 115</title>
+<style>
+  :root{
+    --ink:#eaf2ec; --dim:#8ea69a; --line:rgba(255,255,255,.12);
+    --glass:rgba(9,16,13,.7); --acc:#34d399; --warn:#f87171;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;overflow:hidden;color:var(--ink);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:
+      radial-gradient(90% 70% at 20% 0%, #17352a 0%, rgba(0,0,0,0) 60%),
+      radial-gradient(80% 80% at 90% 100%, #143244 0%, rgba(0,0,0,0) 55%),
+      #070b09;
+  }
+  .back-link{
+    position:fixed;left:14px;top:14px;z-index:200;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;border:1px solid var(--line);background:var(--glass);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    color:#cfe6da;text-decoration:none;font-size:12.5px;font-weight:600;transition:.18s;
+  }
+  .back-link:hover{color:#fff;border-color:rgba(255,255,255,.3)}
+
+  .hero{position:fixed;left:0;right:0;top:64px;text-align:center;z-index:5;pointer-events:none;padding:0 20px}
+  .hero .tag{
+    display:inline-block;padding:4px 11px;border-radius:999px;font-size:10px;font-weight:800;
+    letter-spacing:.16em;text-transform:uppercase;color:#04140d;background:var(--acc);
+  }
+  .hero h1{margin:10px 0 5px;font-size:clamp(21px,4.4vw,34px);font-weight:800;letter-spacing:-.02em}
+  .hero p{margin:0 auto;max-width:640px;color:var(--dim);font-size:13px}
+  .hero code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:5px;font-size:12px}
+
+  /* ---------- desktop ---------- */
+  #desk{position:fixed;inset:0;overflow:hidden}
+
+  .win{
+    position:absolute;width:330px;border-radius:14px;overflow:hidden;
+    background:rgba(14,20,18,.9);border:1px solid rgba(255,255,255,.13);
+    box-shadow:0 26px 70px rgba(0,0,0,.62), 0 2px 0 rgba(255,255,255,.06) inset;
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    transition:box-shadow .2s;
+  }
+  .win.lift{box-shadow:0 34px 90px rgba(0,0,0,.75), 0 0 0 1px rgba(52,211,153,.4)}
+
+  /* THE PATTERN — the title bar is a window-drag region, its controls opt out */
+  .bar{
+    window-drag:move;
+    -webkit-app-region:drag;
+    display:flex;align-items:center;gap:9px;padding:0 11px;
+    height:var(--barh,42px);
+    background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03));
+    border-bottom:1px solid rgba(255,255,255,.09);
+    cursor:default;user-select:none;-webkit-user-select:none;
+  }
+  .bar .lights{display:flex;gap:6px}
+  .bar .lights i{width:11px;height:11px;border-radius:50%;display:block}
+  .bar .title{flex:1;font-size:12.5px;font-weight:600;letter-spacing:.01em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .title small{color:var(--dim);font-weight:500}
+
+  /* opt-out islands: interactive things inside a drag region */
+  .nodrag{ window-drag:none; -webkit-app-region:no-drag; }
+  .bar button.nodrag{
+    border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);
+    color:var(--ink);border-radius:8px;padding:5px 9px;font:600 11px system-ui;cursor:pointer;
+  }
+  .bar button.nodrag:hover{background:rgba(255,255,255,.13)}
+  .bar input.nodrag{
+    width:104px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.32);
+    color:var(--ink);border-radius:8px;padding:5px 9px;font:12px system-ui;outline:none;
+  }
+  .bar input.nodrag:focus{border-color:var(--acc)}
+
+  .body{padding:14px}
+  .body p{margin:0 0 10px;font-size:12px;color:var(--dim)}
+
+  /* ---------- x-ray ---------- */
+  body.xray .bar{position:relative}
+  body.xray [style*="--dragregion"]{}
+  body.xray .bar::after{
+    content:"window-drag: move";
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(52,211,153,.26);outline:1.5px dashed rgba(52,211,153,.8);outline-offset:-3px;
+    font:700 9.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;
+    color:#c9ffe8;pointer-events:none;
+  }
+  body.xray .nodrag{position:relative}
+  body.xray .nodrag::after{
+    content:"";position:absolute;inset:-2px;border-radius:9px;
+    background:rgba(248,113,113,.34);outline:1.5px solid rgba(248,113,113,.85);
+    pointer-events:none;
+  }
+  body.xray.noislands .nodrag::after{display:none}
+
+  /* rows inside the body that also become drag regions when "extend" is on */
+  .extendable{ window-drag:none; -webkit-app-region:no-drag; }
+  body.extend .extendable{ window-drag:move; -webkit-app-region:drag; }
+  body.extend.xray .extendable{position:relative}
+  body.extend.xray .extendable::after{
+    content:"inherited: move";position:absolute;inset:0;border-radius:9px;
+    background:rgba(52,211,153,.2);outline:1.5px dashed rgba(52,211,153,.6);
+    display:flex;align-items:center;justify-content:center;pointer-events:none;
+    font:700 9px/1 ui-monospace,Menlo,monospace;color:#c9ffe8;
+  }
+
+  /* window-specific content */
+  .track{display:flex;align-items:center;gap:10px;padding:8px;border-radius:9px;
+    background:rgba(255,255,255,.04);margin-bottom:7px}
+  .track .art{width:34px;height:34px;border-radius:7px;flex:0 0 auto}
+  .track b{display:block;font-size:12px;font-weight:600}
+  .track span{font-size:10.5px;color:var(--dim)}
+  .code{font:11.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;overflow-x:auto;
+    padding:10px;border-radius:9px;background:rgba(0,0,0,.36);color:#b9d8c8}
+  .code .k{color:#7dd3fc}.code .s{color:#fbbf24}.code .c{color:#5c7a6c}
+  .msg{padding:8px 11px;border-radius:12px;margin-bottom:7px;font-size:12px;max-width:82%}
+  .msg.me{background:rgba(52,211,153,.2);margin-left:auto;border-bottom-right-radius:4px}
+  .msg.them{background:rgba(255,255,255,.07);border-bottom-left-radius:4px}
+
+  /* ---------- panel ---------- */
+  .panel{
+    position:fixed;right:14px;top:14px;z-index:200;width:230px;padding:13px 14px;
+    border-radius:16px;border:1px solid var(--line);background:var(--glass);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  }
+  .panel h3{margin:0 0 10px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .tog{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;
+    border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.04);
+    margin-bottom:7px;font-size:11.5px;cursor:pointer;user-select:none}
+  .tog i{width:34px;height:19px;border-radius:999px;background:rgba(255,255,255,.14);
+    position:relative;flex:0 0 auto;transition:.2s}
+  .tog i::after{content:"";position:absolute;top:2.5px;left:2.5px;width:14px;height:14px;
+    border-radius:50%;background:#fff;transition:.22s cubic-bezier(.4,1.6,.5,1)}
+  .tog.on i{background:var(--acc)}
+  .tog.on i::after{transform:translateX(15px)}
+  .r{display:flex;align-items:center;gap:8px;margin:9px 0 4px}
+  .r label{flex:0 0 62px;font-size:11px;color:var(--dim)}
+  .r .v{flex:0 0 32px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:20px;background:none;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(52,211,153,.5)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:#fff;margin-top:-5.5px;border:0}
+  input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(52,211,153,.5)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:0}
+  .support{margin-top:10px;padding:8px 9px;border-radius:9px;font-size:10.5px;line-height:1.5;
+    background:rgba(0,0,0,.3);color:var(--dim)}
+  .support b{display:block;color:var(--ink);font-size:11px;margin-bottom:2px}
+
+  .credit{position:fixed;left:0;right:0;bottom:0;padding:9px;text-align:center;z-index:200;
+    font-size:10.5px;color:rgba(255,255,255,.3);pointer-events:none}
+
+  @media (max-width:820px){
+    .panel{left:14px;right:14px;top:auto;bottom:38px;width:auto;
+      display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+    .panel h3{grid-column:1/-1}
+    .support{grid-column:1/-1;margin-top:4px}
+    .win{width:260px}
+    .win .body{max-height:186px;overflow:auto}
+    .bar input.nodrag{width:64px}
+    .hero{top:58px}
+    .hero p{display:none}
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="hero">
+  <span class="tag">Layout</span>
+  <h1>App Chrome Regions</h1>
+  <p>Chrome 152 standardises <code>-webkit-app-region</code> as <code>window-drag</code>. A title bar you lay out yourself declares <code>move</code>; every control inside it has to claw its way back out with <code>none</code>.</p>
+</div>
+
+<div id="desk"></div>
+
+<div class="panel">
+  <h3>Region inspector</h3>
+  <div class="tog on" id="tXray"><span>X-ray the regions</span><i></i></div>
+  <div class="tog" id="tExtend"><span>Extend drag into body</span><i></i></div>
+  <div class="tog" id="tIslands"><span>Hide no-drag islands</span><i></i></div>
+  <div class="tog" id="tSnap"><span>Snap to 16px grid</span><i></i></div>
+  <div class="r"><label>Bar height</label><input type="range" id="rBar" min="30" max="72" value="42"><div class="v" id="vBar">42</div></div>
+  <div class="support" id="sup"><b>window-drag</b>checking…</div>
+</div>
+
+<div class="credit">Inspired by the <code>window-drag</code> property in Chrome 152 release notes (developer.chrome.com) · UI Spotlight Day 115 · Drop #2</div>
+
+<script>
+(function(){
+"use strict";
+
+var desk = document.getElementById('desk');
+
+/* ---------- three little desktop apps ---------- */
+var APPS = [
+  {
+    id:'player', title:'Loom Player', sub:'— Local library', x:0.10, y:0.40,
+    bar:'<button class="nodrag" data-act="prev">‹</button>'+
+        '<button class="nodrag" data-act="play">▶</button>'+
+        '<button class="nodrag" data-act="next">›</button>',
+    body:
+      '<p>Every one of those transport buttons sits inside the drag region, so each needs <code>window-drag:none</code> — otherwise a click-and-drag on “play” would fling the window across the desktop.</p>'+
+      trackRow('#f0a34b','Barley Twist','Lathe Works · 3:41')+
+      trackRow('#5ad1c8','Ribbon Theory','Unwoven · 4:08')+
+      trackRow('#c084fc','Inter-Script Air','W3C i18n · 2:55')
+  },
+  {
+    id:'editor', title:'chrome.css', sub:'— app shell', x:0.44, y:0.22,
+    bar:'<input class="nodrag" placeholder="find…">',
+    body:
+      '<div class="code"><span class="c">/* the whole custom title bar */</span>\n'+
+      '<span class="k">.titlebar</span> {\n  <span class="k">window-drag</span>: <span class="s">move</span>;\n}\n\n'+
+      '<span class="c">/* it inherits — so opt controls back out */</span>\n'+
+      '<span class="k">.titlebar</span> <span class="k">button</span>,\n<span class="k">.titlebar</span> <span class="k">input</span> {\n'+
+      '  <span class="k">window-drag</span>: <span class="s">none</span>;\n}</div>'+
+      '<p style="margin-top:10px" class="extendable">This paragraph is a normal region. Flip “extend drag into body” and it becomes part of the draggable chrome too.</p>'
+  },
+  {
+    id:'chat', title:'Threads', sub:'— 3 unread', x:0.72, y:0.55,
+    bar:'<button class="nodrag" data-act="mute">Mute</button>',
+    body:
+      '<div class="msg them">Where does the title bar end?</div>'+
+      '<div class="msg me">Wherever you say <code>window-drag: move</code>.</div>'+
+      '<div class="msg them">And the close button?</div>'+
+      '<div class="msg me">Opted out. Always opt the controls out.</div>'
+  }
+];
+
+function trackRow(c, t, s){
+  return '<div class="track extendable"><div class="art" style="background:linear-gradient(135deg,'+c+',rgba(255,255,255,.15))"></div>'+
+         '<div><b>'+t+'</b><span>'+s+'</span></div></div>';
+}
+
+var LIGHTS = ['#f87171','#fbbf24','#34d399'];
+var wins = [];
+
+APPS.forEach(function(a, i){
+  var w = document.createElement('div');
+  w.className = 'win';
+  w.innerHTML =
+    '<div class="bar" data-drag="move">'+
+      '<div class="lights nodrag" data-drag="none">'+
+        LIGHTS.map(function(c){ return '<i style="background:'+c+'"></i>'; }).join('')+
+      '</div>'+
+      '<div class="title">'+a.title+' <small>'+a.sub+'</small></div>'+
+      a.bar.replace(/class="nodrag"/g,'class="nodrag" data-drag="none"')+
+    '</div>'+
+    '<div class="body">'+a.body+'</div>';
+  desk.appendChild(w);
+  wins.push(w);
+});
+
+function layout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  var narrow = W < 820;
+  wins.forEach(function(w, i){
+    if(w.dataset.placed) return;                 // never re-place a window you dragged
+    var x, y;
+    if(narrow){
+      // classic cascade: each title bar stays clear of the one above it
+      x = Math.max(10, Math.min(W - w.offsetWidth - 10, 12 + i*18));
+      y = 140 + i*48;
+    }else{
+      var a = APPS[i];
+      x = Math.max(14, Math.min(W - w.offsetWidth - 14, W*a.x - w.offsetWidth/2));
+      y = Math.max(150, Math.min(H - 160, H*a.y - 70));
+    }
+    w.style.left = x+'px'; w.style.top = y+'px';
+  });
+}
+layout();
+window.addEventListener('resize', layout);
+
+/* ---------- the in-page fallback drag ----------
+   A browser tab is not an installed desktop app, so the real window never
+   moves here. We honour exactly the same region rules the CSS declares and
+   drag the mock window instead, so the pattern is something you can feel. */
+var zTop = 10;
+var active = null;
+
+function regionOf(el){
+  // walk up: the nearest ancestor that declares a region wins (window-drag inherits)
+  var node = el;
+  while(node && node !== desk){
+    if(node.dataset && node.dataset.drag) return node.dataset.drag;
+    if(document.body.classList.contains('extend') && node.classList &&
+       node.classList.contains('extendable')) return 'move';
+    node = node.parentElement;
+  }
+  return 'none';
+}
+
+desk.addEventListener('pointerdown', function(e){
+  var win = e.target.closest ? e.target.closest('.win') : null;
+  if(!win) return;
+  win.style.zIndex = ++zTop;
+  wins.forEach(function(w){ w.classList.toggle('lift', w===win); });
+  if(regionOf(e.target) !== 'move') return;     // no-drag island: let the control work
+  e.preventDefault();
+  var r = win.getBoundingClientRect();
+  active = { win:win, dx:e.clientX - r.left, dy:e.clientY - r.top, id:e.pointerId };
+  win.setPointerCapture(e.pointerId);
+  win.dataset.placed = '1';
+});
+
+desk.addEventListener('pointermove', function(e){
+  if(!active || e.pointerId !== active.id) return;
+  var x = e.clientX - active.dx, y = e.clientY - active.dy;
+  if(document.body.classList.contains('snap')){
+    x = Math.round(x/16)*16; y = Math.round(y/16)*16;
+  }
+  var w = active.win;
+  x = Math.max(-40, Math.min(window.innerWidth - 60, x));
+  y = Math.max(56, Math.min(window.innerHeight - 50, y));
+  w.style.left = x+'px'; w.style.top = y+'px';
+});
+
+function endDrag(e){ if(active && (!e || e.pointerId===active.id)) active = null; }
+desk.addEventListener('pointerup', endDrag);
+desk.addEventListener('pointercancel', endDrag);
+
+/* the opted-out controls actually do something, proving they still receive input */
+desk.addEventListener('click', function(e){
+  var b = e.target.closest ? e.target.closest('[data-act]') : null;
+  if(!b) return;
+  var was = b.textContent;
+  b.textContent = ({play:'❚❚', prev:'⟲', next:'⟳', mute:'Muted'})[b.dataset.act] || '✓';
+  setTimeout(function(){ b.textContent = was; }, 900);
+});
+
+/* ---------- controls ---------- */
+function tog(id, cls, on){
+  var el = document.getElementById(id);
+  if(on) document.body.classList.add(cls);
+  el.classList.toggle('on', !!on);
+  el.onclick = function(){
+    var next = !el.classList.contains('on');
+    el.classList.toggle('on', next);
+    document.body.classList.toggle(cls, next);
+  };
+}
+tog('tXray','xray', true);
+tog('tExtend','extend', false);
+tog('tIslands','noislands', false);
+tog('tSnap','snap', false);
+
+var rBar = document.getElementById('rBar');
+rBar.addEventListener('input', function(){
+  document.documentElement.style.setProperty('--barh', rBar.value+'px');
+  document.getElementById('vBar').textContent = rBar.value;
+});
+document.documentElement.style.setProperty('--barh','42px');
+
+/* ---------- support probe ---------- */
+(function(){
+  var el = document.getElementById('sup');
+  var std = (window.CSS && CSS.supports && CSS.supports('window-drag','move'));
+  var legacy = (window.CSS && CSS.supports && CSS.supports('-webkit-app-region','drag'));
+  var msg;
+  if(std) msg = 'Supported here. In an installed desktop app this bar would move the OS window.';
+  else if(legacy) msg = 'Only the legacy <code>-webkit-app-region</code> is recognised here. Same behaviour, pre-standard name.';
+  else msg = 'Not recognised in this browser — the fallback below drags the mock window using the identical region rules.';
+  el.innerHTML = '<b>window-drag: '+(std ? 'supported' : legacy ? 'legacy only' : 'unsupported')+'</b>'+msg;
+})();
+})();
+</script>
+</body>
+</html>

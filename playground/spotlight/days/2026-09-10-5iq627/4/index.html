@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Alpha Ladder — UI Spotlight Day 115</title>
+<style>
+  :root{
+    --h:255; --c:0.17; --l:72%;
+    --brand: oklch(var(--l) var(--c) var(--h));
+
+    /* one token, every state — just different rungs of alpha */
+    --a-rest:10%; --a-hover:22%; --a-press:38%; --a-ring:45%; --a-off:6%; --a-edge:30%;
+
+    --ink:#eef0fb; --dim:#9aa0bd; --line:rgba(255,255,255,.11);
+    --glass:rgba(12,13,24,.7);
+  }
+
+  /* tier 3 — widest reach: color-mix toward transparent */
+  :root{
+    --fill-rest:  color-mix(in srgb, var(--brand) 10%, transparent);
+    --fill-hover: color-mix(in srgb, var(--brand) 22%, transparent);
+    --fill-press: color-mix(in srgb, var(--brand) 38%, transparent);
+    --fill-ring:  color-mix(in srgb, var(--brand) 45%, transparent);
+    --fill-off:   color-mix(in srgb, var(--brand)  6%, transparent);
+    --fill-edge:  color-mix(in srgb, var(--brand) 30%, transparent);
+    --tier:'color-mix';
+  }
+  /* tier 2 — relative colour syntax, shipped 2023-24 */
+  @supports (color: rgb(from red r g b / 50%)){
+    :root{
+      --fill-rest:  rgb(from var(--brand) r g b / var(--a-rest));
+      --fill-hover: rgb(from var(--brand) r g b / var(--a-hover));
+      --fill-press: rgb(from var(--brand) r g b / var(--a-press));
+      --fill-ring:  rgb(from var(--brand) r g b / var(--a-ring));
+      --fill-off:   rgb(from var(--brand) r g b / var(--a-off));
+      --fill-edge:  rgb(from var(--brand) r g b / var(--a-edge));
+      --tier:'rgb(from …)';
+    }
+  }
+  /* tier 1 — CSS Color 5 alpha(): keep every channel, touch only opacity */
+  @supports (color: alpha(from red / 50%)){
+    :root{
+      --fill-rest:  alpha(from var(--brand) / var(--a-rest));
+      --fill-hover: alpha(from var(--brand) / var(--a-hover));
+      --fill-press: alpha(from var(--brand) / var(--a-press));
+      --fill-ring:  alpha(from var(--brand) / var(--a-ring));
+      --fill-off:   alpha(from var(--brand) / var(--a-off));
+      --fill-edge:  alpha(from var(--brand) / var(--a-edge));
+      --tier:'alpha(from …)';
+    }
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;color:var(--ink);padding:0 0 84px;
+    font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:
+      radial-gradient(85% 60% at 15% 0%, color-mix(in srgb, var(--brand) 16%, #0b0c16) 0%, rgba(0,0,0,0) 62%),
+      radial-gradient(70% 70% at 90% 100%, color-mix(in srgb, var(--brand) 10%, #0b0c16) 0%, rgba(0,0,0,0) 58%),
+      #08090f;
+    transition:background .3s;
+  }
+  .back-link{
+    position:fixed;left:14px;top:14px;z-index:60;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;border:1px solid var(--line);background:var(--glass);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    color:#d2d6ee;text-decoration:none;font-size:12.5px;font-weight:600;transition:.18s;
+  }
+  .back-link:hover{color:#fff;border-color:var(--fill-edge)}
+
+  .wrap{max-width:900px;margin:0 auto;padding:76px 20px 0}
+  .hero{text-align:center;margin-bottom:24px}
+  .hero .tag{
+    display:inline-block;padding:4px 11px;border-radius:999px;font-size:10px;font-weight:800;
+    letter-spacing:.16em;text-transform:uppercase;color:#140b02;background:#fbbf24;
+  }
+  .hero h1{margin:11px 0 6px;font-size:clamp(22px,4.6vw,36px);font-weight:800;letter-spacing:-.02em}
+  .hero p{margin:0 auto;max-width:620px;color:var(--dim);font-size:13.5px}
+  .hero code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:5px;font-size:12px}
+
+  /* ---------- the ladder ---------- */
+  .ladder{display:flex;gap:6px;margin:0 0 22px;flex-wrap:wrap}
+  .rung{flex:1 1 88px;border-radius:11px;padding:12px 10px;border:1px solid var(--fill-edge);
+    font:600 10.5px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;
+    transition:background .25s, border-color .25s}
+  .rung span{display:block;color:var(--dim);font-size:9px;letter-spacing:.05em;margin-top:3px}
+
+  /* ---------- demo surfaces ---------- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:14px}
+  .card{
+    border:1px solid var(--line);border-radius:16px;padding:15px;
+    background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.012));
+  }
+  .card h4{margin:0 0 12px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+
+  /* every interactive thing below derives all four states from --brand alone */
+  .btn{
+    appearance:none;border:1px solid var(--fill-edge);border-radius:11px;
+    padding:10px 16px;font:600 13px system-ui;color:var(--ink);cursor:pointer;
+    background:var(--fill-rest);
+    transition:background .16s, transform .12s cubic-bezier(.4,1.7,.5,1), box-shadow .16s, border-color .16s;
+    position:relative;overflow:hidden;
+  }
+  .btn:hover{background:var(--fill-hover);transform:translateY(-1.5px)}
+  .btn:active{background:var(--fill-press);transform:translateY(0) scale(.975)}
+  .btn:focus-visible{outline:none;box-shadow:0 0 0 4px var(--fill-ring)}
+  .btn[disabled]{background:var(--fill-off);color:var(--dim);cursor:not-allowed;
+    border-color:var(--fill-off);transform:none}
+  .btn.solid{background:var(--brand);color:#0a0a12;border-color:transparent}
+  .btn.solid:hover{filter:brightness(1.08)}
+  .btn.solid:active{filter:brightness(.94)}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap}
+
+  .ripple{position:absolute;border-radius:50%;background:var(--fill-ring);
+    transform:translate(-50%,-50%) scale(0);pointer-events:none;
+    animation:rip .55s cubic-bezier(.2,.7,.3,1) forwards}
+  @keyframes rip{to{transform:translate(-50%,-50%) scale(1);opacity:0}}
+
+  .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{
+    border:1px solid var(--fill-edge);border-radius:999px;padding:7px 13px;
+    font:600 12px system-ui;color:var(--ink);background:transparent;cursor:pointer;
+    transition:background .16s, transform .12s;
+  }
+  .chip:hover{background:var(--fill-rest)}
+  .chip:active{transform:scale(.95)}
+  .chip.on{background:var(--fill-press)}
+
+  .rows{border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  .rows div{
+    padding:10px 13px;font-size:12.5px;display:flex;justify-content:space-between;
+    border-bottom:1px solid var(--line);cursor:pointer;transition:background .15s;
+  }
+  .rows div:last-child{border-bottom:0}
+  .rows div:hover{background:var(--fill-rest)}
+  .rows div:active{background:var(--fill-hover)}
+  .rows div b{color:var(--dim);font-weight:500;font-variant-numeric:tabular-nums}
+
+  .switch{
+    width:52px;height:30px;border-radius:999px;border:1px solid var(--fill-edge);
+    background:var(--fill-off);position:relative;cursor:pointer;transition:background .2s;
+  }
+  .switch::after{
+    content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+    background:var(--ink);transition:transform .26s cubic-bezier(.4,1.7,.5,1), background .2s;
+  }
+  .switch.on{background:var(--fill-press)}
+  .switch.on::after{transform:translateX(22px);background:var(--brand)}
+  .switch:focus-visible{outline:none;box-shadow:0 0 0 4px var(--fill-ring)}
+
+  .field{
+    width:100%;border:1px solid var(--fill-edge);border-radius:11px;padding:10px 13px;
+    background:var(--fill-off);color:var(--ink);font:13px system-ui;outline:none;
+    transition:background .16s, box-shadow .16s;
+  }
+  .field::placeholder{color:var(--dim)}
+  .field:hover{background:var(--fill-rest)}
+  .field:focus{background:var(--fill-rest);box-shadow:0 0 0 4px var(--fill-ring)}
+
+  .link{color:var(--brand);text-decoration:none;font-weight:600;font-size:13px;
+    border-bottom:1.5px solid var(--fill-edge);padding-bottom:1px;transition:border-color .16s}
+  .link:hover{border-bottom-color:var(--brand)}
+
+  .meter{height:9px;border-radius:999px;background:var(--fill-off);overflow:hidden;margin-top:11px}
+  .meter i{display:block;height:100%;background:var(--brand);width:64%;border-radius:999px}
+
+  /* ---------- panel ---------- */
+  .panel{
+    position:fixed;right:14px;top:14px;z-index:60;width:224px;padding:13px 14px;
+    border-radius:16px;border:1px solid var(--line);background:var(--glass);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  }
+  .panel h3{margin:0 0 10px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .r{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .r label{flex:0 0 58px;font-size:11px;color:var(--dim)}
+  .r .v{flex:0 0 36px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:20px;background:none;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:var(--fill-edge)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:#fff;margin-top:-5.5px;border:0}
+  input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:var(--fill-edge)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:0}
+  .tierbox{margin-top:10px;padding:8px 9px;border-radius:9px;font-size:10.5px;line-height:1.55;
+    background:rgba(0,0,0,.32);color:var(--dim)}
+  .tierbox b{display:block;color:var(--ink);font-size:11px;margin-bottom:3px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .tierbox code{color:var(--brand)}
+
+  .credit{position:fixed;left:0;right:0;bottom:0;padding:9px;text-align:center;z-index:60;
+    font-size:10.5px;color:rgba(255,255,255,.3);pointer-events:none;
+    background:linear-gradient(180deg,rgba(8,9,15,0),rgba(8,9,15,.92))}
+
+  @media (max-width:960px){
+    .panel{position:static;width:auto;margin:0 auto 20px;max-width:520px}
+    .wrap{padding-top:70px}
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="wrap">
+  <div class="hero">
+    <span class="tag">Micro-interaction</span>
+    <h1>Alpha Ladder</h1>
+    <p>Chrome 152 ships CSS Color 5’s <code>alpha()</code>: keep every channel of an origin colour and change only the opacity. Rest, hover, press, focus and disabled stop being five tokens and become five rungs on one.</p>
+  </div>
+
+  <div class="ladder" id="ladder"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h4>Buttons</h4>
+      <div class="btnrow">
+        <button class="btn solid" data-rip>Primary</button>
+        <button class="btn" data-rip>Ghost</button>
+        <button class="btn" disabled>Disabled</button>
+      </div>
+      <div class="meter"><i id="meterFill"></i></div>
+    </div>
+
+    <div class="card">
+      <h4>Chips · press to latch</h4>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="card">
+      <h4>List rows</h4>
+      <div class="rows">
+        <div><span>Ribbon count</span><b>26</b></div>
+        <div><span>Slide distance</span><b>420px</b></div>
+        <div><span>Whiten</span><b>0.70</b></div>
+        <div><span>Curve</span><b>1.4</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>Switch · field · link</h4>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:11px">
+        <div class="switch on" id="sw1" tabindex="0" role="switch" aria-checked="true"></div>
+        <div class="switch" id="sw2" tabindex="0" role="switch" aria-checked="false"></div>
+        <a class="link" href="#" onclick="return false">Derived link</a>
+      </div>
+      <input class="field" placeholder="Focus me — the ring is alpha() too">
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>One token</h3>
+  <div class="r"><label>Hue</label><input type="range" id="rH" min="0" max="360" value="255"><div class="v" id="vH">255</div></div>
+  <div class="r"><label>Chroma</label><input type="range" id="rC" min="2" max="32" value="17"><div class="v" id="vC">.17</div></div>
+  <div class="r"><label>Light</label><input type="range" id="rL" min="40" max="92" value="72"><div class="v" id="vL">72</div></div>
+  <div class="r"><label>Hover α</label><input type="range" id="rHov" min="4" max="60" value="22"><div class="v" id="vHov">22</div></div>
+  <div class="r"><label>Press α</label><input type="range" id="rPr" min="10" max="90" value="38"><div class="v" id="vPr">38</div></div>
+  <div class="r"><label>Ring α</label><input type="range" id="rRg" min="10" max="90" value="45"><div class="v" id="vRg">45</div></div>
+  <div class="tierbox" id="tier"><b>—</b>detecting…</div>
+</div>
+
+<div class="credit">Inspired by the CSS Color 5 <code>alpha()</code> function documented on MDN (developer.mozilla.org) · UI Spotlight Day 115 · Drop #4</div>
+
+<script>
+(function(){
+"use strict";
+var root = document.documentElement;
+
+/* ---------- the alpha ladder strip ---------- */
+var RUNGS = [
+  ['--fill-off','disabled','--a-off'],
+  ['--fill-rest','rest','--a-rest'],
+  ['--fill-hover','hover','--a-hover'],
+  ['--fill-edge','border','--a-edge'],
+  ['--fill-press','pressed','--a-press'],
+  ['--fill-ring','focus ring','--a-ring']
+];
+var ladder = document.getElementById('ladder');
+RUNGS.forEach(function(r){
+  var d = document.createElement('div');
+  d.className = 'rung';
+  d.style.background = 'var('+r[0]+')';
+  d.innerHTML = '<em style="font-style:normal" data-a="'+r[2]+'"></em><span>'+r[1]+'</span>';
+  ladder.appendChild(d);
+});
+function paintLadder(){
+  var cs = getComputedStyle(root);
+  Array.prototype.forEach.call(ladder.querySelectorAll('[data-a]'), function(el){
+    el.textContent = cs.getPropertyValue(el.dataset.a).trim();
+  });
+}
+
+/* ---------- chips ---------- */
+var chips = document.getElementById('chips');
+['Rest','Hover','Press','Focus','Disabled'].forEach(function(t,i){
+  var b = document.createElement('button');
+  b.className = 'chip' + (i===1 ? ' on' : '');
+  b.textContent = t;
+  b.onclick = function(){ b.classList.toggle('on'); };
+  chips.appendChild(b);
+});
+
+/* ---------- ripple, tinted from the same token ---------- */
+document.addEventListener('pointerdown', function(e){
+  var b = e.target.closest ? e.target.closest('[data-rip]') : null;
+  if(!b) return;
+  var r = b.getBoundingClientRect();
+  var s = Math.max(r.width, r.height) * 2.2;
+  var el = document.createElement('span');
+  el.className = 'ripple';
+  el.style.width = el.style.height = s+'px';
+  el.style.left = (e.clientX - r.left)+'px';
+  el.style.top  = (e.clientY - r.top)+'px';
+  b.appendChild(el);
+  setTimeout(function(){ el.remove(); }, 560);
+});
+
+/* ---------- switches ---------- */
+['sw1','sw2'].forEach(function(id){
+  var el = document.getElementById(id);
+  function flip(){
+    var on = el.classList.toggle('on');
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+  el.onclick = flip;
+  el.onkeydown = function(e){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); flip(); } };
+});
+
+/* ---------- sliders drive the single token ---------- */
+function bind(id, vid, prop, fmt, unit){
+  var el = document.getElementById(id);
+  el.addEventListener('input', function(){
+    var v = +el.value;
+    root.style.setProperty(prop, fmt ? fmt(v) : v + (unit||''));
+    document.getElementById(vid).textContent = fmt ? fmt(v) : v;
+    paintLadder();
+  });
+}
+bind('rH','vH','--h', null, '');
+bind('rC','vC','--c', function(v){ return (v/100).toFixed(2); });
+bind('rL','vL','--l', function(v){ return v+'%'; });
+bind('rHov','vHov','--a-hover', function(v){ return v+'%'; });
+bind('rPr','vPr','--a-press', function(v){ return v+'%'; });
+bind('rRg','vRg','--a-ring', function(v){ return v+'%'; });
+
+/* the meter reads whichever hue is live, so the token change is unmissable */
+setInterval(function(){
+  var w = 40 + Math.round(Math.abs(Math.sin(Date.now()/2600))*52);
+  document.getElementById('meterFill').style.width = w+'%';
+}, 90);
+
+/* ---------- which tier is actually running ---------- */
+(function(){
+  var box = document.getElementById('tier');
+  var s = window.CSS && CSS.supports;
+  var a = s && CSS.supports('color','alpha(from red / 50%)');
+  var rel = s && CSS.supports('color','rgb(from red r g b / 50%)');
+  var name = a ? 'alpha(from …)' : rel ? 'rgb(from … r g b / α)' : 'color-mix()';
+  var note = a
+    ? 'Every rung is one <code>alpha()</code> call away from <code>--brand</code>. Change the hue and all six follow.'
+    : rel
+    ? 'No <code>alpha()</code> here, so the sheet falls back to relative colour syntax — same six rungs, more typing.'
+    : 'Neither relative-colour form is recognised; <code>color-mix()</code> toward transparent gets you there.';
+  box.innerHTML = '<b>'+name+'</b>'+note;
+})();
+
+paintLadder();
+})();
+</script>
+</body>
+</html>
