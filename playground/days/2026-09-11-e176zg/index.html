@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Wind Tunnel — Aero Test Lab</title>
+<meta name="description" content="A real-time lattice-Boltzmann wind tunnel: draw a body, sweep the angle of attack, read lift and drag, export the run.">
+<style>
+  :root{
+    --bg:#070b11;
+    --panel:rgba(15,23,34,.78);
+    --edge:rgba(148,183,214,.16);
+    --edge-2:rgba(148,183,214,.30);
+    --ink:#e8f1f8;
+    --dim:#8ba3ba;
+    --cyan:#38d8f0;
+    --amber:#ffb443;
+    --violet:#a78bfa;
+    --green:#34d399;
+    --red:#f87171;
+    --r:14px;
+    --panel-w:308px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{position:fixed;inset:0;display:flex;flex-direction:column}
+
+  /* ---------- top bar ---------- */
+  header{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top));
+    border-bottom:1px solid var(--edge);
+    background:linear-gradient(180deg,rgba(10,16,24,.95),rgba(10,16,24,.72));
+    backdrop-filter:blur(14px);z-index:8;
+  }
+  .brand{display:flex;align-items:baseline;gap:9px;min-width:0}
+  .brand b{font-size:15px;letter-spacing:.2px;white-space:nowrap}
+  .brand span{font-size:11px;color:var(--dim);white-space:nowrap;letter-spacing:.5px;text-transform:uppercase}
+  .spacer{flex:1 1 auto}
+  .hbtns{display:flex;gap:6px;align-items:center}
+
+  button,select{font:inherit;color:inherit}
+  .btn{
+    border:1px solid var(--edge-2);background:rgba(255,255,255,.045);
+    color:var(--ink);border-radius:10px;padding:7px 11px;font-size:12.5px;
+    cursor:pointer;transition:background .15s,border-color .15s,transform .08s;
+    white-space:nowrap;
+  }
+  .btn:hover{background:rgba(255,255,255,.10);border-color:var(--edge-2)}
+  .btn:active{transform:translateY(1px)}
+  .btn.pri{background:linear-gradient(180deg,rgba(56,216,240,.24),rgba(56,216,240,.12));border-color:rgba(56,216,240,.5);color:#dffaff}
+  .btn.sm{padding:6px 9px;font-size:12px;border-radius:9px}
+  .btn.on{background:linear-gradient(180deg,rgba(56,216,240,.26),rgba(56,216,240,.10));border-color:rgba(56,216,240,.55);color:#e6fbff}
+
+  /* ---------- stage ---------- */
+  #stage{position:relative;flex:1 1 auto;min-height:0}
+  #view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+
+  /* ---------- HUD ---------- */
+  .glass{
+    background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);
+    backdrop-filter:blur(16px) saturate(1.2);
+    box-shadow:0 12px 34px rgba(0,0,0,.45);
+  }
+  #hud{
+    position:absolute;top:12px;right:12px;width:212px;padding:11px 12px 9px;z-index:5;
+  }
+  #hud h4{margin:0 0 8px;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .rrow{display:flex;justify-content:space-between;align-items:baseline;margin:4px 0;font-variant-numeric:tabular-nums}
+  .rrow i{font-style:normal;color:var(--dim);font-size:11.5px}
+  .rrow b{font-size:13.5px;font-weight:600}
+  .rrow b.d{color:var(--amber)} .rrow b.l{color:var(--cyan)} .rrow b.r{color:var(--violet)}
+  #spark{display:block;width:100%;height:46px;margin-top:8px;border-radius:8px;background:rgba(0,0,0,.32)}
+  .sparkleg{display:flex;gap:10px;font-size:10px;color:var(--dim);margin-top:5px;letter-spacing:.3px}
+  .sparkleg s{text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+  .dot{width:7px;height:7px;border-radius:2px;display:inline-block}
+
+  #toast{
+    position:absolute;left:50%;bottom:22px;transform:translate(-50%,14px);
+    padding:9px 16px;border-radius:999px;font-size:12.5px;letter-spacing:.2px;
+    background:rgba(12,20,30,.92);border:1px solid var(--edge-2);
+    opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:9;white-space:nowrap;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
+  #hint{
+    position:absolute;left:12px;bottom:12px;z-index:4;padding:7px 12px;border-radius:999px;
+    font-size:11.5px;color:var(--dim);background:rgba(10,16,24,.7);border:1px solid var(--edge);
+    backdrop-filter:blur(10px);transition:opacity .4s;
+  }
+
+  /* ---------- control panel ---------- */
+  #panel{
+    position:absolute;top:12px;left:12px;bottom:12px;width:var(--panel-w);z-index:6;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  #panel .scroll{overflow-y:auto;overscroll-behavior:contain;padding:12px 13px 16px;scrollbar-width:thin}
+  #panel .scroll::-webkit-scrollbar{width:7px}
+  #panel .scroll::-webkit-scrollbar-thumb{background:rgba(148,183,214,.24);border-radius:4px}
+  .sec{margin:0 0 15px}
+  .sec:last-child{margin-bottom:0}
+  .sec>h3{
+    margin:0 0 9px;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;
+    color:var(--dim);font-weight:600;display:flex;align-items:center;gap:7px;
+  }
+  .sec>h3::after{content:"";flex:1;height:1px;background:var(--edge)}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{
+    border:1px solid var(--edge);background:rgba(255,255,255,.04);border-radius:999px;
+    padding:5px 10px;font-size:11.5px;cursor:pointer;color:var(--dim);
+    transition:background .14s,color .14s,border-color .14s;
+  }
+  .chip:hover{background:rgba(255,255,255,.09);color:var(--ink)}
+  .chip.on{background:rgba(56,216,240,.17);border-color:rgba(56,216,240,.5);color:#dffaff}
+  .chip.on.amber{background:rgba(255,180,67,.17);border-color:rgba(255,180,67,.5);color:#ffe6c0}
+  .fld{margin:9px 0}
+  .fld label{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;color:var(--dim);margin-bottom:5px}
+  .fld label u{text-decoration:none;color:var(--ink);font-variant-numeric:tabular-nums;font-size:11.5px}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer;display:block;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:rgba(148,183,214,.22)}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;margin-top:-5.5px;
+    background:var(--cyan);border:2px solid #071019;box-shadow:0 0 0 1px rgba(56,216,240,.5);
+  }
+  input[type=range]::-moz-range-track{height:4px;border-radius:3px;background:rgba(148,183,214,.22)}
+  input[type=range]::-moz-range-thumb{
+    width:14px;height:14px;border-radius:50%;background:var(--cyan);border:2px solid #071019;
+  }
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .swatches{display:flex;gap:6px;flex-wrap:wrap}
+  .sw{width:36px;height:22px;border-radius:7px;border:1px solid var(--edge);cursor:pointer;padding:0;transition:transform .12s,border-color .14s}
+  .sw:hover{transform:translateY(-1px)}
+  .sw.on{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(56,216,240,.28)}
+  .note{font-size:11px;color:var(--dim);line-height:1.5;margin:7px 0 0}
+
+  #panelToggle{display:none}
+
+  /* ---------- mobile ---------- */
+  @media (max-width:860px){
+    :root{--panel-w:100%}
+    #panel{
+      top:auto;left:0;right:0;bottom:0;width:100%;max-height:58vh;border-radius:18px 18px 0 0;
+      transform:translateY(calc(100% - 0px));transition:transform .32s cubic-bezier(.3,1.2,.4,1);
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    #panel.open{transform:translateY(0)}
+    #panel .grab{flex:0 0 auto;height:22px;display:flex;align-items:center;justify-content:center}
+    #panel .grab::before{content:"";width:40px;height:4px;border-radius:3px;background:rgba(148,183,214,.4)}
+    #panelToggle{display:inline-block}
+    #hud{width:164px;top:10px;right:10px;padding:9px 10px 7px}
+    #spark{height:36px}
+    #hint{display:none}
+    .brand span{display:none}
+  }
+  @media (min-width:861px){ #panel .grab{display:none} }
+  @media (max-width:520px){
+    .brand b{font-size:13.5px}
+    header{padding:8px 10px;gap:6px}
+    .btn{padding:6px 9px;font-size:12px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition-duration:.01ms !important;animation-duration:.01ms !important}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>Wind Tunnel</b><span>Aero Test Lab</span></div>
+    <div class="spacer"></div>
+    <div class="hbtns">
+      <button class="btn sm" id="btnPause" title="Pause / resume the solver">Pause</button>
+      <button class="btn sm" id="btnShot" title="Download a PNG of the current run">PNG</button>
+      <button class="btn sm pri" id="panelToggle">Controls</button>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="view"></canvas>
+
+    <div id="hud" class="glass">
+      <h4>Force balance</h4>
+      <div class="rrow"><i>Drag C<sub>d</sub></i><b class="d" id="oDrag">—</b></div>
+      <div class="rrow"><i>Lift C<sub>l</sub></i><b class="l" id="oLift">—</b></div>
+      <div class="rrow"><i>L / D</i><b class="r" id="oLD">—</b></div>
+      <div class="rrow"><i>Reynolds</i><b id="oRe">—</b></div>
+      <canvas id="spark"></canvas>
+      <div class="sparkleg">
+        <s><i class="dot" style="background:#ffb443"></i>drag</s>
+        <s><i class="dot" style="background:#38d8f0"></i>lift</s>
+        <s style="margin-left:auto" id="oFps">—</s>
+      </div>
+    </div>
+
+    <div id="hint">Drag on the tunnel to sculpt the body · scroll the panel for presets &amp; export</div>
+    <div id="toast"></div>
+
+    <aside id="panel" class="glass">
+      <div class="grab" id="grab"></div>
+      <div class="scroll">
+
+        <div class="sec">
+          <h3>Test body</h3>
+          <div class="chips" id="presets">
+            <button class="chip" data-preset="airfoil">Airfoil 2412</button>
+            <button class="chip" data-preset="sym">Airfoil 0015</button>
+            <button class="chip" data-preset="cylinder">Cylinder</button>
+            <button class="chip" data-preset="plate">Flat plate</button>
+            <button class="chip" data-preset="wedge">Wedge</button>
+            <button class="chip" data-preset="square">Square</button>
+            <button class="chip" data-preset="car">Car</button>
+            <button class="chip" data-preset="city">Skyline</button>
+            <button class="chip" data-preset="empty">Empty</button>
+          </div>
+          <div class="fld">
+            <label>Angle of attack <u id="vAoa">6°</u></label>
+            <input type="range" id="aoa" min="-24" max="24" step="1" value="6">
+          </div>
+          <div class="fld">
+            <label>Body size <u id="vSize">100%</u></label>
+            <input type="range" id="size" min="50" max="160" step="2" value="100">
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>Sculpt</h3>
+          <div class="row3">
+            <button class="btn sm chipmode on" id="mDraw" data-mode="draw">Draw</button>
+            <button class="btn sm chipmode" id="mErase" data-mode="erase">Erase</button>
+            <button class="btn sm" id="btnClear">Clear</button>
+          </div>
+          <div class="fld">
+            <label>Brush radius <u id="vBrush">4</u></label>
+            <input type="range" id="brush" min="1" max="14" step="1" value="4">
+          </div>
+          <p class="note">Drag directly on the tunnel. Sculpted cells survive preset changes only until you pick a new preset.</p>
+        </div>
+
+        <div class="sec">
+          <h3>Flow</h3>
+          <div class="fld">
+            <label>Wind speed <u id="vSpeed">0.100</u></label>
+            <input type="range" id="speed" min="20" max="140" step="1" value="100">
+          </div>
+          <div class="fld">
+            <label>Viscosity <u id="vVisc">0.012</u></label>
+            <input type="range" id="visc" min="6" max="70" step="1" value="12">
+          </div>
+          <div class="fld">
+            <label>Solver steps / frame <u id="vSteps">6</u></label>
+            <input type="range" id="steps" min="1" max="20" step="1" value="6">
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>Visualisation</h3>
+          <div class="chips" id="modes">
+            <button class="chip" data-mode="curl">Vorticity</button>
+            <button class="chip" data-mode="speed">Speed</button>
+            <button class="chip" data-mode="pressure">Pressure</button>
+            <button class="chip" data-mode="schlieren">Schlieren</button>
+            <button class="chip" data-mode="ux">Streamwise u</button>
+          </div>
+          <div class="fld" style="margin-top:11px">
+            <label>Palette</label>
+            <div class="swatches" id="palettes"></div>
+          </div>
+          <div class="fld">
+            <label>Contrast <u id="vGain">1.0×</u></label>
+            <input type="range" id="gain" min="20" max="320" step="5" value="100">
+          </div>
+          <div class="row2">
+            <button class="btn sm on" id="btnTracers">Tracers ✓</button>
+            <button class="btn sm" id="btnGrid">Probe grid</button>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>Save &amp; share</h3>
+          <div class="row2">
+            <button class="btn sm" id="btnPng">Export PNG</button>
+            <button class="btn sm" id="btnJson">Save .json</button>
+            <button class="btn sm" id="btnLoad">Load .json</button>
+            <button class="btn sm" id="btnLink">Copy link</button>
+          </div>
+          <div class="row2" style="margin-top:6px">
+            <button class="btn sm" id="btnReset">Reset flow</button>
+            <button class="btn sm" id="btnDefaults">Defaults</button>
+          </div>
+          <p class="note" id="saveNote">Settings and your sculpted body are remembered in this browser.</p>
+        </div>
+
+      </div>
+    </aside>
+  </div>
+</div>
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+
+<script>
+(function(){
+"use strict";
+
+/* =======================================================================
+   Wind Tunnel — Aero Test Lab
+   A D2Q9 lattice-Boltzmann solver running a virtual wind tunnel.
+   ======================================================================= */
+
+var LS_KEY = 'jccl_windtunnel_v1';
+
+/* ---- lattice constants (y grows downward on screen) ---- */
+var CX = [0, 1,-1, 0, 0, 1,-1, 1,-1];
+var CY = [0, 0, 0, 1,-1, 1,-1,-1, 1];
+var W9 = [4/9, 1/9,1/9,1/9,1/9, 1/36,1/36,1/36,1/36];
+var OPP= [0, 2,1, 4,3, 6,5, 8,7];
+
+/* ---- DOM ---- */
+var $ = function(id){ return document.getElementById(id); };
+var view = $('view'), vctx = view.getContext('2d');
+var spark = $('spark'), sctx = spark.getContext('2d');
+var panel = $('panel');
+
+/* offscreen buffer painted at lattice resolution then upscaled */
+var fieldCv = document.createElement('canvas');
+var fieldCx = fieldCv.getContext('2d');
+
+/* ---- state ---- */
+var S = {
+  preset:'airfoil', aoa:6, size:100,
+  speed:100, visc:12, steps:6,
+  mode:'curl', palette:'inferno', gain:100,
+  tracers:true, probe:false,
+  brush:4, tool:'draw'
+};
+
+var GW=0, GH=0, N=0;            /* lattice size */
+var f=null, g=null;             /* population buffers, direction-major */
+var rho=null, ux=null, uy=null; /* macroscopic fields */
+var barrier=null;               /* Uint8Array */
+var curlBuf=null;
+var imgData=null;
+var running=true, ready=false;
+var dragF=0, liftF=0, cD=0, cL=0, frontal=1, chord=1;
+var hist=[], HIST=180;
+var tracers=null, TRACERS=0;
+var fpsEMA=60, lastT=0;
+var sculpted=false;             /* user has hand-edited the body */
+
+/* mapping lattice <-> canvas */
+var map={x:0,y:0,s:1,w:0,h:0};
+
+/* ======================= palettes ======================= */
+var PAL_DEFS = {
+  inferno:[[0,3,4,22],[.18,40,11,84],[.38,120,28,109],[.58,190,55,82],[.78,238,121,38],[1,252,255,164]],
+  ice:    [[0,4,10,26],[.25,12,54,96],[.5,26,120,168],[.72,104,199,220],[1,236,253,255]],
+  spectral:[[0,48,18,84],[.25,26,104,180],[.5,236,244,236],[.75,236,142,54],[1,150,16,32]],
+  thermal:[[0,8,6,18],[.3,86,22,96],[.55,196,52,86],[.78,246,150,46],[1,255,246,214]],
+  mono:   [[0,6,9,14],[.5,116,140,162],[1,246,252,255]],
+  bluered:[[0,28,74,168],[.5,242,246,250],[1,186,32,44]]
+};
+var PAL = {};
+(function buildPalettes(){
+  for (var k in PAL_DEFS){
+    var stops = PAL_DEFS[k], lut = new Uint8Array(256*3);
+    for (var i=0;i<256;i++){
+      var t = i/255, a=stops[0], b=stops[stops.length-1];
+      for (var j=0;j<stops.length-1;j++){
+        if (t>=stops[j][0] && t<=stops[j+1][0]){ a=stops[j]; b=stops[j+1]; break; }
+      }
+      var span = (b[0]-a[0])||1, u=(t-a[0])/span;
+      lut[i*3  ] = a[1]+(b[1]-a[1])*u;
+      lut[i*3+1] = a[2]+(b[2]-a[2])*u;
+      lut[i*3+2] = a[3]+(b[3]-a[3])*u;
+    }
+    PAL[k]=lut;
+  }
+})();
+
+/* ======================= derived params ======================= */
+function u0(){ return S.speed/1000; }              /* 0.020 .. 0.140 */
+function nu(){ return S.visc/1000; }               /* 0.006 .. 0.070 */
+function omega(){ return Math.min(1.94, 1/(3*nu()+0.5)); }
+
+/* ======================= allocation ======================= */
+function allocate(w,h){
+  GW=w; GH=h; N=w*h;
+  f  = new Float32Array(9*N);
+  g  = new Float32Array(9*N);
+  rho= new Float32Array(N);
+  ux = new Float32Array(N);
+  uy = new Float32Array(N);
+  curlBuf = new Float32Array(N);
+  var nb = new Uint8Array(N);
+  barrier = nb;
+  fieldCv.width=w; fieldCv.height=h;
+  imgData = fieldCx.createImageData(w,h);
+  var d=imgData.data;
+  for (var i=3;i<d.length;i+=4) d[i]=255;
+  TRACERS = Math.min(1100, Math.round(N*0.055));
+  tracers = new Float32Array(TRACERS*4); /* x,y,px,py */
+  seedTracers();
+}
+
+function setEquil(i,vx,vy,r){
+  var u2 = vx*vx+vy*vy, base;
+  for (var d=0; d<9; d++){
+    var cu = CX[d]*vx + CY[d]*vy;
+    base = W9[d]*r*(1 + 3*cu + 4.5*cu*cu - 1.5*u2);
+    f[d*N+i] = base;
+  }
+}
+
+function resetFlow(){
+  var v = u0();
+  for (var i=0;i<N;i++){ setEquil(i,v,0,1); rho[i]=1; ux[i]=v; uy[i]=0; }
+  hist.length=0; dragF=liftF=0; cD=cL=0;
+  seedTracers();
+}
+
+function seedTracers(){
+  if (!tracers) return;
+  for (var t=0;t<TRACERS;t++){
+    var x = Math.random()*GW, y = Math.random()*GH;
+    tracers[t*4]=x; tracers[t*4+1]=y; tracers[t*4+2]=x; tracers[t*4+3]=y;
+  }
+}
+
+/* ======================= geometry ======================= */
+function clearBarrier(){ barrier.fill(0); }
+
+function fillPolygon(pts){
+  var minY=1e9,maxY=-1e9,minX=1e9,maxX=-1e9,k;
+  for (k=0;k<pts.length;k++){
+    if (pts[k][0]<minX) minX=pts[k][0];
+    if (pts[k][0]>maxX) maxX=pts[k][0];
+    if (pts[k][1]<minY) minY=pts[k][1];
+    if (pts[k][1]>maxY) maxY=pts[k][1];
+  }
+  var y0=Math.max(1,Math.floor(minY)), y1=Math.min(GH-2,Math.ceil(maxY));
+  var x0=Math.max(1,Math.floor(minX)), x1=Math.min(GW-2,Math.ceil(maxX));
+  for (var y=y0;y<=y1;y++){
+    for (var x=x0;x<=x1;x++){
+      if (pointInPoly(x+0.5,y+0.5,pts)) barrier[x+y*GW]=1;
+    }
+  }
+}
+function pointInPoly(px,py,pts){
+  var inside=false;
+  for (var i=0,j=pts.length-1;i<pts.length;j=i++){
+    var xi=pts[i][0], yi=pts[i][1], xj=pts[j][0], yj=pts[j][1];
+    if (((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/((yj-yi)||1e-9)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function fillDisc(cx,cy,r){
+  var r2=r*r;
+  var x0=Math.max(1,Math.floor(cx-r)), x1=Math.min(GW-2,Math.ceil(cx+r));
+  var y0=Math.max(1,Math.floor(cy-r)), y1=Math.min(GH-2,Math.ceil(cy+r));
+  for (var y=y0;y<=y1;y++) for (var x=x0;x<=x1;x++){
+    var dx=x+0.5-cx, dy=y+0.5-cy;
+    if (dx*dx+dy*dy<=r2) barrier[x+y*GW]=1;
+  }
+}
+/* screen y grows downward, so a positive angle of attack pitches the
+   leading edge (left) up and the trailing edge (right) down */
+function rotate(pts,cx,cy,deg){
+  var a = deg*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a), out=[];
+  for (var i=0;i<pts.length;i++){
+    var dx=pts[i][0]-cx, dy=pts[i][1]-cy;
+    out.push([cx+dx*ca-dy*sa, cy+dx*sa+dy*ca]);
+  }
+  return out;
+}
+
+/* NACA 4-digit section, returns closed outline in lattice units */
+function naca(m,p,t,chordLen,cx,cy){
+  var up=[], lo=[], steps=44;
+  for (var i=0;i<=steps;i++){
+    var beta = Math.PI*i/steps;
+    var xc = (1-Math.cos(beta))/2;                       /* cosine spacing */
+    var yt = 5*t*(0.2969*Math.sqrt(xc) - 0.1260*xc - 0.3516*xc*xc + 0.2843*xc*xc*xc - 0.1036*xc*xc*xc*xc);
+    var yc=0, dyc=0;
+    if (m>0){
+      if (xc<p){ yc = m/(p*p)*(2*p*xc-xc*xc); dyc = 2*m/(p*p)*(p-xc); }
+      else     { yc = m/((1-p)*(1-p))*((1-2*p)+2*p*xc-xc*xc); dyc = 2*m/((1-p)*(1-p))*(p-xc); }
+    }
+    var th = Math.atan(dyc);
+    up.push([xc - yt*Math.sin(th), yc + yt*Math.cos(th)]);
+    lo.push([xc + yt*Math.sin(th), yc - yt*Math.cos(th)]);
+  }
+  var pts=[], k;
+  for (k=0;k<up.length;k++) pts.push(up[k]);
+  for (k=lo.length-1;k>=0;k--) pts.push(lo[k]);
+  /* map unit chord -> lattice, y flipped so +camber points up on screen */
+  var out=[];
+  for (k=0;k<pts.length;k++) out.push([cx + (pts[k][0]-0.35)*chordLen, cy - pts[k][1]*chordLen]);
+  return out;
+}
+
+function buildPreset(name){
+  clearBarrier();
+  sculpted=false;
+  var cx = Math.round(GW*0.32), cy = Math.round(GH*0.5);
+  var k = S.size/100;
+  var base = Math.min(GH*0.62, GW*0.30);
+  var a = S.aoa;
+
+  if (name==='empty'){ /* nothing */ }
+  else if (name==='cylinder'){ fillDisc(cx,cy, base*0.20*k); }
+  else if (name==='square'){
+    var h = base*0.19*k;
+    fillPolygon(rotate([[cx-h,cy-h],[cx+h,cy-h],[cx+h,cy+h],[cx-h,cy+h]],cx,cy,a));
+  }
+  else if (name==='plate'){
+    var L = base*0.62*k, th = Math.max(1.2, base*0.026*k);
+    fillPolygon(rotate([[cx-L/2,cy-th],[cx+L/2,cy-th],[cx+L/2,cy+th],[cx-L/2,cy+th]],cx,cy,a));
+  }
+  else if (name==='wedge'){
+    var Lw = base*0.50*k, hw = base*0.26*k;
+    fillPolygon(rotate([[cx+Lw*0.6,cy],[cx-Lw*0.4,cy-hw],[cx-Lw*0.4,cy+hw]],cx,cy,a));
+  }
+  else if (name==='airfoil' || name==='sym'){
+    var m = name==='airfoil' ? 0.02 : 0;
+    var p = name==='airfoil' ? 0.4  : 0.4;
+    var t = name==='airfoil' ? 0.12 : 0.15;
+    var chordL = base*0.78*k;
+    fillPolygon(rotate(naca(m,p,t,chordL,cx,cy), cx, cy, a));
+  }
+  else if (name==='car'){
+    var L2 = base*0.80*k, H2 = base*0.30*k;
+    var body = [
+      [cx-L2*0.50, cy+H2*0.55],[cx-L2*0.50, cy+H2*0.05],[cx-L2*0.34, cy-H2*0.20],
+      [cx-L2*0.12, cy-H2*0.56],[cx+L2*0.12, cy-H2*0.58],[cx+L2*0.30, cy-H2*0.18],
+      [cx+L2*0.50, cy+H2*0.05],[cx+L2*0.52, cy+H2*0.55]
+    ];
+    fillPolygon(rotate(body,cx,cy,a*0.35));
+    /* road */
+    var roadY = Math.round(cy + H2*0.58);
+    for (var x=1;x<GW-1;x++) for (var y=roadY;y<GH-1;y++) barrier[x+y*GW]=1;
+  }
+  else if (name==='city'){
+    var groundY = Math.round(GH*0.80);
+    for (var xx=1;xx<GW-1;xx++) for (var yy=groundY;yy<GH-1;yy++) barrier[xx+yy*GW]=1;
+    var towers=[[0.22,0.30],[0.34,0.52],[0.45,0.22],[0.56,0.44],[0.68,0.34]];
+    for (var ti=0;ti<towers.length;ti++){
+      var tx = Math.round(GW*towers[ti][0]);
+      var tw = Math.max(3, Math.round(GW*0.035*k));
+      var th2 = Math.round(GH*towers[ti][1]*k);
+      for (var bx=tx-tw;bx<=tx+tw;bx++){
+        if (bx<1||bx>GW-2) continue;
+        for (var by=groundY-th2;by<groundY;by++){ if (by>0) barrier[bx+by*GW]=1; }
+      }
+    }
+  }
+  measureBody();
+}
+
+/* Frontal height and chord (streamwise extent) of the test body.
+   Rows that span most of the tunnel are ground planes, not bodies, so they
+   are excluded — otherwise the Skyline floor would swamp both numbers. */
+function measureBody(){
+  var rowsHit=0, minX=GW, maxX=0, any=false, groundLimit=GW*0.8;
+  for (var y=1;y<GH-1;y++){
+    var count=0, rMin=GW, rMax=0;
+    for (var x=1;x<GW-1;x++){
+      if (barrier[x+y*GW]){
+        count++;
+        if (x<rMin) rMin=x;
+        if (x>rMax) rMax=x;
+      }
+    }
+    if (count===0 || count>groundLimit) continue;   /* empty row or ground */
+    rowsHit++; any=true;
+    if (rMin<minX) minX=rMin;
+    if (rMax>maxX) maxX=rMax;
+  }
+  frontal = any ? Math.max(1,rowsHit) : 1;
+  chord   = any ? Math.max(1,maxX-minX+1) : 1;
+}
+
+/* ======================= solver =======================
+   collide() and stream() are the whole cost of the app, so both are
+   hand-unrolled over the nine lattice directions: no per-direction array
+   indexing, no inner loop, every population in a local. */
+
+function collide(){
+  var om = omega(), n = N, ff = f, b = barrier;
+  var o1=n,o2=2*n,o3=3*n,o4=4*n,o5=5*n,o6=6*n,o7=7*n,o8=8*n;
+  var C4=4/9, C9=1/9, C36=1/36;
+  for (var i=0;i<n;i++){
+    if (b[i]) continue;
+    var a0=ff[i], a1=ff[o1+i], a2=ff[o2+i], a3=ff[o3+i], a4=ff[o4+i],
+        a5=ff[o5+i], a6=ff[o6+i], a7=ff[o7+i], a8=ff[o8+i];
+    var r = a0+a1+a2+a3+a4+a5+a6+a7+a8;
+    if (!(r>1e-6)){ resetFlow(); return; }
+    var vx = (a1-a2+a5-a6+a7-a8)/r;
+    var vy = (a3-a4+a5-a6-a7+a8)/r;
+    rho[i]=r; ux[i]=vx; uy[i]=vy;
+
+    var u215 = 1.5*(vx*vx+vy*vy);
+    var rx = 3*vx, ry = 3*vy;
+    var p = vx+vy, m = vx-vy;
+    var base9 = C9*r, base36 = C36*r;
+
+    ff[i]    = a0 + om*(C4*r*(1-u215) - a0);
+    ff[o1+i] = a1 + om*(base9 *(1+rx+4.5*vx*vx-u215) - a1);
+    ff[o2+i] = a2 + om*(base9 *(1-rx+4.5*vx*vx-u215) - a2);
+    ff[o3+i] = a3 + om*(base9 *(1+ry+4.5*vy*vy-u215) - a3);
+    ff[o4+i] = a4 + om*(base9 *(1-ry+4.5*vy*vy-u215) - a4);
+    ff[o5+i] = a5 + om*(base36*(1+3*p+4.5*p*p-u215) - a5);
+    ff[o6+i] = a6 + om*(base36*(1-3*p+4.5*p*p-u215) - a6);
+    ff[o7+i] = a7 + om*(base36*(1+3*m+4.5*m*m-u215) - a7);
+    ff[o8+i] = a8 + om*(base36*(1-3*m+4.5*m*m-u215) - a8);
+  }
+}
+
+function stream(){
+  var fx=0, fy=0, n=N, Wd=GW, Hd=GH, ff=f, gg=g, b=barrier;
+  var o1=n,o2=2*n,o3=3*n,o4=4*n,o5=5*n,o6=6*n,o7=7*n,o8=8*n;
+  var s1=1, s2=-1, s3=Wd, s4=-Wd, s5=1+Wd, s6=-1-Wd, s7=1-Wd, s8=-1+Wd;
+  var x, y, i, v, ni;
+
+  /* interior: every neighbour exists, so no bounds tests */
+  for (y=1;y<Hd-1;y++){
+    var row = y*Wd;
+    for (x=1;x<Wd-1;x++){
+      i = row+x;
+      if (b[i]) continue;
+      gg[i] = ff[i];
+      v=ff[o1+i]; ni=i+s1; if(b[ni]){ gg[o2+i]=v; fx+=2*v; }            else gg[o1+ni]=v;
+      v=ff[o2+i]; ni=i+s2; if(b[ni]){ gg[o1+i]=v; fx-=2*v; }            else gg[o2+ni]=v;
+      v=ff[o3+i]; ni=i+s3; if(b[ni]){ gg[o4+i]=v; fy+=2*v; }            else gg[o3+ni]=v;
+      v=ff[o4+i]; ni=i+s4; if(b[ni]){ gg[o3+i]=v; fy-=2*v; }            else gg[o4+ni]=v;
+      v=ff[o5+i]; ni=i+s5; if(b[ni]){ gg[o6+i]=v; fx+=2*v; fy+=2*v; }   else gg[o5+ni]=v;
+      v=ff[o6+i]; ni=i+s6; if(b[ni]){ gg[o5+i]=v; fx-=2*v; fy-=2*v; }   else gg[o6+ni]=v;
+      v=ff[o7+i]; ni=i+s7; if(b[ni]){ gg[o8+i]=v; fx+=2*v; fy-=2*v; }   else gg[o7+ni]=v;
+      v=ff[o8+i]; ni=i+s8; if(b[ni]){ gg[o7+i]=v; fx-=2*v; fy+=2*v; }   else gg[o8+ni]=v;
+    }
+  }
+
+  /* the one-cell ring streams inward with bounds tests; it is always fluid
+     and gets overwritten by applyBoundaries() straight afterwards */
+  for (y=0;y<Hd;y++){
+    for (x=0;x<Wd;x++){
+      if (y!==0 && y!==Hd-1 && x!==0 && x!==Wd-1) continue;
+      i = x + y*Wd;
+      gg[i] = ff[i];
+      for (var d=1; d<9; d++){
+        var nx = x+CX[d], ny = y+CY[d];
+        if (nx<0||nx>=Wd||ny<0||ny>=Hd) continue;
+        ni = nx + ny*Wd;
+        if (!b[ni]) gg[d*n+ni] = ff[d*n+i];
+      }
+    }
+  }
+
+  var t=f; f=g; g=t;
+  applyBoundaries();
+  dragF = dragF*0.90 + fx*0.10;
+  liftF = liftF*0.90 + (-fy)*0.10;              /* screen y grows downward */
+}
+
+function applyBoundaries(){
+  var v = u0(), x, y;
+  for (y=0;y<GH;y++){
+    setEquil(y*GW, v, 0, 1);                    /* inlet  */
+    setEquil(GW-1 + y*GW, v, 0, 1);             /* outlet */
+  }
+  for (x=0;x<GW;x++){
+    setEquil(x, v, 0, 1);                       /* top    */
+    setEquil(x + (GH-1)*GW, v, 0, 1);           /* bottom */
+  }
+  /* soft outflow: relax the last few columns toward their neighbour */
+  for (y=1;y<GH-1;y++){
+    for (x=GW-4;x<GW-1;x++){
+      var i=x+y*GW, s=i-1;
+      if (barrier[i]||barrier[s]) continue;
+      for (var d=0; d<9; d++){ var k=d*N+i; f[k] += 0.35*(f[d*N+s]-f[k]); }
+    }
+  }
+}
+
+function stepSim(n){
+  for (var s=0;s<n;s++){ collide(); stream(); }
+  /* normalised coefficients: F / (0.5 rho u^2 c), chord as reference length
+     so that lift, drag and L/D all share one scale */
+  var q = 0.5*u0()*u0()*chord;
+  if (q>1e-9){ cD = dragF/q; cL = liftF/q; }
+  hist.push([cD,cL]);
+  if (hist.length>HIST) hist.shift();
+}
+
+/* ======================= tracers ======================= */
+function advanceTracers(){
+  /* a particle travels u lattice units per solver step */
+  var sp = S.steps;
+  for (var t=0;t<TRACERS;t++){
+    var b=t*4, x=tracers[b], y=tracers[b+1];
+    var xi = x|0, yi = y|0;
+    if (xi<0||xi>=GW||yi<0||yi>=GH){ respawn(t,true); continue; }
+    var i = xi + yi*GW;
+    if (barrier[i]){ respawn(t,true); continue; }
+    tracers[b+2]=x; tracers[b+3]=y;
+    x += ux[i]*sp; y += uy[i]*sp;
+    if (x>=GW-1||x<0||y<0||y>=GH-1){ respawn(t,true); continue; }
+    tracers[b]=x; tracers[b+1]=y;
+  }
+}
+function respawn(t,upstream){
+  var b=t*4;
+  var x = upstream && Math.random()>0.14 ? Math.random()*2 : Math.random()*GW;
+  var y = Math.random()*GH;
+  tracers[b]=x; tracers[b+1]=y; tracers[b+2]=x; tracers[b+3]=y;
+}
+
+/* ======================= rendering ======================= */
+function computeCurl(){
+  for (var y=1;y<GH-1;y++){
+    for (var x=1;x<GW-1;x++){
+      var i=x+y*GW;
+      curlBuf[i] = (uy[i+1]-uy[i-1])*0.5 - (ux[i+GW]-ux[i-GW])*0.5;
+    }
+  }
+}
+
+function renderField(){
+  var d = imgData.data, lut = PAL[S.palette]||PAL.inferno;
+  var gain = S.gain/100;
+  var v0 = Math.max(0.02,u0());
+  var mode = S.mode;
+  if (mode==='curl') computeCurl();
+
+  for (var y=0;y<GH;y++){
+    for (var x=0;x<GW;x++){
+      var i = x+y*GW, o=i*4;
+      if (barrier[i]){
+        /* light rim on cells that touch fluid */
+        var edge = (x>0&&!barrier[i-1])||(x<GW-1&&!barrier[i+1])||(y>0&&!barrier[i-GW])||(y<GH-1&&!barrier[i+GW]);
+        if (edge){ d[o]=214; d[o+1]=232; d[o+2]=246; }
+        else     { d[o]=26;  d[o+1]=34;  d[o+2]=46;  }
+        continue;
+      }
+      var t;
+      if (mode==='curl')            t = 0.5 + curlBuf[i]*gain*22;
+      else if (mode==='speed')      t = Math.sqrt(ux[i]*ux[i]+uy[i]*uy[i])/(v0*1.8)*gain;
+      else if (mode==='pressure')   t = 0.5 + (rho[i]-1)*gain*14;
+      else if (mode==='ux')         t = 0.5 + (ux[i]-v0)/(v0*2.2)*gain;
+      else { /* schlieren: |grad rho| */
+        var gx = (x>0&&x<GW-1) ? (rho[i+1]-rho[i-1]) : 0;
+        var gy = (y>0&&y<GH-1) ? (rho[i+GW]-rho[i-GW]) : 0;
+        t = Math.sqrt(gx*gx+gy*gy)*gain*160;
+      }
+      if (t<0) t=0; else if (t>1) t=1;
+      var idx = (t*255)|0, p=idx*3;
+      d[o]=lut[p]; d[o+1]=lut[p+1]; d[o+2]=lut[p+2];
+    }
+  }
+  fieldCx.putImageData(imgData,0,0);
+}
+
+function layout(){
+  var dpr = Math.min(2, window.devicePixelRatio||1);
+  var st = view.parentNode;
+  var cw = st.clientWidth, ch = st.clientHeight;
+  view.width = Math.max(1,Math.round(cw*dpr));
+  view.height= Math.max(1,Math.round(ch*dpr));
+  view.style.width = cw+'px'; view.style.height = ch+'px';
+  vctx.setTransform(dpr,0,0,dpr,0,0);
+
+  var s = Math.min(cw/GW, ch/GH);
+  map.s = s; map.w = GW*s; map.h = GH*s;
+  map.x = (cw-map.w)/2; map.y = (ch-map.h)/2;
+
+  var sw = spark.clientWidth||190;
+  spark.width = Math.round(sw*dpr); spark.height = Math.round(spark.clientHeight*dpr);
+  sctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function draw(){
+  var cw = view.clientWidth, ch = view.clientHeight;
+  vctx.fillStyle='#070b11';
+  vctx.fillRect(0,0,cw,ch);
+  vctx.imageSmoothingEnabled = true;
+  vctx.drawImage(fieldCv, map.x, map.y, map.w, map.h);
+
+  if (S.tracers){
+    vctx.save();
+    vctx.translate(map.x,map.y);
+    vctx.scale(map.s,map.s);
+    vctx.lineWidth = 0.55;
+    vctx.strokeStyle = 'rgba(255,255,255,.34)';
+    vctx.lineCap='round';
+    vctx.beginPath();
+    for (var t=0;t<TRACERS;t++){
+      var b=t*4;
+      var dx=tracers[b]-tracers[b+2], dy=tracers[b+1]-tracers[b+3];
+      if (dx*dx+dy*dy>36) continue;
+      vctx.moveTo(tracers[b+2],tracers[b+3]);
+      vctx.lineTo(tracers[b],tracers[b+1]);
+    }
+    vctx.stroke();
+    vctx.restore();
+  }
+
+  if (S.probe) drawProbes(cw,ch);
+
+  /* tunnel frame */
+  vctx.strokeStyle='rgba(148,183,214,.22)';
+  vctx.lineWidth=1;
+  vctx.strokeRect(map.x+.5, map.y+.5, map.w-1, map.h-1);
+
+  drawSpark();
+}
+
+function drawProbes(){
+  var step = Math.max(6, Math.round(GW/26));
+  vctx.save();
+  vctx.translate(map.x,map.y); vctx.scale(map.s,map.s);
+  vctx.strokeStyle='rgba(167,139,250,.75)';
+  vctx.lineWidth=0.4;
+  vctx.beginPath();
+  for (var y=step;y<GH-step/2;y+=step){
+    for (var x=step;x<GW-step/2;x+=step){
+      var i=x+y*GW;
+      if (barrier[i]) continue;
+      var L = 90;
+      vctx.moveTo(x,y);
+      vctx.lineTo(x+ux[i]*L, y+uy[i]*L);
+    }
+  }
+  vctx.stroke();
+  vctx.restore();
+}
+
+function drawSpark(){
+  var w = spark.clientWidth, h = spark.clientHeight;
+  sctx.clearRect(0,0,w,h);
+  if (hist.length<2) return;
+  var maxV=0.2, i;
+  for (i=0;i<hist.length;i++){
+    maxV = Math.max(maxV, Math.abs(hist[i][0]), Math.abs(hist[i][1]));
+  }
+  var mid = h/2, sc = (h/2-3)/maxV;
+  sctx.strokeStyle='rgba(148,183,214,.22)'; sctx.lineWidth=1;
+  sctx.beginPath(); sctx.moveTo(0,mid); sctx.lineTo(w,mid); sctx.stroke();
+  var series=[['#ffb443',0],['#38d8f0',1]];
+  for (var s=0;s<2;s++){
+    sctx.strokeStyle=series[s][0]; sctx.lineWidth=1.4;
+    sctx.beginPath();
+    for (i=0;i<hist.length;i++){
+      var x = i/(HIST-1)*w, y = mid - hist[i][series[s][1]]*sc;
+      if (i===0) sctx.moveTo(x,y); else sctx.lineTo(x,y);
+    }
+    sctx.stroke();
+  }
+}
+
+function updateHud(){
+  $('oDrag').textContent = fmt(cD);
+  $('oLift').textContent = fmt(cL);
+  $('oLD').textContent   = Math.abs(cD)>1e-4 ? fmt(cL/cD) : '—';
+  var Re = u0()*chord/Math.max(1e-6,nu());
+  $('oRe').textContent = Re>=1000 ? (Re/1000).toFixed(1)+'k' : Math.round(Re);
+  $('oFps').textContent = Math.round(fpsEMA)+' fps';
+}
+function fmt(v){
+  if (!isFinite(v)) return '—';
+  var a=Math.abs(v);
+  return (v<0?'−':'')+(a<10?a.toFixed(2):a.toFixed(1));
+}
+
+/* ======================= main loop ======================= */
+function frame(ts){
+  requestAnimationFrame(frame);
+  if (!ready) return;
+  if (lastT){
+    var dt = ts-lastT;
+    if (dt>0) fpsEMA = fpsEMA*0.92 + (1000/dt)*0.08;
+  }
+  lastT = ts;
+  if (document.hidden) return;
+  if (running){
+    stepSim(S.steps);
+    advanceTracers();
+  }
+  renderField();
+  draw();
+  updateHud();
+}
+
+/* ======================= sculpting ======================= */
+var painting=false, lastPt=null;
+
+function canvasToGrid(ev){
+  var r = view.getBoundingClientRect();
+  var x = (ev.clientX - r.left - map.x)/map.s;
+  var y = (ev.clientY - r.top  - map.y)/map.s;
+  return {x:x, y:y};
+}
+function paintAt(p){
+  var rr = S.brush, val = (S.tool==='draw')?1:0;
+  var x0=Math.max(1,Math.floor(p.x-rr)), x1=Math.min(GW-2,Math.ceil(p.x+rr));
+  var y0=Math.max(1,Math.floor(p.y-rr)), y1=Math.min(GH-2,Math.ceil(p.y+rr));
+  for (var y=y0;y<=y1;y++) for (var x=x0;x<=x1;x++){
+    var dx=x+0.5-p.x, dy=y+0.5-p.y;
+    if (dx*dx+dy*dy<=rr*rr){
+      var i=x+y*GW;
+      if (val && !barrier[i]) setEquil(i,0,0,1);
+      barrier[i]=val;
+    }
+  }
+  sculpted=true;
+}
+function paintLine(a,b){
+  var d = Math.hypot(b.x-a.x,b.y-a.y);
+  var n = Math.max(1, Math.ceil(d/Math.max(0.6,S.brush*0.5)));
+  for (var k=0;k<=n;k++) paintAt({x:a.x+(b.x-a.x)*k/n, y:a.y+(b.y-a.y)*k/n});
+}
+
+view.addEventListener('pointerdown', function(ev){
+  if (ev.button!==undefined && ev.button!==0) return;
+  view.setPointerCapture(ev.pointerId);
+  painting=true; lastPt = canvasToGrid(ev);
+  paintAt(lastPt);
+  hideHint();
+  ev.preventDefault();
+});
+view.addEventListener('pointermove', function(ev){
+  if (!painting) return;
+  var p = canvasToGrid(ev);
+  paintLine(lastPt,p); lastPt=p;
+  ev.preventDefault();
+});
+function endPaint(){
+  if (!painting) return;
+  painting=false; lastPt=null;
+  measureBody(); save();
+}
+view.addEventListener('pointerup', endPaint);
+view.addEventListener('pointercancel', endPaint);
+
+/* ======================= persistence ======================= */
+function encodeBody(){
+  /* run-length encode the barrier bitmap, varint runs, base64 payload */
+  var runs=[], cur=0, len=0, i;
+  for (i=0;i<N;i++){
+    var v = barrier[i]?1:0;
+    if (v===cur) len++;
+    else { runs.push(len); cur=v; len=1; }
+  }
+  runs.push(len);
+  var bytes=[];
+  for (i=0;i<runs.length;i++){
+    var n=runs[i];
+    while (n>=128){ bytes.push((n&127)|128); n>>>=7; }
+    bytes.push(n);
+  }
+  var str='';
+  for (i=0;i<bytes.length;i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function decodeBody(b64,w,h){
+  try{
+    var str = atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
+    var runs=[], n=0, shift=0;
+    for (var i=0;i<str.length;i++){
+      var b = str.charCodeAt(i);
+      n |= (b&127)<<shift;
+      if (b&128){ shift+=7; }
+      else { runs.push(n); n=0; shift=0; }
+    }
+    var src = new Uint8Array(w*h), pos=0, cur=0;
+    for (var r=0;r<runs.length;r++){
+      var end = Math.min(w*h, pos+runs[r]);
+      if (cur) src.fill(1,pos,end);
+      pos=end; cur=cur?0:1;
+      if (pos>=w*h) break;
+    }
+    /* nearest-neighbour resample onto the current lattice */
+    for (var y=0;y<GH;y++){
+      var sy = Math.min(h-1, Math.floor(y/GH*h));
+      for (var x=0;x<GW;x++){
+        var sx = Math.min(w-1, Math.floor(x/GW*w));
+        barrier[x+y*GW] = src[sx+sy*w];
+      }
+    }
+    for (var xx=0;xx<GW;xx++){ barrier[xx]=0; barrier[xx+(GH-1)*GW]=0; }
+    for (var yy=0;yy<GH;yy++){ barrier[yy*GW]=0; barrier[GW-1+yy*GW]=0; }
+    measureBody();
+    return true;
+  }catch(e){ return false; }
+}
+
+function snapshot(){
+  return { v:1, s:S, w:GW, h:GH, body:encodeBody() };
+}
+function save(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(snapshot())); }catch(e){}
+}
+function applySnapshot(o, rebuild){
+  if (!o || !o.s) return false;
+  for (var k in S){ if (o.s[k]!==undefined) S[k]=o.s[k]; }
+  syncUI();
+  if (o.body && o.w && o.h){ decodeBody(o.body, o.w, o.h); }
+  else if (rebuild) buildPreset(S.preset);
+  resetFlow();
+  return true;
+}
+function loadSaved(){
+  var fromHash = location.hash && location.hash.length>3;
+  if (fromHash){
+    try{
+      var json = decodeURIComponent(escape(atob(location.hash.slice(1).replace(/-/g,'+').replace(/_/g,'/'))));
+      if (applySnapshot(JSON.parse(json), true)){ toast('Loaded shared tunnel'); return true; }
+    }catch(e){}
+  }
+  try{
+    var raw = localStorage.getItem(LS_KEY);
+    if (raw) return applySnapshot(JSON.parse(raw), true);
+  }catch(e){}
+  return false;
+}
+
+/* ======================= export ======================= */
+function download(blob, name){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+}
+
+function exportPNG(){
+  var pad = 46;
+  var w = Math.max(720, Math.round(map.w));
+  var h = Math.round(w*GH/GW);
+  var out = document.createElement('canvas');
+  out.width = w; out.height = h+pad;
+  var o = out.getContext('2d');
+  o.fillStyle='#070b11'; o.fillRect(0,0,out.width,out.height);
+  o.imageSmoothingEnabled=true;
+  o.drawImage(fieldCv,0,0,w,h);
+  o.strokeStyle='rgba(148,183,214,.25)'; o.strokeRect(.5,.5,w-1,h-1);
+  o.fillStyle='#e8f1f8';
+  o.font='600 15px system-ui,-apple-system,sans-serif';
+  o.fillText('Wind Tunnel — '+labelFor(S.preset), 14, h+21);
+  o.fillStyle='#8ba3ba';
+  o.font='12px system-ui,-apple-system,sans-serif';
+  o.fillText('AoA '+S.aoa+'°  ·  u '+u0().toFixed(3)+'  ·  ν '+nu().toFixed(3)+
+             '  ·  Cd '+fmt(cD)+'  ·  Cl '+fmt(cL)+'  ·  '+S.mode, 14, h+38);
+  out.toBlob(function(b){
+    if (!b || b.size===0){ toast('Export failed'); return; }
+    download(b, 'wind-tunnel-'+S.preset+'-aoa'+S.aoa+'.png');
+    toast('PNG saved ('+Math.round(b.size/1024)+' KB)');
+  },'image/png');
+}
+
+function exportJSON(){
+  var data = JSON.stringify(snapshot());
+  var blob = new Blob([data],{type:'application/json'});
+  if (blob.size===0){ toast('Export failed'); return; }
+  download(blob,'wind-tunnel-'+S.preset+'.json');
+  toast('Run saved ('+Math.round(blob.size/1024*10)/10+' KB)');
+}
+
+function copyLink(){
+  var payload = btoa(unescape(encodeURIComponent(JSON.stringify(snapshot()))))
+                  .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  var url = location.origin + location.pathname + '#' + payload;
+  try{ history.replaceState(null,'','#'+payload); }catch(e){}
+  var done = function(){ toast('Share link copied'); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done, function(){ toast('Link is in the address bar'); });
+  } else {
+    toast('Link is in the address bar');
+  }
+}
+
+/* ======================= UI wiring ======================= */
+function labelFor(p){
+  var m = {airfoil:'Airfoil 2412',sym:'Airfoil 0015',cylinder:'Cylinder',plate:'Flat plate',
+           wedge:'Wedge',square:'Square',car:'Car',city:'Skyline',empty:'Empty tunnel'};
+  return m[p]||p;
+}
+
+var toastTimer=null;
+function toast(msg){
+  var el=$('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ el.classList.remove('show'); },1900);
+}
+function hideHint(){ var h=$('hint'); if(h) h.style.opacity='0'; }
+
+function syncUI(){
+  $('aoa').value=S.aoa;     $('vAoa').textContent=S.aoa+'°';
+  $('size').value=S.size;   $('vSize').textContent=S.size+'%';
+  $('speed').value=S.speed; $('vSpeed').textContent=u0().toFixed(3);
+  $('visc').value=S.visc;   $('vVisc').textContent=nu().toFixed(3);
+  $('steps').value=S.steps; $('vSteps').textContent=S.steps;
+  $('gain').value=S.gain;   $('vGain').textContent=(S.gain/100).toFixed(1)+'×';
+  $('brush').value=S.brush; $('vBrush').textContent=S.brush;
+
+  var i, els;
+  els = document.querySelectorAll('#presets .chip');
+  for (i=0;i<els.length;i++) els[i].classList.toggle('on', els[i].dataset.preset===S.preset);
+  els = document.querySelectorAll('#modes .chip');
+  for (i=0;i<els.length;i++) els[i].classList.toggle('on', els[i].dataset.mode===S.mode);
+  els = document.querySelectorAll('#palettes .sw');
+  for (i=0;i<els.length;i++) els[i].classList.toggle('on', els[i].dataset.pal===S.palette);
+  els = document.querySelectorAll('.chipmode');
+  for (i=0;i<els.length;i++) els[i].classList.toggle('on', els[i].dataset.mode===S.tool);
+
+  $('btnTracers').textContent = S.tracers ? 'Tracers ✓' : 'Tracers';
+  $('btnTracers').classList.toggle('on', S.tracers);
+  $('btnGrid').textContent = S.probe ? 'Probe grid ✓' : 'Probe grid';
+  $('btnGrid').classList.toggle('on', S.probe);
+  $('btnPause').textContent = running ? 'Pause' : 'Run';
+}
+
+function buildPaletteSwatches(){
+  var host=$('palettes'), html='';
+  for (var k in PAL_DEFS){
+    var stops=PAL_DEFS[k], parts=[];
+    for (var i=0;i<stops.length;i++){
+      parts.push('rgb('+stops[i][1]+','+stops[i][2]+','+stops[i][3]+') '+Math.round(stops[i][0]*100)+'%');
+    }
+    html += '<button class="sw" data-pal="'+k+'" title="'+k+'" style="background:linear-gradient(90deg,'+parts.join(',')+')"></button>';
+  }
+  host.innerHTML=html;
+  host.addEventListener('click', function(e){
+    var b=e.target.closest('.sw'); if(!b) return;
+    S.palette=b.dataset.pal; syncUI(); save();
+  });
+}
+
+function bindRange(id, key, fmtFn, after){
+  var el=$(id);
+  el.addEventListener('input', function(){
+    S[key] = +el.value;
+    if (fmtFn) fmtFn();
+    if (after) after();
+  });
+  el.addEventListener('change', save);
+}
+
+function wire(){
+  $('presets').addEventListener('click', function(e){
+    var b=e.target.closest('.chip'); if(!b) return;
+    S.preset=b.dataset.preset; buildPreset(S.preset); resetFlow(); syncUI(); save();
+    toast(labelFor(S.preset));
+  });
+  $('modes').addEventListener('click', function(e){
+    var b=e.target.closest('.chip'); if(!b) return;
+    S.mode=b.dataset.mode; syncUI(); save();
+  });
+
+  bindRange('aoa','aoa', function(){ $('vAoa').textContent=S.aoa+'°'; },
+    function(){ if(!sculpted) buildPreset(S.preset); });
+  bindRange('size','size', function(){ $('vSize').textContent=S.size+'%'; },
+    function(){ if(!sculpted) buildPreset(S.preset); });
+  bindRange('speed','speed', function(){ $('vSpeed').textContent=u0().toFixed(3); });
+  bindRange('visc','visc',  function(){ $('vVisc').textContent=nu().toFixed(3); });
+  bindRange('steps','steps',function(){ $('vSteps').textContent=S.steps; });
+  bindRange('gain','gain',  function(){ $('vGain').textContent=(S.gain/100).toFixed(1)+'×'; });
+  bindRange('brush','brush',function(){ $('vBrush').textContent=S.brush; });
+
+  var tools = document.querySelectorAll('.chipmode');
+  for (var i=0;i<tools.length;i++){
+    tools[i].addEventListener('click', function(){ S.tool=this.dataset.mode; syncUI(); save(); });
+  }
+  $('btnClear').addEventListener('click', function(){
+    clearBarrier(); sculpted=true; measureBody(); resetFlow(); save(); toast('Tunnel cleared');
+  });
+  $('btnTracers').addEventListener('click', function(){ S.tracers=!S.tracers; syncUI(); save(); });
+  $('btnGrid').addEventListener('click', function(){ S.probe=!S.probe; syncUI(); save(); });
+  $('btnPause').addEventListener('click', function(){ running=!running; syncUI(); });
+  $('btnReset').addEventListener('click', function(){ resetFlow(); toast('Flow re-initialised'); });
+  $('btnDefaults').addEventListener('click', function(){
+    S.aoa=6; S.size=100; S.speed=100; S.visc=12; S.steps=6; S.gain=100;
+    S.mode='curl'; S.palette='inferno'; S.tracers=true; S.probe=false; S.preset='airfoil';
+    buildPreset(S.preset); resetFlow(); syncUI(); save(); toast('Defaults restored');
+  });
+  $('btnPng').addEventListener('click', exportPNG);
+  $('btnShot').addEventListener('click', exportPNG);
+  $('btnJson').addEventListener('click', exportJSON);
+  $('btnLink').addEventListener('click', copyLink);
+  $('btnLoad').addEventListener('click', function(){ $('fileIn').click(); });
+  $('fileIn').addEventListener('change', function(e){
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var fr = new FileReader();
+    fr.onload = function(){
+      try{
+        var o = JSON.parse(fr.result);
+        if (applySnapshot(o,true)){ save(); toast('Run loaded'); }
+        else toast('Not a Wind Tunnel file');
+      }catch(err){ toast('Could not read that file'); }
+    };
+    fr.readAsText(file);
+    e.target.value='';
+  });
+
+  $('panelToggle').addEventListener('click', function(){ panel.classList.toggle('open'); });
+  $('grab').addEventListener('click', function(){ panel.classList.remove('open'); });
+
+  document.addEventListener('keydown', function(e){
+    if (e.target && /input|select|textarea/i.test(e.target.tagName)) return;
+    var k=e.key.toLowerCase();
+    if (k===' '){ running=!running; syncUI(); e.preventDefault(); }
+    else if (k==='r'){ resetFlow(); }
+    else if (k==='c'){ clearBarrier(); sculpted=true; measureBody(); resetFlow(); }
+    else if (k==='e'){ S.tool = S.tool==='draw'?'erase':'draw'; syncUI(); }
+    else if (k==='t'){ S.tracers=!S.tracers; syncUI(); }
+    else if (k==='v'){
+      var order=['curl','speed','pressure','schlieren','ux'];
+      S.mode = order[(order.indexOf(S.mode)+1)%order.length]; syncUI();
+    }
+    else if (k==='p'){ exportPNG(); }
+  });
+
+  var rt=null;
+  window.addEventListener('resize', function(){
+    clearTimeout(rt);
+    rt=setTimeout(function(){ resizeLattice(); },180);
+  });
+}
+
+/* ======================= lattice sizing ======================= */
+function chooseGrid(){
+  var st = view.parentNode;
+  var cw = Math.max(320, st.clientWidth), ch = Math.max(240, st.clientHeight);
+  /* a wind tunnel is always wider than it is tall — on a portrait phone the
+     working section is letterboxed rather than turned on its side */
+  var aspect = Math.max(1.5, Math.min(3.2, cw/ch));
+  var coarse = window.matchMedia && window.matchMedia('(pointer:coarse)').matches;
+  var target = coarse ? 8200 : 14000;
+  var w = Math.max(110, Math.min(250, Math.round(Math.sqrt(target*aspect))));
+  var h = Math.max(64, Math.min(180, Math.round(w/aspect)));
+  return [w,h];
+}
+
+function resizeLattice(){
+  var dims = chooseGrid();
+  if (dims[0]===GW && dims[1]===GH){ layout(); return; }
+  var old = barrier ? {b:barrier, w:GW, h:GH} : null;
+  allocate(dims[0],dims[1]);
+  if (old){
+    for (var y=0;y<GH;y++){
+      var sy=Math.min(old.h-1,Math.floor(y/GH*old.h));
+      for (var x=0;x<GW;x++){
+        var sx=Math.min(old.w-1,Math.floor(x/GW*old.w));
+        barrier[x+y*GW]=old.b[sx+sy*old.w];
+      }
+    }
+    for (var xx=0;xx<GW;xx++){ barrier[xx]=0; barrier[xx+(GH-1)*GW]=0; }
+    for (var yy=0;yy<GH;yy++){ barrier[yy*GW]=0; barrier[GW-1+yy*GW]=0; }
+    measureBody();
+  }
+  resetFlow();
+  layout();
+}
+
+/* ======================= boot ======================= */
+function boot(){
+  buildPaletteSwatches();
+  var dims = chooseGrid();
+  allocate(dims[0],dims[1]);
+  wire();
+  if (!loadSaved()){
+    buildPreset(S.preset);
+    resetFlow();
+    syncUI();
+  }
+  layout();
+  ready = true;
+  requestAnimationFrame(frame);
+  setTimeout(hideHint, 9000);
+}
+
+if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
+
+/* expose a tiny probe surface for automated checks */
+window.__wt = {
+  state:function(){ return {GW:GW,GH:GH,ready:ready,cD:cD,cL:cL,frontal:frontal,chord:chord}; },
+  set:function(k,v){ S[k]=v; },
+  exportPNG:exportPNG, snapshot:snapshot, resetFlow:resetFlow,
+  barrierCount:function(){ var c=0; for (var i=0;i<N;i++) c+=barrier[i]; return c; },
+  maxSpeed:function(){ var m=0; for (var i=0;i<N;i++){ var s=Math.hypot(ux[i],uy[i]); if(s>m)m=s; } return m; },
+  buildPreset:buildPreset, step:function(n){ stepSim(n||1); }
+};
+
+})();
+</script>
+</body>
+</html>
