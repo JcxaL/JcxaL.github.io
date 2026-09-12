@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fluxion — Sankey Flow Editor</title>
+<meta name="description" content="Write flows as text, get a publication-grade Sankey diagram. Drag nodes, tune the layout, export SVG/PNG/JSON.">
+<style>
+  :root{
+    --bg:#0a0e17;
+    --bg2:#0f1522;
+    --panel:rgba(20,27,42,.82);
+    --line:rgba(148,178,224,.14);
+    --line2:rgba(148,178,224,.28);
+    --ink:#e8eefc;
+    --dim:#8fa3c4;
+    --dim2:#61708d;
+    --acc:#5eead4;
+    --acc2:#818cf8;
+    --warn:#fb7185;
+    --r:14px;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1200px 700px at 12% -10%,rgba(94,234,212,.10),transparent 60%),
+      radial-gradient(900px 600px at 92% 0%,rgba(129,140,248,.12),transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+    overscroll-behavior:none;
+  }
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer}
+
+  /* ---------- shell ---------- */
+  #app{display:flex;flex-direction:column;height:100dvh}
+  header{
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:10px 14px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(15,21,34,.9),rgba(15,21,34,.55));
+    backdrop-filter:blur(12px);
+  }
+  .brand{display:flex;align-items:baseline;gap:9px;margin-right:auto;min-width:0}
+  .brand h1{margin:0;font-size:16px;letter-spacing:-.02em;white-space:nowrap}
+  .brand h1 b{
+    background:linear-gradient(92deg,var(--acc),var(--acc2));
+    -webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800;
+  }
+  .brand span{font-size:11.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hbtns{display:flex;gap:7px;flex-wrap:wrap}
+  .btn{
+    border:1px solid var(--line2);background:rgba(255,255,255,.045);
+    color:var(--ink);border-radius:10px;padding:7px 11px;font-size:12.5px;font-weight:600;
+    display:inline-flex;align-items:center;gap:6px;transition:.16s transform,.16s background,.16s border-color;
+    white-space:nowrap;
+  }
+  .btn:hover{background:rgba(255,255,255,.09);border-color:rgba(148,178,224,.45)}
+  .btn:active{transform:translateY(1px)}
+  .btn.pri{
+    border-color:transparent;color:#04211c;
+    background:linear-gradient(92deg,var(--acc),#7dd3fc);
+  }
+  .btn.pri:hover{filter:brightness(1.08)}
+  .btn svg{width:14px;height:14px;flex:none}
+
+  main{flex:1;display:grid;grid-template-columns:326px 1fr 268px;min-height:0}
+  .pane{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .pane.left{border-right:1px solid var(--line);background:rgba(10,14,23,.5)}
+  .pane.right{border-left:1px solid var(--line);background:rgba(10,14,23,.5)}
+  .pane-scroll{overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px;flex:1;
+    scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+  .pane-scroll::-webkit-scrollbar{width:9px}
+  .pane-scroll::-webkit-scrollbar-thumb{background:var(--line2);border-radius:9px;border:3px solid transparent;background-clip:content-box}
+
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:var(--r);padding:11px}
+  .card h2{
+    margin:0 0 9px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);
+    display:flex;align-items:center;gap:7px;
+  }
+  .card h2 .pill{
+    margin-left:auto;font-size:10px;letter-spacing:.02em;text-transform:none;color:var(--dim);
+    background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:1px 7px;
+  }
+
+  /* ---------- editor ---------- */
+  .edwrap{position:relative}
+  textarea#dsl{
+    width:100%;height:230px;resize:vertical;min-height:120px;
+    background:rgba(4,8,15,.75);border:1px solid var(--line);border-radius:10px;
+    padding:10px 11px;font-family:var(--mono);font-size:12.5px;line-height:1.65;
+    color:#d7e3fb;outline:none;tab-size:2;
+  }
+  textarea#dsl:focus{border-color:rgba(94,234,212,.5);box-shadow:0 0 0 3px rgba(94,234,212,.10)}
+  .syntax{font-size:11px;color:var(--dim2);margin-top:7px;line-height:1.6;font-family:var(--mono)}
+  .syntax b{color:var(--dim);font-weight:600}
+  #parse{
+    margin-top:8px;font-size:11.5px;border-radius:9px;padding:7px 9px;display:none;
+    font-family:var(--mono);line-height:1.5;
+  }
+  #parse.ok{display:block;background:rgba(94,234,212,.08);border:1px solid rgba(94,234,212,.25);color:#9defdd}
+  #parse.bad{display:block;background:rgba(251,113,133,.09);border:1px solid rgba(251,113,133,.3);color:#ffc0ca}
+
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .preset{
+    text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.03);
+    border-radius:10px;padding:8px 9px;transition:.15s;
+  }
+  .preset:hover{background:rgba(255,255,255,.07);border-color:var(--line2);transform:translateY(-1px)}
+  .preset b{display:block;font-size:12px;font-weight:650}
+  .preset span{display:block;font-size:10.5px;color:var(--dim2);margin-top:2px}
+  .preset.on{border-color:rgba(94,234,212,.5);background:rgba(94,234,212,.08)}
+
+  .addrow{display:grid;grid-template-columns:1fr 62px 1fr;gap:6px}
+  .addrow input{
+    background:rgba(4,8,15,.7);border:1px solid var(--line);border-radius:9px;
+    padding:7px 9px;font-size:12px;outline:none;min-width:0;font-family:var(--mono);
+  }
+  .addrow input:focus{border-color:rgba(94,234,212,.45)}
+
+  /* ---------- controls ---------- */
+  .ctl{margin-bottom:11px}
+  .ctl:last-child{margin-bottom:0}
+  .ctl label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin-bottom:5px;gap:8px}
+  .ctl label b{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:11.5px}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;
+    background:linear-gradient(90deg,var(--acc) var(--p,50%),rgba(148,178,224,.18) var(--p,50%));
+    outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#eafffb;
+    border:3px solid #0d1b28;box-shadow:0 1px 6px rgba(0,0,0,.5);cursor:pointer;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:15px;height:15px;border-radius:50%;background:#eafffb;border:3px solid #0d1b28;cursor:pointer;
+  }
+  .seg{display:flex;background:rgba(4,8,15,.6);border:1px solid var(--line);border-radius:9px;padding:2px;gap:2px}
+  .seg button{
+    flex:1;border:0;background:transparent;color:var(--dim);border-radius:7px;padding:5px 4px;
+    font-size:11px;font-weight:600;transition:.15s;
+  }
+  .seg button.on{background:rgba(94,234,212,.16);color:#b8fff2}
+  .seg button:hover:not(.on){color:var(--ink);background:rgba(255,255,255,.05)}
+  select,.txtin{
+    width:100%;background:rgba(4,8,15,.7);border:1px solid var(--line);border-radius:9px;
+    padding:7px 9px;font-size:12px;outline:none;
+  }
+  select:focus,.txtin:focus{border-color:rgba(94,234,212,.45)}
+  .swatches{display:flex;gap:5px;margin-top:7px}
+  .sw{flex:1;height:14px;border-radius:4px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim);cursor:pointer;padding:3px 0}
+  .chk input{accent-color:#5eead4;width:15px;height:15px}
+
+  /* ---------- stage ---------- */
+  .stage{position:relative;display:flex;flex-direction:column;min-width:0;background:
+    radial-gradient(900px 520px at 50% 0%,rgba(129,140,248,.07),transparent 70%)}
+  #plot{flex:1;min-height:0;position:relative;touch-action:pan-x;overflow-x:auto;overflow-y:hidden;
+    scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+  #plot::-webkit-scrollbar{height:8px}
+  #plot::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
+  #svg{width:100%;height:100%;display:block;user-select:none;-webkit-user-select:none}
+  .statusbar{
+    display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+    padding:7px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--dim2);
+    background:rgba(10,14,23,.6);
+  }
+  .statusbar b{color:var(--dim);font-weight:600;font-family:var(--mono)}
+  .statusbar .hint{margin-left:auto;color:var(--dim2)}
+  #tip{
+    position:absolute;pointer-events:none;opacity:0;transform:translate(-50%,-120%);
+    background:rgba(8,13,22,.94);border:1px solid var(--line2);border-radius:10px;
+    padding:7px 10px;font-size:12px;white-space:nowrap;z-index:6;
+    box-shadow:0 10px 30px rgba(0,0,0,.55);transition:opacity .12s;backdrop-filter:blur(6px);
+  }
+  #tip b{display:block;font-size:12.5px;margin-bottom:2px}
+  #tip s{display:block;text-decoration:none;color:var(--dim2);font-size:11px;font-family:var(--mono)}
+  #toast{
+    position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);opacity:0;pointer-events:none;
+    background:rgba(8,13,22,.95);border:1px solid rgba(94,234,212,.4);color:#c8fff4;
+    border-radius:999px;padding:9px 18px;font-size:13px;font-weight:600;z-index:40;
+    transition:.25s cubic-bezier(.2,.9,.3,1.2);box-shadow:0 14px 40px rgba(0,0,0,.55);
+  }
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+
+  /* ---------- mobile ---------- */
+  .tabs{display:none}
+  @media (max-width:1080px){
+    main{grid-template-columns:288px 1fr}
+    .pane.right{
+      position:fixed;right:0;top:0;bottom:0;width:270px;z-index:20;
+      transform:translateX(100%);transition:transform .28s cubic-bezier(.3,.9,.3,1);
+      background:rgba(10,14,23,.97);backdrop-filter:blur(14px);
+    }
+    .pane.right.open{transform:none;box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+    .btn.styletog{display:inline-flex}
+  }
+  @media (min-width:1081px){.btn.styletog{display:none}}
+  @media (max-width:760px){
+    header{padding:8px 10px;gap:8px}
+    .brand span{display:none}
+    main{grid-template-columns:1fr;position:relative}
+    /* the tab strip is the only way back out of a panel — it always wins */
+    .tabs{
+      display:flex;gap:2px;padding:5px;background:rgba(10,14,23,.94);
+      border-top:1px solid var(--line);backdrop-filter:blur(12px);
+      position:fixed;left:0;right:0;bottom:0;z-index:30;
+      padding-bottom:calc(5px + env(safe-area-inset-bottom,0px));
+    }
+    .stage{padding-bottom:56px}
+    .pane-scroll{padding-bottom:66px}
+    .tabs button{
+      flex:1;border:0;background:transparent;color:var(--dim2);border-radius:9px;
+      padding:9px 4px;font-size:12px;font-weight:650;
+    }
+    .tabs button.on{background:rgba(94,234,212,.14);color:#b8fff2}
+    .pane.left{
+      position:absolute;inset:0;z-index:12;border-right:0;background:rgba(10,14,23,.98);
+      display:none;
+    }
+    .pane.left.show{display:flex}
+    .pane.right{width:100%;max-width:340px}
+    .statusbar .hint{display:none}
+    .btn .lbl{display:none}
+    .btn{padding:8px 10px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <h1><b>Fluxion</b></h1>
+      <span>Sankey flow editor · text in, diagram out</span>
+    </div>
+    <div class="hbtns">
+      <button class="btn styletog" id="styleTog" title="Style panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+        <span class="lbl">Style</span>
+      </button>
+      <button class="btn" id="btnSvg" title="Download SVG">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 5 5-5M4 21h16"/></svg>
+        <span class="lbl">SVG</span>
+      </button>
+      <button class="btn" id="btnPng" title="Download PNG">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5-6 6-3-3-4 4"/></svg>
+        <span class="lbl">PNG</span>
+      </button>
+      <button class="btn" id="btnJson" title="Download JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H6a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2M16 3h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2"/></svg>
+        <span class="lbl">JSON</span>
+      </button>
+      <button class="btn pri" id="btnShare" title="Copy share link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>
+        <span class="lbl">Share</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ LEFT: data ============ -->
+    <section class="pane left" id="paneData">
+      <div class="pane-scroll">
+        <div class="card">
+          <h2>Flow source <span class="pill" id="lineCount">0 lines</span></h2>
+          <div class="edwrap">
+            <textarea id="dsl" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+          </div>
+          <div id="parse"></div>
+          <div class="syntax">
+            <b>Source [value] Target</b> — one flow per line<br>
+            <b>Name #38bdf8</b> — pin a node colour<br>
+            <b>// text</b> — comment
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Quick add</h2>
+          <div class="addrow">
+            <input id="qFrom" placeholder="from" autocomplete="off">
+            <input id="qVal" placeholder="12" inputmode="decimal" autocomplete="off">
+            <input id="qTo" placeholder="to" autocomplete="off">
+          </div>
+          <button class="btn" id="qAdd" style="width:100%;justify-content:center;margin-top:7px">Append flow</button>
+        </div>
+
+        <div class="card">
+          <h2>Presets</h2>
+          <div class="presets" id="presets"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CENTRE: diagram ============ -->
+    <section class="pane stage">
+      <div id="plot">
+        <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="tip"></div>
+      </div>
+      <div class="statusbar">
+        <span><b id="sNodes">0</b> nodes</span>
+        <span><b id="sLinks">0</b> flows</span>
+        <span><b id="sTotal">0</b> total</span>
+        <span><b id="sDepth">0</b> stages</span>
+        <span class="hint">drag a node vertically to pin it · double-click to release · hover to trace</span>
+      </div>
+      <div class="tabs">
+        <button data-tab="chart" class="on">Diagram</button>
+        <button data-tab="data">Data</button>
+        <button data-tab="style">Style</button>
+      </div>
+    </section>
+
+    <!-- ============ RIGHT: style ============ -->
+    <section class="pane right" id="paneStyle">
+      <div class="pane-scroll">
+        <div class="card">
+          <h2>Layout</h2>
+          <div class="ctl">
+            <label>Node width <b id="vNw">16</b></label>
+            <input type="range" id="nw" min="6" max="42" step="1" value="16">
+          </div>
+          <div class="ctl">
+            <label>Node gap <b id="vNp">16</b></label>
+            <input type="range" id="np" min="2" max="46" step="1" value="16">
+          </div>
+          <div class="ctl">
+            <label>Curvature <b id="vCv">0.50</b></label>
+            <input type="range" id="cv" min="0" max="1" step="0.02" value="0.5">
+          </div>
+          <div class="ctl">
+            <label>Relax passes <b id="vIt">8</b></label>
+            <input type="range" id="it" min="0" max="40" step="1" value="8">
+          </div>
+          <div class="ctl">
+            <label>Alignment</label>
+            <div class="seg" id="align">
+              <button data-v="justify" class="on">Justify</button>
+              <button data-v="left">Left</button>
+              <button data-v="right">Right</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Colour</h2>
+          <div class="ctl">
+            <label>Palette</label>
+            <select id="pal"></select>
+            <div class="swatches" id="swatches"></div>
+          </div>
+          <div class="ctl">
+            <label>Flow colour</label>
+            <div class="seg" id="lmode">
+              <button data-v="gradient" class="on">Blend</button>
+              <button data-v="source">Source</button>
+              <button data-v="target">Target</button>
+              <button data-v="flat">Flat</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label>Flow opacity <b id="vLo">0.42</b></label>
+            <input type="range" id="lo" min="0.08" max="0.9" step="0.02" value="0.42">
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Labels</h2>
+          <div class="ctl">
+            <label>Text size <b id="vFs">13</b></label>
+            <input type="range" id="fs" min="9" max="22" step="1" value="13">
+          </div>
+          <div class="ctl">
+            <label>Unit suffix</label>
+            <input class="txtin" id="unit" placeholder="e.g. TWh" autocomplete="off">
+          </div>
+          <label class="chk"><input type="checkbox" id="showVal" checked> Show values in labels</label>
+          <label class="chk"><input type="checkbox" id="showTitle" checked> Show diagram title</label>
+          <div class="ctl" style="margin-top:9px">
+            <label>Title</label>
+            <input class="txtin" id="title" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Session</h2>
+          <button class="btn" id="btnReset" style="width:100%;justify-content:center">Reset to defaults</button>
+          <div style="font-size:11px;color:var(--dim2);margin-top:8px;line-height:1.5">
+            Your diagram autosaves to this browser and travels inside the share link — no server involved.
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================================================
+   0 · constants + tiny helpers
+   ============================================================ */
+const $  = id => document.getElementById(id);
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const SVGNS = 'http://www.w3.org/2000/svg';
+const STORE = 'fluxion_v1';
+
+const PALETTES = {
+  aurora   : ['#5eead4','#38bdf8','#818cf8','#c084fc','#f472b6','#fbbf24','#4ade80','#facc15'],
+  ember    : ['#fb7185','#f97316','#fbbf24','#f43f5e','#fda4af','#fdba74','#eab308','#e11d48'],
+  forest   : ['#4ade80','#22d3ee','#a3e635','#34d399','#86efac','#67e8f9','#bef264','#10b981'],
+  dusk     : ['#818cf8','#a78bfa','#f472b6','#60a5fa','#c4b5fd','#f0abfc','#93c5fd','#e879f9'],
+  slate    : ['#94a3b8','#cbd5e1','#64748b','#e2e8f0','#7dd3fc','#a5b4fc','#f1f5f9','#475569'],
+  tropical : ['#06b6d4','#f59e0b','#ec4899','#84cc16','#8b5cf6','#14b8a6','#ef4444','#3b82f6']
+};
+
+const PRESETS = {
+  energy: {
+    name:'Global energy', note:'sources → carriers → uses', unit:'TWh',
+    title:'Where a year of primary energy actually goes',
+    dsl:`// Primary energy → carriers → end use
+Coal [172] Electricity
+Gas [148] Electricity
+Nuclear [96] Electricity
+Hydro [64] Electricity
+Wind [58] Electricity
+Solar [44] Electricity
+Gas [90] Direct heat
+Oil [210] Refining
+Refining [126] Transport
+Refining [52] Industry
+Refining [32] Petrochemicals
+Electricity [188] Industry
+Electricity [154] Buildings
+Electricity [58] Transport
+Electricity [82] Losses
+Direct heat [58] Buildings
+Direct heat [32] Industry
+Coal #64748b
+Gas #f59e0b
+Oil #fb7185
+Nuclear #c084fc
+Hydro #38bdf8
+Wind #5eead4
+Solar #fbbf24
+Losses #475569`
+  },
+  budget: {
+    name:'Startup budget', note:'revenue → spend → margin', unit:'k',
+    title:'Series A burn: where every dollar lands',
+    dsl:`// Seed round + revenue against spend
+Seed round [4200] Cash in
+Revenue [1850] Cash in
+Grants [240] Cash in
+Cash in [2480] Engineering
+Cash in [980] Go-to-market
+Cash in [640] Infrastructure
+Cash in [420] Operations
+Cash in [1770] Runway left
+Engineering [1720] Salaries
+Engineering [520] Contractors
+Engineering [240] Tooling
+Go-to-market [560] Salaries
+Go-to-market [420] Paid growth
+Infrastructure [430] Cloud
+Infrastructure [210] Data
+Operations [250] Salaries
+Operations [170] Office
+Runway left #5eead4
+Salaries #818cf8
+Cloud #38bdf8`
+  },
+  funnel: {
+    name:'Signup funnel', note:'traffic → activation', unit:'users',
+    title:'From first visit to a habit, in five stages',
+    dsl:`// Acquisition through to retention
+Organic [12400] Landing
+Paid ads [7800] Landing
+Referral [3100] Landing
+Newsletter [2200] Landing
+Landing [9600] Signed up
+Landing [15900] Bounced
+Signed up [6100] Onboarded
+Signed up [3500] Dormant
+Onboarded [4200] Activated
+Onboarded [1900] Churned
+Activated [2600] Weekly habit
+Activated [1600] Occasional
+Bounced #475569
+Churned #fb7185
+Dormant #64748b
+Weekly habit #5eead4`
+  },
+  ocean: {
+    name:'Plastic flow', note:'production → fate', unit:'Mt',
+    title:'Every megatonne of plastic ever made',
+    dsl:`// Production to final fate
+Packaging [146] Produced
+Textiles [59] Produced
+Consumer goods [42] Produced
+Construction [65] Produced
+Transport [27] Produced
+Produced [242] Discarded
+Produced [58] Recycled
+Produced [39] Incinerated
+Recycled [22] Back to use
+Recycled [36] Downcycled
+Discarded [178] Landfill
+Discarded [64] Environment
+Environment [22] Ocean
+Environment [42] Soil
+Ocean #38bdf8
+Recycled #4ade80
+Landfill #64748b
+Environment #fb7185`
+  }
+};
+
+const DEFAULTS = {
+  preset:'energy', dsl:PRESETS.energy.dsl, title:PRESETS.energy.title, unit:PRESETS.energy.unit,
+  nw:16, np:16, cv:0.5, it:8, align:'justify',
+  pal:'aurora', lmode:'gradient', lo:0.42, fs:13,
+  showVal:true, showTitle:true, pins:{}
+};
+
+let S = Object.assign({}, DEFAULTS, {pins:{}});
+let graph = {nodes:[], links:[], depth:0, total:0};
+let hoverKey = null, dragging = null;
+
+/* ---------- base64 that survives unicode ---------- */
+function b64enc(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64dec(s){
+  const norm = s.replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(norm + '==='.slice((norm.length + 3) % 4));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('on'), 1900);
+}
+
+function fmt(v){
+  const u = S.unit ? ' ' + S.unit : '';
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v/1e9).toFixed(2).replace(/\.?0+$/,'') + 'B' + u;
+  if (a >= 1e6) return (v/1e6).toFixed(2).replace(/\.?0+$/,'') + 'M' + u;
+  if (a >= 1000) return (v/1000).toFixed(a >= 1e4 ? 1 : 2).replace(/\.?0+$/,'') + 'k' + u;
+  const r = Math.round(v * 100) / 100;
+  return String(r) + u;
+}
+
+/* colour helpers — everything stays hex so exported SVG is portable */
+function hex2rgb(h){
+  let s = h.replace('#','');
+  if (s.length === 3) s = s.split('').map(c => c + c).join('');
+  return [parseInt(s.slice(0,2),16), parseInt(s.slice(2,4),16), parseInt(s.slice(4,6),16)];
+}
+function rgb2hex(r,g,b){
+  return '#' + [r,g,b].map(v => clamp(Math.round(v),0,255).toString(16).padStart(2,'0')).join('');
+}
+function mix(a,b,t){
+  const A = hex2rgb(a), B = hex2rgb(b);
+  return rgb2hex(A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t, A[2]+(B[2]-A[2])*t);
+}
+
+/* ============================================================
+   1 · parse the flow DSL
+   ============================================================ */
+function parse(text){
+  const links = [], colors = {}, errors = [];
+  const order = [];
+  const lines = text.split('\n');
+  const adj = new Map();                        // accepted edges only
+
+  // can we already walk from `from` to `to`? if so a new to→from edge closes a loop
+  const reaches = (from, to) => {
+    const seen = new Set([from]);
+    const stack = [from];
+    while (stack.length){
+      const cur = stack.pop();
+      if (cur === to) return true;
+      for (const nx of (adj.get(cur) || [])) if (!seen.has(nx)){ seen.add(nx); stack.push(nx); }
+    }
+    return false;
+  };
+
+  for (let i = 0; i < lines.length; i++){
+    let raw = lines[i];
+    const cut = raw.indexOf('//');
+    if (cut >= 0) raw = raw.slice(0, cut);
+    const line = raw.trim();
+    if (!line) continue;
+
+    const lm = line.match(/^(.+?)\s*\[\s*(-?[\d.]+)\s*\]\s*(.+?)$/);
+    if (lm){
+      const src = lm[1].trim(), tgt = lm[3].trim(), val = parseFloat(lm[2]);
+      if (!src || !tgt){ errors.push({line:i+1, msg:'flow needs a name on both sides'}); continue; }
+      if (!isFinite(val) || val <= 0){ errors.push({line:i+1, msg:'value must be a positive number'}); continue; }
+      if (src === tgt){ errors.push({line:i+1, msg:`"${src}" flows into itself`}); continue; }
+      // a Sankey has to run one way; a back edge would smear every column
+      if (reaches(tgt, src)){
+        errors.push({line:i+1, msg:`skipped — ${tgt} → ${src} would close a loop`});
+        continue;
+      }
+      if (order.indexOf(src) < 0) order.push(src);
+      if (order.indexOf(tgt) < 0) order.push(tgt);
+      if (!adj.has(src)) adj.set(src, []);
+      adj.get(src).push(tgt);
+      links.push({source:src, target:tgt, value:val, line:i+1});
+      continue;
+    }
+
+    const cm = line.match(/^(.+?)\s+(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)$/);
+    if (cm){ colors[cm[1].trim()] = cm[2]; continue; }
+
+    errors.push({line:i+1, msg:'expected  Source [value] Target'});
+  }
+
+  return {links, colors, order, errors};
+}
+
+/* ============================================================
+   2 · Sankey layout (depth assignment → value scale → relax)
+   ============================================================ */
+function layout(parsed, W, H){
+  const {links, colors, order} = parsed;
+  const nodes = new Map();
+  const pal = PALETTES[S.pal] || PALETTES.aurora;
+
+  order.forEach((name, i) => {
+    nodes.set(name, {
+      name, index:i, out:[], in:[], value:0, depth:0, x0:0, x1:0, y0:0, y1:0,
+      color: colors[name] || pal[i % pal.length]
+    });
+  });
+
+  const L = links.map((l, i) => ({
+    id:i, source:nodes.get(l.source), target:nodes.get(l.target),
+    value:l.value, y0:0, y1:0, w:0
+  }));
+  L.forEach(l => { l.source.out.push(l); l.target.in.push(l); });
+
+  // --- node totals
+  for (const n of nodes.values()){
+    const si = n.in.reduce((s,l) => s + l.value, 0);
+    const so = n.out.reduce((s,l) => s + l.value, 0);
+    n.value = Math.max(si, so, 1e-9);
+    n.inSum = si; n.outSum = so;
+  }
+
+  // --- depth by longest path from any source; cycles get broken safely
+  const list = [...nodes.values()];
+  let changed = true, guard = 0;
+  while (changed && guard++ < list.length + 4){
+    changed = false;
+    for (const l of L){
+      const want = l.source.depth + 1;
+      if (want > l.target.depth){ l.target.depth = want; changed = true; }
+    }
+  }
+  const cyclic = changed;                       // never settled → contains a cycle
+  let maxDepth = 0;
+  for (const n of nodes.values()) maxDepth = Math.max(maxDepth, n.depth);
+
+  // --- alignment: push pure sinks to the far right when justifying
+  if (S.align === 'justify'){
+    for (const n of nodes.values()) if (n.out.length === 0) n.depth = maxDepth;
+  } else if (S.align === 'right'){
+    for (const n of nodes.values()) if (n.out.length === 0) n.depth = maxDepth;
+    // shift everything as late as its earliest consumer allows
+    for (let pass = 0; pass < 6; pass++){
+      for (const n of [...nodes.values()].sort((a,b) => b.depth - a.depth)){
+        if (!n.out.length) continue;
+        const earliest = Math.min(...n.out.map(l => l.target.depth));
+        if (earliest - 1 > n.depth) n.depth = earliest - 1;
+      }
+    }
+  }
+  maxDepth = 0;
+  for (const n of nodes.values()) maxDepth = Math.max(maxDepth, n.depth);
+
+  // --- columns
+  const cols = [];
+  for (let d = 0; d <= maxDepth; d++) cols.push([]);
+  for (const n of nodes.values()) cols[n.depth].push(n);
+  cols.forEach(c => c.sort((a,b) => a.index - b.index));
+
+  const nw = S.nw;
+  const colGap = maxDepth > 0 ? (W - nw) / maxDepth : 0;
+  for (const n of nodes.values()){
+    n.x0 = n.depth * colGap;
+    n.x1 = n.x0 + nw;
+  }
+
+  // --- vertical scale: the tightest column decides
+  let ky = Infinity;
+  for (const col of cols){
+    if (!col.length) continue;
+    const sum = col.reduce((s,n) => s + n.value, 0);
+    const free = H - (col.length - 1) * S.np;
+    ky = Math.min(ky, free / Math.max(sum, 1e-9));
+  }
+  if (!isFinite(ky) || ky <= 0) ky = 1;
+
+  for (const n of nodes.values()){
+    const h = Math.max(n.value * ky, 1.5);
+    n.h = h;
+  }
+
+  // --- initial stacking, then relaxation between columns
+  for (const col of cols){
+    let y = 0;
+    for (const n of col){ n.y0 = y; n.y1 = y + n.h; y += n.h + S.np; }
+    centre(col, H);
+  }
+
+  const iterations = S.it;
+  for (let it = 0; it < iterations; it++){
+    const alpha = Math.pow(0.99, it);
+    // left → right
+    for (let d = 1; d < cols.length; d++) pull(cols[d], n => n.in,  l => l.source, alpha, H);
+    // right → left
+    for (let d = cols.length - 2; d >= 0; d--) pull(cols[d], n => n.out, l => l.target, alpha, H);
+  }
+
+  // --- honour pinned nodes (user drags), then fix collisions once more
+  for (const col of cols){
+    let touched = false;
+    for (const n of col){
+      const p = S.pins[n.name];
+      if (p != null){
+        const y = clamp(p * H, 0, Math.max(0, H - n.h));
+        n.y0 = y; n.y1 = y + n.h; n.pinned = true; touched = true;
+      }
+    }
+    if (touched) resolve(col, H, true);
+  }
+
+  // --- link ribbons stack in vertical order at each side
+  for (const n of nodes.values()){
+    n.out.sort((a,b) => a.target.y0 - b.target.y0 || a.target.index - b.target.index);
+    n.in .sort((a,b) => a.source.y0 - b.source.y0 || a.source.index - b.source.index);
+  }
+  for (const n of nodes.values()){
+    let y = n.y0;
+    for (const l of n.out){ l.w = Math.max(l.value * ky, 0.8); l.y0 = y + l.w / 2; y += l.w; }
+    y = n.y0;
+    for (const l of n.in){ l.y1 = y + Math.max(l.value * ky, 0.8) / 2; y += Math.max(l.value * ky, 0.8); }
+  }
+
+  const total = [...nodes.values()].filter(n => n.in.length === 0).reduce((s,n) => s + n.value, 0);
+  return {nodes:list, links:L, cols, depth:maxDepth + 1, total, ky, cyclic};
+
+  function centre(col, H){
+    if (!col.length) return;
+    const dy = (H - (col[col.length-1].y1 - col[0].y0)) / 2 - col[0].y0;
+    for (const n of col){ n.y0 += dy; n.y1 += dy; }
+  }
+  function pull(col, pick, other, alpha, H){
+    for (const n of col){
+      if (n.pinned) continue;
+      const ls = pick(n);
+      if (!ls.length) continue;
+      let wsum = 0, ysum = 0;
+      for (const l of ls){
+        const o = other(l);
+        ysum += (o.y0 + o.h / 2) * l.value;
+        wsum += l.value;
+      }
+      if (!wsum) continue;
+      const want = ysum / wsum - n.h / 2;
+      n.y0 += (want - n.y0) * alpha * 0.9;
+      n.y1 = n.y0 + n.h;
+    }
+    resolve(col, H, false);
+  }
+  function resolve(col, H, hard){
+    col.sort((a,b) => a.y0 - b.y0);
+    let y = 0;
+    for (const n of col){                     // push down
+      const d = y - n.y0;
+      if (d > 0 && !(hard && n.pinned)){ n.y0 += d; n.y1 = n.y0 + n.h; }
+      y = n.y1 + S.np;
+    }
+    y = H;
+    for (let i = col.length - 1; i >= 0; i--){ // push back up
+      const n = col[i];
+      const d = n.y1 - y;
+      if (d > 0 && !(hard && n.pinned)){ n.y0 -= d; n.y1 = n.y0 + n.h; }
+      y = n.y0 - S.np;
+    }
+  }
+}
+
+/* ============================================================
+   3 · geometry → SVG
+   ============================================================ */
+function ribbon(l, curve){
+  const x0 = l.source.x1, x1 = l.target.x0;
+  const cx = (x1 - x0) * clamp(curve, 0, 1) * 0.5;
+  const a = x0 + cx, b = x1 - cx;
+  const h = l.w / 2;
+  return `M${r2(x0)},${r2(l.y0 - h)}`
+       + `C${r2(a)},${r2(l.y0 - h)} ${r2(b)},${r2(l.y1 - h)} ${r2(x1)},${r2(l.y1 - h)}`
+       + `L${r2(x1)},${r2(l.y1 + h)}`
+       + `C${r2(b)},${r2(l.y1 + h)} ${r2(a)},${r2(l.y0 + h)} ${r2(x0)},${r2(l.y0 + h)}Z`;
+}
+const r2 = v => Math.round(v * 100) / 100;
+
+function el(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+const MARGIN = {t:34, r:20, b:22, l:20};
+
+function render(){
+  const svg = $('svg');
+  const box = $('plot').getBoundingClientRect();
+  const W = Math.max(320, Math.round(box.width));
+  const H = Math.max(240, Math.round(box.height));
+
+  const parsed = parse(S.dsl);
+  reportParse(parsed);
+
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+
+  if (!parsed.links.length){
+    svg.appendChild(el('rect', {x:0, y:0, width:W, height:H, fill:'none'}));
+    const t = el('text', {x:W/2, y:H/2, 'text-anchor':'middle', fill:'#61708d',
+      'font-family':'system-ui, sans-serif', 'font-size':14});
+    t.textContent = 'Add a flow on the left — e.g.  Coal [120] Electricity';
+    svg.appendChild(t);
+    setStats(0,0,0,0);
+    return;
+  }
+
+  // the longest name decides both gutters, so the end columns label into clear air
+  const est = Math.max(...parsed.order.map(n => n.length)) * S.fs * 0.56 + 26;
+  const gutter = clamp(est, 60, Math.min(230, W * 0.28));
+  const titleH = (S.showTitle && S.title) ? MARGIN.t : 10;
+
+  let iw = Math.max(90, W - MARGIN.l - MARGIN.r - gutter * 2);
+  const ih = Math.max(80, H - titleH - MARGIN.b);
+
+  let g = layout(parsed, iw, ih);
+
+  // a phone can't fit six columns of labels — widen the canvas and let it scroll
+  const MIN_COL = 150;
+  const wantIw = Math.max(iw, (g.depth - 1) * MIN_COL + S.nw);
+  let totalW = W;
+  if (wantIw > iw + 1){
+    iw = wantIw;
+    totalW = MARGIN.l + MARGIN.r + gutter * 2 + iw;
+    svg.setAttribute('viewBox', `0 0 ${totalW} ${H}`);
+    svg.setAttribute('width', totalW);
+    svg.style.width = totalW + 'px';
+    g = layout(parsed, iw, ih);
+  } else {
+    svg.style.width = '';
+  }
+  graph = g;
+
+  const defs = el('defs', {});
+  svg.appendChild(defs);
+
+  const ox = MARGIN.l + gutter;
+  const root = el('g', {transform:`translate(${ox},${titleH})`});
+  svg.appendChild(root);
+
+  if (S.showTitle && S.title){
+    const t = el('text', {x:MARGIN.l, y:22, fill:'#e8eefc', 'font-family':'system-ui, sans-serif',
+      'font-size':Math.max(13, S.fs + 2), 'font-weight':'650'});
+    t.textContent = S.title;
+    svg.appendChild(t);
+    // shrink, then clip with an ellipsis, rather than running off a narrow screen
+    const room = Math.min(totalW, W) - MARGIN.l * 2;   // stay inside the visible scrollport
+    let size = Math.max(13, S.fs + 2);
+    while (size > 11 && t.getComputedTextLength() > room){
+      size -= 1;
+      t.setAttribute('font-size', size);
+    }
+    if (t.getComputedTextLength() > room){
+      let txt = S.title;
+      while (txt.length > 4 && t.getComputedTextLength() > room){
+        txt = txt.slice(0, -2);
+        t.textContent = txt + '…';
+      }
+    }
+  }
+
+  /* ---- links first, so nodes sit on top ---- */
+  const gl = el('g', {'fill-opacity':S.lo});
+  root.appendChild(gl);
+
+  const uid = 'fx' + Math.random().toString(36).slice(2, 7);
+  g.links.forEach(l => {
+    let fill;
+    if (S.lmode === 'source') fill = l.source.color;
+    else if (S.lmode === 'target') fill = l.target.color;
+    else if (S.lmode === 'flat') fill = '#7f93b8';
+    else {
+      const id = `${uid}-${l.id}`;
+      const lg = el('linearGradient', {id, gradientUnits:'userSpaceOnUse',
+        x1:r2(l.source.x1), x2:r2(l.target.x0), y1:0, y2:0});
+      lg.appendChild(el('stop', {offset:'0%',   'stop-color':l.source.color}));
+      lg.appendChild(el('stop', {offset:'100%', 'stop-color':l.target.color}));
+      defs.appendChild(lg);
+      fill = `url(#${id})`;
+    }
+    const p = el('path', {d:ribbon(l, S.cv), fill, stroke:'none'});
+    p.dataset.link = l.id;
+    gl.appendChild(p);
+    l.el = p;
+  });
+
+  /* ---- nodes + labels ---- */
+  const gn = el('g', {});
+  root.appendChild(gn);
+
+  g.nodes.forEach(n => {
+    const rect = el('rect', {
+      x:r2(n.x0), y:r2(n.y0), width:r2(n.x1 - n.x0), height:r2(Math.max(n.h, 1.5)),
+      rx:Math.min(4, S.nw / 3), fill:n.color,
+      stroke: n.pinned ? '#ffffff' : 'none', 'stroke-width': n.pinned ? 1.25 : 0,
+      'stroke-dasharray': n.pinned ? '3 2' : null
+    });
+    rect.dataset.node = n.name;
+    rect.style.cursor = 'ns-resize';
+    gn.appendChild(rect);
+    n.el = rect;
+
+    // ends label outward into their gutter; middles fall back to the halved rule
+    const right = n.depth === g.depth - 1 ? true
+                : n.depth === 0           ? false
+                : n.x0 < iw / 2;
+    const label = el('text', {
+      x: r2(right ? n.x1 + 8 : n.x0 - 8),
+      y: r2(n.y0 + Math.max(n.h, 1.5) / 2),
+      'text-anchor': right ? 'start' : 'end',
+      'dominant-baseline':'middle',
+      fill:'#e8eefc', 'font-family':'system-ui, -apple-system, sans-serif',
+      'font-size':S.fs, 'font-weight':'560',
+      'paint-order':'stroke', stroke:'#0a0e17', 'stroke-width':3, 'stroke-linejoin':'round'
+    });
+    label.textContent = n.name;
+    gn.appendChild(label);
+    n.label = label;
+
+    if (S.showVal){
+      const v = el('text', {
+        x: r2(right ? n.x1 + 8 : n.x0 - 8),
+        y: r2(n.y0 + Math.max(n.h, 1.5) / 2 + S.fs * 1.05),
+        'text-anchor': right ? 'start' : 'end',
+        'dominant-baseline':'middle',
+        fill:'#8fa3c4', 'font-family':'ui-monospace, Menlo, monospace',
+        'font-size':Math.max(9, S.fs - 3),
+        'paint-order':'stroke', stroke:'#0a0e17', 'stroke-width':3, 'stroke-linejoin':'round'
+      });
+      v.textContent = fmt(n.value);
+      gn.appendChild(v);
+      n.valEl = v;
+    }
+  });
+
+  setStats(g.nodes.length, g.links.length, g.total, g.depth);
+  if (hoverKey) applyHover(hoverKey);
+}
+
+function setStats(n, l, t, d){
+  $('sNodes').textContent = n;
+  $('sLinks').textContent = l;
+  $('sTotal').textContent = t ? fmt(t) : '0';
+  $('sDepth').textContent = d;
+}
+
+function reportParse(p){
+  const box = $('parse');
+  const lines = S.dsl.split('\n').filter(s => s.trim()).length;
+  $('lineCount').textContent = lines + (lines === 1 ? ' line' : ' lines');
+  if (p.errors.length){
+    box.className = 'bad';
+    box.textContent = p.errors.slice(0,3)
+      .map(e => `line ${e.line}: ${e.msg}`).join('\n')
+      + (p.errors.length > 3 ? `\n…and ${p.errors.length - 3} more` : '')
+      + (p.links.length ? `\n${p.links.length} good flows still drawn` : '');
+    box.style.whiteSpace = 'pre-wrap';
+  } else if (p.links.length){
+    box.className = 'ok';
+    box.textContent = `${p.links.length} flows · ${p.order.length} nodes parsed`;
+  } else {
+    box.className = '';
+  }
+}
+
+/* ============================================================
+   4 · hover / trace / drag
+   ============================================================ */
+function applyHover(key){
+  if (!graph.links) return;
+  const [kind, val] = key.split(':');
+  const lit = new Set();
+  if (kind === 'link'){
+    lit.add(+val);
+  } else {
+    graph.links.forEach(l => { if (l.source.name === val || l.target.name === val) lit.add(l.id); });
+  }
+  graph.links.forEach(l => {
+    if (!l.el) return;
+    const on = lit.has(l.id);
+    l.el.setAttribute('fill-opacity', on ? Math.min(0.95, S.lo + 0.45) : S.lo * 0.28);
+  });
+  graph.nodes.forEach(n => {
+    if (!n.el) return;
+    const touching = kind === 'node'
+      ? (n.name === val || n.out.some(l => lit.has(l.id)) || n.in.some(l => lit.has(l.id)))
+      : n.out.some(l => lit.has(l.id)) || n.in.some(l => lit.has(l.id));
+    n.el.setAttribute('opacity', touching ? 1 : 0.32);
+    if (n.label) n.label.setAttribute('opacity', touching ? 1 : 0.4);
+    if (n.valEl) n.valEl.setAttribute('opacity', touching ? 1 : 0.4);
+  });
+}
+function clearHover(){
+  hoverKey = null;
+  if (!graph.links) return;
+  graph.links.forEach(l => l.el && l.el.setAttribute('fill-opacity', S.lo));
+  graph.nodes.forEach(n => {
+    n.el && n.el.setAttribute('opacity', 1);
+    n.label && n.label.setAttribute('opacity', 1);
+    n.valEl && n.valEl.setAttribute('opacity', 1);
+  });
+  $('tip').style.opacity = 0;
+}
+
+function showTip(x, y, html){
+  const t = $('tip');
+  t.innerHTML = html;
+  const r = $('plot').getBoundingClientRect();
+  t.style.left = clamp(x - r.left, 70, r.width - 70) + 'px';
+  t.style.top  = clamp(y - r.top, 46, r.height - 8) + 'px';
+  t.style.opacity = 1;
+}
+
+function hitTest(ev){
+  const el = document.elementFromPoint(ev.clientX, ev.clientY);
+  if (!el || !el.dataset) return null;
+  if (el.dataset.link != null) return {kind:'link', id:+el.dataset.link};
+  if (el.dataset.node != null) return {kind:'node', name:el.dataset.node};
+  return null;
+}
+
+function onMove(ev){
+  if (dragging){
+    const rect = $('plot').getBoundingClientRect();
+    const titleH = (S.showTitle && S.title) ? MARGIN.t : 10;
+    const ih = Math.max(80, rect.height - titleH - MARGIN.b);
+    const y = ev.clientY - rect.top - titleH - dragging.grab;
+    S.pins[dragging.name] = clamp(y / ih, 0, 1);
+    render();
+    return;
+  }
+  const hit = hitTest(ev);
+  if (!hit){ if (hoverKey) clearHover(); return; }
+
+  if (hit.kind === 'link'){
+    const l = graph.links[hit.id];
+    if (!l) return;
+    const key = 'link:' + hit.id;
+    if (key !== hoverKey){ hoverKey = key; applyHover(key); }
+    const share = l.source.value ? (l.value / l.source.value * 100) : 0;
+    showTip(ev.clientX, ev.clientY,
+      `<b>${esc(l.source.name)} → ${esc(l.target.name)}</b><s>${esc(fmt(l.value))} · ${share.toFixed(1)}% of ${esc(l.source.name)}</s>`);
+  } else {
+    const n = graph.nodes.find(n => n.name === hit.name);
+    if (!n) return;
+    const key = 'node:' + hit.name;
+    if (key !== hoverKey){ hoverKey = key; applyHover(key); }
+    showTip(ev.clientX, ev.clientY,
+      `<b>${esc(n.name)}</b><s>in ${esc(fmt(n.inSum))} · out ${esc(fmt(n.outSum))} · ${n.in.length + n.out.length} flows</s>`);
+  }
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function onDown(ev){
+  const hit = hitTest(ev);
+  if (!hit || hit.kind !== 'node') return;
+  const n = graph.nodes.find(n => n.name === hit.name);
+  if (!n) return;
+  const rect = $('plot').getBoundingClientRect();
+  const titleH = (S.showTitle && S.title) ? MARGIN.t : 10;
+  dragging = {name:n.name, grab: ev.clientY - rect.top - titleH - n.y0};
+  $('svg').setPointerCapture && $('svg').setPointerCapture(ev.pointerId);
+  ev.preventDefault();
+}
+function onUp(){
+  if (dragging){ dragging = null; save(); }
+}
+
+/* ============================================================
+   5 · exports
+   ============================================================ */
+function serialize(){
+  const svg = $('svg').cloneNode(true);
+  svg.setAttribute('xmlns', SVGNS);
+  svg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+  const w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+  const bg = el('rect', {x:0, y:0, width:w, height:h, fill:'#0a0e17'});
+  svg.insertBefore(bg, svg.firstChild);
+  return {text:'<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(svg), w, h};
+}
+
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function exportSVG(){
+  const {text} = serialize();
+  download(new Blob([text], {type:'image/svg+xml;charset=utf-8'}), fileName('svg'));
+  toast('SVG saved · ' + Math.round(text.length / 1024) + ' KB');
+}
+
+function exportPNG(){
+  const {text, w, h} = serialize();
+  const scale = 2;
+  const blob = new Blob([text], {type:'image/svg+xml;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = w * scale; c.height = h * scale;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    try {
+      c.toBlob(b => {
+        if (!b || !b.size){ toast('PNG blocked — SVG saved instead'); exportSVG(); return; }
+        download(b, fileName('png'));
+        toast('PNG saved · ' + Math.round(b.size / 1024) + ' KB');
+      }, 'image/png');
+    } catch (e){
+      toast('PNG blocked — SVG saved instead');
+      exportSVG();
+    }
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('PNG failed — saving SVG'); exportSVG(); };
+  img.src = url;
+}
+
+function exportJSON(){
+  const p = parse(S.dsl);
+  const payload = {
+    format:'fluxion-sankey/1',
+    title:S.title, unit:S.unit,
+    generated:new Date().toISOString(),
+    nodes:p.order.map(n => ({name:n, color:(p.colors[n] || null)})),
+    links:p.links.map(l => ({source:l.source, target:l.target, value:l.value})),
+    style:{nodeWidth:S.nw, nodePadding:S.np, curvature:S.cv, iterations:S.it,
+           align:S.align, palette:S.pal, linkMode:S.lmode, linkOpacity:S.lo, fontSize:S.fs},
+    pins:S.pins
+  };
+  const text = JSON.stringify(payload, null, 2);
+  download(new Blob([text], {type:'application/json'}), fileName('json'));
+  toast('JSON saved · ' + payload.links.length + ' flows');
+}
+
+function fileName(ext){
+  const base = (S.title || 'sankey').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,42);
+  return (base || 'sankey') + '.' + ext;
+}
+
+function shareLink(){
+  const state = {d:S.dsl, t:S.title, u:S.unit, nw:S.nw, np:S.np, cv:S.cv, it:S.it,
+    al:S.align, pl:S.pal, lm:S.lmode, lo:S.lo, fs:S.fs,
+    sv:S.showVal ? 1 : 0, st:S.showTitle ? 1 : 0, pn:S.pins};
+  const url = location.origin + location.pathname + '#' + b64enc(JSON.stringify(state));
+  const done = ok => {
+    history.replaceState(null, '', '#' + b64enc(JSON.stringify(state)));
+    toast(ok ? 'Share link copied to clipboard' : 'Share link is in the address bar');
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(() => done(true), () => done(false));
+  } else done(false);
+}
+
+/* ============================================================
+   6 · state plumbing
+   ============================================================ */
+let saveTimer = 0;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e){ /* private mode */ }
+  }, 220);
+}
+
+function loadState(){
+  // hash wins over localStorage so shared links always show what was shared
+  if (location.hash.length > 3){
+    try {
+      const o = JSON.parse(b64dec(location.hash.slice(1)));
+      Object.assign(S, {
+        dsl:o.d ?? S.dsl, title:o.t ?? S.title, unit:o.u ?? S.unit,
+        nw:o.nw ?? S.nw, np:o.np ?? S.np, cv:o.cv ?? S.cv, it:o.it ?? S.it,
+        align:o.al ?? S.align, pal:o.pl ?? S.pal, lmode:o.lm ?? S.lmode,
+        lo:o.lo ?? S.lo, fs:o.fs ?? S.fs,
+        showVal:o.sv !== 0, showTitle:o.st !== 0, pins:o.pn || {}
+      });
+      return 'link';
+    } catch (e){ /* fall through */ }
+  }
+  try {
+    const raw = localStorage.getItem(STORE);
+    if (raw){
+      const o = JSON.parse(raw);
+      Object.assign(S, o);
+      S.pins = o.pins || {};
+      return 'saved';
+    }
+  } catch (e){ /* ignore */ }
+  return 'fresh';
+}
+
+function applyPreset(key){
+  const p = PRESETS[key];
+  if (!p) return;
+  S.preset = key; S.dsl = p.dsl; S.title = p.title; S.unit = p.unit; S.pins = {};
+  syncInputs();
+  render(); save();
+  document.querySelectorAll('.preset').forEach(b => b.classList.toggle('on', b.dataset.k === key));
+}
+
+/* ---------- wire up ---------- */
+function bindRange(id, key, label, decimals){
+  const r = $(id), out = $(label);
+  const paint = () => {
+    const p = (r.value - r.min) / (r.max - r.min) * 100;
+    r.style.setProperty('--p', p + '%');
+    out.textContent = decimals ? (+r.value).toFixed(decimals) : r.value;
+  };
+  r.addEventListener('input', () => {
+    S[key] = +r.value;
+    paint(); render(); save();
+  });
+  r._paint = paint;
+  paint();
+}
+
+function bindSeg(id, key){
+  const wrap = $(id);
+  wrap.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    S[key] = b.dataset.v;
+    [...wrap.children].forEach(c => c.classList.toggle('on', c === b));
+    render(); save();
+  });
+}
+
+function drawSwatches(){
+  const wrap = $('swatches');
+  wrap.innerHTML = '';
+  (PALETTES[S.pal] || PALETTES.aurora).slice(0,8).forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'sw';
+    d.style.background = c;
+    wrap.appendChild(d);
+  });
+}
+
+function syncInputs(){
+  $('dsl').value = S.dsl;
+  $('title').value = S.title;
+  $('unit').value = S.unit;
+  $('nw').value = S.nw;  $('np').value = S.np;
+  $('cv').value = S.cv;  $('it').value = S.it;
+  $('lo').value = S.lo;  $('fs').value = S.fs;
+  ['nw','np','cv','it','lo','fs'].forEach(id => $(id)._paint && $(id)._paint());
+  $('showVal').checked = S.showVal;
+  $('showTitle').checked = S.showTitle;
+  $('pal').value = S.pal;
+  drawSwatches();
+  [['align',S.align],['lmode',S.lmode]].forEach(([id,v]) => {
+    [...$(id).children].forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  });
+}
+
+function init(){
+  // presets
+  const pw = $('presets');
+  Object.keys(PRESETS).forEach(k => {
+    const b = document.createElement('button');
+    b.className = 'preset';
+    b.dataset.k = k;
+    b.innerHTML = `<b>${PRESETS[k].name}</b><span>${PRESETS[k].note}</span>`;
+    b.addEventListener('click', () => applyPreset(k));
+    pw.appendChild(b);
+  });
+
+  // palette select
+  const ps = $('pal');
+  Object.keys(PALETTES).forEach(k => {
+    const o = document.createElement('option');
+    o.value = k; o.textContent = k[0].toUpperCase() + k.slice(1);
+    ps.appendChild(o);
+  });
+  ps.addEventListener('change', () => { S.pal = ps.value; drawSwatches(); render(); save(); });
+
+  bindRange('nw','nw','vNw');
+  bindRange('np','np','vNp');
+  bindRange('cv','cv','vCv',2);
+  bindRange('it','it','vIt');
+  bindRange('lo','lo','vLo',2);
+  bindRange('fs','fs','vFs');
+  bindSeg('align','align');
+  bindSeg('lmode','lmode');
+
+  let deb = 0;
+  $('dsl').addEventListener('input', () => {
+    S.dsl = $('dsl').value;
+    clearTimeout(deb);
+    deb = setTimeout(() => { render(); save(); }, 130);
+  });
+  $('title').addEventListener('input', () => { S.title = $('title').value; render(); save(); });
+  $('unit').addEventListener('input', () => { S.unit = $('unit').value; render(); save(); });
+  $('showVal').addEventListener('change', e => { S.showVal = e.target.checked; render(); save(); });
+  $('showTitle').addEventListener('change', e => { S.showTitle = e.target.checked; render(); save(); });
+
+  $('qAdd').addEventListener('click', addQuick);
+  [$('qFrom'), $('qVal'), $('qTo')].forEach(i =>
+    i.addEventListener('keydown', e => { if (e.key === 'Enter') addQuick(); }));
+
+  $('btnSvg').addEventListener('click', exportSVG);
+  $('btnPng').addEventListener('click', exportPNG);
+  $('btnJson').addEventListener('click', exportJSON);
+  $('btnShare').addEventListener('click', shareLink);
+  $('btnReset').addEventListener('click', () => {
+    S = Object.assign({}, DEFAULTS, {pins:{}});
+    try { localStorage.removeItem(STORE); } catch (e){}
+    history.replaceState(null, '', location.pathname);
+    syncInputs(); render();
+    toast('Back to defaults');
+  });
+
+  // panels
+  $('styleTog').addEventListener('click', () => $('paneStyle').classList.toggle('open'));
+  document.querySelectorAll('.tabs button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+      const t = b.dataset.tab;
+      $('paneData').classList.toggle('show', t === 'data');
+      $('paneStyle').classList.toggle('open', t === 'style');
+      if (t === 'chart') requestAnimationFrame(render);
+    });
+  });
+
+  // pointer interactions on the plot
+  const plot = $('plot');
+  plot.addEventListener('pointermove', onMove);
+  plot.addEventListener('pointerdown', onDown);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  plot.addEventListener('pointerleave', clearHover);
+  plot.addEventListener('dblclick', ev => {
+    const hit = hitTest(ev);
+    if (hit && hit.kind === 'node' && S.pins[hit.name] != null){
+      delete S.pins[hit.name];
+      render(); save();
+      toast(hit.name + ' released');
+    }
+  });
+
+  // resize
+  let rt = 0;
+  const ro = new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(render, 60); });
+  ro.observe(plot);
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 60); });
+
+  const origin = loadState();
+  syncInputs();
+  document.querySelectorAll('.preset').forEach(b => b.classList.toggle('on', b.dataset.k === S.preset));
+  render();
+  if (origin === 'link') setTimeout(() => toast('Loaded a shared diagram'), 400);
+}
+
+function addQuick(){
+  const f = $('qFrom').value.trim(), v = $('qVal').value.trim(), t = $('qTo').value.trim();
+  if (!f || !t || !v){ toast('Fill from, value and to'); return; }
+  const num = parseFloat(v);
+  if (!isFinite(num) || num <= 0){ toast('Value must be a positive number'); return; }
+  S.dsl = S.dsl.replace(/\s*$/, '') + `\n${f} [${num}] ${t}`;
+  $('dsl').value = S.dsl;
+  $('qVal').value = ''; $('qFrom').value = t; $('qTo').value = '';
+  $('qTo').focus();
+  render(); save();
+  toast(`${f} → ${t} added`);
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+
+})();
+</script>
+</body>
+</html>
