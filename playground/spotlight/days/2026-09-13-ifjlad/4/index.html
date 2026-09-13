@@ -3,39 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hover Physics You Can Name · Drop 4</title>
-<meta name="description" content="CSS @function turns the maths behind a hover into a named, reusable function — one definition, every interactive element on the page.">
+<title>Ahead of the Finger · Drop 4</title>
+<meta name="description" content="getPredictedEvents() hands you the browser's guess at where the pointer is going, so a drag can render ahead of the input instead of behind it.">
 <style>
   :root{
     --bg:#05070e; --ink:#eef2fb; --dim:#8e97b5;
     --edge:rgba(150,165,220,.17); --edge2:rgba(150,165,220,.32);
     --accent:#fbbf24;
-    --force:1;        /* master intensity */
-    --tilt-deg:9;     /* degrees at full deflection */
-    --lift-max:10px;  /* travel at full deflection */
+    --raw:#f472b6; --move:#94a3b8; --pred:#fbbf24;
   }
   *{box-sizing:border-box}
-
-  /* =========================================================
-     The drop. Three named functions, defined once, used by
-     every interactive thing below.
-     ========================================================= */
-  @function --lift(--t, --max: 10px) {
-    result: calc(var(--t) * var(--max) * var(--force) * -1);
-  }
-  @function --tilt-x(--dy, --deg: 9) {
-    result: calc(var(--dy) * var(--deg) * var(--force) * 1deg);
-  }
-  @function --tilt-y(--dx, --deg: 9) {
-    result: calc(var(--dx) * var(--deg) * var(--force) * -1deg);
-  }
-  @function --glow(--t, --hue: 42) {
-    result: hsl(var(--hue) 95% 60% / calc(var(--t) * 0.55 * var(--force)));
-  }
-  @function --squash(--p) {
-    result: calc(1 - var(--p) * 0.06 * var(--force));
-  }
-
   body{
     margin:0;min-height:100vh;background:
       radial-gradient(1100px 640px at 76% -12%,rgba(251,191,36,.14),transparent 60%),
@@ -43,6 +20,7 @@
       var(--bg);
     color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;padding:0 0 92px;
+    touch-action:manipulation;
   }
   .back-link{
     position:fixed;top:14px;left:14px;z-index:30;text-decoration:none;color:var(--ink);
@@ -58,80 +36,73 @@
 
   .stage{
     border:1px solid var(--edge);border-radius:20px;background:rgba(10,14,26,.55);
-    padding:26px 20px 24px;margin-bottom:18px;
+    padding:26px 20px 22px;margin-bottom:18px;
   }
   .stage h2{
     font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);
-    margin:0 0 18px;font-weight:650;
+    margin:0 0 16px;font-weight:650;
   }
 
-  /* ---------- 1. tilt cards ---------- */
-  .cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;perspective:900px}
-  .tcard{
-    --t:0; --dx:0; --dy:0; --p:0;
-    width:172px;height:206px;border-radius:20px;padding:17px;
-    border:1px solid var(--edge2);
-    background:linear-gradient(158deg,rgba(251,191,36,.16),rgba(255,255,255,.04));
-    display:flex;flex-direction:column;justify-content:space-between;
-    transform-style:preserve-3d;
-    transition:transform .28s cubic-bezier(.22,1,.36,1),box-shadow .28s;
+  /* ---------- 1. the three followers ---------- */
+  .field{
+    position:relative;height:300px;border-radius:16px;overflow:hidden;
+    border:1px dashed var(--edge2);
+    background:
+      linear-gradient(rgba(150,165,220,.055) 1px,transparent 1px) 0 0/26px 26px,
+      linear-gradient(90deg,rgba(150,165,220,.055) 1px,transparent 1px) 0 0/26px 26px,
+      rgba(255,255,255,.02);
+    touch-action:none;cursor:crosshair;
+  }
+  .hint{
+    position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+    color:var(--dim);font-size:13.5px;transition:opacity .3s;text-align:center;padding:0 20px;
+  }
+  .field.on .hint{opacity:0}
+  .puck{
+    position:absolute;top:0;left:0;width:46px;height:46px;margin:-23px 0 0 -23px;
+    border-radius:50%;display:grid;place-items:center;pointer-events:none;
+    font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
     will-change:transform;
   }
-  /* every one of these values comes out of a named function */
-  .tcard.live{
-    transform:
-      translateY(--lift(var(--t), var(--lift-max)))
-      rotateX(--tilt-x(var(--dy), var(--tilt-deg)))
-      rotateY(--tilt-y(var(--dx), var(--tilt-deg)))
-      scale(--squash(var(--p)));
-    box-shadow:0 18px 46px --glow(var(--t));
-  }
-  .tcard b{font-size:19px;font-weight:660;letter-spacing:-.3px}
-  .tcard span{font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim)}
-  .tcard .fn{
-    font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#e8c877;
-    background:rgba(0,0,0,.28);border-radius:7px;padding:5px 7px;line-height:1.5;
-  }
+  .puck.raw  {border:1.5px dashed var(--raw); color:var(--raw)}
+  .puck.move {background:rgba(148,163,184,.22);border:1.5px solid var(--move);color:#dbe3ef}
+  .puck.pred {background:rgba(251,191,36,.22);border:1.5px solid var(--pred);color:#ffe6ad}
+  .field canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 
-  /* ---------- 2. button row ---------- */
-  .btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
-  .fbtn{
-    --t:0; --p:0;
-    border:1px solid rgba(251,191,36,.42);border-radius:13px;
-    background:rgba(251,191,36,.14);color:#ffeab5;
-    padding:13px 22px;font:inherit;font-size:14.5px;font-weight:640;cursor:pointer;
-    transition:transform .2s cubic-bezier(.22,1,.36,1),box-shadow .2s,background .2s;
+  .readout{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}
+  .rd{
+    border:1px solid var(--edge2);border-radius:12px;padding:9px 13px;
+    background:rgba(255,255,255,.035);min-width:132px;
   }
-  .fbtn.live{
-    transform:translateY(--lift(var(--t), 6px)) scale(--squash(var(--p)));
-    box-shadow:0 10px 26px --glow(var(--t), 42);
-  }
-  .fbtn:hover{background:rgba(251,191,36,.24)}
-  .fbtn.rose.live{box-shadow:0 10px 26px --glow(var(--t), 340)}
-  .fbtn.rose{border-color:rgba(244,114,182,.45);background:rgba(244,114,182,.14);color:#ffd9ee}
-  .fbtn.rose:hover{background:rgba(244,114,182,.24)}
-  .fbtn.mint.live{box-shadow:0 10px 26px --glow(var(--t), 160)}
-  .fbtn.mint{border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.14);color:#c8f7e6}
-  .fbtn.mint:hover{background:rgba(52,211,153,.24)}
+  .rd .k{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);font-weight:700}
+  .rd .v{font-family:ui-monospace,Menlo,monospace;font-size:19px;font-weight:700;margin-top:3px}
+  .rd.move .v{color:var(--move)}
+  .rd.pred .v{color:var(--pred)}
+  .rd.win .v{color:#6ee7b7}
+  .rd .s{font-size:10.5px;color:#5e6884;margin-top:2px}
 
-  /* ---------- 3. the swap ---------- */
-  .swap{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  @media (max-width:720px){ .swap{grid-template-columns:1fr} }
-  /* min-width:0 or the pre-formatted code below sets this grid item's
-     min-content width and blows the track out on a phone */
-  .half{border:1px solid var(--edge2);border-radius:16px;padding:18px;background:rgba(255,255,255,.03);min-width:0}
-  .half h4{margin:0 0 10px;font-size:12.5px;font-weight:650}
-  .half p{margin:0;color:var(--dim);font-size:12.5px}
-  .half code{
-    display:block;margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;
-    line-height:1.7;color:#b9c6e6;background:rgba(0,0,0,.3);border-radius:10px;padding:11px 12px;
-    white-space:pre;overflow-x:auto;
+  /* ---------- 2. the fan ---------- */
+  .fanwrap{
+    position:relative;height:240px;border-radius:16px;overflow:hidden;
+    border:1px solid var(--edge2);background:rgba(255,255,255,.02);
+    touch-action:none;cursor:crosshair;
   }
-  .half code em{color:var(--accent);font-style:normal}
+  .fanwrap canvas{position:absolute;inset:0;width:100%;height:100%}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .legend i{width:11px;height:11px;border-radius:50%;display:block}
+
+  /* ---------- 3. event rates ---------- */
+  .rates{display:grid;gap:11px}
+  .rate{display:grid;grid-template-columns:132px 1fr 66px;gap:11px;align-items:center}
+  .rate .n{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--dim)}
+  .rate .track{height:13px;border-radius:999px;background:rgba(255,255,255,.05);overflow:hidden}
+  .rate .fill{height:100%;width:0;border-radius:999px;transition:width .18s ease-out}
+  .rate .val{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;text-align:right;font-weight:600}
 
   /* ---------- panel ---------- */
   .panel{
-    position:fixed;top:14px;right:14px;z-index:20;width:218px;
+    position:fixed;top:14px;right:14px;z-index:20;width:224px;
     border:1px solid var(--edge2);border-radius:16px;padding:14px;
     background:rgba(12,16,28,.76);backdrop-filter:blur(16px);
     box-shadow:0 18px 50px rgba(0,0,0,.45);
@@ -140,7 +111,12 @@
   .panel label{display:block;font-size:11.5px;color:var(--dim);margin:0 0 3px}
   .panel label b{color:var(--ink);font-family:ui-monospace,Menlo,monospace;float:right}
   .panel input[type=range]{width:100%;margin:0 0 11px;accent-color:var(--accent)}
-  .panel small{display:block;color:#5e6884;font-size:10.5px;line-height:1.5;margin-top:2px}
+  .panel .tog{
+    width:100%;border:1px solid var(--edge2);background:rgba(255,255,255,.05);
+    color:var(--ink);border-radius:10px;padding:8px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  }
+  .panel .tog.on{background:rgba(251,191,36,.2);border-color:rgba(251,191,36,.55);color:#ffe6ad}
+  .panel small{display:block;color:#5e6884;font-size:10.5px;line-height:1.5;margin-top:9px}
 
   .note{
     display:flex;gap:9px;align-items:flex-start;margin-bottom:18px;padding:11px 13px;
@@ -163,213 +139,327 @@
 
   footer{max-width:1080px;margin:26px auto 0;padding:0 20px;color:#5e6884;font-size:12px}
   footer a{color:#7e8aa8}
+  /* the control panel is fixed top-right; keep the intro copy clear of it */
+  @media (min-width:861px){ .note{margin-right:250px} }
   @media (max-width:860px){ .panel{position:static;width:auto;margin:0 0 18px} }
-  @media (prefers-reduced-motion:reduce){ .tcard,.fbtn{transition:none} }
 </style>
 </head>
 <body>
 <a href="../" class="back-link">← All 5 drops</a>
 
 <div class="panel">
-  <h3>Arguments</h3>
-  <label>--force <b id="vForce">1</b></label>
-  <input type="range" id="rForce" min="0" max="2.5" step="0.05" value="1">
-  <label>tilt degrees <b id="vTilt">9</b></label>
-  <input type="range" id="rTilt" min="0" max="26" step="1" value="9">
-  <label>lift <b id="vLift">10px</b></label>
-  <input type="range" id="rLift" min="0" max="34" step="1" value="10">
-  <small>These feed the same three functions. No selector below is rewritten — only the arguments change.</small>
+  <h3>Prediction</h3>
+  <label>look-ahead <b id="vAhead">100%</b></label>
+  <input type="range" id="rAhead" min="0" max="100" step="5" value="100">
+  <label>simulated frame cost <b id="vCost">0ms</b></label>
+  <input type="range" id="rCost" min="0" max="14" step="1" value="0">
+  <label>trail <b id="vTrail">26</b></label>
+  <input type="range" id="rTrail" min="4" max="70" step="2" value="26">
+  <button class="tog on" id="bPred">prediction on</button>
+  <small>Look-ahead picks how far down the predicted list to follow: 0% is the next predicted point, 100% is the furthest one the browser will commit to.</small>
 </div>
 
 <div class="wrap">
-  <h1>Hover physics you can name</h1>
+  <h1>Ahead of the finger</h1>
   <p class="lede">
-    A tasteful hover is never one property — it is a lift, a tilt, a glow and a press, all derived from the
-    same pointer value, and all tuned together. Until now that maths lived in a Sass mixin or a JS helper.
-    <code>@function</code> puts it in CSS: declare <code>--lift()</code>, <code>--tilt-x()</code> and
-    <code>--glow()</code> once, with default arguments, and every card and button on the page calls them.
-    Retune the feel by editing one <code>result</code> line.
+    A drag is always late. By the time a <code>pointermove</code> reaches your handler, is laid out and is
+    composited, the finger has moved on — and the gap is exactly what "laggy" feels like.
+    <code>getPredictedEvents()</code> hands you the browser's own extrapolation of where the pointer is
+    heading, computed from recent velocity and trajectory, so you can render at the predicted position and
+    let reality catch up. Move fast and the guess is worth several pixels; stop and it collapses to nothing.
   </p>
 
   <div class="note" id="support">
     <span class="pill">checking</span>
-    <div id="supportText">Probing this browser for the <b>@function</b> rule…</div>
+    <div id="supportText">Probing this browser for <b>getPredictedEvents()</b>…</div>
   </div>
 
   <div class="stage">
-    <h2>1 · Four cards, one set of functions</h2>
-    <div class="cards" id="cards"></div>
-  </div>
-
-  <div class="stage">
-    <h2>2 · The same functions, different arguments</h2>
-    <div class="btns">
-      <button class="fbtn">--glow(t, 42)</button>
-      <button class="fbtn rose">--glow(t, 340)</button>
-      <button class="fbtn mint">--glow(t, 160)</button>
-      <button class="fbtn">--lift(t, 6px)</button>
-      <button class="fbtn rose">--squash(p)</button>
+    <h2>1 · Three followers, one pointer</h2>
+    <div class="field" id="field">
+      <canvas id="trailCv"></canvas>
+      <div class="puck raw"  id="pRaw">raw</div>
+      <div class="puck move" id="pMove">move</div>
+      <div class="puck pred" id="pPred">pred</div>
+      <div class="hint">Drag around in here — quick, curving strokes show the gap best</div>
+    </div>
+    <div class="readout">
+      <div class="rd move"><div class="k">pointermove lag</div><div class="v" id="oMove">—</div><div class="s">px behind the raw pointer</div></div>
+      <div class="rd pred"><div class="k">predicted lag</div><div class="v" id="oPred">—</div><div class="s">px behind the raw pointer</div></div>
+      <div class="rd win"><div class="k">recovered</div><div class="v" id="oWin">—</div><div class="s">of the gap, rolling average</div></div>
+      <div class="rd"><div class="k">points offered</div><div class="v" id="oCount">—</div><div class="s">per pointermove</div></div>
     </div>
   </div>
 
   <div class="stage">
-    <h2>3 · What it replaces</h2>
-    <div class="swap">
-      <div class="half">
-        <h4>Before — the maths is inlined, five times</h4>
-        <p>Every element repeats the same calc chain. Change the feel and you change it everywhere, by hand.</p>
-        <code>.card:hover{
-  transform:
-    translateY(calc(var(--t) * -10px * var(--force)))
-    rotateX(calc(var(--dy) * 9deg * var(--force)));
-}
-.btn:hover{
-  transform: translateY(calc(var(--t) * -6px * var(--force)));
-}</code>
+    <h2>2 · The guess itself</h2>
+    <div class="fanwrap" id="fanwrap"><canvas id="fanCv"></canvas></div>
+    <div class="legend">
+      <span><i style="background:var(--raw)"></i>raw pointer (pointerrawupdate)</span>
+      <span><i style="background:var(--move)"></i>coalesced history</span>
+      <span><i style="background:var(--pred)"></i>predicted points</span>
+    </div>
+  </div>
+
+  <div class="stage">
+    <h2>3 · How often each stream fires</h2>
+    <div class="rates">
+      <div class="rate">
+        <span class="n">pointermove</span>
+        <span class="track"><span class="fill" id="fMove" style="background:var(--move)"></span></span>
+        <span class="val" id="nMove">0/s</span>
       </div>
-      <div class="half">
-        <h4>After — the maths has a name</h4>
-        <p>Arguments carry defaults, so a call site only states what differs from the house feel.</p>
-        <code><em>@function</em> --lift(--t, --max: 10px) {
-  <em>result</em>: calc(var(--t) * var(--max) * var(--force) * -1);
-}
-.card:hover{ transform: translateY(<em>--lift</em>(var(--t))); }
-.btn:hover { transform: translateY(<em>--lift</em>(var(--t), 6px)); }</code>
+      <div class="rate">
+        <span class="n">pointerrawupdate</span>
+        <span class="track"><span class="fill" id="fRaw" style="background:var(--raw)"></span></span>
+        <span class="val" id="nRaw">0/s</span>
+      </div>
+      <div class="rate">
+        <span class="n">predicted points</span>
+        <span class="track"><span class="fill" id="fPred" style="background:var(--pred)"></span></span>
+        <span class="val" id="nPred">0/s</span>
       </div>
     </div>
   </div>
 
-  <code class="blk"><em>@function</em> --glow(--t, --hue: 42) {
-  <em>result</em>: hsl(var(--hue) 95% 60% / calc(var(--t) * .55 * var(--force)));
-}
-.button { box-shadow: 0 10px 26px <em>--glow</em>(var(--t)); }
-.button.rose { box-shadow: 0 10px 26px <em>--glow</em>(var(--t), 340); }</code>
+  <code class="blk">field.addEventListener('pointermove', e =&gt; {
+  const guesses = e.<em>getPredictedEvents</em>();       // 0..n future PointerEvents
+  const target  = guesses.length ? guesses[guesses.length - 1] : e;
+  draw(target.clientX, target.clientY);        // render where it is going
+});
+// the unthrottled truth, for measuring what you gained
+field.addEventListener('<em>pointerrawupdate</em>', e =&gt; record(e.clientX, e.clientY));</code>
 </div>
 
-<footer>Inspired by <a href="https://una.im/5-css-functions/" target="_blank" rel="noopener">Una Kravets — 5 useful CSS functions using the new @function rule</a> · UI Spotlight Day 118 · Drop #4</footer>
+<footer>Inspired by <a href="https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/getPredictedEvents" target="_blank" rel="noopener">MDN — PointerEvent.getPredictedEvents()</a> · UI Spotlight Day 118 · Drop #4</footer>
 
 <script>
 (function(){
 "use strict";
 
-var root = document.documentElement;
-
-/* -----------------------------------------------------------
-   Feature probe. @function can't be tested with CSS.supports,
-   so call one for real and see whether a length comes back.
-   ----------------------------------------------------------- */
-function probe(){
-  var el = document.createElement('div');
-  /* --lift negates, so feed it -1 to get a positive width back: a negative
-     width would be thrown out as invalid and read as a false negative. */
-  el.style.cssText = 'position:absolute;left:-9999px;top:0;--t:-1;--force:1;width:--lift(var(--t), 100px)';
-  document.body.appendChild(el);
-  var w = getComputedStyle(el).width;
-  el.remove();
-  return /^\d+(\.\d+)?px$/.test(w) && Math.abs(parseFloat(w) - 100) < 0.5;
-}
-var SUPPORTED = probe();
+var SUPPORTED = typeof PointerEvent !== 'undefined' &&
+                typeof PointerEvent.prototype.getPredictedEvents === 'function';
+var RAW = 'onpointerrawupdate' in window;
 
 var sup = document.getElementById('support');
-sup.querySelector('.pill').textContent = SUPPORTED ? 'supported' : 'static fallback';
+sup.querySelector('.pill').textContent = SUPPORTED ? 'supported' : 'extrapolated';
 sup.querySelector('.pill').classList.toggle('no', !SUPPORTED);
 document.getElementById('supportText').innerHTML = SUPPORTED
-  ? 'This browser resolves <b>@function</b>, so every transform below is being computed by a named CSS function — move the panel sliders and watch the arguments flow through.'
-  : '<b>@function</b> is Chromium-only for now, so this page falls back to the same maths written out inline. The interaction is identical; only the authoring is worse.';
+  ? 'This browser offers predicted pointer events' + (RAW ? ' and the raw update stream' : '') +
+    ', so the gold puck below really is being placed where the browser thinks your finger is about to be.'
+  : 'No <b>getPredictedEvents()</b> here, so the gold puck extrapolates from the last two samples instead. That is the same idea done worse — the browser has the compositor’s timing information and you do not.';
 
-/* Fallback: an unresolved dashed-function makes the whole declaration
-   invalid at computed-value time, so swap in inline calc() instead of
-   leaving the cards flat. */
-if(!SUPPORTED){
-  var css = document.createElement('style');
-  css.textContent =
-    '.tcard.live{' +
-      'transform:' +
-        'translateY(calc(var(--t) * var(--lift-max) * var(--force) * -1))' +
-        'rotateX(calc(var(--dy) * var(--tilt-deg) * var(--force) * 1deg))' +
-        'rotateY(calc(var(--dx) * var(--tilt-deg) * var(--force) * -1deg))' +
-        'scale(calc(1 - var(--p) * .06 * var(--force)));' +
-      'box-shadow:0 18px 46px hsl(42 95% 60% / calc(var(--t) * .55 * var(--force)));' +
-    '}' +
-    '.fbtn.live{' +
-      'transform:translateY(calc(var(--t) * 6px * var(--force) * -1)) scale(calc(1 - var(--p) * .06 * var(--force)));' +
-      'box-shadow:0 10px 26px hsl(42 95% 60% / calc(var(--t) * .55 * var(--force)));' +
-    '}' +
-    '.fbtn.rose.live{box-shadow:0 10px 26px hsl(340 95% 60% / calc(var(--t) * .55 * var(--force)))}' +
-    '.fbtn.mint.live{box-shadow:0 10px 26px hsl(160 95% 60% / calc(var(--t) * .55 * var(--force)))}';
-  document.head.appendChild(css);
+/* ---------------- state ---------------- */
+var ahead = 1, cost = 0, trailLen = 26, predOn = true;
+var rawPt = null, movePt = null, predPt = null;
+var trail = [];          // recent raw points
+var coalesced = [];      // last move's coalesced history
+var predicted = [];      // last move's predicted points
+var lagMove = 0, lagPred = 0, recovered = 0, offered = 0;
+var cMove = 0, cRaw = 0, cPred = 0, rMove = 0, rRaw = 0, rPred = 0;
+
+/* ---------------- field ---------------- */
+var field = document.getElementById('field');
+var pRaw = document.getElementById('pRaw'),
+    pMove = document.getElementById('pMove'),
+    pPred = document.getElementById('pPred');
+var trailCv = document.getElementById('trailCv'), tctx = trailCv.getContext('2d');
+
+function rel(el, e){
+  var r = el.getBoundingClientRect();
+  return {x: e.clientX - r.left, y: e.clientY - r.top, t: e.timeStamp};
+}
+function burnFrame(){
+  if(!cost) return;
+  var end = performance.now() + cost;
+  while(performance.now() < end){ /* stand in for a busy frame */ }
 }
 
-/* ---------- 1. cards ---------- */
-var CARDS = [
-  ['Lift',   'translateY', '--lift(t, 10px)'],
-  ['Tilt',   'rotateX/Y',  '--tilt-x(dy)\n--tilt-y(dx)'],
-  ['Glow',   'box-shadow', '--glow(t, 42)'],
-  ['Squash', 'scale',      '--squash(p)']
-];
-var host = document.getElementById('cards');
-CARDS.forEach(function(c){
-  var d = document.createElement('div');
-  d.className = 'tcard live';
-  d.innerHTML = '<div><b>' + c[0] + '</b><br><span>' + c[1] + '</span></div>' +
-                '<div class="fn">' + c[2].replace(/\n/g, '<br>') + '</div>';
-  host.appendChild(d);
-});
+function onMove(e){
+  cMove++;
+  field.classList.add('on');
+  movePt = rel(field, e);
 
-/* ---------- pointer wiring: normalised -1..1 and 0..1 ---------- */
-function wire(el, tilt){
-  function set(t, dx, dy){
-    el.style.setProperty('--t', t);
-    if(tilt){
-      el.style.setProperty('--dx', dx);
-      el.style.setProperty('--dy', dy);
+  var list = [];
+  if(SUPPORTED){
+    try{ list = e.getPredictedEvents() || []; }catch(err){ list = []; }
+  }
+  offered = list.length;
+  cPred += list.length;
+
+  predicted = list.map(function(p){ return rel(field, p); });
+  coalesced = (e.getCoalescedEvents ? e.getCoalescedEvents() : [e]).map(function(p){ return rel(field, p); });
+
+  if(predOn){
+    if(predicted.length){
+      var i = Math.min(predicted.length - 1, Math.round(ahead * (predicted.length - 1)));
+      predPt = predicted[i];
+    } else if(movePt && trail.length > 1){
+      // fallback: extrapolate along the last raw segment
+      var a = trail[trail.length - 2], b = trail[trail.length - 1];
+      var k = 1 + ahead * 1.4;
+      predPt = {x: b.x + (b.x - a.x) * k, y: b.y + (b.y - a.y) * k};
+    } else {
+      predPt = movePt;
     }
+  } else {
+    predPt = movePt;
   }
-  function move(e){
-    var r = el.getBoundingClientRect();
-    var dx = (e.clientX - r.left) / r.width  * 2 - 1;
-    var dy = (e.clientY - r.top)  / r.height * 2 - 1;
-    set(1, dx.toFixed(3), (-dy).toFixed(3));
-  }
-  el.addEventListener('pointerenter', move);
-  el.addEventListener('pointermove', move);
-  el.addEventListener('pointerleave', function(){ set(0, 0, 0); el.style.setProperty('--p', 0); });
-  el.addEventListener('pointerdown', function(){ el.style.setProperty('--p', 1); });
-  el.addEventListener('pointerup', function(){ el.style.setProperty('--p', 0); });
-  el.addEventListener('pointercancel', function(){ el.style.setProperty('--p', 0); });
-  /* touch: a tap should still show the effect for a beat */
-  el.addEventListener('touchstart', function(){
-    set(1, 0, 0);
-    el.style.setProperty('--p', 1);
-  }, {passive:true});
-  el.addEventListener('touchend', function(){
-    el.style.setProperty('--p', 0);
-    setTimeout(function(){ set(0, 0, 0); }, 420);
-  });
+  burnFrame();
 }
-document.querySelectorAll('.tcard').forEach(function(el){ wire(el, true); });
-document.querySelectorAll('.fbtn').forEach(function(el){ el.classList.add('live'); wire(el, false); });
 
-/* ---------- panel ---------- */
-function bind(id, out, prop, unit){
-  var r = document.getElementById(id), o = document.getElementById(out);
-  function apply(){
-    root.style.setProperty(prop, r.value + unit);
-    o.textContent = r.value + unit;
+function onRaw(e){
+  cRaw++;
+  rawPt = rel(field, e);
+  trail.push(rawPt);
+  while(trail.length > trailLen) trail.shift();
+
+  if(movePt){
+    var dm = Math.hypot(rawPt.x - movePt.x, rawPt.y - movePt.y);
+    var dp = predPt ? Math.hypot(rawPt.x - predPt.x, rawPt.y - predPt.y) : dm;
+    lagMove = lagMove * 0.85 + dm * 0.15;
+    lagPred = lagPred * 0.85 + dp * 0.15;
+    var gain = lagMove > 0.6 ? (lagMove - lagPred) / lagMove : 0;
+    recovered = recovered * 0.9 + gain * 0.1;
   }
-  r.addEventListener('input', apply);
-  apply();
 }
-bind('rForce', 'vForce', '--force', '');
-bind('rTilt',  'vTilt',  '--tilt-deg',  '');
-bind('rLift',  'vLift',  '--lift-max',  'px');
+
+field.addEventListener('pointermove', onMove);
+if(RAW) field.addEventListener('pointerrawupdate', onRaw);
+else    field.addEventListener('pointermove', onRaw);   // best available truth
+field.addEventListener('pointerdown', function(e){ field.setPointerCapture(e.pointerId); onMove(e); });
+field.addEventListener('pointerleave', function(){ trail.length = 0; });
+
+/* ---------------- fan ---------------- */
+var fanwrap = document.getElementById('fanwrap');
+var fanCv = document.getElementById('fanCv'), fctx = fanCv.getContext('2d');
+var fanRaw = null, fanCo = [], fanPr = [];
+fanwrap.addEventListener('pointermove', function(e){
+  fanRaw = rel(fanwrap, e);
+  fanCo = (e.getCoalescedEvents ? e.getCoalescedEvents() : [e]).map(function(p){ return rel(fanwrap, p); });
+  var list = [];
+  if(SUPPORTED){ try{ list = e.getPredictedEvents() || []; }catch(err){} }
+  if(!list.length && fanCo.length > 1){
+    var a = fanCo[fanCo.length - 2], b = fanCo[fanCo.length - 1], out = [];
+    for(var i = 1; i <= 4; i++) out.push({x: b.x + (b.x - a.x) * i * 0.9, y: b.y + (b.y - a.y) * i * 0.9});
+    list = out;
+    fanPr = out;
+  } else {
+    fanPr = list.map ? list.map(function(p){ return p.clientX !== undefined ? rel(fanwrap, p) : p; }) : [];
+  }
+});
+fanwrap.addEventListener('pointerleave', function(){ fanRaw = null; fanCo = []; fanPr = []; });
+
+/* ---------------- canvases ---------------- */
+function fit(cv){
+  var r = cv.getBoundingClientRect();
+  var dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.max(1, Math.round(r.width * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
+  cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  return r;
+}
+function fitAll(){ fit(trailCv); fit(fanCv); }
+window.addEventListener('resize', fitAll);
+fitAll();
+
+function frame(){
+  /* --- followers --- */
+  var r = trailCv.getBoundingClientRect();
+  tctx.clearRect(0, 0, r.width, r.height);
+  if(trail.length > 1){
+    tctx.strokeStyle = 'rgba(244,114,182,.45)';
+    tctx.lineWidth = 2; tctx.lineJoin = tctx.lineCap = 'round';
+    tctx.beginPath(); tctx.moveTo(trail[0].x, trail[0].y);
+    for(var i = 1; i < trail.length; i++) tctx.lineTo(trail[i].x, trail[i].y);
+    tctx.stroke();
+  }
+  if(movePt && predPt){
+    tctx.strokeStyle = 'rgba(251,191,36,.55)';
+    tctx.setLineDash([4, 4]); tctx.lineWidth = 1.5;
+    tctx.beginPath(); tctx.moveTo(movePt.x, movePt.y); tctx.lineTo(predPt.x, predPt.y); tctx.stroke();
+    tctx.setLineDash([]);
+  }
+  place(pRaw, rawPt); place(pMove, movePt); place(pPred, predPt);
+
+  /* --- fan --- */
+  var fr = fanCv.getBoundingClientRect();
+  fctx.clearRect(0, 0, fr.width, fr.height);
+  if(!fanRaw){
+    fctx.fillStyle = 'rgba(142,151,181,.85)';
+    fctx.font = '13px system-ui,sans-serif'; fctx.textAlign = 'center';
+    fctx.fillText('Move across this panel to see the predicted points fan out', fr.width / 2, fr.height / 2);
+  } else {
+    fanCo.forEach(function(p, i){
+      fctx.fillStyle = 'rgba(148,163,184,' + (0.25 + 0.5 * i / Math.max(1, fanCo.length)) + ')';
+      dot(fctx, p, 4);
+    });
+    fanPr.forEach(function(p, i){
+      var a = 1 - i / Math.max(1, fanPr.length);
+      fctx.fillStyle = 'rgba(251,191,36,' + (0.25 + 0.65 * a).toFixed(2) + ')';
+      dot(fctx, p, 6.5);
+      if(i === 0 && fanRaw){
+        fctx.strokeStyle = 'rgba(251,191,36,.4)'; fctx.lineWidth = 1.5;
+        fctx.beginPath(); fctx.moveTo(fanRaw.x, fanRaw.y); fctx.lineTo(p.x, p.y); fctx.stroke();
+      }
+    });
+    fctx.fillStyle = '#f472b6'; dot(fctx, fanRaw, 6);
+  }
+
+  requestAnimationFrame(frame);
+}
+function dot(c, p, r){ c.beginPath(); c.arc(p.x, p.y, r, 0, 6.284); c.fill(); }
+function place(el, p){
+  if(!p){ el.style.opacity = '0'; return; }
+  el.style.opacity = '1';
+  el.style.transform = 'translate(' + p.x.toFixed(1) + 'px,' + p.y.toFixed(1) + 'px)';
+}
+requestAnimationFrame(frame);
+
+/* ---------------- meters ---------------- */
+var oMove = document.getElementById('oMove'), oPred = document.getElementById('oPred'),
+    oWin = document.getElementById('oWin'), oCount = document.getElementById('oCount');
+setInterval(function(){
+  rMove = cMove; rRaw = cRaw; rPred = cPred;
+  cMove = cRaw = cPred = 0;
+  var peak = Math.max(60, rMove, rRaw, rPred);
+  set('fMove', 'nMove', rMove, peak);
+  set('fRaw',  'nRaw',  rRaw,  peak);
+  set('fPred', 'nPred', rPred, peak);
+  oMove.textContent = lagMove.toFixed(1);
+  oPred.textContent = lagPred.toFixed(1);
+  oWin.textContent = Math.round(Math.max(0, recovered) * 100) + '%';
+  oCount.textContent = offered;
+}, 1000);
+function set(fill, val, n, peak){
+  document.getElementById(fill).style.width = Math.min(100, n / peak * 100) + '%';
+  document.getElementById(val).textContent = n + '/s';
+}
+
+/* ---------------- panel ---------------- */
+function bind(id, out, fn, fmt){
+  var r = document.getElementById(id), o = document.getElementById(out);
+  function apply(){ fn(+r.value); o.textContent = fmt(r.value); }
+  r.addEventListener('input', apply); apply();
+}
+bind('rAhead', 'vAhead', function(v){ ahead = v / 100; }, function(v){ return v + '%'; });
+bind('rCost',  'vCost',  function(v){ cost = v; },        function(v){ return v + 'ms'; });
+bind('rTrail', 'vTrail', function(v){ trailLen = v; },    function(v){ return v; });
+
+var bPred = document.getElementById('bPred');
+bPred.addEventListener('click', function(){
+  predOn = !predOn;
+  bPred.classList.toggle('on', predOn);
+  bPred.textContent = predOn ? 'prediction on' : 'prediction off';
+});
 
 window.__drop = {
   supported: SUPPORTED,
-  force: function(){ return getComputedStyle(root).getPropertyValue('--force').trim(); },
-  transformOf: function(n){
-    return getComputedStyle(document.querySelectorAll('.tcard')[n || 0]).transform;
-  }
+  raw: RAW,
+  offered: function(){ return offered; },
+  lags: function(){ return {move: lagMove, pred: lagPred, recovered: recovered}; },
+  positions: function(){ return {raw: rawPt, move: movePt, pred: predPt}; },
+  predictionOn: function(){ return predOn; }
 };
 })();
 </script>
