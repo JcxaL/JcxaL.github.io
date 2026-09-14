@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hover Intent — UI Spotlight Day 119 · Drop 4</title>
+<style>
+  :root{
+    --bg:#0c0a05; --ink:#fdf3e3; --dim:#b39b74; --line:rgba(255,255,255,.10);
+    --accent:#fbbf24;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --open:420ms;   /* wait this long before showing */
+    --close:180ms;  /* grace period before hiding */
+    --warm:600ms;   /* how long the group stays warm after a close */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:
+      radial-gradient(900px 520px at 16% -8%,rgba(251,191,36,.15),transparent 60%),
+      radial-gradient(720px 460px at 96% 6%,rgba(248,113,113,.10),transparent 62%),
+      var(--bg);
+    color:var(--ink);font:15px/1.6 var(--sans);padding:74px 18px 110px;
+    -webkit-text-size-adjust:100%;
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:60;text-decoration:none;
+    display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:999px;
+    color:var(--ink);background:rgba(24,18,8,.64);border:1px solid var(--line);
+    backdrop-filter:blur(14px) saturate(140%);font:600 13px/1 var(--sans);transition:.18s
+  }
+  .back-link:hover{background:rgba(40,30,14,.84);transform:translateX(-2px)}
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:60;width:220px;
+    background:rgba(24,18,8,.66);border:1px solid var(--line);border-radius:15px;
+    backdrop-filter:blur(14px) saturate(140%);padding:13px 14px;box-shadow:0 16px 40px rgba(0,0,0,.44)
+  }
+  .panel h3{margin:0 0 10px;font:700 10px/1 var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}
+  .row{margin-bottom:10px}
+  .row label{display:flex;justify-content:space-between;font:600 11px/1 var(--sans);color:var(--dim);margin-bottom:5px}
+  .row label b{color:var(--accent);font-family:var(--mono)}
+  input[type=range]{width:100%;accent-color:var(--accent);height:16px}
+  .state{
+    margin-top:11px;padding-top:10px;border-top:1px solid var(--line);
+    font:600 10px/1.6 var(--mono);color:var(--dim)
+  }
+  .state i{font-style:normal;display:block}
+  .state b{color:var(--accent)}
+  .state .hot{color:#bef264}
+  header{max-width:1000px;margin:0 auto 28px}
+  .eyebrow{
+    display:inline-block;font:700 10px/1 var(--sans);letter-spacing:.16em;text-transform:uppercase;
+    color:#fcd34d;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.10);
+    padding:6px 10px;border-radius:999px;margin-bottom:14px
+  }
+  h1{margin:0 0 10px;font:800 clamp(28px,5.4vw,46px)/1.06 var(--sans);letter-spacing:-.022em}
+  h1 span{background:linear-gradient(100deg,#fbbf24,#fb923c 55%,#f87171);-webkit-background-clip:text;background-clip:text;color:transparent}
+  header p{margin:0;max-width:66ch;color:#dcc9a8}
+  code{font:600 12px/1.5 var(--mono);color:#fcd34d;background:rgba(251,191,36,.12);
+    border:1px solid rgba(251,191,36,.26);padding:2px 6px;border-radius:6px}
+  .wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  section.demo{
+    border:1px solid var(--line);border-radius:18px;padding:18px 20px 26px;
+    background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.012));
+    box-shadow:0 20px 50px rgba(0,0,0,.34)
+  }
+  .hd{display:flex;align-items:baseline;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+  .hd h2{margin:0;font:700 15px/1.2 var(--sans)}
+  .hd p{margin:0;color:var(--dim);font-size:12.5px;flex:1 1 220px}
+
+  /* =================================================================
+     The pattern: a delay before opening, so a cursor merely passing
+     through never flashes anything — but a group that is already WARM
+     opens instantly, and closing keeps a grace window so travelling
+     diagonally into the panel does not dismiss it.
+     ================================================================= */
+  .trig{
+    position:relative;border:0;cursor:pointer;font:inherit;
+    background:transparent;color:inherit;padding:0
+  }
+  /* the timer ring — a conic sweep that fills across the open delay */
+  .trig::after{
+    content:"";position:absolute;inset:-5px;border-radius:inherit;
+    background:conic-gradient(var(--accent) calc(var(--p,0) * 360deg), transparent 0);
+    mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2.4px));
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2.4px));
+    opacity:var(--ro,0);transition:opacity .12s;pointer-events:none
+  }
+  .tip{
+    position:absolute;left:50%;bottom:calc(100% + 12px);
+    width:max-content;max-width:min(230px,60vw);
+    padding:8px 11px;border-radius:11px;
+    background:rgba(30,22,8,.97);border:1px solid rgba(251,191,36,.4);
+    color:#fef3c7;font:600 12px/1.45 var(--sans);text-align:left;
+    box-shadow:0 14px 30px rgba(0,0,0,.5);
+    opacity:0;translate:-50% 6px;scale:.96;
+    transition:opacity .16s ease, translate .18s cubic-bezier(.22,1,.36,1), scale .18s;
+    pointer-events:none;z-index:40
+  }
+  .tip::after{
+    content:"";position:absolute;top:100%;left:50%;translate:-50% -1px;
+    border:6px solid transparent;border-top-color:rgba(251,191,36,.4)
+  }
+  .trig[data-open="1"] .tip{opacity:1;translate:-50% 0;scale:1}
+
+  /* --- instance 1 : avatar row --- */
+  .avatars{display:flex;gap:14px;flex-wrap:wrap;padding:34px 0 6px;justify-content:center}
+  .av{
+    display:grid;place-items:center;width:52px;height:52px;border-radius:50%;
+    font:800 15px/1 var(--mono);color:#1b1405;
+    transition:transform .2s cubic-bezier(.22,1,.36,1),box-shadow .2s
+  }
+  .trig[data-open="1"] .av{transform:translateY(-3px) scale(1.06);
+    box-shadow:0 10px 22px rgba(0,0,0,.45)}
+  /* --- instance 2 : menu bar --- */
+  .bar{
+    display:flex;gap:4px;flex-wrap:wrap;padding:8px;border-radius:13px;
+    background:rgba(255,255,255,.035);border:1px solid var(--line);justify-content:center
+  }
+  .bar .trig{padding:9px 14px;border-radius:9px;font:600 13px/1 var(--sans);color:#f5e6c8}
+  .bar .trig:hover,.bar .trig[data-open="1"]{background:rgba(251,191,36,.14);color:#fff7e0}
+  .menu{
+    position:absolute;left:0;top:calc(100% + 9px);width:max-content;min-width:186px;
+    padding:6px;border-radius:13px;text-align:left;
+    background:rgba(28,21,8,.98);border:1px solid rgba(251,191,36,.34);
+    box-shadow:0 18px 40px rgba(0,0,0,.55);
+    opacity:0;translate:0 -6px;scale:.98;pointer-events:none;z-index:40;
+    transition:opacity .16s ease, translate .18s cubic-bezier(.22,1,.36,1), scale .18s
+  }
+  .trig[data-open="1"] .menu{opacity:1;translate:0 0;scale:1;pointer-events:auto}
+  .menu a{
+    display:block;padding:8px 10px;border-radius:8px;text-decoration:none;
+    color:#efdfbe;font:500 13px/1.3 var(--sans)
+  }
+  .menu a:hover{background:rgba(251,191,36,.16);color:#fff8e4}
+  /* --- instance 3 : table rows --- */
+  table{width:100%;border-collapse:collapse;font:13px/1.5 var(--sans)}
+  th{text-align:left;font:700 10px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--dim);padding:8px 9px;border-bottom:1px solid var(--line)}
+  td{padding:7px 9px;border-bottom:1px solid rgba(255,255,255,.05);color:#e8d9ba}
+  td .trig{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--mono);
+    color:var(--accent);border-bottom:1px dotted rgba(251,191,36,.55);padding-bottom:2px}
+  .flat{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;padding:30px 0 4px}
+  .flat .trig{padding:9px 14px;border-radius:9px;border:1px solid var(--line);
+    background:rgba(255,255,255,.04);font:600 13px/1 var(--sans)}
+  .note{margin:18px 0 0;color:var(--dim);font-size:12.5px}
+  pre{
+    margin:16px 0 0;padding:13px 15px;border-radius:12px;overflow-x:auto;
+    background:rgba(0,0,0,.4);border:1px solid var(--line);
+    font:12px/1.65 var(--mono);color:#e9d8b0
+  }
+  pre b{color:var(--accent);font-weight:600}
+  footer{max-width:1000px;margin:44px auto 0;padding-top:16px;border-top:1px solid var(--line);
+    color:var(--dim);font-size:12px}
+  footer a{color:#fcd34d}
+  @media (max-width:880px){
+    .panel{position:static;width:auto;margin:0 auto 22px;max-width:1000px}
+    body{padding-top:66px}
+  }
+  @media (max-width:560px){
+    body{padding-left:12px;padding-right:12px}
+    section.demo{padding-left:14px;padding-right:14px}
+    .menu{min-width:0;width:min(210px,66vw)}
+    .tip{max-width:min(210px,64vw)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .tip,.menu,.av{transition-duration:.01ms}
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Timing</h3>
+  <div class="row">
+    <label for="open">open delay <b id="vOpen">420ms</b></label>
+    <input type="range" id="open" min="0" max="900" step="20" value="420">
+  </div>
+  <div class="row">
+    <label for="close">close grace <b id="vClose">180ms</b></label>
+    <input type="range" id="close" min="0" max="700" step="20" value="180">
+  </div>
+  <div class="row">
+    <label for="warm">warm window <b id="vWarm">600ms</b></label>
+    <input type="range" id="warm" min="0" max="1600" step="50" value="600">
+  </div>
+  <div class="state" id="state"></div>
+</div>
+
+<header>
+  <span class="eyebrow">Micro-interaction · Drop 4</span>
+  <h1>Hover <span>Intent</span></h1>
+  <p>A tooltip that appears the instant your cursor crosses it is noise; one that always
+     makes you wait is sluggish. The fix is two timers and a shared flag: <b>wait</b> before
+     the first open, then treat the whole group as <b>warm</b> so every neighbour opens
+     immediately — and keep a <b>grace window</b> on the way out, so travelling into the
+     panel never dismisses it.</p>
+</header>
+
+<div class="wrap">
+
+  <section class="demo">
+    <div class="hd">
+      <h2>1 · Five chips, one shared intent</h2>
+      <p>Sweep across quickly — nothing flashes. Rest on one: the ring fills, it opens, and
+         now the other four are instant.</p>
+    </div>
+    <div class="avatars" id="g1"></div>
+    <p class="note">The ring is the delay made visible. Real products hide it; it is here so
+       you can watch the timer you are tuning.</p>
+  </section>
+
+  <section class="demo">
+    <div class="hd">
+      <h2>2 · A menu bar that behaves like a desktop one</h2>
+      <p>Open one menu, then slide sideways — neighbours swap with no delay, because the
+         group is warm. Leave the bar entirely and the warmth expires.</p>
+    </div>
+    <div class="bar" id="g2"></div>
+  </section>
+
+  <section class="demo">
+    <div class="hd">
+      <h2>3 · Inline in dense content</h2>
+      <p>This is where an eager tooltip hurts most: reading a table means dragging the cursor
+         across a dozen triggers on the way to the one you wanted.</p>
+    </div>
+    <table>
+      <thead><tr><th>build</th><th>status</th><th>detail</th></tr></thead>
+      <tbody id="g3"></tbody>
+    </table>
+  </section>
+
+  <section class="demo">
+    <div class="hd"><h2>The whole mechanism</h2></div>
+<pre>enter(el){
+  if (group.<b>warm</b>) return open(el);              // a neighbour already broke the ice
+  clearTimeout(closeTimer);
+  openTimer = setTimeout(() =&gt; open(el), <b>OPEN</b>);   // 420ms of intent
+}
+leave(el){
+  clearTimeout(openTimer);
+  closeTimer = setTimeout(() =&gt; {                    // grace: travel into the panel
+    close(el);
+    warmTimer = setTimeout(() =&gt; group.warm = false, <b>WARM</b>);
+  }, <b>CLOSE</b>);
+}</pre>
+    <p class="note">CSS is growing native properties for exactly this —
+       <code>interest-delay-start</code> and <code>interest-delay-end</code> — and they are
+       applied here wherever the engine already has them.
+       <span id="idBadge"></span></p>
+  </section>
+
+  <section class="demo">
+    <div class="hd">
+      <h2>4 · The same row with no intent at all</h2>
+      <p>For comparison: zero delay, zero grace, no shared warmth. Sweep across it once and
+         the difference stops being theoretical.</p>
+    </div>
+    <div class="flat" id="g4"></div>
+  </section>
+
+</div>
+
+<footer>
+  Inspired by <a href="https://blog.master.dev/tooltips-need-a-delay-and-then-they-need-to-skip-it/"
+  target="_blank" rel="noopener">Abhishek Jakhar — “Tooltips need a delay, and then they need to skip it”</a>
+  · UI Spotlight Day 119 · Drop #4 · timing rebuilt from scratch in vanilla JS
+</footer>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const T = { open: 420, close: 180, warm: 600 };
+const HAS_INTEREST = CSS.supports("interest-delay-start", "300ms");
+
+/* ---------------- content ---------------- */
+const PEOPLE = [
+  ["AD", "Ada Lovelace", "Wrote the first algorithm intended for a machine.", 44],
+  ["GH", "Grace Hopper", "Built the first compiler and argued for machine independence.", 16],
+  ["AT", "Alan Turing", "Formalised computation with the machine that bears his name.", 196],
+  ["KJ", "Katherine Johnson", "Hand-computed the trajectories that flew Apollo.", 286],
+  ["MH", "Margaret Hamilton", "Led the Apollo onboard flight software team.", 330]
+];
+const MENUS = [
+  ["File", ["New window", "Open recent…", "Save a copy", "Export as…"]],
+  ["Edit", ["Undo", "Redo", "Find and replace", "Paste without style"]],
+  ["View", ["Zoom in", "Presentation mode", "Toggle sidebar", "Full screen"]],
+  ["Tools", ["Preferences", "Extensions", "Keyboard shortcuts"]]
+];
+const ROWS = [
+  ["#4812", "passed", "24 checks · 3m 12s", "All suites green on the first attempt."],
+  ["#4811", "flaky", "24 checks · 5m 02s", "One integration test retried, then passed."],
+  ["#4810", "failed", "22 checks · 1m 44s", "Type error in the scheduler module."],
+  ["#4809", "passed", "24 checks · 3m 30s", "Cache hit on every workspace."]
+];
+
+/* ---------------- keep panels inside the viewport ----------------
+   Panels are hidden with opacity, so they are laid out even when closed —
+   an un-clamped tooltip on an edge trigger would widen the document. Every
+   panel is therefore clamped at rest, on resize, and again as it opens. */
+function clamp(panel) {
+  if (!panel) return;
+  panel.style.marginLeft = "0px";
+  const r = panel.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth, pad = 10;
+  let dx = 0;
+  if (r.right > vw - pad) dx = (vw - pad) - r.right;
+  if (r.left + dx < pad) dx = pad - r.left;
+  if (dx) panel.style.marginLeft = dx.toFixed(1) + "px";
+}
+function clampAll() {
+  document.querySelectorAll(".tip,.menu").forEach(clamp);
+}
+
+/* ---------------- one intent group per instance ---------------- */
+function makeGroup(root, opts) {
+  const g = {
+    warm: false, openTimer: 0, closeTimer: 0, warmTimer: 0, raf: 0,
+    current: null, pending: null, instant: !!(opts && opts.instant)
+  };
+
+  function ring(t) {
+    const start = performance.now();
+    cancelAnimationFrame(g.raf);
+    (function tick(now) {
+      if (g.pending !== t) { t.style.setProperty("--ro", 0); return; }
+      const p = Math.min(1, (now - start) / Math.max(1, T.open));
+      t.style.setProperty("--p", p.toFixed(3));
+      t.style.setProperty("--ro", p < 1 ? 1 : 0);
+      if (p < 1) g.raf = requestAnimationFrame(tick);
+    })(start);
+  }
+  function show(t) {
+    if (g.current && g.current !== t) hide(g.current);
+    t.dataset.open = "1";
+    t.style.setProperty("--ro", 0);
+    g.current = t;
+    if (!g.instant) { g.warm = true; clearTimeout(g.warmTimer); }
+    requestAnimationFrame(() => clamp(t.querySelector(".tip,.menu")));
+  }
+  function hide(t) {
+    t.dataset.open = "";
+    t.style.setProperty("--ro", 0);
+    if (g.current === t) g.current = null;
+  }
+  function enter(t) {
+    clearTimeout(g.closeTimer);
+    clearTimeout(g.openTimer);
+    if (g.instant || g.warm || T.open === 0) { show(t); return; }
+    g.pending = t;
+    ring(t);
+    g.openTimer = setTimeout(() => { g.pending = null; show(t); }, T.open);
+  }
+  function leave(t) {
+    clearTimeout(g.openTimer);
+    g.pending = null;
+    t.style.setProperty("--ro", 0);
+    if (g.instant) { hide(t); return; }
+    g.closeTimer = setTimeout(() => {
+      hide(t);
+      g.warmTimer = setTimeout(() => { g.warm = false; }, T.warm);
+    }, T.close);
+  }
+
+  root.addEventListener("pointerover", e => {
+    const t = e.target.closest(".trig");
+    if (!t || !root.contains(t)) return;
+    if (t === g.current) { clearTimeout(g.closeTimer); return; }
+    enter(t);
+  });
+  root.addEventListener("pointerout", e => {
+    const t = e.target.closest(".trig");
+    if (!t) return;
+    if (e.relatedTarget && t.contains(e.relatedTarget)) return;  // moved into its own panel
+    leave(t);
+  });
+  root.addEventListener("pointerleave", () => { if (g.current) leave(g.current); });
+  root.addEventListener("pointerdown", e => {        // touch opens at once
+    const t = e.target.closest(".trig");
+    if (t) { clearTimeout(g.openTimer); g.pending = null; show(t); }
+  });
+  root.addEventListener("focusin", e => {            // keyboard never waits
+    const t = e.target.closest(".trig");
+    if (t) { clearTimeout(g.openTimer); g.pending = null; show(t); }
+  });
+  root.addEventListener("focusout", e => {
+    const t = e.target.closest(".trig");
+    if (t && !(e.relatedTarget && t.contains(e.relatedTarget))) hide(t);
+  });
+  return g;
+}
+
+/* ---------------- build the instances ---------------- */
+$("#g1").innerHTML = PEOPLE.map(p =>
+  '<button class="trig" type="button" style="border-radius:50%">' +
+  '<span class="av" style="background:linear-gradient(150deg,hsl(' + p[3] + ' 85% 68%),hsl(' +
+  (p[3] + 28) + ' 80% 56%))">' + p[0] + "</span>" +
+  '<span class="tip"><b>' + p[1] + "</b><br>" + p[2] + "</span></button>").join("");
+
+$("#g2").innerHTML = MENUS.map(m =>
+  '<button class="trig" type="button">' + m[0] +
+  '<span class="menu">' + m[1].map(i => '<a href="#" onclick="return false">' + i + "</a>").join("") +
+  "</span></button>").join("");
+
+$("#g3").innerHTML = ROWS.map(r =>
+  "<tr><td>" + r[0] + "</td><td>" + r[1] + "</td><td>" +
+  '<button class="trig" type="button">' + r[2] +
+  '<span class="tip">' + r[3] + "</span></button></td></tr>").join("");
+
+$("#g4").innerHTML = PEOPLE.slice(0, 4).map(p =>
+  '<button class="trig" type="button">' + p[1].split(" ")[0] +
+  '<span class="tip"><b>' + p[1] + "</b><br>no delay, no grace, no warmth</span></button>").join("");
+
+const G = [makeGroup($("#g1")), makeGroup($("#g2")), makeGroup($("#g3")),
+           makeGroup($("#g4"), { instant: true })];
+
+clampAll();
+let rz = 0;
+window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(clampAll, 120); });
+
+/* ---------------- timing controls ---------------- */
+function bind(id, out, key) {
+  const el = $("#" + id), lbl = $("#" + out);
+  const apply = () => {
+    T[key] = +el.value;
+    lbl.textContent = el.value + "ms";
+    document.documentElement.style.setProperty("--" + key, el.value + "ms");
+  };
+  el.addEventListener("input", apply); apply();
+}
+bind("open", "vOpen", "open");
+bind("close", "vClose", "close");
+bind("warm", "vWarm", "warm");
+
+/* apply the native properties as well, wherever they exist */
+if (HAS_INTEREST) {
+  const css = document.createElement("style");
+  css.textContent = ".trig{interest-delay-start:var(--open);interest-delay-end:var(--close)}";
+  document.head.appendChild(css);
+}
+$("#idBadge").innerHTML = HAS_INTEREST
+  ? '<b style="color:#bef264">✓ interest-delay-* is live in this engine.</b>'
+  : '<b style="color:#fca5a5">✗ interest-delay-* is not in this engine yet</b> — the JS timing above is doing all of the work.';
+
+/* ---------------- live state read-out ---------------- */
+(function loop() {
+  const warm = G.slice(0, 3).some(g => g.warm);
+  const open = G.map(g => g.current).filter(Boolean).length;
+  const waiting = G.some(g => g.pending);
+  $("#state").innerHTML =
+    '<i>group: <span class="' + (warm ? "hot" : "") + '">' +
+      (warm ? "WARM — opens instantly" : "cold — will wait") + "</span></i>" +
+    "<i>waiting on intent: <b>" + (waiting ? "yes" : "no") + "</b></i>" +
+    "<i>panels open: <b>" + open + "</b></i>";
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
