@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fallbacks That Don't Jump — UI Spotlight Day 120</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#070810; --ink:#e8edff; --dim:#8e99c4; --line:#232842;
+    --accent:#f87171; --glass:#12162699;
+  }
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);
+    -webkit-text-size-adjust:100%;
+  }
+  .back-link{
+    position:fixed;left:14px;top:calc(14px + env(safe-area-inset-top,0px));z-index:50;
+    display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:999px;
+    text-decoration:none;color:var(--ink);background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(14px);font-size:13px;font-weight:600;transition:background .18s,transform .18s;
+  }
+  .back-link:hover{background:#1c2138cc;transform:translateX(-2px)}
+
+  .panel{
+    position:fixed;right:14px;top:calc(14px + env(safe-area-inset-top,0px));z-index:50;
+    width:240px;padding:13px 14px;border-radius:15px;background:var(--glass);
+    border:1px solid var(--line);backdrop-filter:blur(14px);box-shadow:0 18px 44px #0008;
+  }
+  .panel h3{margin:0 0 8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .panel label{display:block;font-size:11px;color:var(--dim);margin:11px 0 3px;letter-spacing:.05em;text-transform:uppercase}
+  .panel input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+  .panel output{float:right;color:var(--ink);font-variant-numeric:tabular-nums}
+  .panel button{
+    width:100%;margin-top:12px;padding:8px;border-radius:9px;cursor:pointer;
+    background:var(--accent);border:0;color:#1a0505;font:inherit;font-size:12.5px;font-weight:700;
+  }
+  .panel .stat{margin:10px 0 0;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;line-height:1.5}
+  .panel .stat b{color:var(--ink)}
+  @media (max-width:900px){ .panel{display:none} }
+
+  main{max-width:880px;margin:0 auto;padding:96px 20px 70px}
+  h1{margin:0 0 10px;font-size:clamp(28px,6vw,42px);letter-spacing:-.03em;line-height:1.1}
+  h1 em{font-style:normal;color:var(--accent)}
+  .lede{color:var(--dim);max-width:64ch;margin:0 0 42px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;background:#161b30;padding:2px 6px;border-radius:5px;color:#cfe0ff}
+
+  section{margin:0 0 46px}
+  section h2{margin:0 0 4px;font-size:18px;letter-spacing:-.01em}
+  section > p.note{margin:0 0 16px;color:var(--dim);font-size:14px}
+
+  /* ------------------------------------------------------------------
+     The effect. A webfont almost never has the same metrics as the local
+     font shown while it loads, so the swap moves every line below it.
+     @font-face descriptors let you reshape the LOCAL font to match the
+     webfont before the swap ever happens:
+
+       size-adjust        scales every glyph
+       ascent-override    fixes the box above the baseline
+       descent-override   fixes the box below it
+       line-gap-override  fixes the leading the font asks for
+
+     Both faces below are local() so this page needs no network at all —
+     the "webfont" is simply a different family already on the machine.
+     ------------------------------------------------------------------ */
+  @font-face{
+    font-family:"Target";
+    src:local("Georgia"), local("Times New Roman"), local("Times"), local("Liberation Serif");
+    font-display:swap;
+  }
+  /* the naive fallback: whatever the stack lands on, unadjusted */
+  @font-face{
+    font-family:"NaiveFallback";
+    src:local("Arial"), local("Helvetica"), local("Liberation Sans"), local("DejaVu Sans");
+  }
+  /* the same face, reshaped to sit in the target's box */
+  @font-face{
+    font-family:"TunedFallback";
+    src:local("Arial"), local("Helvetica"), local("Liberation Sans"), local("DejaVu Sans");
+    size-adjust:var(--sa,100%);
+    ascent-override:var(--ao,105%);
+    descent-override:var(--do,21%);
+    line-gap-override:0%;
+  }
+
+  .lab{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#0c101c}
+  .lab > h4{
+    margin:0;padding:9px 14px;border-bottom:1px solid var(--line);
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
+    display:flex;justify-content:space-between;gap:10px;align-items:center;
+  }
+  .lab > h4 .shift{color:var(--ink);letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+  .lab.good > h4{color:#34d399}
+  .lab.good > h4 .shift{color:#34d399}
+  .lab .body{padding:18px}
+
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:760px){ .pair{grid-template-columns:1fr} }
+
+  .spec{margin:0 0 12px;font-size:28px;line-height:1.25;letter-spacing:-.02em}
+  .spec.naive{font-family:"NaiveFallback",sans-serif}
+  .spec.tuned{font-family:"TunedFallback",sans-serif}
+  .spec.target{font-family:"Target",serif}
+  .swapped .spec.naive,.swapped .spec.tuned{font-family:"Target",serif}
+
+  .para{font-size:15.5px;line-height:1.6;color:#b7c0e4;margin:0}
+  .para.naive{font-family:"NaiveFallback",sans-serif}
+  .para.tuned{font-family:"TunedFallback",sans-serif}
+  .swapped .para.naive,.swapped .para.tuned{font-family:"Target",serif}
+
+  /* the ruler that makes the shift visible */
+  .marker{
+    position:relative;margin-top:14px;padding-top:12px;border-top:1px dashed #ffffff22;
+    font-size:12px;color:var(--dim);
+  }
+  .marker::after{
+    content:"";position:absolute;left:0;top:-1px;width:34px;height:2px;background:var(--accent);
+  }
+  .lab.good .marker::after{background:#34d399}
+
+  .overlay{position:relative;height:120px;border-radius:12px;background:#0a0e18;border:1px solid var(--line);overflow:hidden}
+  .overlay .ghost,.overlay .real{
+    position:absolute;left:16px;right:16px;top:16px;margin:0;font-size:34px;line-height:1.2;letter-spacing:-.02em;
+  }
+  .overlay .ghost{color:#f8717188;font-family:"NaiveFallback",sans-serif}
+  .overlay .real{color:#e8edff;font-family:"Target",serif}
+  .overlay.tuned .ghost{font-family:"TunedFallback",sans-serif;color:#34d39988}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0 0;font-size:12px;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:10px;height:3px;border-radius:2px;font-style:normal}
+
+  .note-box{
+    margin:14px 0 0;padding:12px 15px;border-radius:12px;border:1px solid var(--line);
+    background:#11162a;color:var(--dim);font-size:13.5px;
+  }
+  .note-box b{color:var(--ink)}
+
+  footer.credit{
+    max-width:880px;margin:0 auto;padding:26px 20px 60px;color:var(--dim);
+    font-size:12px;border-top:1px solid var(--line);text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Metric overrides</h3>
+  <label>size-adjust <output id="sav">100%</output></label>
+  <input type="range" id="sa" min="80" max="130" step="0.5" value="100">
+  <label>ascent-override <output id="aov">105%</output></label>
+  <input type="range" id="ao" min="70" max="130" step="0.5" value="105">
+  <label>descent-override <output id="dov">21%</output></label>
+  <input type="range" id="do" min="0" max="45" step="0.5" value="21">
+  <button id="swap">Swap the font ⇄</button>
+  <button id="auto" style="background:#171c2e;color:var(--ink);margin-top:7px">Solve it for me</button>
+  <p class="stat" id="stat">shift: <b>—</b></p>
+</div>
+
+<main>
+  <h1>Fallbacks that<br><em>don't jump</em></h1>
+  <p class="lede">
+    The font swap is the last big layout shift most sites still ship. The fallback has different
+    metrics from the real face, so the moment it swaps every line below moves. The fix is not to
+    hide the text — it is to reshape the fallback so it already occupies the right box, using
+    <code>size-adjust</code> and the three <code>*-override</code> descriptors on a
+    <code>@font-face</code> that points at a local font.
+  </p>
+
+  <section>
+    <h2>1 · The same swap, twice</h2>
+    <p class="note">Hit <em>Swap the font</em> (or the button below) and watch the red marker move while the green one stays put. Both panels swap to the identical target face.</p>
+    <div class="pair">
+      <div class="lab" id="labA">
+        <h4>naive fallback <span class="shift" data-shift="A">—</span></h4>
+        <div class="body">
+          <p class="spec naive">Handgloves &amp; Quartz</p>
+          <p class="para naive">A fallback chosen for looks alone will be wider or narrower, taller or
+          shorter, and leaded differently. Every one of those differences becomes movement at swap time.</p>
+          <div class="marker">everything below this line moves</div>
+        </div>
+      </div>
+      <div class="lab good" id="labB">
+        <h4>tuned fallback <span class="shift" data-shift="B">—</span></h4>
+        <div class="body">
+          <p class="spec tuned">Handgloves &amp; Quartz</p>
+          <p class="para tuned">The same fallback family, reshaped by descriptors so its box already
+          matches the target. The glyphs still differ — the geometry no longer does.</p>
+          <div class="marker">this line holds still</div>
+        </div>
+      </div>
+    </div>
+    <div class="note-box">
+      <b>No network needed.</b> Both faces here are <code>local()</code> lookups, so the “webfont”
+      is just another family already installed. The mechanism is identical to a real
+      <code>@font-face</code> with a <code>url()</code> source.
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Overlaid</h2>
+    <p class="note">Fallback drawn straight over the target. Untuned the two drift apart; tuned they share a baseline and a cap height even though the letterforms disagree.</p>
+    <div class="pair">
+      <div>
+        <div class="overlay"><p class="ghost">Metrics, not shapes</p><p class="real">Metrics, not shapes</p></div>
+        <div class="legend"><span><i style="background:#f87171"></i>naive fallback</span><span><i style="background:#e8edff"></i>target</span></div>
+      </div>
+      <div>
+        <div class="overlay tuned"><p class="ghost">Metrics, not shapes</p><p class="real">Metrics, not shapes</p></div>
+        <div class="legend"><span><i style="background:#34d399"></i>tuned fallback</span><span><i style="background:#e8edff"></i>target</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Solve it numerically</h2>
+    <p class="note">You do not guess these numbers. Measure a string in both faces and the ratio is your <code>size-adjust</code>; the target's own ascent and descent give the other two. <em>Solve it for me</em> runs exactly that.</p>
+    <div class="lab">
+      <h4>measured <span class="shift" id="solved">—</span></h4>
+      <div class="body">
+        <p class="para" style="color:#b7c0e4;margin-bottom:10px">Advance width of a probe string, measured with the Canvas text API in each family:</p>
+        <div id="measure" style="font-size:13.5px;color:var(--dim);font-variant-numeric:tabular-nums"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="credit">
+  Inspired by MDN's <code>@font-face/size-adjust</code> reference and the metric-override fallback technique · UI Spotlight Day 120 · Drop #3
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  const root = document.documentElement;
+  const labA = document.getElementById("labA"), labB = document.getElementById("labB");
+  const markA = labA.querySelector(".marker"), markB = labB.querySelector(".marker");
+  const outA = document.querySelector('[data-shift="A"]'), outB = document.querySelector('[data-shift="B"]');
+
+  const supported = CSS.supports("size-adjust", "100%") || CSS.supports("ascent-override", "100%");
+
+  /* ---------- measure the shift the swap actually causes ---------- */
+  function markerTop(el) { return el.getBoundingClientRect().top + window.scrollY; }
+
+  function measureShift() {
+    const beforeA = markerTop(markA), beforeB = markerTop(markB);
+    labA.classList.add("swapped"); labB.classList.add("swapped");
+    // force layout with the swapped family applied
+    void labA.offsetHeight;
+    const afterA = markerTop(markA), afterB = markerTop(markB);
+    labA.classList.remove("swapped"); labB.classList.remove("swapped");
+    void labA.offsetHeight;
+    return [Math.abs(afterA - beforeA), Math.abs(afterB - beforeB)];
+  }
+  function report() {
+    const [a, b] = measureShift();
+    outA.textContent = a.toFixed(1) + "px shift";
+    outB.textContent = b.toFixed(1) + "px shift";
+    const stat = document.getElementById("stat");
+    stat.innerHTML = "naive shift: <b>" + a.toFixed(1) + "px</b><br>tuned shift: <b>" + b.toFixed(1) + "px</b>" +
+      (supported ? "" : "<br><span style='color:#f87171'>descriptors unsupported here</span>");
+  }
+
+  /* ---------- the swap demo ---------- */
+  let swapped = false;
+  document.getElementById("swap").addEventListener("click", () => {
+    swapped = !swapped;
+    labA.classList.toggle("swapped", swapped);
+    labB.classList.toggle("swapped", swapped);
+    if (!swapped) report();
+  });
+
+  /* ---------- panel ---------- */
+  const bind = (id, outId, prop, unit) => {
+    const i = document.getElementById(id), o = document.getElementById(outId);
+    const push = () => {
+      o.textContent = (+i.value) + unit;
+      root.style.setProperty(prop, (+i.value) + unit);
+      requestAnimationFrame(report);
+    };
+    i.addEventListener("input", push);
+    return push;
+  };
+  const pSa = bind("sa", "sav", "--sa", "%");
+  const pAo = bind("ao", "aov", "--ao", "%");
+  const pDo = bind("do", "dov", "--do", "%");
+
+  /* ---------- measure both families and solve ---------- */
+  const PROBE = "Handgloves & Quartz — 0123456789";
+  function advance(family, px) {
+    const c = document.createElement("canvas").getContext("2d");
+    c.font = px + 'px "' + family + '", sans-serif';
+    return c.measureText(PROBE).width;
+  }
+  function metricsOf(family, px) {
+    const c = document.createElement("canvas").getContext("2d");
+    c.font = px + 'px "' + family + '", sans-serif';
+    const m = c.measureText(PROBE);
+    return {
+      w: m.width,
+      asc: m.fontBoundingBoxAscent,
+      desc: m.fontBoundingBoxDescent
+    };
+  }
+
+  function solve() {
+    const px = 100;
+    const target = metricsOf("Target", px);
+    const fb = metricsOf("NaiveFallback", px);
+    if (!target.w || !fb.w) return null;
+    const sizeAdjust = target.w / fb.w * 100;
+    // once scaled, the overrides are expressed against the SCALED em
+    const ao = target.asc != null && fb.asc != null ? (target.asc / px) / (sizeAdjust / 100) * 100 : null;
+    const dsc = target.desc != null ? (target.desc / px) / (sizeAdjust / 100) * 100 : null;
+    return { sizeAdjust, ao, dsc, target, fb };
+  }
+
+  function showMeasurements() {
+    const s = solve();
+    const box = document.getElementById("measure");
+    if (!s) { box.textContent = "Canvas text metrics unavailable in this browser."; return; }
+    box.innerHTML =
+      'target face &nbsp;&nbsp;advance <b style="color:#e8edff">' + s.target.w.toFixed(1) + "px</b>" +
+      (s.target.asc != null ? ' · ascent <b style="color:#e8edff">' + s.target.asc.toFixed(1) + "px</b>" : "") +
+      (s.target.desc != null ? ' · descent <b style="color:#e8edff">' + s.target.desc.toFixed(1) + "px</b>" : "") +
+      '<br>fallback &nbsp;&nbsp;&nbsp;advance <b style="color:#e8edff">' + s.fb.w.toFixed(1) + "px</b>" +
+      '<br><br>→ size-adjust: <b style="color:#34d399">' + s.sizeAdjust.toFixed(1) + "%</b>" +
+      (s.ao != null ? ' · ascent-override: <b style="color:#34d399">' + s.ao.toFixed(1) + "%</b>" : "") +
+      (s.dsc != null ? ' · descent-override: <b style="color:#34d399">' + s.dsc.toFixed(1) + "%</b>" : "");
+    document.getElementById("solved").textContent = s.sizeAdjust.toFixed(1) + "% of the fallback";
+  }
+
+  document.getElementById("auto").addEventListener("click", () => {
+    const s = solve();
+    if (!s) return;
+    document.getElementById("sa").value = Math.max(80, Math.min(130, s.sizeAdjust)).toFixed(1);
+    if (s.ao != null) document.getElementById("ao").value = Math.max(70, Math.min(130, s.ao)).toFixed(1);
+    if (s.dsc != null) document.getElementById("do").value = Math.max(0, Math.min(45, s.dsc)).toFixed(1);
+    pSa(); pAo(); pDo();
+    showMeasurements();
+  });
+
+  function boot() {
+    showMeasurements();
+    // land on solved values so the green panel is genuinely stable on arrival
+    document.getElementById("auto").click();
+    report();
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

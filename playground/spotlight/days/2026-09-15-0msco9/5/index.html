@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>A Million Rows, Forty Nodes — UI Spotlight Day 120</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#070810; --ink:#e8edff; --dim:#8e99c4; --line:#232842;
+    --accent:#a78bfa; --glass:#12162699;
+  }
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);
+    -webkit-text-size-adjust:100%;
+  }
+  .back-link{
+    position:fixed;left:14px;top:calc(14px + env(safe-area-inset-top,0px));z-index:50;
+    display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:999px;
+    text-decoration:none;color:var(--ink);background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(14px);font-size:13px;font-weight:600;transition:background .18s,transform .18s;
+  }
+  .back-link:hover{background:#1c2138cc;transform:translateX(-2px)}
+
+  .panel{
+    position:fixed;right:14px;top:calc(14px + env(safe-area-inset-top,0px));z-index:50;
+    width:240px;padding:13px 14px;border-radius:15px;background:var(--glass);
+    border:1px solid var(--line);backdrop-filter:blur(14px);box-shadow:0 18px 44px #0008;
+  }
+  .panel h3{margin:0 0 8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .panel label{display:block;font-size:11px;color:var(--dim);margin:11px 0 3px;letter-spacing:.05em;text-transform:uppercase}
+  .panel input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+  .panel output{float:right;color:var(--ink);font-variant-numeric:tabular-nums}
+  .panel .stat{margin:11px 0 0;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;line-height:1.55}
+  .panel .stat b{color:var(--ink)}
+  .panel .stat .hot{color:var(--accent)}
+  @media (max-width:900px){ .panel{display:none} }
+
+  main{max-width:900px;margin:0 auto;padding:96px 20px 70px}
+  h1{margin:0 0 10px;font-size:clamp(28px,6vw,42px);letter-spacing:-.03em;line-height:1.1}
+  h1 em{font-style:normal;color:var(--accent)}
+  .lede{color:var(--dim);max-width:64ch;margin:0 0 42px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;background:#161b30;padding:2px 6px;border-radius:5px;color:#cfe0ff}
+
+  section{margin:0 0 44px}
+  section h2{margin:0 0 4px;font-size:18px;letter-spacing:-.01em}
+  section > p.note{margin:0 0 16px;color:var(--dim);font-size:14px}
+
+  .shell{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#0c101c}
+  .shell > .bar{
+    display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);
+    font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);
+  }
+  .shell > .bar .grow{flex:1}
+  .shell > .bar .live{color:var(--ink);letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+  .shell > .bar input{
+    flex:none;width:150px;padding:5px 10px;border-radius:8px;background:#11162a;border:1px solid var(--line);
+    color:var(--ink);font:inherit;font-size:12.5px;letter-spacing:0;text-transform:none;outline:none;
+  }
+  .shell > .bar input:focus{border-color:var(--accent)}
+
+  /* ------------------------------------------------------------------
+     The effect. The scroll container holds one spacer whose height is
+     rows × rowHeight, so the scrollbar is honest about the full list.
+     Only the visible slice (plus a small overscan) exists as DOM, and
+     those nodes are RECYCLED — the same elements get new text and a new
+     transform on every frame rather than being created and destroyed.
+     ------------------------------------------------------------------ */
+  .vport{position:relative;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+  .vport::-webkit-scrollbar{width:9px}
+  .vport::-webkit-scrollbar-thumb{background:#2a3150;border-radius:5px}
+  .vport .spacer{position:relative;width:100%}
+  .vport .slice{position:absolute;top:0;left:0;right:0;will-change:transform}
+
+  .r{
+    display:flex;align-items:center;gap:12px;padding:0 16px;
+    border-bottom:1px solid #1a1f34;font-variant-numeric:tabular-nums;
+  }
+  .r .idx{width:74px;flex:none;color:#5d6790;font-size:12px}
+  .r .av{width:26px;height:26px;border-radius:50%;flex:none;background:linear-gradient(140deg,var(--a),var(--b))}
+  .r .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+  .r .meta{color:var(--dim);font-size:12.5px;flex:none}
+  .r.alt{background:#0e1320}
+  .r mark{background:#a78bfa44;color:#e9e2ff;border-radius:3px}
+
+  /* chat / reverse mode */
+  .msg{padding:8px 16px;display:flex;gap:10px;align-items:flex-start}
+  .msg .bub{
+    background:#171d31;border:1px solid var(--line);border-radius:12px;padding:8px 12px;
+    font-size:13.5px;max-width:78%;
+  }
+  .msg.me{flex-direction:row-reverse}
+  .msg.me .bub{background:#2b2350;border-color:#42366f}
+
+  /* table mode */
+  .tbl .th{
+    display:flex;gap:12px;padding:0 16px;height:34px;align-items:center;
+    background:#11162a;border-bottom:1px solid var(--line);
+    font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+    position:sticky;top:0;z-index:2;
+  }
+  .tbl .th span:nth-child(1){width:74px;flex:none}
+  .tbl .th span:nth-child(2){flex:1}
+  .tbl .th span:nth-child(3){width:96px;flex:none;text-align:right}
+  .tbl .r .meta{width:96px;text-align:right}
+
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:760px){ .pair{grid-template-columns:1fr} }
+
+  .callout{
+    margin:16px 0 0;padding:13px 16px;border-radius:12px;border:1px solid var(--line);
+    background:#11162a;color:var(--dim);font-size:13.5px;
+  }
+  .callout b{color:var(--ink)}
+
+  footer.credit{
+    max-width:900px;margin:0 auto;padding:26px 20px 60px;color:var(--dim);
+    font-size:12px;border-top:1px solid var(--line);text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Virtual scroller</h3>
+  <label>Rows <output id="nv">1,000,000</output></label>
+  <input type="range" id="n" min="3" max="6" step="1" value="6">
+  <label>Row height <output id="hv">44px</output></label>
+  <input type="range" id="h" min="28" max="72" step="2" value="44">
+  <label>Overscan <output id="ov">4</output></label>
+  <input type="range" id="o" min="0" max="16" step="1" value="4">
+  <p class="stat" id="stat">
+    live row elements: <b class="hot">—</b><br>
+    total in the list: <b>—</b><br>
+    nodes recycled: <b>—</b>
+  </p>
+</div>
+
+<main>
+  <h1>A million rows,<br><em>forty nodes</em></h1>
+  <p class="lede">
+    A list only has to exist where you can see it. A virtual scroller keeps one tall spacer so the
+    scrollbar tells the truth, renders just the visible slice, and then <em>recycles</em> those few
+    elements as you move — no creation, no destruction, no garbage. Scroll the list below to the
+    bottom and the element count in the panel never budges.
+  </p>
+
+  <section>
+    <h2>1 · The list</h2>
+    <p class="note">One million rows. Drag the scrollbar hard, or use the jump box — the row count on the right is the number of <code>&lt;div&gt;</code>s that actually exist.</p>
+    <div class="shell">
+      <div class="bar">
+        <span>people</span>
+        <span class="grow"></span>
+        <input id="q" type="search" placeholder="Jump to row…" inputmode="numeric" autocomplete="off">
+        <span class="live" id="live1">—</span>
+      </div>
+      <div class="vport" id="v1" style="height:330px"><div class="spacer"><div class="slice"></div></div></div>
+    </div>
+    <div class="callout">
+      <b>Why recycle rather than re-create?</b> Creating and dropping nodes on every frame is what makes
+      naive virtualisation stutter — the cost is not the scroll, it is the allocation and the style
+      recalculation on a changing node set. Reuse the same elements and the browser only ever does a
+      text and transform update.
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Reverse and table modes</h2>
+    <p class="note">The same scroller with the anchor flipped for a chat log, and with a sticky header row for a table. Only the row renderer changes.</p>
+    <div class="pair">
+      <div class="shell">
+        <div class="bar"><span>chat · newest last</span><span class="grow"></span><span class="live" id="live2">—</span></div>
+        <div class="vport" id="v2" style="height:270px"><div class="spacer"><div class="slice"></div></div></div>
+      </div>
+      <div class="shell tbl">
+        <div class="bar"><span>table</span><span class="grow"></span><span class="live" id="live3">—</span></div>
+        <div class="th"><span>#</span><span>Name</span><span>Score</span></div>
+        <div class="vport" id="v3" style="height:236px"><div class="spacer"><div class="slice"></div></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="credit">
+  Inspired by html-code-generator/hcg-virtual-scroll · UI Spotlight Day 120 · Drop #5
+</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ---------- deterministic fake data, generated per index ---------- */
+  const FIRST = ["Ada","Bo","Cleo","Dara","Esme","Fen","Gus","Hana","Ivo","Juno","Kit","Lena",
+                 "Mika","Nils","Omar","Pia","Quinn","Rhea","Sol","Tove","Uma","Vic","Wren","Yara","Zev"];
+  const LAST  = ["Adeyemi","Bright","Castellano","Dvorak","Eriksen","Fontaine","Grover","Haavik",
+                 "Ibarra","Jemison","Kowalski","Lindqvist","Moreau","Nakamura","Okonkwo","Pereira",
+                 "Quintero","Rasmussen","Silva","Takahashi","Ueda","Vasquez","Whitfield","Yousef"];
+  const PAL = [["#a78bfa","#38bdf8"],["#34d399","#22d3ee"],["#fbbf24","#fb7185"],["#f472b6","#a78bfa"],
+               ["#4ade80","#0ea5e9"],["#fcd34d","#34d399"]];
+  const hash = i => { let x = (i ^ 0x9e3779b9) >>> 0; x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; return x >>> 0; };
+  const person = i => {
+    const h = hash(i);
+    // every shift here must be unsigned: h routinely exceeds 2^31, and a
+    // signed >> would make the index negative and the lookup undefined
+    return {
+      name: FIRST[h % FIRST.length] + " " + LAST[(h >>> 7) % LAST.length],
+      pal: PAL[(h >>> 3) % PAL.length],
+      score: h % 1000,
+      msg: (h >>> 11) % 2 === 0
+    };
+  };
+  const MESSAGES = ["Pushed the fix, CI is green.","Can you take a look when you get a sec?",
+    "Shipping this after standup.","The recycle pool is the whole trick.",
+    "Nice — node count is flat now.","Scrollbar height comes from the spacer.",
+    "Reverse mode just inverts the anchor.","Overscan of four is plenty."];
+
+  /* ------------------------------------------------------------------
+     The scroller. Keeps a pool of row elements sized to the viewport
+     plus overscan and never grows it; on scroll it reassigns content.
+     ------------------------------------------------------------------ */
+  function Virtual(vport, opts) {
+    const spacer = vport.querySelector(".spacer");
+    const slice = vport.querySelector(".slice");
+    const o = Object.assign({ rows: 1e6, height: 44, overscan: 4, render: () => {} }, opts);
+    const pool = [];
+    let first = -1, recycled = 0, created = 0;
+
+    // Browsers cap how tall an element may be (Chrome around 33.5M px), and
+    // 1,000,000 rows sails past it. Above the cap the spacer is pinned to a
+    // safe height and scroll offsets are scaled into the virtual range, so
+    // the scrollbar still spans the whole list.
+    const MAXPX = 8e6;
+    function totalPx() { return o.rows * o.height; }
+    function spacerPx() { return Math.min(totalPx(), MAXPX); }
+    function ratio() {
+      const inner = Math.max(1, spacerPx() - vport.clientHeight);
+      return Math.max(1, (totalPx() - vport.clientHeight)) / inner;
+    }
+    function poolSize() {
+      return Math.ceil(vport.clientHeight / o.height) + o.overscan * 2 + 1;
+    }
+    function ensure() {
+      const want = poolSize();
+      while (pool.length < want) {
+        const el = document.createElement("div");
+        el.className = "r";
+        el.style.height = o.height + "px";
+        slice.appendChild(el);
+        pool.push(el);
+        created++;
+      }
+      while (pool.length > want) { const el = pool.pop(); el.remove(); }
+      pool.forEach(el => { el.style.height = o.height + "px"; });
+      spacer.style.height = spacerPx().toFixed(0) + "px";
+      // shrinking the list leaves scrollTop past the new end; the browser
+      // clamps it only on the next layout, so clamp it here or the first
+      // paint renders rows that no longer exist
+      const max = Math.max(0, spacer.offsetHeight - vport.clientHeight);
+      if (vport.scrollTop > max) vport.scrollTop = max;
+    }
+    function paint(force) {
+      const virtualTop = vport.scrollTop * ratio();
+      const start = Math.max(0, Math.floor(virtualTop / o.height) - o.overscan);
+      // anchor the slice to the viewport, not to start*height, so the scaled
+      // and unscaled cases render identically
+      const offset = vport.scrollTop - (virtualTop - start * o.height);
+      slice.style.transform = "translateY(" + Math.round(offset) + "px)";
+      if (start === first && !force) return;
+      first = start;
+      for (let k = 0; k < pool.length; k++) {
+        const i = start + k;
+        const el = pool[k];
+        if (i >= o.rows) { el.hidden = true; continue; }
+        el.hidden = false;
+        o.render(el, i);
+        recycled++;
+      }
+    }
+    vport.addEventListener("scroll", () => paint(false), { passive: true });
+
+    return {
+      refresh(next) { Object.assign(o, next || {}); ensure(); paint(true); },
+      scrollToRow(i) {
+        const target = Math.max(0, Math.min(o.rows - 1, i)) * o.height;
+        vport.scrollTop = target / ratio();
+        paint(true);
+      },
+      toBottom() { vport.scrollTop = spacer.offsetHeight; paint(true); },
+      get live() { return pool.filter(e => !e.hidden).length; },
+      get pool() { return pool.length; },
+      get created() { return created; },
+      get recycled() { return recycled; },
+      get rows() { return o.rows; }
+    };
+  }
+
+  /* ---------- renderers ---------- */
+  let highlight = "";
+  function renderPerson(el, i) {
+    const p = person(i);
+    el.className = "r" + (i % 2 ? " alt" : "");
+    let name = p.name;
+    if (highlight && String(i).includes(highlight)) name = p.name;
+    el.innerHTML =
+      '<span class="idx">' + i.toLocaleString() + '</span>' +
+      '<span class="av" style="--a:' + p.pal[0] + ';--b:' + p.pal[1] + '"></span>' +
+      '<span class="nm">' + name + '</span>' +
+      '<span class="meta">' + p.score + '</span>';
+  }
+  function renderMsg(el, i) {
+    const p = person(i);
+    el.className = "msg" + (p.msg ? " me" : "");
+    el.innerHTML = '<span class="av" style="--a:' + p.pal[0] + ';--b:' + p.pal[1] + '"></span>' +
+      '<span class="bub"><b style="font-size:12px;color:#9aa5cf">' + p.name + '</b><br>' +
+      MESSAGES[hash(i) % MESSAGES.length] + "</span>";
+  }
+  function renderRow(el, i) {
+    const p = person(i);
+    el.className = "r" + (i % 2 ? " alt" : "");
+    el.innerHTML =
+      '<span class="idx">' + i.toLocaleString() + '</span>' +
+      '<span class="nm">' + p.name + '</span>' +
+      '<span class="meta">' + p.score + '</span>';
+  }
+
+  const v1 = Virtual(document.getElementById("v1"), { render: renderPerson });
+  const v2 = Virtual(document.getElementById("v2"), { rows: 50000, height: 58, render: renderMsg });
+  const v3 = Virtual(document.getElementById("v3"), { rows: 250000, height: 36, render: renderRow });
+
+  /* ---------- panel + readouts ---------- */
+  const el = id => document.getElementById(id);
+  function apply() {
+    const rows = Math.pow(10, +el("n").value);
+    const height = +el("h").value;
+    const overscan = +el("o").value;
+    el("nv").textContent = rows.toLocaleString();
+    el("hv").textContent = height + "px";
+    el("ov").textContent = overscan;
+    v1.refresh({ rows, height, overscan });
+    v2.refresh({ overscan });
+    v3.refresh({ overscan });
+    readout();
+  }
+  function readout() {
+    el("stat").innerHTML =
+      'live row elements: <b class="hot">' + v1.live + "</b><br>" +
+      "total in the list: <b>" + v1.rows.toLocaleString() + "</b><br>" +
+      "elements ever created: <b>" + v1.created + "</b><br>" +
+      "recycle writes: <b>" + v1.recycled.toLocaleString() + "</b>";
+    el("live1").textContent = v1.live + " / " + v1.rows.toLocaleString() + " rendered";
+    el("live2").textContent = v2.live + " / " + v2.rows.toLocaleString();
+    el("live3").textContent = v3.live + " / " + v3.rows.toLocaleString();
+  }
+  ["n", "h", "o"].forEach(id => el(id).addEventListener("input", apply));
+  ["v1", "v2", "v3"].forEach(id => el(id).addEventListener("scroll", () => {
+    clearTimeout(window.__rt); window.__rt = setTimeout(readout, 40);
+  }, { passive: true }));
+
+  el("q").addEventListener("input", e => {
+    const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
+    highlight = e.target.value.replace(/\D/g, "");
+    if (!isNaN(n)) { v1.scrollToRow(n); readout(); }
+  });
+
+  window.addEventListener("resize", () => { v1.refresh(); v2.refresh(); v3.refresh(); readout(); });
+
+  apply();
+  v2.toBottom();       // a chat log opens at the newest message
+  readout();
+})();
+</script>
+</body>
+</html>
