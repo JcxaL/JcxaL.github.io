@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Where Scrolling Stops — UI Spotlight Day 121</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{--bucket:#fbbf24}
+  body{
+    margin:0;min-height:100vh;
+    background:
+      radial-gradient(900px 620px at 78% -14%,#2a2210 0%,transparent 60%),
+      radial-gradient(760px 520px at 4% 108%,#1a1626 0%,transparent 55%),
+      #0a0a0f;
+    color:#f0ece2;
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:40;
+    display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;text-decoration:none;
+    color:#f0ece2;font-size:13px;
+    background:rgba(22,20,16,.7);border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  }
+  .back-link:hover{border-color:var(--bucket)}
+
+  header{max-width:1120px;margin:0 auto;padding:78px 22px 4px}
+  header h1{margin:0 0 8px;font-size:clamp(24px,4vw,38px);letter-spacing:-.02em}
+  header p{margin:0;max-width:64ch;color:#a79f90;font-size:14px}
+  code{
+    font:600 12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:rgba(251,191,36,.14);color:#ffdc8f;padding:1px 6px;border-radius:5px;
+  }
+  .pill{
+    display:inline-flex;align-items:center;gap:8px;margin-top:14px;
+    padding:7px 13px;border-radius:999px;font-size:12px;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#a79f90;
+  }
+  .pill b{color:#f0ece2;font-weight:600}
+  .dotp{width:8px;height:8px;border-radius:50%;background:#f87171}
+  .dotp.yes{background:#4ade80}
+
+  .hud{
+    position:sticky;top:0;z-index:20;
+    max-width:1120px;margin:20px auto 0;padding:13px 16px;
+    display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+    border-radius:14px;
+    background:rgba(18,16,13,.88);border:1px solid rgba(255,255,255,.12);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  }
+  .hud .grp{display:flex;align-items:center;gap:9px;font-size:12px;color:#a79f90}
+  .readout{
+    margin-left:auto;display:flex;gap:8px;align-items:center;
+    font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#8b8375;
+  }
+  .readout b{color:var(--bucket)}
+  .swrap{display:flex;align-items:center;gap:7px;font-size:12px;color:#a79f90;cursor:pointer}
+  .swrap input{accent-color:var(--bucket);width:15px;height:15px}
+
+  main{max-width:1120px;margin:0 auto;padding:22px 22px 0;
+       display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+
+  .demo{
+    border-radius:16px;padding:20px;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .demo h2{margin:0;font-size:14px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+  .demo h2 span{
+    font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    padding:4px 8px;border-radius:6px;background:rgba(251,191,36,.16);color:var(--bucket);
+    letter-spacing:.04em;
+  }
+  .demo>p{margin:0;font-size:12.5px;color:#a0988a;line-height:1.55;min-height:56px}
+
+  /* the outer scroller — this is what "chains" into */
+  .outer{
+    height:260px;overflow-y:auto;border-radius:12px;
+    background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.09);
+    padding:14px;position:relative;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;
+  }
+  .outer .filler{font-size:12.5px;color:#8d8578;line-height:1.7}
+  .inner{
+    height:132px;overflow-y:auto;margin:12px 0;
+    border-radius:10px;padding:12px;
+    background:linear-gradient(180deg,rgba(251,191,36,.1),rgba(251,191,36,.03));
+    border:1px solid rgba(251,191,36,.28);
+    scrollbar-width:thin;scrollbar-color:rgba(251,191,36,.5) transparent;
+    transition:box-shadow .18s,border-color .18s;
+  }
+  .inner .line{font-size:12.5px;color:#d6cebd;padding:3px 0}
+  .inner.hit{box-shadow:0 0 0 2px var(--bucket) inset;border-color:var(--bucket)}
+
+  /* the three behaviours */
+  .d-auto   .inner{overscroll-behavior-y:auto}
+  .d-contain .inner{overscroll-behavior-y:contain}
+  .d-chain  .inner{overscroll-behavior-y:chain}
+
+  .tag{
+    display:inline-block;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:#8d8578;
+  }
+
+  /* ---------- bottom sheet demo ---------- */
+  .sheetdemo{grid-column:1/-1}
+  .stage{
+    position:relative;height:340px;border-radius:16px;overflow:hidden;
+    background:linear-gradient(180deg,#16141c,#0d0c12);
+    border:1px solid rgba(255,255,255,.09);
+  }
+  .stagebg{padding:20px;color:#6f6a60;font-size:12.5px;line-height:1.7}
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;height:78%;
+    background:#1c1a24;border-radius:18px 18px 0 0;
+    border-top:1px solid rgba(255,255,255,.14);
+    box-shadow:0 -20px 50px -22px rgba(0,0,0,.9);
+    transform:translateY(var(--y,0px));
+    transition:transform .34s cubic-bezier(.22,1,.36,1);
+    display:flex;flex-direction:column;
+    touch-action:none;
+  }
+  .sheet.dragging{transition:none}
+  .grabber{
+    padding:11px 0 8px;display:grid;place-items:center;cursor:grab;flex:0 0 auto;
+  }
+  .grabber i{display:block;width:42px;height:4px;border-radius:99px;background:rgba(255,255,255,.3)}
+  .sheet .list{
+    flex:1 1 auto;overflow-y:auto;padding:4px 18px 20px;
+    overscroll-behavior-y:var(--sheetOB,contain);
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;
+  }
+  .sheet .list div{padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:13px;color:#cfc8b9}
+
+  footer{
+    max-width:1120px;margin:0 auto;padding:30px 22px 34px;
+    text-align:center;font-size:11.5px;color:#7d756a;
+  }
+  footer a{color:#a79f90}
+
+  @media (max-width:760px){
+    header{padding-top:70px}
+    .hud{gap:12px;padding:11px 12px;margin-top:16px}
+    .readout{margin-left:0}
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Where scrolling stops</h1>
+  <p>
+    Scroll a list to its end and something has to happen next. <code>auto</code> hands the
+    momentum to the page, <code>contain</code> swallows it, and the new
+    <code>chain</code> value asks for the honest middle: chain to the parent, but never
+    trigger the browser's own boundary actions like pull-to-refresh or back-swipe.
+  </p>
+  <div class="pill"><span class="dotp" id="dotp"></span><span id="supportTxt">checking…</span></div>
+</header>
+
+<div class="hud">
+  <label class="swrap"><input type="checkbox" id="flash" checked> flash the inner box when it hits a boundary</label>
+  <div class="grp">
+    <span>sheet uses</span>
+    <select id="sheetOB" style="background:rgba(255,255,255,.06);color:#f0ece2;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:5px 9px;font:inherit;font-size:12px">
+      <option value="contain">contain</option>
+      <option value="chain">chain</option>
+      <option value="auto">auto</option>
+    </select>
+  </div>
+  <div class="readout">scrolling <b id="who">—</b> · boundary hits <b id="hits">0</b></div>
+</div>
+
+<main>
+
+  <section class="demo d-auto">
+    <h2>auto <span>default</span></h2>
+    <p>Hit the bottom of the amber list and the scroll carries straight on into the panel behind it. Convenient, and the reason a long menu drags the page out from under you.</p>
+    <div class="outer" data-outer>
+      <p class="filler">Panel content above the list. Scroll the amber box to its end, then keep going.</p>
+      <div class="inner" data-inner><div class="line">Row 1</div><div class="line">Row 2</div><div class="line">Row 3</div><div class="line">Row 4</div><div class="line">Row 5</div><div class="line">Row 6</div><div class="line">Row 7</div><div class="line">Row 8</div><div class="line">Row 9</div><div class="line">Row 10</div></div>
+      <p class="filler">Panel content below. With <span class="tag">auto</span> the page moved as soon as the list ran out.</p>
+      <p class="filler">More panel content, so there is somewhere for the chain to go.</p>
+    </div>
+  </section>
+
+  <section class="demo d-contain">
+    <h2>contain <span>walled off</span></h2>
+    <p>The same list, walled off. Momentum dies at the boundary and the panel behind never moves — correct for a modal, overbearing for a sidebar you expected to hand over.</p>
+    <div class="outer" data-outer>
+      <p class="filler">Panel content above the list. Scroll the amber box to its end, then keep going.</p>
+      <div class="inner" data-inner><div class="line">Row 1</div><div class="line">Row 2</div><div class="line">Row 3</div><div class="line">Row 4</div><div class="line">Row 5</div><div class="line">Row 6</div><div class="line">Row 7</div><div class="line">Row 8</div><div class="line">Row 9</div><div class="line">Row 10</div></div>
+      <p class="filler">Panel content below. With <span class="tag">contain</span> it stayed exactly where it was.</p>
+      <p class="filler">More panel content, so there is somewhere for the chain to go.</p>
+    </div>
+  </section>
+
+  <section class="demo d-chain">
+    <h2>chain <span>new in Firefox 157</span></h2>
+    <p>Scroll still chains to the parent, but the browser's own boundary gestures — pull-to-refresh, overscroll glow, swipe-back — stay switched off. The half of <code>contain</code> most people actually wanted.</p>
+    <div class="outer" data-outer>
+      <p class="filler">Panel content above the list. Scroll the amber box to its end, then keep going.</p>
+      <div class="inner" data-inner><div class="line">Row 1</div><div class="line">Row 2</div><div class="line">Row 3</div><div class="line">Row 4</div><div class="line">Row 5</div><div class="line">Row 6</div><div class="line">Row 7</div><div class="line">Row 8</div><div class="line">Row 9</div><div class="line">Row 10</div></div>
+      <p class="filler">Panel content below. With <span class="tag">chain</span> the panel scrolls, the page gesture does not fire.</p>
+      <p class="filler">More panel content, so there is somewhere for the chain to go.</p>
+    </div>
+  </section>
+
+  <section class="demo sheetdemo">
+    <h2>the case it exists for <span>bottom sheet</span></h2>
+    <p>
+      Drag the grabber to move the sheet, or scroll the list inside it. Switch the list's
+      <code>overscroll-behavior</code> in the toolbar: with <code>contain</code> the sheet stays
+      put once the list is at the top, which is exactly how a native sheet feels.
+    </p>
+    <div class="stage">
+      <div class="stagebg">
+        The page behind the sheet. With <code>auto</code>, scrolling the list past its top
+        starts dragging this instead — the bug every bottom sheet ships with once.
+      </div>
+      <div class="sheet" id="sheet">
+        <div class="grabber" id="grab"><i></i></div>
+        <div class="list" id="sheetList"></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Inspired by <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior" target="_blank" rel="noopener">MDN · overscroll-behavior</a>
+  (the <code>chain</code> value shipped in Firefox 157, 14 Sep 2026)
+  · UI Spotlight Day 121 · Drop #4
+</footer>
+
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+
+/* ---------- support probe ---------- */
+const NATIVE = !!(window.CSS && CSS.supports && CSS.supports("overscroll-behavior-y","chain"));
+$("dotp").classList.toggle("yes",NATIVE);
+$("supportTxt").innerHTML = NATIVE
+  ? "<b>overscroll-behavior: chain</b> is supported here — the third panel is running the real thing."
+  : "<b>overscroll-behavior: chain</b> isn't supported in this browser, so the third panel falls back to <b>auto</b>, which is what the value refines. The first two are native either way.";
+
+/* ---------- live readout ---------- */
+let hits=0, whoT=0;
+function setWho(name){
+  $("who").textContent=name;
+  clearTimeout(whoT);
+  whoT=setTimeout(()=>{ $("who").textContent="—"; },700);
+}
+
+document.querySelectorAll("[data-inner]").forEach(inner=>{
+  inner.addEventListener("scroll",()=>{
+    setWho("inner list");
+    const atTop=inner.scrollTop<=0;
+    const atEnd=inner.scrollTop+inner.clientHeight>=inner.scrollHeight-1;
+    if((atTop||atEnd) && $("flash").checked){
+      if(!inner.classList.contains("hit")){
+        hits++; $("hits").textContent=hits;
+      }
+      inner.classList.add("hit");
+      clearTimeout(inner._t);
+      inner._t=setTimeout(()=>inner.classList.remove("hit"),420);
+    }
+  },{passive:true});
+});
+document.querySelectorAll("[data-outer]").forEach(outer=>{
+  outer.addEventListener("scroll",()=>setWho("outer panel"),{passive:true});
+});
+
+/* ---------- bottom sheet ---------- */
+const sheet=$("sheet"), grab=$("grab"), list=$("sheetList");
+const ROWS=["Share link","Copy to clipboard","Add to collection","Duplicate","Rename",
+            "Move to folder","Download original","Download preview","Export as PDF",
+            "Version history","Permissions","Notify collaborators","Archive","Delete"];
+list.innerHTML=ROWS.map(r=>"<div>"+r+"</div>").join("");
+list.addEventListener("scroll",()=>setWho("sheet list"),{passive:true});
+
+$("sheetOB").addEventListener("change",e=>{
+  list.style.setProperty("--sheetOB", e.target.value);
+});
+
+let drag=null, startY=0, startOffset=0, offset=0;
+const MAXY=()=>sheet.getBoundingClientRect().height*0.62;
+function setY(v){
+  offset=Math.max(0,Math.min(v,MAXY()));
+  sheet.style.setProperty("--y",offset+"px");
+}
+grab.addEventListener("pointerdown",e=>{
+  drag=e.pointerId; startY=e.clientY; startOffset=offset;
+  sheet.classList.add("dragging");
+  grab.setPointerCapture(e.pointerId);
+});
+grab.addEventListener("pointermove",e=>{
+  if(drag!==e.pointerId) return;
+  setY(startOffset+(e.clientY-startY));
+});
+function endDrag(e){
+  if(drag!==e.pointerId) return;
+  drag=null;
+  sheet.classList.remove("dragging");
+  /* snap open or closed */
+  setY(offset>MAXY()*0.4 ? MAXY() : 0);
+}
+grab.addEventListener("pointerup",endDrag);
+grab.addEventListener("pointercancel",endDrag);
+})();
+</script>
+</body>
+</html>

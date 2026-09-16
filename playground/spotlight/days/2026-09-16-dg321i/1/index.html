@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Drawn With Light — UI Spotlight Day 121</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{--bucket:#38bdf8}
+  html,body{height:100%;margin:0}
+  body{
+    background:#04060d;color:#e8edf7;overflow:hidden;
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:9;
+    display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;text-decoration:none;
+    color:#e8edf7;font-size:13px;
+    background:rgba(12,18,32,.62);border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    transition:.18s border-color,.18s background;
+  }
+  .back-link:hover{background:rgba(20,30,50,.8);border-color:var(--bucket)}
+
+  .hud{
+    position:fixed;top:14px;right:14px;z-index:9;width:236px;
+    padding:14px;border-radius:16px;
+    background:rgba(10,16,28,.6);border:1px solid rgba(255,255,255,.12);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  }
+  .hud h2{
+    margin:0 0 3px;font-size:13px;letter-spacing:.02em;
+  }
+  .hud p{margin:0 0 12px;font-size:11px;color:#94a3bd;line-height:1.45}
+  .hud label{display:block;margin-top:10px;font-size:11px;color:#94a3bd}
+  .hud label span{float:right;color:#e8edf7;font-variant-numeric:tabular-nums}
+  .hud input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:2px 0 0;
+  }
+  .hud input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:99px;background:rgba(255,255,255,.18)}
+  .hud input[type=range]::-moz-range-track{height:3px;border-radius:99px;background:rgba(255,255,255,.18)}
+  .hud input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--bucket);
+    margin-top:-5px;cursor:pointer;
+  }
+  .hud input[type=range]::-moz-range-thumb{
+    width:13px;height:13px;border:0;border-radius:50%;background:var(--bucket);cursor:pointer;
+  }
+  .modes{display:flex;gap:5px;margin-top:11px}
+  .modes button{
+    flex:1;padding:6px 0;border-radius:8px;cursor:pointer;font:inherit;font-size:11px;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:#cbd5e6;
+  }
+  .modes button[aria-pressed=true]{background:var(--bucket);border-color:var(--bucket);color:#04121e;font-weight:600}
+  .swrap{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:#94a3bd}
+  .swrap input{accent-color:var(--bucket);width:15px;height:15px}
+
+  footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:8;padding:11px 16px;
+    text-align:center;font-size:11px;color:#6b7891;
+    background:linear-gradient(to top,rgba(4,6,13,.9),transparent);
+    pointer-events:none;
+  }
+  footer a{color:#93a3bd;pointer-events:auto}
+
+  @media (max-width:720px){
+    .hud{
+      top:auto;bottom:44px;left:12px;right:12px;width:auto;
+      display:grid;grid-template-columns:1fr 1fr;gap:0 14px;padding:12px;
+    }
+    .hud h2,.hud p,.modes,.swrap{grid-column:1/-1}
+    .hud p{margin-bottom:6px}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="hud">
+  <h2>Lit tubes</h2>
+  <p>Each segment is stroked with a gradient across its own normal, so one light wraps the whole ribbon. Drag anywhere to push the light around.</p>
+  <div class="modes" id="modes"></div>
+  <label>Tubes <span id="vTubes"></span><input type="range" id="tubes" min="1" max="9" step="1"></label>
+  <label>Thickness <span id="vRad"></span><input type="range" id="rad" min="6" max="46" step="1"></label>
+  <label>Gloss <span id="vSpec"></span><input type="range" id="spec" min="0" max="1.6" step=".05"></label>
+  <label>Bloom <span id="vGlow"></span><input type="range" id="glow" min="0" max="1.6" step=".05"></label>
+  <label class="swrap"><input type="checkbox" id="orbit" checked> light orbits on its own</label>
+</div>
+
+<footer>Inspired by <a href="https://tympanus.net/codrops/2026/09/07/drawing-with-light-an-exploration-of-lit-gpu-tubes-with-tsl-and-webgpu/" target="_blank" rel="noopener">Mathis Biabiany · Codrops</a> · UI Spotlight Day 121 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+
+const cv=document.getElementById("c"), ctx=cv.getContext("2d",{alpha:false});
+let W=0,H=0,dpr=1;
+
+/* ---------- palettes ---------- */
+const MODES={
+  Neon:{bg:[4,6,13],  inks:[[56,189,248],[167,139,250],[244,114,182],[52,211,153],[251,191,36]], rim:[190,230,255]},
+  Chrome:{bg:[8,9,12], inks:[[214,222,236],[150,164,190],[236,240,248],[120,136,168],[186,198,220]], rim:[255,255,255]},
+  Ember:{bg:[14,5,4],  inks:[[251,146,60],[248,113,113],[250,204,21],[239,68,68],[252,165,165]], rim:[255,226,190]}
+};
+const P={mode:"Neon", tubes:4, rad:22, spec:.85, glow:.8, orbit:true};
+
+/* ---------- tube curves ---------- */
+const SAMPLES=150;
+let tubes=[];
+function buildTubes(){
+  tubes=[];
+  for(let i=0;i<9;i++){
+    const s=i*2.3137;
+    tubes.push({
+      a:[1+ (i%3), 2+((i+1)%3), 1.5+((i+2)%2)],
+      f:[.7+i*.11, .53+i*.07, .31+i*.09],
+      ph:[s, s*1.7, s*2.4],
+      amp:[.30+.05*((i*7)%3), .26+.05*((i*5)%3)],
+      sp:.22+.05*(i%4)
+    });
+  }
+}
+buildTubes();
+
+/* sample one tube into flat xy array */
+const xs=new Float32Array(SAMPLES), ys=new Float32Array(SAMPLES);
+const nx=new Float32Array(SAMPLES), ny=new Float32Array(SAMPLES);
+function sample(tb,t,cx,cy,R){
+  for(let i=0;i<SAMPLES;i++){
+    const u=i/(SAMPLES-1), th=u*Math.PI*2;
+    const x=Math.sin(th*tb.a[0]+tb.ph[0]+t*tb.f[0]*tb.sp)
+           +Math.sin(th*tb.a[1]+tb.ph[1]+t*tb.f[1]*tb.sp)*.55;
+    const y=Math.sin(th*tb.a[2]+tb.ph[2]+t*tb.f[2]*tb.sp)
+           +Math.cos(th*tb.a[0]*1.3+tb.ph[1]-t*tb.f[0]*tb.sp)*.55;
+    xs[i]=cx+x*R*tb.amp[0];
+    ys[i]=cy+y*R*tb.amp[1];
+  }
+  /* per-point perpendicular, from the local tangent */
+  for(let i=0;i<SAMPLES;i++){
+    const a=i===0?0:i-1, b=i===SAMPLES-1?i:i+1;
+    let tx=xs[b]-xs[a], ty=ys[b]-ys[a];
+    const len=Math.hypot(tx,ty)||1;
+    nx[i]=-ty/len; ny[i]=tx/len;
+  }
+}
+
+/* ---------- lighting ---------- */
+let lightAng=-0.7, lightEl=.55, drag=null;
+function lightVec(){
+  const ce=Math.cos(lightEl);
+  return [Math.cos(lightAng)*ce, Math.sin(lightAng)*ce, Math.sin(lightEl)];
+}
+
+/* The tube is cut into CHUNKS short pieces. Each piece is a single stroke
+   whose paint is a linear gradient laid across the local perpendicular —
+   so the cylinder shading is smooth across the tube for one stroke instead
+   of one stroke per slice, which is what makes this cheap enough to animate. */
+const CHUNKS=30;
+const STOPS=8;
+
+function drawTube(tb,t,cx,cy,R,ink,rim,gctx,gs){
+  sample(tb,t,cx,cy,R);
+  const L=lightVec();
+  /* half-vector against a straight-on viewer */
+  let hx=L[0], hy=L[1], hz=L[2]+1;
+  const hl=Math.hypot(hx,hy,hz)||1; hx/=hl; hy/=hl; hz/=hl;
+
+  const r=P.rad;
+
+  /* bloom goes into a small offscreen buffer — upscaling it later is the blur */
+  if(gctx){
+    gctx.lineWidth=r*1.5*gs;
+    gctx.strokeStyle="rgb("+ink[0]+","+ink[1]+","+ink[2]+")";
+    gctx.globalAlpha=.5;
+    gctx.beginPath();
+    for(let i=0;i<SAMPLES;i++){
+      const x=xs[i]*gs, y=ys[i]*gs;
+      if(i===0) gctx.moveTo(x,y); else gctx.lineTo(x,y);
+    }
+    gctx.stroke();
+    gctx.globalAlpha=1;
+  }
+
+  /* butt caps: adjacent chunks share an endpoint, so a round cap would paint
+     this chunk's gradient over the next one and band the tube like sausages */
+  ctx.lineCap="butt";
+  ctx.lineWidth=r*2;
+  for(let c=0;c<CHUNKS;c++){
+    const i0=Math.floor(c*(SAMPLES-1)/CHUNKS);
+    const i1=Math.floor((c+1)*(SAMPLES-1)/CHUNKS);
+    if(i1<=i0) continue;
+    const mid=(i0+i1)>>1;
+    const px=nx[mid], py=ny[mid], mx=xs[mid], my=ys[mid];
+
+    const grd=ctx.createLinearGradient(mx-px*r,my-py*r,mx+px*r,my+py*r);
+    for(let s=0;s<=STOPS;s++){
+      const u=-1+2*s/STOPS;
+      const oz=Math.sqrt(Math.max(0,1-u*u));
+      /* surface normal here: in-plane perpendicular scaled by u, oz out of screen */
+      const NX=px*u, NY=py*u;
+      const lam=Math.max(0, NX*L[0]+NY*L[1]+oz*L[2]);
+      let sp=NX*hx+NY*hy+oz*hz;
+      sp=sp>0?Math.pow(sp,42)*P.spec:0;
+      const sh=.10+.90*lam;
+      const cr=Math.min(255,ink[0]*sh+rim[0]*sp)|0;
+      const cg=Math.min(255,ink[1]*sh+rim[1]*sp)|0;
+      const cb=Math.min(255,ink[2]*sh+rim[2]*sp)|0;
+      grd.addColorStop(s/STOPS,"rgb("+cr+","+cg+","+cb+")");
+    }
+    /* overlap a sample each way: butt ends meet at an angle on a bend and
+       would leave a wedge-shaped gap, so let neighbours paint over it */
+    const a0=Math.max(0,i0-1), a1=Math.min(SAMPLES-1,i1+1);
+    ctx.strokeStyle=grd;
+    ctx.beginPath();
+    ctx.moveTo(xs[a0],ys[a0]);
+    for(let i=a0+1;i<=a1;i++) ctx.lineTo(xs[i],ys[i]);
+    ctx.stroke();
+  }
+}
+
+/* ---------- bloom buffer ---------- */
+const GS=0.28;                       /* bloom is rendered at 28% scale */
+const gcv=document.createElement("canvas");
+const gctx=gcv.getContext("2d");
+
+/* ---------- loop ---------- */
+let raf=0, t0=performance.now();
+function frame(now){
+  const t=(now-t0)/1000;
+  if(P.orbit && !drag) lightAng=-0.7+Math.sin(t*.42)*1.5;
+
+  const m=MODES[P.mode];
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle="rgb("+m.bg[0]+","+m.bg[1]+","+m.bg[2]+")";
+  ctx.fillRect(0,0,W,H);
+
+  const bloom=P.glow>0.01;
+  if(bloom){
+    gctx.setTransform(1,0,0,1,0,0);
+    gctx.clearRect(0,0,gcv.width,gcv.height);
+    gctx.lineCap="round"; gctx.lineJoin="round";
+  }
+
+  ctx.lineCap="round"; ctx.lineJoin="round";
+  const cx=W/2, cy=H/2, R=Math.min(W,H);
+  for(let i=0;i<P.tubes;i++){
+    drawTube(tubes[i], t+i*3.1, cx, cy, R, m.inks[i%m.inks.length], m.rim,
+             bloom?gctx:null, GS);
+  }
+
+  /* upscaling the small buffer is what turns it into a soft glow */
+  if(bloom){
+    ctx.save();
+    ctx.globalCompositeOperation="lighter";
+    ctx.globalAlpha=Math.min(1,.55*P.glow);
+    ctx.imageSmoothingEnabled=true;
+    ctx.drawImage(gcv,0,0,W,H);
+    ctx.restore();
+  }
+  raf=requestAnimationFrame(frame);
+}
+
+/* ---------- input ---------- */
+function pointLight(e){
+  const x=(e.clientX/W-.5), y=(e.clientY/H-.5);
+  lightAng=Math.atan2(y,x);
+  lightEl=Math.max(.06, Math.min(1.35, .9-Math.hypot(x,y)*1.25));
+}
+cv.addEventListener("pointerdown",e=>{ drag=e.pointerId; cv.setPointerCapture(e.pointerId); pointLight(e); });
+cv.addEventListener("pointermove",e=>{ if(drag===e.pointerId) pointLight(e); });
+const release=e=>{ if(drag===e.pointerId) drag=null; };
+cv.addEventListener("pointerup",release);
+cv.addEventListener("pointercancel",release);
+
+/* ---------- hud ---------- */
+const $=id=>document.getElementById(id);
+function bind(id,key,fmt){
+  const el=$(id), out=$("v"+id.charAt(0).toUpperCase()+id.slice(1));
+  el.value=P[key];
+  const show=()=>{ if(out) out.textContent=fmt?fmt(P[key]):P[key]; };
+  el.addEventListener("input",()=>{ P[key]=+el.value; show(); });
+  show();
+}
+bind("tubes","tubes");
+bind("rad","rad",v=>v+" px");
+bind("spec","spec",v=>(+v).toFixed(2));
+bind("glow","glow",v=>(+v).toFixed(2));
+$("orbit").addEventListener("change",e=>{ P.orbit=e.target.checked; });
+
+const modes=$("modes");
+Object.keys(MODES).forEach(k=>{
+  const b=document.createElement("button");
+  b.textContent=k;
+  b.setAttribute("aria-pressed", String(k===P.mode));
+  b.addEventListener("click",()=>{
+    P.mode=k;
+    [...modes.children].forEach(c=>c.setAttribute("aria-pressed",String(c===b)));
+  });
+  modes.appendChild(b);
+});
+
+/* ---------- size ---------- */
+function resize(){
+  /* glow-heavy full-screen canvas: 1.5x is visually indistinguishable
+     from 2x here and costs 44% fewer pixels to fill */
+  dpr=Math.min(window.devicePixelRatio||1,1.5);
+  W=window.innerWidth; H=window.innerHeight;
+  cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+  gcv.width=Math.max(1,Math.round(W*GS)); gcv.height=Math.max(1,Math.round(H*GS));
+}
+window.addEventListener("resize",resize);
+resize();
+raf=requestAnimationFrame(frame);
+
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){ cancelAnimationFrame(raf); }
+  else { t0=performance.now()-1000; raf=requestAnimationFrame(frame); }
+});
+
+})();
+</script>
+</body>
+</html>
