@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Dialogs That Decide How They Close — UI Spotlight Day 123</title>
+<style>
+  *{box-sizing:border-box}
+  :root{--bg:#070810;--ink:#eaeefb;--dim:#8d95b6;--line:rgba(255,255,255,.11);--acc:#a78bfa}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:radial-gradient(1000px 620px at 76% -10%,rgba(167,139,250,.14),transparent 60%),
+               radial-gradient(780px 520px at 6% 108%,rgba(56,189,248,.1),transparent 60%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;
+    padding:82px 18px 96px;gap:24px
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:9;text-decoration:none;color:var(--ink);
+    padding:8px 14px;border-radius:999px;border:1px solid var(--line);
+    background:rgba(12,14,28,.62);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:13px
+  }
+  .back-link:hover{background:rgba(255,255,255,.12)}
+  h1{margin:0;font-size:clamp(20px,4.2vw,30px);letter-spacing:-.025em;text-align:center}
+  h1 span{color:var(--acc)}
+  p.sub{margin:0;color:var(--dim);max-width:64ch;text-align:center;font-size:14px}
+  .cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;width:min(960px,96vw)}
+  .card{
+    flex:1 1 260px;min-width:248px;padding:18px;border-radius:18px;border:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
+    display:flex;flex-direction:column;gap:9px
+  }
+  .card code{font-size:12px;color:#d6c8ff;background:rgba(167,139,250,.14);padding:2px 7px;border-radius:7px}
+  .card h3{margin:2px 0 0;font-size:15px}
+  .card p{margin:0;font-size:13px;color:var(--dim);flex:1}
+  button{font:inherit;color:inherit;border:1px solid var(--line);background:rgba(255,255,255,.07);
+    border-radius:11px;padding:9px 14px;cursor:pointer;transition:background .18s,transform .12s}
+  button:hover{background:rgba(255,255,255,.13)}
+  button:active{transform:scale(.97)}
+  button.primary{border-color:var(--acc);background:rgba(167,139,250,.2)}
+  :focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+  dialog{
+    border:1px solid var(--line);border-radius:20px;padding:0;color:var(--ink);
+    background:rgba(14,16,32,.96);max-width:min(430px,92vw);width:100%;
+    box-shadow:0 34px 90px rgba(0,0,0,.62);
+    opacity:0;transform:translateY(16px) scale(.96);
+    transition:opacity .26s ease,transform .3s cubic-bezier(.2,.9,.25,1),overlay .3s allow-discrete,display .3s allow-discrete
+  }
+  dialog[open]{opacity:1;transform:translateY(0) scale(1)}
+  @starting-style{dialog[open]{opacity:0;transform:translateY(16px) scale(.96)}}
+  dialog::backdrop{
+    background:rgba(4,5,12,.6);backdrop-filter:blur(4px);opacity:0;
+    transition:opacity .26s ease,overlay .3s allow-discrete,display .3s allow-discrete
+  }
+  dialog[open]::backdrop{opacity:1}
+  @starting-style{dialog[open]::backdrop{opacity:0}}
+  .sheet{padding:22px 22px 18px;display:flex;flex-direction:column;gap:11px}
+  .sheet h4{margin:0;font-size:17px;letter-spacing:-.015em}
+  .sheet p{margin:0;font-size:13.5px;color:var(--dim)}
+  .sheet .foot{display:flex;gap:9px;justify-content:flex-end;margin-top:6px}
+  .hintrow{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--dim)}
+  .hintrow span{border:1px solid var(--line);border-radius:999px;padding:4px 10px}
+  .log{width:min(960px,96vw);display:flex;gap:10px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--dim)}
+  .log span{border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+  .log b{color:var(--ink)}
+  .badge{display:inline-flex;gap:7px;align-items:center;font-size:11.5px;color:var(--dim);
+    border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+  .badge i{width:7px;height:7px;border-radius:50%;background:var(--acc);display:block}
+  footer{position:fixed;left:0;right:0;bottom:0;padding:11px 16px;text-align:center;font-size:11.5px;color:var(--dim);
+    background:linear-gradient(transparent,rgba(7,8,16,.85) 55%)}
+  footer a{color:var(--dim)}
+  @media (prefers-reduced-motion:reduce){dialog{transition:none}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Three modals, three ways to <span>get out</span></h1>
+<p class="sub">The <code>closedby</code> attribute hands light dismissal to the platform: <code>any</code> closes on an outside click or Esc, <code>closerequest</code> keeps Esc but ignores the click, and <code>none</code> waits for your own button. No outside-click listener, no focus bookkeeping.</p>
+
+<div class="cards" id="cards"></div>
+
+<div class="log">
+  <span>last close: <b id="how">—</b></span>
+  <span>opened: <b id="opened">0</b></span>
+  <span class="badge"><i></i><span id="mode">detecting…</span></span>
+</div>
+
+<footer>Inspired by <a href="https://www.buildmvpfast.com/blog/html-dialog-element-accessible-modal-browser-native-2026" target="_blank" rel="noopener">the 2026 write-up on native dialog light dismiss</a> · UI Spotlight Day 123 · Drop #5</footer>
+
+<script>
+(() => {
+'use strict';
+const native = 'closedBy' in HTMLDialogElement.prototype;
+const MODES = [
+  { key: 'any', title: 'Light dismiss', blurb: 'Click the scrim or press Esc — both close it. The everyday sheet.',
+    hints: ['outside click ✓', 'Esc ✓'] },
+  { key: 'closerequest', title: 'Esc only', blurb: 'A stray click on the scrim is ignored; a close request still works.',
+    hints: ['outside click ✗', 'Esc ✓'] },
+  { key: 'none', title: 'Deliberate exit', blurb: 'Nothing but your own control closes it — for the destructive confirm.',
+    hints: ['outside click ✗', 'Esc ✗'] }
+];
+const cards = document.getElementById('cards');
+let opened = 0;
+const setLog = (id, v) => { document.getElementById(id).textContent = v; };
+
+MODES.forEach(m => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML =
+    '<code>closedby="' + m.key + '"</code>' +
+    '<h3>' + m.title + '</h3>' +
+    '<p>' + m.blurb + '</p>' +
+    '<div class="hintrow">' + m.hints.map(h => '<span>' + h + '</span>').join('') + '</div>' +
+    '<button class="primary">Open dialog</button>';
+  cards.appendChild(card);
+
+  const dlg = document.createElement('dialog');
+  dlg.setAttribute('closedby', m.key);
+  dlg.innerHTML =
+    '<div class="sheet">' +
+      '<h4>' + m.title + '</h4>' +
+      '<p>This dialog was opened with <code>closedby="' + m.key + '"</code>. ' +
+      (m.key === 'any' ? 'Tap the dark area or press Esc.' :
+       m.key === 'closerequest' ? 'Tap the dark area — nothing happens. Press Esc — it closes.' :
+       'Only the button below will let you out.') + '</p>' +
+      '<div class="foot"><button class="close">Close</button>' +
+      (m.key === 'none' ? '<button class="primary close">Confirm</button>' : '') + '</div>' +
+    '</div>';
+  document.body.appendChild(dlg);
+
+  card.querySelector('button').addEventListener('click', () => {
+    dlg.showModal(); setLog('opened', ++opened);
+  });
+  dlg.querySelectorAll('.close').forEach(b => b.addEventListener('click', () => {
+    dlg.dataset.reason = 'its own button'; dlg.close();
+  }));
+  dlg.addEventListener('cancel', e => {
+    if (!native && m.key === 'none') { e.preventDefault(); flash(dlg); return; }
+    dlg.dataset.reason = 'Esc';
+  });
+  // fallback light dismiss for engines without closedby
+  dlg.addEventListener('pointerdown', e => {
+    if (e.target !== dlg) return;              // clicks land on the dialog box itself, not the backdrop
+    if (native) { dlg.dataset.reason = 'outside click'; return; }
+    if (m.key === 'any') { dlg.dataset.reason = 'outside click'; dlg.close(); }
+    else flash(dlg);
+  });
+  dlg.addEventListener('close', () => {
+    setLog('how', (dlg.dataset.reason || 'script') + ' · ' + m.key);
+    dlg.dataset.reason = '';
+  });
+});
+function flash(dlg) {
+  dlg.animate(
+    [{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }],
+    { duration: 220, easing: 'ease-in-out' }
+  );
+}
+document.getElementById('mode').textContent = native
+  ? 'native closedby attribute'
+  : 'fallback: scripted light dismiss';
+})();
+</script>
+</body>
+</html>

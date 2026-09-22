@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Crumple & Release — UI Spotlight Day 123</title>
+<style>
+  *{box-sizing:border-box}
+  :root{--bg:#070810;--ink:#e9edf9;--dim:#8d95b6;--line:rgba(255,255,255,.11);--acc:#38bdf8}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:radial-gradient(1000px 600px at 70% -10%,rgba(56,189,248,.14),transparent 60%),
+               radial-gradient(800px 500px at 10% 110%,rgba(167,139,250,.12),transparent 60%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:86px 18px 92px;gap:26px;-webkit-tap-highlight-color:transparent
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:9;text-decoration:none;color:var(--ink);
+    padding:8px 14px;border-radius:999px;border:1px solid var(--line);
+    background:rgba(12,14,28,.62);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:13px
+  }
+  .back-link:hover{background:rgba(255,255,255,.12)}
+  h1{margin:0;font-size:clamp(20px,4.2vw,30px);letter-spacing:-.025em;text-align:center}
+  h1 span{color:var(--acc)}
+  p.sub{margin:0;color:var(--dim);max-width:60ch;text-align:center;font-size:14px}
+  .sheets{display:flex;gap:22px;flex-wrap:wrap;justify-content:center}
+  figure{margin:0;display:flex;flex-direction:column;gap:9px;align-items:center}
+  .paper{
+    position:relative;width:min(300px,84vw);aspect-ratio:3/4;border-radius:12px;
+    filter:drop-shadow(0 26px 44px rgba(0,0,0,.55));touch-action:none;cursor:grab
+  }
+  .paper:active{cursor:grabbing}
+  canvas{display:block;width:100%;height:100%}
+  figcaption{font-size:12px;color:var(--dim);letter-spacing:.05em;text-transform:uppercase}
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:9;width:214px;padding:13px 14px;border-radius:15px;
+    border:1px solid var(--line);background:rgba(11,13,27,.74);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+  }
+  .panel h2{margin:0 0 9px;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}
+  .row{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--dim);margin:7px 0}
+  .row input{flex:1;min-width:0}
+  .row b{color:var(--ink);min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:20px;background:transparent}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:rgba(255,255,255,.18)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:var(--acc)}
+  input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:rgba(255,255,255,.18)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:0;border-radius:50%;background:var(--acc)}
+  button{
+    font:inherit;color:inherit;border:1px solid var(--line);background:rgba(255,255,255,.06);
+    border-radius:10px;padding:7px 11px;cursor:pointer;width:100%;margin-top:6px
+  }
+  button:hover{background:rgba(255,255,255,.12)}
+  footer{position:fixed;left:0;right:0;bottom:0;padding:11px 16px;text-align:center;font-size:11.5px;color:var(--dim);
+    background:linear-gradient(transparent,rgba(7,8,16,.85) 55%)}
+  footer a{color:var(--dim)}
+  @media (max-width:880px){.panel{display:none}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Drag across the paper to <span>crumple</span> it</h1>
+<p class="sub">Three sheets, one creased height field. Every vertex carries its own crumple amount; drag paints it in, a tap flattens or balls up the whole sheet, and the shading is recomputed from the deformed normals each frame.</p>
+
+<div class="sheets" id="sheets"></div>
+
+<aside class="panel">
+  <h2>Crumple rig</h2>
+  <div class="row"><span>Light</span><input type="range" id="light" min="0" max="360" step="1" value="130"><b id="lightV">130</b></div>
+  <div class="row"><span>Creases</span><input type="range" id="freq" min="1" max="5" step="0.1" value="2.3"><b id="freqV">2.3</b></div>
+  <div class="row"><span>Depth</span><input type="range" id="depth" min="10" max="110" step="1" value="58"><b id="depthV">58</b></div>
+  <button id="release">Release all sheets</button>
+  <button id="crush">Crush all sheets</button>
+</aside>
+
+<footer>Inspired by <a href="https://tympanus.net/codrops/2026/09/19/crumbled-paper-houdini-vat-threejs/" target="_blank" rel="noopener">Toi Nagasawa's crumpled paper on Codrops</a> · UI Spotlight Day 123 · Drop #1</footer>
+
+<script>
+(() => {
+'use strict';
+const NX = 27, NY = 35;                    // mesh resolution (portrait sheet)
+const SHEETS = [
+  { tint: [242, 244, 252], label: 'flat', start: 0 },
+  { tint: [214, 236, 252], label: 'half creased', start: .42 },
+  { tint: [232, 222, 252], label: 'balled up', start: .92 }
+];
+const cfg = { light: 130, freq: 2.3, depth: 58 };
+const rnd = (s => () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)(20260922);
+
+// a few fold planes make the sharp, plastic creases paper keeps
+const FOLDS = Array.from({ length: 6 }, () => {
+  const a = rnd() * Math.PI * 2;
+  return { dx: Math.cos(a), dy: Math.sin(a), f: .45 + rnd() * .95, p: rnd() * 2, amp: .5 + rnd() * .7 };
+});
+const tri = t => { const m = ((t % 2) + 2) % 2; return m < 1 ? m : 2 - m; };
+const sharpen = v => Math.sign(v) * Math.pow(Math.abs(v) * 2, .58) * .5;  // plateaus with a crisp fold at the crossing
+function crease(x, y, freq) {
+  let h = 0, w = 0;
+  for (const f of FOLDS) {
+    h += f.amp * sharpen(tri((x * f.dx + y * f.dy) * freq * f.f + f.p) - .5);
+    w += f.amp;
+  }
+  return h / w;
+}
+
+const host = document.getElementById('sheets');
+const sheets = SHEETS.map((meta, i) => {
+  const fig = document.createElement('figure');
+  const wrap = document.createElement('div'); wrap.className = 'paper';
+  const cv = document.createElement('canvas');
+  wrap.appendChild(cv); fig.appendChild(wrap);
+  const cap = document.createElement('figcaption'); cap.textContent = meta.label;
+  fig.appendChild(cap); host.appendChild(fig);
+  const n = NX * NY;
+  return {
+    meta, cv, wrap, cap, ctx: cv.getContext('2d'),
+    c: new Float32Array(n).fill(meta.start),
+    target: new Float32Array(n).fill(meta.start),
+    jx: Float32Array.from({ length: n }, () => (rnd() - .5) * 2),
+    jy: Float32Array.from({ length: n }, () => (rnd() - .5) * 2),
+    w: 0, h: 0, dpr: 1, drag: false, moved: 0
+  };
+});
+
+function size() {
+  for (const s of sheets) {
+    const r = s.wrap.getBoundingClientRect();
+    s.dpr = Math.min(2, window.devicePixelRatio || 1);
+    s.w = Math.max(1, Math.round(r.width)); s.h = Math.max(1, Math.round(r.height));
+    s.cv.width = Math.round(s.w * s.dpr); s.cv.height = Math.round(s.h * s.dpr);
+    s.ctx.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  }
+}
+addEventListener('resize', size);
+
+const px = new Float32Array(NX * NY), py = new Float32Array(NX * NY), pz = new Float32Array(NX * NY);
+const sx = new Float32Array(NX * NY), sy = new Float32Array(NX * NY), sh = new Float32Array(NX * NY);
+
+function draw(s, t) {
+  const { ctx } = s, W = s.w, H = s.h;
+  ctx.clearRect(0, 0, W, H);
+  const pad = 10, sw = W - pad * 2, shh = H - pad * 2;
+  const la = cfg.light * Math.PI / 180;
+  const lx = Math.cos(la) * .62, ly = Math.sin(la) * .62, lz = .78;
+
+  for (let j = 0; j < NY; j++) {
+    for (let i = 0; i < NX; i++) {
+      const k = j * NX + i;
+      const u = i / (NX - 1), v = j / (NY - 1);
+      const c = s.c[k];
+      const x0 = (u - .5) * sw, y0 = (v - .5) * shh;
+      const shrink = 1 - .44 * c;
+      const z = crease(u * 2.2, v * 2.9, cfg.freq) * cfg.depth * c
+              + Math.sin(t * .9 + u * 5 + j) * 1.1 * c;
+      const gx = crease(u * 1.6 + 3.1, v * 2.1, cfg.freq * .7);
+      const gy = crease(u * 2.0, v * 1.7 + 5.4, cfg.freq * .7);
+      px[k] = x0 * shrink + (gx + s.jx[k] * .22) * 16 * c;
+      py[k] = y0 * shrink + (gy + s.jy[k] * .22) * 16 * c;
+      pz[k] = z;
+      const persp = 460 / (460 - z);
+      sx[k] = W / 2 + px[k] * persp;
+      sy[k] = H / 2 + py[k] * persp;
+    }
+  }
+  for (let j = 0; j < NY; j++) {
+    for (let i = 0; i < NX; i++) {
+      const k = j * NX + i;
+      const ir = Math.min(NX - 1, i + 1), jd = Math.min(NY - 1, j + 1);
+      const a = j * NX + ir, b = jd * NX + i;
+      const ax = px[a] - px[k], ay = py[a] - py[k], az = pz[a] - pz[k];
+      const bx = px[b] - px[k], by = py[b] - py[k], bz = pz[b] - pz[k];
+      let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      nx /= len; ny /= len; nz /= len;
+      if (nz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+      const lam = Math.max(0, nx * lx + ny * ly + nz * lz);
+      const spec = Math.pow(Math.max(0, nz), 26) * .22;
+      sh[k] = .34 + .62 * lam + spec;
+    }
+  }
+  const [tr, tg, tb] = s.meta.tint;
+  for (let j = 0; j < NY - 1; j++) {
+    for (let i = 0; i < NX - 1; i++) {
+      const k = j * NX + i, k1 = k + 1, k2 = k + NX, k3 = k + NX + 1;
+      const g = (sh[k] + sh[k1] + sh[k2] + sh[k3]) / 4;
+      const col = 'rgb(' + Math.min(255, tr * g | 0) + ',' + Math.min(255, tg * g | 0) + ',' + Math.min(255, tb * g | 0) + ')';
+      ctx.beginPath();
+      ctx.moveTo(sx[k], sy[k]); ctx.lineTo(sx[k1], sy[k1]);
+      ctx.lineTo(sx[k3], sy[k3]); ctx.lineTo(sx[k2], sy[k2]);
+      ctx.closePath();
+      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.fill(); ctx.stroke();
+    }
+  }
+}
+
+function paint(s, e) {
+  const r = s.wrap.getBoundingClientRect();
+  const ux = (e.clientX - r.left) / r.width, uy = (e.clientY - r.top) / r.height;
+  const rad = .22;
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const d = Math.hypot(i / (NX - 1) - ux, j / (NY - 1) - uy);
+    if (d < rad) {
+      const k = j * NX + i;
+      s.target[k] = Math.min(1, s.target[k] + (1 - d / rad) * .34);
+    }
+  }
+}
+function setAll(s, v) { s.target.fill(v); }
+
+for (const s of sheets) {
+  s.wrap.addEventListener('pointerdown', e => {
+    s.wrap.setPointerCapture(e.pointerId); s.drag = true; s.moved = 0; paint(s, e);
+  });
+  s.wrap.addEventListener('pointermove', e => { if (s.drag) { s.moved++; paint(s, e); } });
+  const end = () => {
+    if (s.drag && s.moved < 2) {
+      const avg = s.target.reduce((a, b) => a + b, 0) / s.target.length;
+      setAll(s, avg > .45 ? 0 : 1);
+    }
+    s.drag = false;
+  };
+  s.wrap.addEventListener('pointerup', end);
+  s.wrap.addEventListener('pointercancel', end);
+}
+
+const $ = id => document.getElementById(id);
+const bind = (id, key, fmt) => {
+  const el = $(id), out = $(id + 'V');
+  el.addEventListener('input', () => { cfg[key] = parseFloat(el.value); out.textContent = fmt ? fmt(cfg[key]) : cfg[key]; });
+};
+bind('light', 'light'); bind('freq', 'freq', v => v.toFixed(1)); bind('depth', 'depth');
+$('release').addEventListener('click', () => sheets.forEach(s => setAll(s, 0)));
+$('crush').addEventListener('click', () => sheets.forEach(s => setAll(s, 1)));
+
+size();
+// show the effect immediately: the first sheet crumples, then relaxes
+setTimeout(() => setAll(sheets[0], .85), 420);
+setTimeout(() => setAll(sheets[0], .12), 2100);
+
+let t0 = performance.now();
+requestAnimationFrame(function frame(now) {
+  const t = (now - t0) / 1000;
+  for (const s of sheets) {
+    let moving = false;
+    for (let k = 0; k < s.c.length; k++) {
+      const d = s.target[k] - s.c[k];
+      if (Math.abs(d) > 1e-3) { s.c[k] += d * .12; moving = true; }
+      else s.c[k] = s.target[k];
+    }
+    if (moving || s.drag) s.cap.textContent = 'crumpling…';
+    else {
+      const avg = s.c.reduce((a, b) => a + b, 0) / s.c.length;
+      s.cap.textContent = avg < .08 ? 'flat' : avg > .7 ? 'balled up' : 'creased ' + Math.round(avg * 100) + '%';
+    }
+    draw(s, t);
+  }
+  requestAnimationFrame(frame);
+});
+})();
+</script>
+</body>
+</html>
