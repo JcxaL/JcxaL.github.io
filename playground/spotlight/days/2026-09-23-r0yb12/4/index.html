@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pending Snap — UI Spotlight Day 124</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{ --bucket:#fbbf24; --ink:#f6f1e6; --ink2:#a99e89; --line:rgba(255,255,255,.1) }
+  html,body{height:100%}
+  body{
+    margin:0;background:#0b0904;color:var(--ink);min-height:100dvh;padding:76px 0 80px;
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;
+  }
+  .back-link{
+    position:fixed;top:16px;left:16px;z-index:20;text-decoration:none;color:var(--ink);
+    background:rgba(28,22,10,.62);border:1px solid var(--line);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);padding:9px 15px;border-radius:999px;font-size:13px;
+    transition:background .2s ease,transform .2s ease;
+  }
+  .back-link:hover{background:rgba(48,38,16,.85);transform:translateX(-2px)}
+  header{max-width:900px;margin:0 auto 8px;text-align:center;padding:0 20px}
+  h1{margin:0 0 8px;font-size:clamp(24px,5vw,38px);letter-spacing:-.03em;font-weight:660}
+  h1 em{font-style:normal;color:var(--bucket)}
+  header p{margin:0 auto;color:var(--ink2);font-size:14px;max-width:60ch}
+  .badge{
+    display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:5px 12px;border-radius:999px;
+    font-size:11.5px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink2);
+  }
+  .badge i{width:7px;height:7px;border-radius:50%;background:#f0b429;display:block}
+  .badge.native i{background:#4ade80}
+  section{max-width:1000px;margin:34px auto 0;padding:0 20px}
+  section h2{
+    margin:0 0 4px;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink2);font-weight:650;
+  }
+  .readout{margin:0 0 14px;font-size:13px;color:#8e8472}
+  .readout b{color:var(--bucket);font-weight:650}
+  .readout .pending{color:#7dd3fc}
+
+  /* ---------- rails ---------- */
+  .rail{
+    display:flex;gap:16px;padding:8px 4px 20px;scroll-snap-type:x mandatory;
+    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain;
+    scroll-padding-inline:calc(50% - 110px);
+  }
+  @supports (overflow: auto clip){ .rail{ overflow:auto clip } }
+  .rail::-webkit-scrollbar{display:none}
+  .rail.proximity{scroll-snap-type:x proximity}
+  .card{
+    flex:0 0 220px;height:280px;border-radius:18px;scroll-snap-align:center;position:relative;
+    border:1px solid var(--line);background:#141009;overflow:hidden;cursor:pointer;
+    transition:transform .34s cubic-bezier(.22,1,.36,1),border-color .25s ease,filter .34s ease,opacity .3s ease;
+    filter:saturate(.55);opacity:.62;transform:scale(.93);
+  }
+  .card .art{position:absolute;inset:0}
+  .card .lbl{position:absolute;left:14px;bottom:12px;z-index:2;font-size:15px;font-weight:620;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+  .card .num{position:absolute;right:12px;top:10px;z-index:2;font-size:11px;color:rgba(255,255,255,.75)}
+  .card.pending{opacity:.92;transform:scale(.99);border-color:rgba(125,211,252,.6);filter:saturate(.9)}
+  .card.current{opacity:1;transform:scale(1);border-color:var(--bucket);filter:saturate(1.1);box-shadow:0 18px 40px rgba(0,0,0,.5)}
+  .rail:first-child{margin-left:0}
+  .rail::before,.rail::after{content:"";flex:0 0 calc(50% - 110px)}
+
+  .strip{ scroll-padding-inline:calc(50% - 38px) }
+  .strip::before,.strip::after{flex:0 0 calc(50% - 38px)}
+  .chip{
+    flex:0 0 76px;height:92px;border-radius:14px;scroll-snap-align:center;border:1px solid var(--line);
+    background:#151108;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    transition:all .3s cubic-bezier(.22,1,.36,1);opacity:.55;transform:scale(.9);cursor:pointer;
+  }
+  .chip b{font-size:22px;font-weight:650;letter-spacing:-.02em}
+  .chip span{font-size:10.5px;color:var(--ink2);letter-spacing:.08em;text-transform:uppercase}
+  .chip.pending{opacity:.85;transform:scale(.97);border-color:rgba(125,211,252,.55)}
+  .chip.current{opacity:1;transform:scale(1.04);border-color:var(--bucket);background:#241a07}
+
+  .wheelwrap{display:flex;gap:18px;align-items:stretch}
+  .wheel{
+    flex:1 1 0;height:216px;overflow-y:auto;overflow-x:hidden;scroll-snap-type:y mandatory;
+    scrollbar-width:none;position:relative;scroll-padding-block:84px;
+    -webkit-mask-image:linear-gradient(180deg,transparent,#000 26%,#000 74%,transparent);
+    mask-image:linear-gradient(180deg,transparent,#000 26%,#000 74%,transparent);
+    border:1px solid var(--line);border-radius:16px;background:#120e07;
+  }
+  @supports (overflow: clip auto){ .wheel{ overflow:clip auto } }
+  .wheel::-webkit-scrollbar{display:none}
+  .wheel .pad{height:84px}
+  .wheel .opt{
+    height:48px;display:flex;align-items:center;justify-content:center;scroll-snap-align:center;
+    font-size:19px;font-weight:600;color:#6f6754;transition:color .22s ease,transform .22s ease;cursor:pointer;
+  }
+  .wheel .opt.pending{color:#9fd8f5}
+  .wheel .opt.current{color:var(--ink);transform:scale(1.14)}
+  .wheel-rule{position:relative}
+  .wheel-rule::after{
+    content:"";position:absolute;left:8px;right:8px;top:50%;height:48px;transform:translateY(-50%);
+    border-top:1px solid rgba(251,191,36,.35);border-bottom:1px solid rgba(251,191,36,.35);pointer-events:none;border-radius:8px;
+  }
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:20;width:212px;padding:13px 14px;border-radius:16px;
+    background:rgba(24,18,6,.74);border:1px solid var(--line);backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);box-shadow:0 18px 40px rgba(0,0,0,.45);
+  }
+  .panel h2{margin:0 0 10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:650}
+  .sw{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0;cursor:pointer;font-size:12px;color:var(--ink2)}
+  .track{width:36px;height:21px;border-radius:999px;background:rgba(255,255,255,.14);position:relative;flex:0 0 auto;transition:background .2s}
+  .track i{position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#9c9486;transition:transform .24s cubic-bezier(.34,1.56,.64,1),background .2s}
+  .sw[aria-checked="true"] .track{background:var(--bucket)}
+  .sw[aria-checked="true"] .track i{transform:translateX(15px);background:#1a1305}
+  .log{margin-top:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9b88c;white-space:pre-line;
+       background:rgba(0,0,0,.34);border-radius:8px;padding:8px 9px;height:88px;overflow:hidden}
+  footer{margin:44px auto 0;text-align:center;color:#7d715a;font-size:11.5px;max-width:1000px;padding:0 20px}
+  footer a{color:#a1927a}
+  @media (max-width:900px){ .panel{display:none} .wheelwrap{gap:10px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Pending <em>Snap</em></h1>
+  <p>A snap container knows where it <i>would</i> land long before it lands there. <code>scrollsnapchanging</code> hands you that target mid-gesture so the UI can commit to it early; <code>scrollsnapchange</code> confirms it. The rails below also keep their cross axis unscrollable with <code>overflow: auto clip</code>.</p>
+  <div class="badge" id="badge"><i></i><span>checking support…</span></div>
+</header>
+
+<section>
+  <h2>01 · Cover rail</h2>
+  <p class="readout">Landing on <b id="r1">—</b> <span class="pending" id="p1"></span></p>
+  <div class="rail" id="rail1"></div>
+</section>
+
+<section>
+  <h2>02 · Date strip</h2>
+  <p class="readout">Selected <b id="r2">—</b> <span class="pending" id="p2"></span></p>
+  <div class="rail strip" id="rail2"></div>
+</section>
+
+<section>
+  <h2>03 · Wheel picker</h2>
+  <p class="readout">Departs at <b id="r3">—</b> <span class="pending" id="p3"></span></p>
+  <div class="wheelwrap">
+    <div class="wheel-rule" style="flex:1"><div class="wheel" id="wheelH"></div></div>
+    <div class="wheel-rule" style="flex:1"><div class="wheel" id="wheelM"></div></div>
+  </div>
+</section>
+
+<aside class="panel">
+  <h2>Snap controls</h2>
+  <div class="sw" id="swPending" role="switch" tabindex="0" aria-checked="true"><span>Preview pending</span><div class="track"><i></i></div></div>
+  <div class="sw" id="swProx" role="switch" tabindex="0" aria-checked="false"><span>Proximity snap</span><div class="track"><i></i></div></div>
+  <div class="log" id="log"></div>
+</aside>
+
+<footer>
+  Inspired by <a href="https://developer.chrome.com/blog/new-in-chrome-153" target="_blank" rel="noopener">Chrome for Developers — single-axis scroll containers &amp; scroll snap events</a> · UI Spotlight Day 124 · Drop #4
+</footer>
+
+<script>
+(() => {
+"use strict";
+const nativeEvents = "onscrollsnapchange" in document.documentElement || "onscrollsnapchanging" in document.documentElement;
+const singleAxis = CSS.supports("overflow", "auto clip");
+const badge = document.getElementById("badge");
+badge.classList.toggle("native", nativeEvents);
+badge.lastElementChild.textContent =
+  (nativeEvents ? "Native snap events" : "Snap events polyfilled from scroll position") +
+  " · single-axis overflow " + (singleAxis ? "supported" : "falling back to overflow-x/overflow-y");
+
+const logEl = document.getElementById("log");
+const lines = [];
+function log(msg){
+  lines.unshift(msg);
+  lines.length = Math.min(lines.length, 5);
+  logEl.textContent = lines.join("\n");
+}
+let previewOn = true;
+
+/* ---------- build content ---------- */
+const COVERS = [
+  ["Midnight Transit","#1d4ed8","#0ea5e9"], ["Paper Radio","#b45309","#f59e0b"],
+  ["Low Tide","#047857","#34d399"], ["Signal Hill","#7c3aed","#c084fc"],
+  ["Nightfall Keep","#be123c","#fb7185"], ["Glass Harbour","#0f766e","#5eead4"],
+  ["Static Bloom","#a16207","#fde047"], ["Second Sun","#9333ea","#f0abfc"]
+];
+const rail1 = document.getElementById("rail1");
+COVERS.forEach((c, i) => {
+  const el = document.createElement("article");
+  el.className = "card";
+  el.dataset.label = c[0];
+  el.innerHTML = '<div class="art" style="background:' +
+    "radial-gradient(120% 90% at 20% 10%," + c[2] + " 0%, " + c[1] + " 55%, #0b0904 100%)" +
+    '"></div><span class="num">0' + (i+1) + '</span><span class="lbl">' + c[0] + "</span>";
+  rail1.appendChild(el);
+});
+
+const rail2 = document.getElementById("rail2");
+const DAY = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+for(let i = 0; i < 16; i++){
+  const d = new Date(Date.UTC(2026, 8, 21 + i));
+  const el = document.createElement("button");
+  el.className = "chip";
+  el.type = "button";
+  el.dataset.label = DAY[d.getUTCDay()] + " " + d.getUTCDate();
+  el.innerHTML = "<b>" + d.getUTCDate() + "</b><span>" + DAY[d.getUTCDay()] + "</span>";
+  rail2.appendChild(el);
+}
+
+function fillWheel(el, values, pad){
+  el.appendChild(Object.assign(document.createElement("div"), { className:"pad" }));
+  values.forEach((v) => {
+    const o = document.createElement("div");
+    o.className = "opt";
+    o.dataset.label = pad ? String(v).padStart(2,"0") : String(v);
+    o.textContent = o.dataset.label;
+    el.appendChild(o);
+  });
+  el.appendChild(Object.assign(document.createElement("div"), { className:"pad" }));
+}
+const wheelH = document.getElementById("wheelH"), wheelM = document.getElementById("wheelM");
+fillWheel(wheelH, Array.from({ length:24 }, (_,i) => i), true);
+fillWheel(wheelM, [0,5,10,15,20,25,30,35,40,45,50,55], true);
+
+/* ---------- the pattern ---------- */
+function nearest(scroller, axis){
+  const items = [...scroller.children].filter((c) => c.dataset.label !== undefined);
+  const r = scroller.getBoundingClientRect();
+  const mid = axis === "x" ? r.left + r.width/2 : r.top + r.height/2;
+  let best = null, bd = Infinity;
+  for(const it of items){
+    const b = it.getBoundingClientRect();
+    const c = axis === "x" ? b.left + b.width/2 : b.top + b.height/2;
+    const d = Math.abs(c - mid);
+    if(d < bd){ bd = d; best = it; }
+  }
+  return best;
+}
+
+function bind(scroller, axis, onChange, onChanging){
+  const mark = (el, cls) => {
+    scroller.querySelectorAll("." + cls).forEach((n) => n.classList.remove(cls));
+    if(el) el.classList.add(cls);
+  };
+  const commit = (el) => { mark(el, "current"); mark(null, "pending"); if(el) onChange(el.dataset.label); };
+  const preview = (el) => {
+    if(!previewOn) return mark(null, "pending");
+    if(el && el.classList.contains("current")) return mark(null, "pending");
+    mark(el, "pending");
+    onChanging(el ? el.dataset.label : "");
+  };
+
+  if(nativeEvents){
+    scroller.addEventListener("scrollsnapchanging", (e) => {
+      const el = e.snapTargetInline || e.snapTargetBlock;
+      preview(el);
+      if(el) log("changing → " + el.dataset.label);
+    });
+    scroller.addEventListener("scrollsnapchange", (e) => {
+      const el = e.snapTargetInline || e.snapTargetBlock;
+      commit(el);
+      if(el) log("change   → " + el.dataset.label);
+    });
+  } else {
+    let t = 0;
+    scroller.addEventListener("scroll", () => {
+      const el = nearest(scroller, axis);
+      preview(el);
+      clearTimeout(t);
+      t = setTimeout(() => { const f = nearest(scroller, axis); commit(f); if(f) log("change   → " + f.dataset.label); }, 140);
+    }, { passive:true });
+  }
+
+  /* click a target to scroll to it — snap events then report the move */
+  scroller.addEventListener("click", (e) => {
+    const it = e.target.closest("[data-label]");
+    if(!it || !scroller.contains(it)) return;
+    it.scrollIntoView({ behavior:"smooth", block:"center", inline:"center" });
+  });
+
+  requestAnimationFrame(() => commit(nearest(scroller, axis)));
+  return { commit, scroller };
+}
+
+const set = (id, v) => { document.getElementById(id).textContent = v || "—"; };
+bind(rail1, "x", (v) => { set("r1", v); set("p1", ""); }, (v) => set("p1", v ? "· pending " + v : ""));
+bind(rail2, "x", (v) => { set("r2", v); set("p2", ""); }, (v) => set("p2", v ? "· pending " + v : ""));
+const time = { h:"00", m:"00" };
+const paint3 = () => set("r3", time.h + ":" + time.m);
+bind(wheelH, "y", (v) => { time.h = v; paint3(); set("p3",""); }, (v) => set("p3", v ? "· pending " + v + "h" : ""));
+bind(wheelM, "y", (v) => { time.m = v; paint3(); set("p3",""); }, (v) => set("p3", v ? "· pending :" + v : ""));
+
+/* ---------- panel ---------- */
+function toggle(id, fn){
+  const el = document.getElementById(id);
+  const flip = () => {
+    const on = el.getAttribute("aria-checked") !== "true";
+    el.setAttribute("aria-checked", String(on));
+    fn(on);
+  };
+  el.addEventListener("click", flip);
+  el.addEventListener("keydown", (e) => { if(e.key === " " || e.key === "Enter"){ e.preventDefault(); flip(); } });
+}
+toggle("swPending", (on) => {
+  previewOn = on;
+  if(!on) document.querySelectorAll(".pending").forEach((n) => n.classList.remove("pending"));
+  log("preview " + (on ? "on" : "off"));
+});
+toggle("swProx", (on) => {
+  [rail1, rail2].forEach((r) => r.classList.toggle("proximity", on));
+  log("snap type: " + (on ? "proximity" : "mandatory"));
+});
+log(nativeEvents ? "snap events: native" : "snap events: polyfill");
+})();
+</script>
+</body>
+</html>
