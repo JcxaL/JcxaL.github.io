@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inside the Input — UI Spotlight Day 126 · Drop 4</title>
+<meta name="description" content="Anchor a popover to the word being typed, squiggle one bad substring, and open a picker at the caret — UI positioned inside a real form field.">
+<style>
+*{box-sizing:border-box}
+:root{--bg:#07080e;--panel:rgba(255,255,255,.055);--line:rgba(255,255,255,.12);--ink:#eaeef7;--ink2:#8e97ab;--accent:#fbbf24}
+html,body{margin:0;height:100%}
+body{
+  background:radial-gradient(1000px 700px at 22% -10%,rgba(251,191,36,.13),transparent 60%),var(--bg);
+  color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100%;padding:76px 18px 92px;-webkit-font-smoothing:antialiased
+}
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:30;text-decoration:none;color:var(--ink);font-size:13px;
+  background:rgba(12,14,22,.6);border:1px solid var(--line);border-radius:999px;padding:8px 14px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+}
+.back-link:hover{border-color:var(--accent);color:#ffeec2}
+.head{max-width:960px;margin:0 auto 18px}
+.tag{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700}
+h1{margin:6px 0 6px;font-size:clamp(25px,4.6vw,40px);letter-spacing:-.025em}
+.head p{margin:0;color:var(--ink2);max-width:70ch;font-size:14px}
+.stage{max-width:960px;margin:0 auto;display:grid;gap:16px}
+.demo{border:1px solid var(--line);border-radius:18px;padding:18px;background:linear-gradient(170deg,rgba(18,22,34,.66),rgba(6,8,14,.66))}
+.demo h2{margin:0 0 3px;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+.demo .note{margin:0 0 14px;font-size:12.5px;color:var(--ink2)}
+
+.field{position:relative}
+.field input, .field textarea{
+  width:100%;font:inherit;font-size:16px;line-height:1.6;color:var(--ink);
+  background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;outline:none;resize:none;letter-spacing:0
+}
+.field input:focus, .field textarea:focus{border-color:rgba(251,191,36,.6);box-shadow:0 0 0 4px rgba(251,191,36,.12)}
+.field textarea{min-height:104px}
+/* the mirror measures text geometry; it is never visible */
+.mirror{
+  position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;white-space:pre-wrap;
+  word-wrap:break-word;overflow:hidden;z-index:-1
+}
+.layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:12px}
+.squiggle{
+  position:absolute;height:5px;
+  background:repeating-linear-gradient(135deg,#fb7185 0 2px,transparent 2px 4px);
+  border-radius:2px;opacity:.95
+}
+.tokenbox{position:absolute;border-radius:5px;background:rgba(251,191,36,.22);box-shadow:0 0 0 1px rgba(251,191,36,.55) inset}
+.pop{
+  position:absolute;z-index:8;min-width:188px;border:1px solid var(--line);border-radius:12px;
+  background:rgba(14,17,26,.97);box-shadow:0 22px 50px -24px #000;padding:5px;
+  opacity:0;transform:translateY(-4px) scale(.97);transform-origin:top left;pointer-events:none;
+  transition:opacity .16s ease, transform .16s cubic-bezier(.32,.72,0,1)
+}
+.pop.on{opacity:1;transform:none;pointer-events:auto}
+.pop button{
+  display:flex;width:100%;align-items:center;gap:9px;font:inherit;font-size:13.5px;text-align:left;
+  color:var(--ink);background:transparent;border:0;border-radius:8px;padding:7px 9px;cursor:pointer
+}
+.pop button:hover, .pop button[aria-selected=true]{background:rgba(251,191,36,.18)}
+.pop .av{
+  width:22px;height:22px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  font-size:11px;font-weight:700;color:#1a1405;background:var(--accent)
+}
+.pop.emoji{min-width:0;display:flex;flex-wrap:wrap;gap:2px;max-width:210px}
+.pop.emoji button{width:auto;font-size:19px;padding:5px 7px}
+.hintline{margin-top:10px;font-size:11.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.hintline b{color:var(--ink)}
+.badline{margin-top:10px;font-size:12.5px;color:#ffc2cb}
+.badline b{color:#fff}
+.mode{
+  display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--ink2);
+  border:1px solid var(--line);border-radius:999px;padding:4px 10px;margin-bottom:14px
+}
+.mode i{width:7px;height:7px;border-radius:50%;background:#64748b;font-style:normal}
+.mode.native i{background:#34d399}
+.panel{
+  position:fixed;top:14px;right:14px;width:242px;z-index:15;background:rgba(10,12,20,.72);
+  border:1px solid var(--line);border-radius:16px;padding:13px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  box-shadow:0 20px 50px -30px #000
+}
+.panel h2{margin:0 0 10px;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+.toggle{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink2);cursor:pointer;margin-bottom:8px}
+.toggle input{accent-color:var(--accent)}
+.panel p{margin:8px 0 0;font-size:11px;color:var(--ink2);border-top:1px solid var(--line);padding-top:9px}
+.panel code{font-size:10.5px;color:#ffe3a6}
+@media(max-width:880px){.panel{position:static;width:auto;margin:0 auto 14px;max-width:960px}}
+footer{
+  position:fixed;left:0;right:0;bottom:0;padding:9px 16px;font-size:11.5px;color:var(--ink2);
+  pointer-events:none;
+  background:linear-gradient(transparent,rgba(5,6,12,.92));text-align:center
+}
+footer a{color:var(--ink2);pointer-events:auto}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="head">
+  <div class="tag">Micro-interaction · Drop 4</div>
+  <h1>Inside the Input</h1>
+  <p>A <code>&lt;input&gt;</code> has always been a black box: you can read its value, but you cannot ask where
+     the third word is on screen. Edge's new <strong>OpaqueRange</strong> finally hands you live ranges inside form
+     fields with <code>getBoundingClientRect()</code>. Until it ships everywhere, the shim is a hidden mirror element
+     with identical metrics — and these three interactions work on both paths.</p>
+</div>
+
+<aside class="panel">
+  <h2>Measurement</h2>
+  <label class="toggle"><input type="checkbox" id="show"> show measured boxes</label>
+  <label class="toggle"><input type="checkbox" id="force"> force the mirror shim</label>
+  <p>Path in use: <code id="path">—</code></p>
+  <p>Rects are re-measured on input, scroll, resize and selection change.</p>
+</aside>
+
+<div class="stage">
+
+  <section class="demo">
+    <span class="mode" id="modeflag"><i></i><span id="modetext">detecting…</span></span>
+    <h2>A popover that follows the token</h2>
+    <p class="note">Type <b>@</b> and keep typing. The menu is anchored to the left edge of the token being written, not to the field.</p>
+    <div class="field">
+      <input id="mention" type="text" value="ship it with @" autocomplete="off" spellcheck="false" aria-label="Mention field">
+      <div class="layer" id="mentionLayer"></div>
+      <div class="pop" id="mentionPop" role="listbox" aria-label="People"></div>
+    </div>
+    <div class="hintline">token <b id="mtok">—</b> · x <b id="mx">—</b></div>
+  </section>
+
+  <section class="demo">
+    <h2>A squiggle under one substring</h2>
+    <p class="note">Only the offending run of characters is underlined — inside a real input, while it scrolls.</p>
+    <div class="field">
+      <input id="spell" type="text" value="teh report is recieved, thier copy is seperate" autocomplete="off" spellcheck="false" aria-label="Spelling field">
+      <div class="layer" id="spellLayer"></div>
+    </div>
+    <div class="badline" id="spellOut">—</div>
+  </section>
+
+  <section class="demo">
+    <h2>A picker at the caret</h2>
+    <p class="note">Type <b>:</b> anywhere in this textarea — any line — and the picker opens at the caret, not at the corner.</p>
+    <div class="field">
+      <textarea id="note" spellcheck="false" aria-label="Note field">morning notes
+the train was late again :
+tomorrow: leave earlier</textarea>
+      <div class="layer" id="noteLayer"></div>
+      <div class="pop emoji" id="notePop" role="listbox" aria-label="Emoji"></div>
+    </div>
+    <div class="hintline">caret <b id="cpos">—</b> · line box <b id="cbox">—</b></div>
+  </section>
+
+</div>
+
+<footer>Inspired by <a href="https://blogs.windows.com/msedgedev/2026/09/21/new-in-edge-for-developers-create-better-components-and-make-your-site-agent-ready/" target="_blank" rel="noopener">Microsoft Edge — the OpaqueRange API</a> · UI Spotlight Day 126 · Drop #4</footer>
+
+<script>
+(() => {
+'use strict';
+/* ---------------------------------------------------------------
+   rectsFor(field, start, end) -> client rects of a text range
+   native path: OpaqueRange, when the browser has it
+   shim: a mirror element with the field's own metrics
+----------------------------------------------------------------*/
+const NATIVE = typeof window.OpaqueRange === 'function' ||
+  (typeof HTMLInputElement !== 'undefined' && 'createOpaqueRange' in HTMLInputElement.prototype);
+let force = false;
+const usingNative = () => NATIVE && !force;
+
+const COPY = ['fontFamily','fontSize','fontWeight','fontStyle','letterSpacing','textTransform',
+  'wordSpacing','lineHeight','textIndent','paddingTop','paddingRight','paddingBottom','paddingLeft',
+  'borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','boxSizing','tabSize'];
+
+function mirrorFor(field){
+  if (field._mirror) return field._mirror;
+  const m = document.createElement('div');
+  m.className = 'mirror';
+  field.parentNode.appendChild(m);
+  field._mirror = m;
+  return m;
+}
+function syncMirror(field){
+  const m = mirrorFor(field), cs = getComputedStyle(field);
+  for (const k of COPY) m.style[k] = cs[k];
+  m.style.width = field.clientWidth + 'px';
+  m.style.whiteSpace = field.tagName === 'TEXTAREA' ? 'pre-wrap' : 'pre';
+  m.style.overflowWrap = 'break-word';
+  return m;
+}
+function rectsFor(field, start, end){
+  if (usingNative()){
+    try {
+      const r = field.createOpaqueRange(start, end);
+      const list = [...r.getClientRects()];
+      if (list.length) return list;
+    } catch (e){ /* fall through to the shim */ }
+  }
+  const m = syncMirror(field);
+  const text = field.value;
+  m.textContent = '';
+  const before = document.createTextNode(text.slice(0, start));
+  const span = document.createElement('span');
+  span.textContent = text.slice(start, end) || '​';
+  const after = document.createTextNode(text.slice(end) + '​');
+  m.append(before, span, after);
+  const mr = m.getBoundingClientRect(), fr = field.getBoundingClientRect();
+  return [...span.getClientRects()].map(r => new DOMRect(
+    r.left - mr.left + fr.left - field.scrollLeft,
+    r.top - mr.top + fr.top - field.scrollTop,
+    r.width, r.height
+  ));
+}
+/* rect relative to the field's own box */
+function localRects(field, start, end){
+  const fr = field.getBoundingClientRect();
+  return rectsFor(field, start, end).map(r => ({
+    x: r.left - fr.left, y: r.top - fr.top, w: r.width, h: r.height
+  }));
+}
+
+const pathEl = document.getElementById('path');
+const flag = document.getElementById('modeflag'), flagText = document.getElementById('modetext');
+function syncMode(){
+  const native = usingNative();
+  pathEl.textContent = native ? 'OpaqueRange' : 'mirror shim';
+  flag.classList.toggle('native', native);
+  flagText.textContent = native ? 'native OpaqueRange' : 'mirror-element shim';
+}
+document.getElementById('force').addEventListener('change', e => { force = e.target.checked; syncMode(); redrawAll(); });
+let showBoxes = false;
+document.getElementById('show').addEventListener('change', e => { showBoxes = e.target.checked; redrawAll(); });
+syncMode();
+
+/* ---------- 1. mention popover ---------- */
+const PEOPLE = ['ama','bela','chidi','dami','eun','farid','gia'];
+const mention = document.getElementById('mention'), mPop = document.getElementById('mentionPop');
+const mLayer = document.getElementById('mentionLayer');
+function mentionToken(){
+  const v = mention.value, c = mention.selectionStart ?? v.length;
+  const at = v.lastIndexOf('@', c - 1);
+  if (at < 0) return null;
+  const frag = v.slice(at + 1, c);
+  if (/\s/.test(frag)) return null;
+  return { start: at, end: c, q: frag.toLowerCase() };
+}
+function drawMention(){
+  const t = mentionToken();
+  mLayer.textContent = '';
+  if (!t){ mPop.classList.remove('on'); setText('mtok','—'); setText('mx','—'); return; }
+  const r = localRects(mention, t.start, t.end)[0];
+  if (!r){ mPop.classList.remove('on'); return; }
+  if (showBoxes){
+    const b = document.createElement('div');
+    b.className = 'tokenbox';
+    b.style.cssText = `left:${r.x}px;top:${r.y}px;width:${Math.max(2,r.w)}px;height:${r.h}px`;
+    mLayer.appendChild(b);
+  }
+  const hits = PEOPLE.filter(p => p.startsWith(t.q));
+  if (!hits.length){ mPop.classList.remove('on'); return; }
+  mPop.textContent = '';
+  hits.slice(0,5).forEach((p,i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('aria-selected', i===0 ? 'true':'false');
+    b.innerHTML = '<span class="av">' + p[0].toUpperCase() + '</span>@' + p;
+    b.onmousedown = e => {
+      e.preventDefault();
+      const v = mention.value;
+      mention.value = v.slice(0, t.start) + '@' + p + ' ' + v.slice(t.end);
+      const caret = t.start + p.length + 2;
+      mention.setSelectionRange(caret, caret); mention.focus(); drawMention();
+    };
+    mPop.appendChild(b);
+  });
+  mPop.style.left = Math.max(0, r.x) + 'px';
+  mPop.style.top = (r.y + r.h + 6) + 'px';
+  mPop.classList.add('on');
+  setText('mtok', '@' + t.q + '  [' + t.start + '–' + t.end + ']');
+  setText('mx', Math.round(r.x) + 'px');
+}
+
+/* ---------- 2. squiggle ---------- */
+const TYPOS = ['teh','recieved','thier','seperate','definately','occured'];
+const spell = document.getElementById('spell'), sLayer = document.getElementById('spellLayer');
+function drawSpell(){
+  sLayer.textContent = '';
+  const v = spell.value, found = [];
+  const re = /[A-Za-z']+/g; let m;
+  while ((m = re.exec(v))){
+    if (TYPOS.includes(m[0].toLowerCase())) found.push([m.index, m.index + m[0].length, m[0]]);
+  }
+  found.forEach(([a,b]) => {
+    localRects(spell, a, b).forEach(r => {
+      const el = document.createElement('div');
+      el.className = 'squiggle';
+      el.style.cssText = `left:${r.x}px;top:${r.y + r.h - 3}px;width:${r.w}px`;
+      sLayer.appendChild(el);
+      if (showBoxes){
+        const box = document.createElement('div');
+        box.className = 'tokenbox';
+        box.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`;
+        sLayer.appendChild(box);
+      }
+    });
+  });
+  document.getElementById('spellOut').innerHTML = found.length
+    ? '<b>' + found.length + '</b> flagged: ' + found.map(f => f[2]).join(', ')
+    : 'nothing flagged — try typing “teh”.';
+}
+
+/* ---------- 3. picker at the caret ---------- */
+const EMOJI = ['🚆','🌧️','☕','📝','⏰','🙂','😤','🌙','✨','📍','🍞','🎧'];
+const note = document.getElementById('note'), nPop = document.getElementById('notePop');
+const nLayer = document.getElementById('noteLayer');
+function drawNote(){
+  nLayer.textContent = '';
+  const v = note.value, c = note.selectionStart ?? 0;
+  const r = localRects(note, Math.max(0, c-1), c)[0];
+  if (r){
+    setText('cpos', String(c));
+    setText('cbox', Math.round(r.x) + ', ' + Math.round(r.y));
+    if (showBoxes){
+      const b = document.createElement('div');
+      b.className = 'tokenbox';
+      b.style.cssText = `left:${r.x}px;top:${r.y}px;width:${Math.max(2,r.w)}px;height:${r.h}px`;
+      nLayer.appendChild(b);
+    }
+  }
+  const open = v[c-1] === ':' ;
+  if (!open || !r){ nPop.classList.remove('on'); return; }
+  nPop.textContent = '';
+  EMOJI.forEach(e => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = e;
+    b.onmousedown = ev => {
+      ev.preventDefault();
+      note.value = v.slice(0, c) + ' ' + e + v.slice(c);
+      const caret = c + e.length + 1;
+      note.setSelectionRange(caret, caret); note.focus(); drawNote();
+    };
+    nPop.appendChild(b);
+  });
+  const maxLeft = note.clientWidth - 200;
+  nPop.style.left = Math.max(0, Math.min(r.x, maxLeft)) + 'px';
+  nPop.style.top = (r.y + r.h + 6) + 'px';
+  nPop.classList.add('on');
+}
+
+function setText(id, v){ document.getElementById(id).textContent = v; }
+function redrawAll(){ drawMention(); drawSpell(); drawNote(); }
+
+[[mention, drawMention], [spell, drawSpell], [note, drawNote]].forEach(([el, fn]) => {
+  ['input','click','keyup','scroll','focus'].forEach(ev => el.addEventListener(ev, fn));
+  el.addEventListener('blur', () => setTimeout(fn, 120));
+});
+document.addEventListener('selectionchange', redrawAll);
+addEventListener('resize', redrawAll);
+redrawAll();
+})();
+</script>
+</body>
+</html>

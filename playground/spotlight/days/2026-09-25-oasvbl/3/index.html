@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Split It Properly — UI Spotlight Day 126 · Drop 3</title>
+<meta name="description" content="Per-letter text animation breaks emoji, Devanagari and Thai. Intl.Segmenter splits by grapheme, word and sentence the way a reader would.">
+<style>
+*{box-sizing:border-box}
+:root{--bg:#0a0710;--panel:rgba(255,255,255,.055);--line:rgba(255,255,255,.12);--ink:#f4ecef;--ink2:#a4919c;--accent:#f87171}
+html,body{margin:0;height:100%}
+body{
+  background:radial-gradient(1100px 760px at 78% -12%,rgba(248,113,113,.15),transparent 62%),var(--bg);
+  color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100%;padding:76px 18px 92px;-webkit-font-smoothing:antialiased
+}
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:20;text-decoration:none;color:var(--ink);font-size:13px;
+  background:rgba(16,11,20,.62);border:1px solid var(--line);border-radius:999px;padding:8px 14px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+}
+.back-link:hover{border-color:var(--accent);color:#ffd7d7}
+.head{max-width:1000px;margin:0 auto 18px}
+.tag{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700}
+h1{margin:6px 0 6px;font-size:clamp(25px,4.6vw,40px);letter-spacing:-.025em}
+.head p{margin:0;color:var(--ink2);max-width:70ch;font-size:14px}
+.stage{max-width:1000px;margin:0 auto;display:grid;gap:16px}
+.demo{border:1px solid var(--line);border-radius:18px;padding:18px;background:linear-gradient(170deg,rgba(28,20,34,.66),rgba(9,7,16,.66))}
+.demo h2{margin:0 0 3px;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+.demo .note{margin:0 0 14px;font-size:12.5px;color:var(--ink2)}
+.specimen{
+  font-size:clamp(26px,5.6vw,46px);line-height:1.5;letter-spacing:-.01em;
+  display:flex;flex-wrap:wrap;gap:2px 0;min-height:1.6em;align-items:baseline
+}
+.seg{
+  display:inline-block;white-space:pre;opacity:0;transform:translateY(.36em) scale(.86);
+  transition:opacity .3s ease, transform .42s cubic-bezier(.32,1.5,.5,1);
+  border-radius:6px
+}
+.seg.in{opacity:1;transform:none}
+.boxed .seg{
+  outline:1px dashed rgba(248,113,113,.45);outline-offset:1px;margin:0 1px;
+  background:rgba(248,113,113,.07)
+}
+.broken .seg.bad{background:rgba(248,113,113,.28);outline-color:rgba(248,113,113,.9)}
+.words .seg{padding:0 .06em}
+.para{font-size:clamp(15px,2.4vw,19px);line-height:1.75;max-width:62ch}
+.para .seg{display:inline;white-space:normal;opacity:.34;transform:none;transition:.3s}
+.para .seg.lit{opacity:1;background:rgba(248,113,113,.18);box-shadow:0 0 0 4px rgba(248,113,113,.18)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.row button{
+  font:inherit;font-size:12px;color:var(--ink);background:rgba(255,255,255,.05);border:1px solid var(--line);
+  border-radius:9px;padding:7px 12px;cursor:pointer;transition:.15s
+}
+.row button:hover{border-color:rgba(248,113,113,.6)}
+.row button[aria-pressed=true]{background:rgba(248,113,113,.2);border-color:rgba(248,113,113,.65);color:#ffdada}
+.count{font-size:11.5px;color:var(--ink2);font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap}
+.count b{color:var(--ink)}
+.verdict{margin-top:10px;font-size:12.5px;color:var(--ink2)}
+.verdict b{color:#ffb4b4}
+.panel{
+  position:fixed;top:14px;right:14px;width:242px;z-index:15;background:rgba(16,11,22,.72);
+  border:1px solid var(--line);border-radius:16px;padding:13px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  box-shadow:0 20px 50px -30px #000
+}
+.panel h2{margin:0 0 10px;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+.ctl{display:grid;gap:4px;margin-bottom:10px}
+.ctl label{font-size:11.5px;color:var(--ink2);display:flex;justify-content:space-between;gap:8px}
+.ctl label b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:9px;background:rgba(255,255,255,.18)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:var(--accent)}
+input[type=range]::-moz-range-track{height:3px;border-radius:9px;background:rgba(255,255,255,.18)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:var(--accent)}
+.toggle{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink2);cursor:pointer;margin-bottom:6px}
+.toggle input{accent-color:var(--accent)}
+.flag{font-size:11px;color:var(--ink2);border-top:1px solid var(--line);padding-top:9px;margin-top:4px}
+.flag b{color:#ffc9c9}
+@media(max-width:880px){.panel{position:static;width:auto;margin:0 auto 14px;max-width:1000px}}
+footer{
+  position:fixed;left:0;right:0;bottom:0;padding:9px 16px;font-size:11.5px;color:var(--ink2);
+  pointer-events:none;
+  background:linear-gradient(transparent,rgba(7,5,12,.92));text-align:center
+}
+footer a{color:var(--ink2);pointer-events:auto}
+@media (prefers-reduced-motion:reduce){.seg{transition:none}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="head">
+  <div class="tag">Typography · Drop 3</div>
+  <h1>Split It Properly</h1>
+  <p>Every per-letter text animation starts with splitting the string, and almost every one of them is wrong.
+     <code>[...text]</code> tears a family emoji into five people, strands Devanagari vowel signs and detaches
+     combining accents. <code>Intl.Segmenter</code> — in every browser since 2024 — splits the way a reader
+     would: by grapheme, by word (even where there are no spaces) and by sentence.</p>
+</div>
+
+<aside class="panel">
+  <h2>Stagger</h2>
+  <div class="ctl"><label>Per-segment delay <b id="vs">45ms</b></label><input type="range" id="s" min="0" max="220" step="5" value="45"></div>
+  <div class="ctl"><label>Reading pace <b id="vp">1.4s</b></label><input type="range" id="p" min="4" max="40" value="14"></div>
+  <label class="toggle"><input type="checkbox" id="boxes" checked> outline each segment</label>
+  <div class="flag">Intl.Segmenter: <b id="sup">checking…</b></div>
+</aside>
+
+<div class="stage">
+
+  <section class="demo">
+    <h2>Graphemes</h2>
+    <p class="note">One “character” to a reader is often several code points. Toggle the splitter and watch the family fall apart.</p>
+    <div class="specimen boxed" id="g1" aria-label="grapheme specimen"></div>
+    <div class="row">
+      <button id="gNaive" aria-pressed="false">[...text]</button>
+      <button id="gSeg" aria-pressed="true">Segmenter</button>
+      <button id="gNext">Next string</button>
+      <span class="count" id="gCount">—</span>
+    </div>
+    <div class="verdict" id="gVerdict"></div>
+  </section>
+
+  <section class="demo">
+    <h2>Words, without spaces</h2>
+    <p class="note">Japanese and Thai don't separate words with spaces. <code>split(' ')</code> returns the whole line; the word segmenter returns actual words.</p>
+    <div class="specimen words boxed" id="w1" lang="ja" aria-label="word specimen"></div>
+    <div class="row">
+      <button data-lang="ja" aria-pressed="true">日本語</button>
+      <button data-lang="th" aria-pressed="false">ไทย</button>
+      <button data-lang="en" aria-pressed="false">English</button>
+      <button id="wNaive" aria-pressed="false">split(' ')</button>
+      <span class="count" id="wCount">—</span>
+    </div>
+  </section>
+
+  <section class="demo">
+    <h2>Sentences that aren't just dots</h2>
+    <p class="note">A reading highlighter that moves sentence by sentence. <code>split('.')</code> never sees a question or an exclamation, and it cuts decimals in half.</p>
+    <div class="para" id="s1"></div>
+    <div class="row">
+      <button id="sSeg" aria-pressed="true">Segmenter</button>
+      <button id="sNaive" aria-pressed="false">split('.')</button>
+      <span class="count" id="sCount">—</span>
+    </div>
+  </section>
+
+</div>
+
+<footer>Inspired by <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter" target="_blank" rel="noopener">MDN — Intl.Segmenter</a> · UI Spotlight Day 126 · Drop #3</footer>
+
+<script>
+(() => {
+'use strict';
+const HAS = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function';
+document.getElementById('sup').textContent = HAS ? 'available ✓' : 'missing — naive only';
+
+/* a tiny helper so the demos read the same either way */
+function split(text, granularity, locale){
+  if (!HAS || granularity === 'naive-code-points') return [...text];
+  if (granularity === 'naive-space') return text.split(/(?<=\s)/);
+  if (granularity === 'naive-dot') return text.split(/(?<=\.)\s*/).filter(Boolean);
+  const seg = new Intl.Segmenter(locale, { granularity });
+  return [...seg.segment(text)].map(s => s.segment);
+}
+
+let stagger = 45, pace = 1.4, boxes = true;
+
+function paint(host, parts, marker){
+  host.textContent = '';
+  const nodes = parts.map((t, i) => {
+    const el = document.createElement('span');
+    el.className = 'seg' + (marker && marker(t, i) ? ' bad' : '');
+    el.textContent = t;
+    host.appendChild(el);
+    return el;
+  });
+  nodes.forEach((el, i) => setTimeout(() => el.classList.add('in'), i*stagger));
+  return nodes;
+}
+
+/* ---------- 1. graphemes ---------- */
+const STRINGS = [
+  { t:'👨‍👩‍👧‍👦 family 🇯🇵 flag', note:'The family is one grapheme built from four people and three joiners. Splitting by code point gives you seven.' },
+  { t:'नमस्ते दुनिया', note:'Devanagari clusters carry vowel signs and a virama — code points strand them as floating marks.' },
+  { t:'Ñoño café – élévè', note:'Those accents are separate combining marks. Split by code point and they land on the wrong letters.' },
+  { t:'🧑🏽‍🚀 astronaut 👩‍❤️‍💋‍👨', note:'Skin-tone modifiers and ZWJ sequences are single graphemes to every reader on earth.' }
+];
+let gi = 0, gMode = 'grapheme';
+function renderG(){
+  const s = STRINGS[gi];
+  const parts = gMode === 'grapheme' ? split(s.t, 'grapheme') : [...s.t];
+  const host = document.getElementById('g1');
+  host.classList.toggle('broken', gMode !== 'grapheme');
+  host.classList.toggle('boxed', boxes);
+  paint(host, parts, t => t.length === 1 && /[‍️̀-ͯऀ-ःा-्\uD800-\uDFFF]/.test(t));
+  const right = split(s.t, 'grapheme').length, naive = [...s.t].length;
+  document.getElementById('gCount').innerHTML =
+    'segments <b>' + parts.length + '</b> · reader sees <b>' + right + '</b>';
+  document.getElementById('gVerdict').innerHTML = gMode === 'grapheme'
+    ? s.note
+    : '<b>' + (naive - right) + ' extra pieces.</b> ' + s.note;
+}
+document.getElementById('gNaive').onclick = () => { gMode = 'naive'; flip('gNaive','gSeg'); renderG(); };
+document.getElementById('gSeg').onclick  = () => { gMode = 'grapheme'; flip('gSeg','gNaive'); renderG(); };
+document.getElementById('gNext').onclick = () => { gi = (gi+1) % STRINGS.length; renderG(); };
+function flip(on, off){
+  document.getElementById(on).setAttribute('aria-pressed','true');
+  document.getElementById(off).setAttribute('aria-pressed','false');
+}
+
+/* ---------- 2. words ---------- */
+const LINES = {
+  ja: '東京の古い喫茶店で、静かに雨が上がるのを待っていた。',
+  th: 'เขานั่งรอฝนหยุดตกอยู่ในร้านกาแฟเก่าแก่กลางเมือง',
+  en: 'She waited in an old coffee house for the rain to stop.'
+};
+let wLang = 'ja', wNaive = false;
+function renderW(){
+  const text = LINES[wLang];
+  const host = document.getElementById('w1');
+  host.lang = wLang;
+  host.classList.toggle('boxed', boxes);
+  const parts = wNaive
+    ? text.split(/(?<=\s)/)
+    : split(text, 'word', wLang).filter(s => s.trim() !== '' || s === ' ');
+  paint(host, parts);
+  const real = split(text, 'word', wLang).filter(s => s.trim() !== '').length;
+  document.getElementById('wCount').innerHTML =
+    'chunks <b>' + parts.length + '</b> · real words <b>' + real + '</b>';
+}
+document.querySelectorAll('[data-lang]').forEach(b => {
+  b.onclick = () => {
+    wLang = b.dataset.lang;
+    document.querySelectorAll('[data-lang]').forEach(n => n.setAttribute('aria-pressed', n === b ? 'true':'false'));
+    renderW();
+  };
+});
+document.getElementById('wNaive').onclick = e => {
+  wNaive = !wNaive;
+  e.currentTarget.setAttribute('aria-pressed', wNaive ? 'true':'false');
+  renderW();
+};
+
+/* ---------- 3. sentences ---------- */
+const PARA = 'Can you hear that? The rain stopped an hour ago. ' +
+  'She measured 3.14 litres into the flask; it fizzed once and went quiet. ' +
+  'Wait — did you feel that! Nobody answered.';
+let sNaive = false, sIdx = 0, sNodes = [], sTimer = 0;
+function renderS(){
+  const host = document.getElementById('s1');
+  const parts = sNaive ? split(PARA, 'naive-dot') : split(PARA, 'sentence', 'en');
+  host.textContent = '';
+  sNodes = parts.map(t => {
+    const el = document.createElement('span');
+    el.className = 'seg in'; el.textContent = t;
+    host.appendChild(el); return el;
+  });
+  sIdx = 0; lit();
+  const truth = split(PARA, 'sentence', 'en').length;
+  document.getElementById('sCount').innerHTML =
+    'chunks <b>' + parts.length + '</b> · real sentences <b>' + truth + '</b>';
+}
+function lit(){
+  sNodes.forEach((n,i) => n.classList.toggle('lit', i === sIdx % sNodes.length));
+}
+document.getElementById('sSeg').onclick  = () => { sNaive = false; flip('sSeg','sNaive'); renderS(); };
+document.getElementById('sNaive').onclick = () => { sNaive = true; flip('sNaive','sSeg'); renderS(); };
+
+/* ---------- controls ---------- */
+const bind = (id, fmt, fn) => {
+  const el = document.getElementById(id), lab = document.getElementById('v'+id);
+  const apply = () => { const v = +el.value; if (lab) lab.textContent = fmt(v); fn(v); };
+  el.addEventListener('input', apply); apply();
+};
+bind('s', v => v + 'ms', v => { stagger = v; });
+bind('p', v => (v/10).toFixed(1) + 's', v => { pace = v/10; restartTimer(); });
+document.getElementById('boxes').addEventListener('change', e => {
+  boxes = e.target.checked; renderG(); renderW();
+});
+
+function restartTimer(){
+  clearInterval(sTimer);
+  sTimer = setInterval(() => { sIdx++; lit(); }, Math.max(400, pace*1000));
+}
+
+renderG(); renderW(); renderS(); restartTimer();
+/* replay the two staggered specimens now and then so the page always has motion */
+setInterval(() => { renderG(); renderW(); }, 9000);
+})();
+</script>
+</body>
+</html>
