@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Drop 2 — Crop Without a Wrapper</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{--acc:#34d399;--bg:#06100c;--ink:#e9f6ef;--dim:#8fae9f;--line:rgba(255,255,255,.11)}
+  body{margin:0;min-height:100svh;background:radial-gradient(900px 600px at 80% -10%,#0f2e24,transparent 60%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:64px 20px 90px}
+  .back-link{position:fixed;left:14px;top:14px;z-index:9;display:inline-flex;gap:6px;align-items:center;
+    padding:8px 14px;border-radius:99px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:600;
+    background:rgba(8,18,14,.72);border:1px solid var(--line);backdrop-filter:blur(12px)}
+  header{max-width:860px;margin:0 auto;text-align:center}
+  h1{font-size:clamp(23px,4.4vw,34px);margin:0 0 6px;letter-spacing:-.6px}
+  h1 b{color:var(--acc)}
+  .sub{color:var(--dim);max-width:64ch;margin:0 auto;font-size:14px}
+  code{font:600 .92em ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--acc)}
+  .badge{display:inline-block;margin:12px 0 0;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+    border:1px solid var(--line);border-radius:99px;padding:4px 11px;color:var(--dim)}
+  .badge.yes{color:var(--acc);border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.1)}
+  main{max-width:980px;margin:30px auto 0;display:grid;gap:22px}
+  .lens{position:relative;border-radius:22px;overflow:hidden;border:1px solid var(--line);
+    background:#0b1a14;aspect-ratio:16/8;touch-action:none;cursor:grab}
+  .lens.drag{cursor:grabbing}
+  .lens img{width:100%;height:100%;object-fit:cover;display:block}
+  .lens .tag{position:absolute;left:12px;bottom:12px;font:600 11.5px ui-monospace,Menlo,monospace;color:#d6fff0;
+    background:rgba(4,14,10,.72);border:1px solid var(--line);padding:5px 10px;border-radius:99px;pointer-events:none}
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  figure{margin:0;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#0b1a14;position:relative}
+  figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block;
+    transition:object-view-box .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1)}
+  figcaption{position:absolute;left:0;right:0;bottom:0;padding:8px 10px;font-size:11.5px;color:#cdebdd;
+    background:linear-gradient(transparent,rgba(3,12,9,.88));font-family:ui-monospace,Menlo,monospace}
+  .debug{position:fixed;right:14px;top:14px;width:224px;padding:12px;border-radius:16px;z-index:9;
+    background:rgba(6,16,12,.76);border:1px solid var(--line);backdrop-filter:blur(14px);font-size:12px}
+  .debug h4{margin:0 0 9px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .debug label{display:flex;align-items:center;gap:8px;margin:8px 0;color:var(--dim)}
+  .debug input[type=range]{flex:1;min-width:0;accent-color:var(--acc)}
+  .debug output{color:var(--ink);font-variant-numeric:tabular-nums;min-width:38px;text-align:right}
+  .debug button{width:100%;margin-top:6px;font:inherit;font-size:12px;color:var(--ink);background:rgba(255,255,255,.06);
+    border:1px solid var(--line);border-radius:10px;padding:7px;cursor:pointer}
+  footer{position:fixed;left:0;right:0;bottom:0;padding:9px;text-align:center;font-size:11.5px;color:var(--dim);
+    background:linear-gradient(transparent,rgba(3,10,8,.92) 55%)}
+  footer a{color:var(--dim)}
+  @media (max-width:760px){ .debug{position:static;width:auto;margin:0 auto 16px} body{padding-top:58px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="debug">
+  <h4>Lens</h4>
+  <label>Zoom<input type="range" id="zoom" min="1" max="5" step="0.05" value="2.2"><output id="zoomO">2.2×</output></label>
+  <label>Drift<input type="range" id="drift" min="0" max="100" step="1" value="45"><output id="driftO">45</output></label>
+  <button id="mode">Using: object-view-box</button>
+  <button id="shuffle">Shuffle tile crops</button>
+</div>
+<header>
+  <h1>Crop without a <b>wrapper</b></h1>
+  <p class="sub"><code>object-view-box</code> puts a viewBox on a replaced element: the image stays exactly where it
+  is in the layout while you slide, zoom and animate the window you see through. No <code>overflow:hidden</code>
+  parent, no negative margins — and because it is a real animatable property, the crop can be transitioned.
+  Drag the wide lens to pan; the tiles below each hold a different <code>inset()</code>.</p>
+  <div class="badge" id="support">checking support…</div>
+</header>
+<main>
+  <div class="lens" id="lens"><img id="lensImg" alt="Generated test plate"><span class="tag" id="lensTag"></span></div>
+  <div class="grid" id="grid"></div>
+</main>
+<footer>Inspired by <a href="https://blog.logrocket.com/guide-css-object-view-box/">LogRocket — A guide to CSS object-view-box</a> · UI Spotlight Day 127 · Drop #2</footer>
+<script>
+'use strict';
+const SUPPORT = CSS.supports('object-view-box', 'inset(0px)');
+const badge = document.getElementById('support');
+badge.textContent = SUPPORT ? 'object-view-box — native here' : 'no native support — JS transform fallback';
+badge.classList.toggle('yes', SUPPORT);
+let useNative = SUPPORT;
+
+/* ---- a generated plate so the demo ships with zero external assets ---- */
+function plate(){
+  const W = 1600, H = 1000, p = [];
+  for(let i = 0; i < 34; i++){
+    const x = (i * 197) % W, y = (i * 311) % H, r = 40 + (i * 53) % 130;
+    const c = ['#34d399','#22d3ee','#a3e635','#f59e0b','#38bdf8','#f472b6'][i % 6];
+    p.push('<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + c + '" opacity="' + (0.16 + (i % 5) * 0.12).toFixed(2) + '"/>');
+  }
+  for(let gx = 0; gx <= W; gx += 100)
+    p.push('<line x1="' + gx + '" y1="0" x2="' + gx + '" y2="' + H + '" stroke="rgba(255,255,255,.14)"/>');
+  for(let gy = 0; gy <= H; gy += 100)
+    p.push('<line x1="0" y1="' + gy + '" x2="' + W + '" y2="' + gy + '" stroke="rgba(255,255,255,.14)"/>');
+  for(let cx = 0; cx < 16; cx++) for(let cy = 0; cy < 10; cy++)
+    p.push('<text x="' + (cx*100+50) + '" y="' + (cy*100+56) + '" font-family="ui-monospace,monospace" font-size="19" ' +
+      'fill="rgba(255,255,255,.62)" text-anchor="middle">' + String.fromCharCode(65+cx) + (cy+1) + '</text>');
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="#062b21"/><stop offset="1" stop-color="#0b1732"/></linearGradient></defs>' +
+    '<rect width="' + W + '" height="' + H + '" fill="url(#g)"/>' + p.join('') + '</svg>';
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+const SRC = plate();
+document.getElementById('lensImg').src = SRC;
+
+/* ---- one helper, two implementations ---- */
+function applyView(img, v){            /* v = {x,y,w,h} in 0..1 of the source */
+  if(useNative){
+    img.style.transform = '';
+    img.style.objectViewBox = 'inset(' + pc(v.y) + ' ' + pc(1-v.x-v.w) + ' ' + pc(1-v.y-v.h) + ' ' + pc(v.x) + ')';
+  } else {
+    img.style.objectViewBox = '';
+    const k = 1 / v.w;
+    img.style.transformOrigin = '0 0';
+    img.style.transform = 'scale(' + k.toFixed(3) + ') translate(' + (-v.x * 100).toFixed(2) + '%,' + (-v.y * 100).toFixed(2) + '%)';
+  }
+}
+const pc = n => (n * 100).toFixed(2) + '%';
+
+/* ---- the draggable lens ---- */
+const lens = document.getElementById('lens'), lensImg = document.getElementById('lensImg'), tag = document.getElementById('lensTag');
+let view = {x:.3, y:.3, w:.45, h:.45}, drift = .45, t0 = performance.now();
+function setZoom(z){
+  const w = 1 / z, h = 1 / z;
+  view.w = w; view.h = h;
+  view.x = clamp(view.x, 0, 1 - w); view.y = clamp(view.y, 0, 1 - h);
+}
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+function paint(){
+  applyView(lensImg, view);
+  tag.textContent = useNative
+    ? 'object-view-box: inset(' + pc(view.y) + ' ' + pc(1-view.x-view.w) + ' ' + pc(1-view.y-view.h) + ' ' + pc(view.x) + ')'
+    : 'fallback: scale(' + (1/view.w).toFixed(2) + ') translate(…)';
+}
+let dragging = null;
+lens.addEventListener('pointerdown', e => {
+  dragging = {x:e.clientX, y:e.clientY, vx:view.x, vy:view.y};
+  lens.setPointerCapture(e.pointerId); lens.classList.add('drag'); drift = 0;
+  document.getElementById('drift').value = 0; document.getElementById('driftO').textContent = '0';
+});
+lens.addEventListener('pointermove', e => {
+  if(!dragging) return;
+  const r = lens.getBoundingClientRect();
+  view.x = clamp(dragging.vx - (e.clientX - dragging.x) / r.width * view.w, 0, 1 - view.w);
+  view.y = clamp(dragging.vy - (e.clientY - dragging.y) / r.height * view.h, 0, 1 - view.h);
+  paint();
+});
+const stop = () => { dragging = null; lens.classList.remove('drag'); };
+lens.addEventListener('pointerup', stop);
+lens.addEventListener('pointercancel', stop);
+
+/* ---- the tile wall: nine fixed crops that swap on hover ---- */
+const CROPS = [
+  {x:.02,y:.05,w:.3,h:.3,l:'inset(5% 68% 65% 2%)'},
+  {x:.35,y:.1,w:.28,h:.28,l:'inset(10% 37% 62% 35%)'},
+  {x:.66,y:.2,w:.3,h:.3,l:'inset(20% 4% 50% 66%)'},
+  {x:.18,y:.5,w:.34,h:.34,l:'inset(50% 48% 16% 18%)'},
+  {x:.5,y:.45,w:.4,h:.4,l:'inset(45% 10% 15% 50%)'},
+  {x:.08,y:.25,w:.5,h:.5,l:'inset(25% 42% 25% 8%)'}
+];
+const grid = document.getElementById('grid');
+CROPS.forEach((c, i) => {
+  const fig = document.createElement('figure');
+  const img = new Image(); img.src = SRC; img.alt = 'crop ' + (i+1); img.decoding = 'async';
+  const cap = document.createElement('figcaption'); cap.textContent = c.l;
+  fig.append(img, cap); grid.appendChild(fig);
+  const base = {x:c.x, y:c.y, w:c.w, h:c.h};
+  applyView(img, base);
+  const zoomIn = () => applyView(img, {x:base.x + base.w * .22, y:base.y + base.h * .22, w:base.w * .55, h:base.h * .55});
+  fig.addEventListener('pointerenter', zoomIn);
+  fig.addEventListener('pointerleave', () => applyView(img, base));
+  fig.addEventListener('click', zoomIn);
+  fig._base = base; fig._img = img;
+});
+/* ---- controls ---- */
+const zoom = document.getElementById('zoom');
+zoom.addEventListener('input', e => {
+  document.getElementById('zoomO').textContent = (+e.target.value).toFixed(1) + '×';
+  setZoom(+e.target.value); paint();
+});
+document.getElementById('drift').addEventListener('input', e => {
+  drift = +e.target.value / 100; document.getElementById('driftO').textContent = e.target.value;
+});
+document.getElementById('mode').addEventListener('click', e => {
+  useNative = !useNative && SUPPORT ? true : (SUPPORT ? !useNative : false);
+  if(!SUPPORT) useNative = false;
+  e.target.textContent = 'Using: ' + (useNative ? 'object-view-box' : 'transform fallback');
+  paint();
+  [...grid.children].forEach(f => applyView(f._img, f._base));
+});
+document.getElementById('shuffle').addEventListener('click', () => {
+  [...grid.children].forEach(f => {
+    f._base = {x:Math.random() * .55, y:Math.random() * .55, w:.28 + Math.random() * .25, h:.28 + Math.random() * .25};
+    f.querySelector('figcaption').textContent =
+      'inset(' + pc(f._base.y) + ' ' + pc(1 - f._base.x - f._base.w) + ' ' + pc(1 - f._base.y - f._base.h) + ' ' + pc(f._base.x) + ')';
+    applyView(f._img, f._base);
+  });
+});
+/* gentle autopan so the lens is alive before you touch it */
+setZoom(2.2);
+function loop(now){
+  if(drift > 0 && !dragging){
+    const t = (now - t0) / 1000;
+    view.x = clamp((0.5 + Math.cos(t * .32 * drift) * .32) - view.w / 2, 0, 1 - view.w);
+    view.y = clamp((0.5 + Math.sin(t * .24 * drift) * .3) - view.h / 2, 0, 1 - view.h);
+    paint();
+  }
+  requestAnimationFrame(loop);
+}
+paint();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
