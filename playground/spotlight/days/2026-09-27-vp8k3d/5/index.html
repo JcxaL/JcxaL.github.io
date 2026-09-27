@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Your Own Text Surface — UI Spotlight Day 127 · Drop 5</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#08060f; --ink:#ece7fb; --dim:#9a92bb; --line:rgba(255,255,255,.11);
+    --acc:#a78bfa; --glass:rgba(22,17,40,.78);
+    --tok-word:#ece7fb; --tok-num:#7dd3fc; --tok-punct:#f0a4c8; --tok-kw:#fbbf24;
+  }
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1000px 640px at 10% -10%,#221646 0%,transparent 58%),
+      radial-gradient(900px 600px at 104% 108%,#0f1c33 0%,transparent 55%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .back-link{
+    position:fixed;left:14px;top:14px;z-index:40;display:inline-flex;align-items:center;gap:7px;
+    padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:13px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px) saturate(160%);
+    -webkit-backdrop-filter:blur(14px) saturate(160%);transition:background .2s,transform .2s}
+  .back-link:hover{background:rgba(40,30,70,.9);transform:translateX(-2px)}
+  .panel{
+    position:fixed;right:14px;top:14px;z-index:40;width:250px;padding:13px;border-radius:15px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(16px) saturate(160%);
+    -webkit-backdrop-filter:blur(16px) saturate(160%);box-shadow:0 18px 44px rgba(0,0,0,.48)}
+  .panel h4{margin:0 0 9px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:9px}
+  .chips button{appearance:none;font:inherit;font-size:11px;color:var(--dim);background:rgba(255,255,255,.05);
+    border:1px solid var(--line);border-radius:7px;padding:4px 8px;cursor:pointer}
+  .chips button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#1a1030;font-weight:650}
+  .ctl{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .ctl label{flex:0 0 56px;font-size:11px;color:var(--dim)}
+  .ctl output{flex:0 0 38px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+  input[type=range]{flex:1 1 auto;min-width:0;appearance:none;height:20px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(255,255,255,.16)}
+  input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:var(--acc);border:0}
+  input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.16)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:0;border-radius:50%;background:var(--acc)}
+  .log{margin-top:11px;padding-top:9px;border-top:1px dashed rgba(255,255,255,.12);
+    font:10.5px/1.55 ui-monospace,Menlo,monospace;color:var(--dim);height:104px;overflow:auto}
+  .log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .log b{color:var(--acc);font-weight:600}
+
+  main{max-width:1020px;margin:0 auto;padding:78px 18px 50px}
+  h1{margin:0 0 6px;font-size:clamp(25px,5vw,40px);letter-spacing:-.02em;font-weight:680}
+  .lede{margin:0 0 4px;color:var(--dim);max-width:63ch}
+  code{font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(167,139,250,.15);
+    color:#d6c6ff;padding:1px 6px;border-radius:5px}
+  h2{margin:38px 0 4px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:650}
+  h2 small{float:right;text-transform:none;letter-spacing:0;font-size:11px;color:var(--acc)}
+  h2 + p{margin:0 0 14px;color:var(--dim);font-size:13.5px;max-width:66ch}
+
+  /* ---------- the editor ---------- */
+  .ed{position:relative;border:1px solid var(--line);border-radius:14px;background:rgba(0,0,0,.34);
+    overflow:hidden;transition:border-color .2s,box-shadow .2s}
+  .ed:focus-within{border-color:rgba(167,139,250,.6);box-shadow:0 0 0 3px rgba(167,139,250,.14)}
+  .ed .tag{position:absolute;right:9px;top:7px;z-index:3;font-size:9.5px;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--dim);pointer-events:none}
+  .ed .tag em{font-style:normal;color:var(--acc)}
+  .surface{
+    position:relative;min-height:128px;padding:15px 16px 16px;outline:0;cursor:text;
+    font:var(--fs,14px)/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;
+    white-space:pre-wrap;word-break:break-word;caret-color:transparent;
+  }
+  .surface span{position:relative}
+  .surface .sel{background:rgba(167,139,250,.32);border-radius:2px}
+  .surface .cmp{text-decoration:underline;text-decoration-color:var(--acc);text-underline-offset:3px}
+  .surface .cmp.thick{text-decoration-thickness:2.5px}
+  .surface .cmp.dotted{text-decoration-style:dotted}
+  .tok-num{color:var(--tok-num)}
+  .tok-punct{color:var(--tok-punct)}
+  .tok-kw{color:var(--tok-kw);font-weight:650}
+  body[data-tokens="0"] .tok-num,body[data-tokens="0"] .tok-punct,body[data-tokens="0"] .tok-kw{color:var(--tok-word);font-weight:400}
+  .caret{position:absolute;z-index:2;background:var(--acc);border-radius:1px;pointer-events:none;
+    width:2px;transition:left .045s linear, top .045s linear}
+  .caret.blink{animation:blink 1.06s steps(1,end) infinite}
+  body[data-caret="block"] .caret{width:.62em;opacity:.5;border-radius:2px}
+  body[data-caret="under"] .caret{width:.62em;height:2.5px!important;margin-top:1.16em}
+  @keyframes blink{0%,49%{opacity:var(--o,1)}50%,100%{opacity:0}}
+  .shim{position:absolute;inset:0;opacity:0;resize:none;border:0;padding:15px 16px 16px;
+    font:var(--fs,14px)/1.75 ui-monospace,Menlo,monospace;background:transparent;color:transparent;
+    caret-color:transparent;white-space:pre-wrap}
+  .edbar{display:flex;gap:10px;align-items:center;padding:7px 12px;border-top:1px solid var(--line);
+    font:10.5px ui-monospace,Menlo,monospace;color:var(--dim);flex-wrap:wrap}
+  .edbar b{color:var(--ink);font-weight:600}
+
+  .pair{display:grid;grid-template-columns:1fr;gap:15px}
+  @media (min-width:900px){ .pair{grid-template-columns:1fr 1fr} }
+  .warn{margin:15px 0 0;padding:10px 12px;border-radius:11px;font-size:12.5px;color:#ffd7a1;
+    background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.28)}
+  footer{max-width:1020px;margin:0 auto;padding:30px 18px 34px;color:#736c8f;font-size:11.5px}
+  @media (max-width:880px){ .panel{position:static;width:auto;margin:0 0 18px} main{padding-top:66px} }
+</style>
+</head>
+<body data-caret="bar" data-tokens="1">
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<main>
+  <h1>Your Own Text Surface</h1>
+  <p class="lede">An <code>EditContext</code> hands you the text-input state — insertions, selection, IME
+    composition ranges, the bounds the OS wants for its candidate window — and then gets out of the way.
+    Nothing below is <code>contenteditable</code>. Every glyph, the caret and the selection are drawn by
+    this page.</p>
+
+  <div class="panel">
+    <h4>Surface</h4>
+    <div class="chips" id="caretChips"></div>
+    <div class="chips" id="optChips"></div>
+    <div class="ctl"><label>Text size</label><input type="range" id="fs" min="12" max="22" step="1" value="14"><output id="oFs"></output></div>
+    <div class="ctl"><label>Compose</label><input type="range" id="cmp" min="0" max="8" step="1" value="0"><output id="oCmp"></output></div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <h2>EditContext <small id="ecSupport">checking…</small></h2>
+  <p>Type, select, use the arrow keys. Each keystroke arrives as a <code>textupdate</code> with the range
+    that changed — the page decides what that looks like. Drag <b>Compose</b> to fake an IME composition
+    range and watch the underline the OS would have asked for.</p>
+  <div class="ed" id="edA">
+    <div class="tag">driven by <em>EditContext</em></div>
+    <div class="surface" id="surfA" tabindex="0" role="textbox" aria-multiline="true" aria-label="EditContext editor"></div>
+    <div class="edbar">
+      <span>text <b id="lenA">0</b></span><span>sel <b id="selA">0,0</b></span>
+      <span>events <b id="evA">0</b></span><span>bounds pushed <b id="cbA">0</b></span>
+      <span style="margin-left:auto" id="cmpA"></span>
+    </div>
+  </div>
+
+  <h2>What it replaces</h2>
+  <p>On the left, the same renderer driven by an invisible <code>&lt;textarea&gt;</code> stretched over it —
+    the trick everyone used before. It works until an IME opens: the candidate window has no idea where
+    the text is, because the text it knows about is not the text you can see.</p>
+  <div class="pair">
+    <div class="ed" id="edB">
+      <div class="tag">driven by a <em>hidden textarea</em></div>
+      <div class="surface" id="surfB" tabindex="-1"></div>
+      <textarea class="shim" id="shimB" spellcheck="false" aria-label="hidden textarea editor"></textarea>
+      <div class="edbar"><span>text <b id="lenB">0</b></span><span>sel <b id="selB">0,0</b></span>
+        <span>events <b id="evB">0</b></span><span style="margin-left:auto">no character bounds</span></div>
+    </div>
+    <div class="ed" id="edC">
+      <div class="tag">a second <em>EditContext</em></div>
+      <div class="surface" id="surfC" tabindex="0" role="textbox" aria-label="second EditContext editor"></div>
+      <div class="edbar"><span>text <b id="lenC">0</b></span><span>sel <b id="selC">0,0</b></span>
+        <span>events <b id="evC">0</b></span><span style="margin-left:auto">independent state</span></div>
+    </div>
+  </div>
+
+  <p class="warn" id="warn" style="display:none"></p>
+</main>
+
+<footer>Inspired by Chrome for Developers — introducing the EditContext API · UI Spotlight Day 127 · Drop #5</footer>
+
+<script>
+"use strict";
+const HAS_EC = typeof window.EditContext === "function";
+const KEYWORDS = ["formant","vowel","choir","render","export","const","function","return","if","else"];
+const logEl = document.getElementById("log");
+let logN = 0;
+function log(tag, detail){
+  logN++;
+  const d = document.createElement("div");
+  d.innerHTML = "<b></b> ";
+  d.querySelector("b").textContent = tag;
+  d.append(document.createTextNode(detail));
+  logEl.prepend(d);
+  while(logEl.childElementCount > 40) logEl.lastElementChild.remove();
+}
+
+/* ============================================================
+   One renderer. Two drivers.
+   ============================================================ */
+function makeEditor(opts){
+  const surface = document.getElementById(opts.surface);
+  const out = {
+    len:document.getElementById(opts.len), sel:document.getElementById(opts.sel),
+    ev:document.getElementById(opts.ev), cb:opts.cb ? document.getElementById(opts.cb) : null,
+    cmp:opts.cmp ? document.getElementById(opts.cmp) : null
+  };
+  let text = opts.text, selStart = text.length, selEnd = text.length;
+  let formats = [];            // IME composition ranges
+  let spans = [], events = 0, boundsPushed = 0;
+  const caret = document.createElement("div");
+  caret.className = "caret blink";
+  let ec = null, shim = opts.shim ? document.getElementById(opts.shim) : null;
+
+  /* ---------- rendering ---------- */
+  function tokenClass(ch){
+    if(/\d/.test(ch)) return "tok-num";
+    if(/[^\w\s]/.test(ch)) return "tok-punct";
+    return "";
+  }
+  function keywordMask(){
+    const mask = new Uint8Array(text.length);
+    const low = text.toLowerCase();
+    KEYWORDS.forEach(k=>{
+      let i = -1;
+      while((i = low.indexOf(k, i+1)) >= 0){
+        const before = i===0 || /\W/.test(low[i-1]);
+        const after = i+k.length>=low.length || /\W/.test(low[i+k.length]);
+        if(before && after) for(let j=i;j<i+k.length;j++) mask[j] = 1;
+      }
+    });
+    return mask;
+  }
+  function render(){
+    const kw = keywordMask();
+    const frag = document.createDocumentFragment();
+    spans = [];
+    for(let i=0;i<text.length;i++){
+      const s = document.createElement("span");
+      s.textContent = text[i];
+      const cls = [];
+      if(kw[i]) cls.push("tok-kw"); else { const t = tokenClass(text[i]); if(t) cls.push(t); }
+      if(i >= Math.min(selStart,selEnd) && i < Math.max(selStart,selEnd)) cls.push("sel");
+      for(const f of formats){
+        if(i >= f.s && i < f.e){
+          cls.push("cmp");
+          if(f.thick === "thick") cls.push("thick");
+          if(f.style === "dotted" || f.style === "dashed") cls.push("dotted");
+        }
+      }
+      if(cls.length) s.className = cls.join(" ");
+      spans.push(s);
+      frag.appendChild(s);
+    }
+    surface.textContent = "";
+    surface.appendChild(frag);
+    surface.appendChild(caret);
+    placeCaret();
+    out.len.textContent = text.length;
+    out.sel.textContent = selStart + "," + selEnd;
+    out.ev.textContent = events;
+    if(out.cb) out.cb.textContent = boundsPushed;
+    if(out.cmp) out.cmp.textContent = formats.length ? "composing " + formats[0].s + "–" + formats[0].e : "";
+    pushBounds();
+  }
+  function charRect(i){
+    if(!spans.length) return surface.getBoundingClientRect();
+    const s = spans[Math.min(i, spans.length-1)];
+    return s.getBoundingClientRect();
+  }
+  function caretGeom(){
+    const host = surface.getBoundingClientRect();
+    const cs = getComputedStyle(surface);
+    if(!text.length) return {x:parseFloat(cs.paddingLeft), y:parseFloat(cs.paddingTop), h:parseFloat(cs.lineHeight)||20};
+    const pos = selEnd;
+    let r, x;
+    if(pos >= text.length){ r = charRect(text.length-1); x = r.right; }
+    else { r = charRect(pos); x = r.left; }
+    // a caret sitting right after a newline belongs on the next line
+    if(pos > 0 && text[pos-1] === "\n" && pos < text.length){ r = charRect(pos); x = r.left; }
+    return {x:x - host.left, y:r.top - host.top, h:r.height || 20, abs:{x, y:r.top, h:r.height}};
+  }
+  function placeCaret(){
+    const g = caretGeom();
+    caret.style.left = g.x + "px";
+    caret.style.top = g.y + "px";
+    caret.style.height = g.h + "px";
+  }
+  /** the OS needs to know where the text is — this is the part a hidden textarea cannot do */
+  function pushBounds(){
+    if(!ec) return;
+    try{
+      const r = surface.getBoundingClientRect();
+      ec.updateControlBounds(r);
+      const g = caretGeom();
+      if(g.abs) ec.updateSelectionBounds(new DOMRect(g.abs.x, g.abs.y, 1, g.abs.h));
+      else ec.updateSelectionBounds(r);
+    }catch(e){}
+  }
+
+  /* ---------- caret navigation (never the browser's job here) ---------- */
+  function lineOf(i){ const r = charRect(Math.min(i, Math.max(0,text.length-1))); return r.top; }
+  function move(to, extend){
+    to = Math.max(0, Math.min(text.length, to));
+    selEnd = to;
+    if(!extend) selStart = to;
+    if(ec) ec.updateSelection(selStart, selEnd);
+    render();
+  }
+  function verticalTarget(dir){
+    if(!text.length) return 0;
+    const g = caretGeom(), host = surface.getBoundingClientRect();
+    const wantX = g.x + host.left, wantY = g.y + host.top + dir*(g.h + 1) + g.h/2;
+    let best = -1, bestD = 1e9;
+    for(let i=0;i<=text.length;i++){
+      const r = i < text.length ? charRect(i) : charRect(text.length-1);
+      const cx = i < text.length ? r.left : r.right;
+      const cy = r.top + r.height/2;
+      const d = Math.abs(cy - wantY)*4 + Math.abs(cx - wantX);
+      if(d < bestD){ bestD = d; best = i; }
+    }
+    return best < 0 ? selEnd : best;
+  }
+  function lineEdge(dir){
+    const y = lineOf(selEnd >= text.length ? Math.max(0,text.length-1) : selEnd);
+    let i = selEnd;
+    while(dir < 0 && i > 0 && lineOf(i-1) === y) i--;
+    while(dir > 0 && i < text.length && lineOf(i) === y) i++;
+    return i;
+  }
+  function insert(str){
+    const a = Math.min(selStart,selEnd), b = Math.max(selStart,selEnd);
+    text = text.slice(0,a) + str + text.slice(b);
+    const at = a + str.length;
+    selStart = selEnd = at;
+    if(ec){ ec.updateText(a, b, str); ec.updateSelection(at, at); }
+    if(shim){ shim.value = text; shim.setSelectionRange(at, at); }
+    events++; render();
+  }
+  function del(back){
+    let a = Math.min(selStart,selEnd), b = Math.max(selStart,selEnd);
+    if(a === b){ if(back){ if(!a) return; a--; } else { if(b >= text.length) return; b++; } }
+    text = text.slice(0,a) + text.slice(b);
+    selStart = selEnd = a;
+    if(ec){ ec.updateText(a, b, ""); ec.updateSelection(a, a); }
+    if(shim){ shim.value = text; shim.setSelectionRange(a, a); }
+    events++; render();
+  }
+
+  surface.addEventListener("keydown", e=>{
+    const ext = e.shiftKey;
+    switch(e.key){
+      case "ArrowLeft":  e.preventDefault(); move(selEnd-1, ext); return;
+      case "ArrowRight": e.preventDefault(); move(selEnd+1, ext); return;
+      case "ArrowUp":    e.preventDefault(); move(verticalTarget(-1), ext); return;
+      case "ArrowDown":  e.preventDefault(); move(verticalTarget(1), ext); return;
+      case "Home":       e.preventDefault(); move(lineEdge(-1), ext); return;
+      case "End":        e.preventDefault(); move(lineEdge(1), ext); return;
+      case "Enter":      e.preventDefault(); insert("\n"); log("enter", "handled by the page"); return;
+      case "Tab":        return;   // let focus move on
+    }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "a"){
+      e.preventDefault(); selStart = 0; selEnd = text.length;
+      if(ec) ec.updateSelection(selStart, selEnd);
+      render(); return;
+    }
+    // the EditContext delivers printable input as textupdate; the shim gets it from input
+    if(!ec && !shim){
+      if(e.key === "Backspace"){ e.preventDefault(); del(true); return; }
+      if(e.key === "Delete"){ e.preventDefault(); del(false); return; }
+      if(e.key.length === 1 && !e.ctrlKey && !e.metaKey){ e.preventDefault(); insert(e.key); return; }
+    }
+  });
+
+  /* ---------- pointer: click to place, drag to select ---------- */
+  function offsetAt(cx, cy){
+    if(!text.length) return 0;
+    let best = 0, bestD = 1e9;
+    for(let i=0;i<=text.length;i++){
+      const r = i < text.length ? charRect(i) : charRect(text.length-1);
+      const x = i < text.length ? r.left : r.right;
+      const y = r.top + r.height/2;
+      const d = Math.abs(y - cy)*4 + Math.abs(x - cx);
+      if(d < bestD){ bestD = d; best = i; }
+    }
+    return best;
+  }
+  let dragging = false;
+  surface.addEventListener("pointerdown", e=>{
+    if(shim){ shim.focus(); } else { surface.focus(); }
+    dragging = true;
+    try{ surface.setPointerCapture(e.pointerId); }catch(err){}
+    const at = offsetAt(e.clientX, e.clientY);
+    selStart = selEnd = at;
+    if(ec) ec.updateSelection(at, at);
+    if(shim) shim.setSelectionRange(at, at);
+    render();
+    e.preventDefault();
+  });
+  surface.addEventListener("pointermove", e=>{
+    if(!dragging) return;
+    const at = offsetAt(e.clientX, e.clientY);
+    if(at !== selEnd){
+      selEnd = at;
+      if(ec) ec.updateSelection(selStart, selEnd);
+      if(shim) shim.setSelectionRange(Math.min(selStart,at), Math.max(selStart,at));
+      render();
+    }
+  });
+  addEventListener("pointerup", ()=>{ dragging = false; });
+
+  /* ---------- driver A: EditContext ---------- */
+  if(opts.driver === "ec" && HAS_EC){
+    ec = new EditContext({text, selectionStart:selStart, selectionEnd:selEnd});
+    surface.editContext = ec;
+    ec.addEventListener("textupdate", e=>{
+      text = ec.text;
+      selStart = e.selectionStart; selEnd = e.selectionEnd;
+      events++;
+      log("textupdate", "[" + e.updateRangeStart + "," + e.updateRangeEnd + ") ← "
+        + JSON.stringify(e.text) + "  sel " + e.selectionStart + "," + e.selectionEnd);
+      render();
+    });
+    ec.addEventListener("textformatupdate", e=>{
+      formats = (e.getTextFormats ? e.getTextFormats() : []).map(f=>({
+        s:f.rangeStart, e:f.rangeEnd, style:f.underlineStyle, thick:f.underlineThickness
+      }));
+      log("textformatupdate", formats.length + " range(s)");
+      render();
+    });
+    ec.addEventListener("characterboundsupdate", e=>{
+      const host = surface.getBoundingClientRect();
+      const rects = [];
+      for(let i=e.rangeStart;i<e.rangeEnd;i++){
+        const r = charRect(i);
+        rects.push(new DOMRect(r.left, r.top, r.width, r.height));
+      }
+      try{ ec.updateCharacterBounds(e.rangeStart, rects); boundsPushed += rects.length; }catch(err){}
+      log("characterboundsupdate", "[" + e.rangeStart + "," + e.rangeEnd + ") → " + rects.length + " rects");
+      if(out.cb) out.cb.textContent = boundsPushed;
+    });
+    ec.addEventListener("compositionstart", ()=>log("compositionstart",""));
+    ec.addEventListener("compositionend", ()=>{ formats = []; log("compositionend",""); render(); });
+  }
+  /* ---------- driver B: the old hidden-textarea trick ---------- */
+  else if(shim){
+    shim.value = text;
+    shim.addEventListener("input", ()=>{
+      text = shim.value; selStart = shim.selectionStart; selEnd = shim.selectionEnd;
+      events++; log("input (shim)", "value length " + text.length); render();
+    });
+    const syncSel = ()=>{
+      if(shim.selectionStart === selStart && shim.selectionEnd === selEnd) return;
+      selStart = shim.selectionStart; selEnd = shim.selectionEnd; render();
+    };
+    ["keyup","select","click","focus"].forEach(ev=>shim.addEventListener(ev, syncSel));
+  }
+  /* ---------- driver C: neither available ---------- */
+  else {
+    surface.setAttribute("aria-readonly","false");
+  }
+
+  render();
+  addEventListener("resize", ()=>{ clearTimeout(render._t); render._t = setTimeout(render, 120); });
+
+  return {
+    get text(){ return text; },
+    get sel(){ return [selStart, selEnd]; },
+    get events(){ return events; },
+    get driver(){ return ec ? "editcontext" : shim ? "textarea" : "keydown"; },
+    setFormats(f){ formats = f; render(); },
+    render, surface
+  };
+}
+
+/* ---------- build the three surfaces ---------- */
+const A = makeEditor({
+  surface:"surfA", len:"lenA", sel:"selA", ev:"evA", cb:"cbA", cmp:"cmpA", driver:"ec",
+  text:"const voice = formant(vowel, 4);\nchoir.render(2);   // export 16 bars\n"
+});
+const B = makeEditor({
+  surface:"surfB", len:"lenB", sel:"selB", ev:"evB", shim:"shimB", driver:"shim",
+  text:"the old way: a textarea nobody can see\n"
+});
+const C = makeEditor({
+  surface:"surfC", len:"lenC", sel:"selC", ev:"evC", driver:"ec",
+  text:"a second EditContext, its own text and caret 42\n"
+});
+
+document.getElementById("ecSupport").textContent = HAS_EC
+  ? "supported — driver: " + A.driver
+  : "not supported — falling back to key handling";
+if(!HAS_EC){
+  const w = document.getElementById("warn");
+  w.style.display = "block";
+  w.innerHTML = "<b>No <code>EditContext</code> in this browser.</b> The first and third surfaces fall back to "
+    + "raw <code>keydown</code> handling, which is enough to type but knows nothing about IME composition — "
+    + "exactly the gap the API exists to close.";
+}
+
+/* ---------- panel ---------- */
+const CARETS = ["bar","block","under"];
+const caretChips = document.getElementById("caretChips");
+CARETS.forEach(k=>{
+  const b = document.createElement("button");
+  b.textContent = k;
+  b.setAttribute("aria-pressed", k==="bar" ? "true":"false");
+  b.onclick = ()=>{
+    document.body.dataset.caret = k;
+    caretChips.querySelectorAll("button").forEach(n=>n.setAttribute("aria-pressed", n===b?"true":"false"));
+    [A,B,C].forEach(e=>e.render());
+  };
+  caretChips.appendChild(b);
+});
+const optChips = document.getElementById("optChips");
+[["blink",true],["tokens",true]].forEach(([k,on])=>{
+  const b = document.createElement("button");
+  b.textContent = k;
+  b.setAttribute("aria-pressed", on ? "true":"false");
+  b.onclick = ()=>{
+    const now = b.getAttribute("aria-pressed") !== "true";
+    b.setAttribute("aria-pressed", now ? "true":"false");
+    if(k === "blink") document.querySelectorAll(".caret").forEach(c=>c.classList.toggle("blink", now));
+    else document.body.dataset.tokens = now ? "1" : "0";
+  };
+  optChips.appendChild(b);
+});
+const fs = document.getElementById("fs"), oFs = document.getElementById("oFs");
+function applyFs(){
+  document.documentElement.style.setProperty("--fs", fs.value + "px");
+  oFs.textContent = fs.value + "px";
+  [A,B,C].forEach(e=>e.render());
+}
+fs.addEventListener("input", applyFs);
+
+/* fake an IME composition range so the underline is visible without an IME installed */
+const cmp = document.getElementById("cmp"), oCmp = document.getElementById("oCmp");
+cmp.addEventListener("input", ()=>{
+  const n = +cmp.value;
+  oCmp.textContent = n ? n + " ch" : "off";
+  A.setFormats(n ? [{s:0, e:Math.min(n, A.text.length), style:"dotted", thick:"thick"}] : []);
+});
+
+applyFs();
+oCmp.textContent = "off";
+log("ready", HAS_EC ? "EditContext available" : "EditContext missing");
+</script>
+</body>
+</html>

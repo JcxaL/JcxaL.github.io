@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Composable Motion — UI Spotlight Day 127 · Drop 1</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#05070f; --ink:#e9eefb; --dim:#8892ab; --line:rgba(255,255,255,.11);
+    --acc:#38bdf8; --glass:rgba(16,22,38,.72);
+  }
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1100px 680px at 12% -10%,#0d2236 0%,transparent 58%),
+      radial-gradient(900px 600px at 102% 108%,#161033 0%,transparent 55%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100%;-webkit-text-size-adjust:100%;
+  }
+
+  /* ---- the whole idea: one keyframe, many typed variables ---- */
+  @property --tx{syntax:"<length>";inherits:false;initial-value:0px}
+  @property --ty{syntax:"<length>";inherits:false;initial-value:0px}
+  @property --rot{syntax:"<angle>";inherits:false;initial-value:0deg}
+  @property --sc{syntax:"<number>";inherits:false;initial-value:1}
+  @property --sk{syntax:"<angle>";inherits:false;initial-value:0deg}
+  @property --op{syntax:"<number>";inherits:false;initial-value:1}
+  @property --bl{syntax:"<length>";inherits:false;initial-value:0px}
+
+  .xyz{
+    /* every axis defaults to "no change", so a card only moves on the axes you switch on */
+    --tx:0px; --ty:0px; --rot:0deg; --sc:1; --sk:0deg; --op:1; --bl:0px;
+    --dur:.72s; --ease:cubic-bezier(.22,.9,.25,1); --stagger:45ms; --i:0;
+  }
+  /* the single shared keyframe — it never mentions a concrete value */
+  @keyframes xyz-in{
+    from{
+      translate:var(--tx) var(--ty);
+      rotate:var(--rot);
+      scale:var(--sc);
+      transform:skewX(var(--sk));
+      opacity:var(--op);
+      filter:blur(var(--bl));
+    }
+    to{
+      translate:0 0; rotate:0deg; scale:1; transform:skewX(0deg); opacity:1; filter:blur(0px);
+    }
+  }
+  .xyz.run{animation:xyz-in var(--dur) var(--ease) both;animation-delay:calc(var(--i) * var(--stagger))}
+
+  /* axis presets, each one only touching its own variable */
+  .ax-fade{--op:0}
+  .ax-up{--ty:38px}
+  .ax-left{--tx:-52px}
+  .ax-rot{--rot:-14deg}
+  .ax-scale{--sc:.78}
+  .ax-skew{--sk:9deg}
+  .ax-blur{--bl:7px}
+
+  /* ---- chrome ---- */
+  .back-link{
+    position:fixed;left:14px;top:14px;z-index:40;display:inline-flex;align-items:center;gap:7px;
+    padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:13px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px) saturate(160%);
+    -webkit-backdrop-filter:blur(14px) saturate(160%);transition:background .2s,transform .2s}
+  .back-link:hover{background:rgba(28,38,60,.85);transform:translateX(-2px)}
+  .panel{
+    position:fixed;right:14px;top:14px;z-index:40;width:242px;padding:13px;border-radius:15px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(16px) saturate(160%);
+    -webkit-backdrop-filter:blur(16px) saturate(160%);box-shadow:0 18px 44px rgba(0,0,0,.42)}
+  .panel h4{margin:0 0 9px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px}
+  .chips button{appearance:none;font:inherit;font-size:11.5px;color:var(--dim);background:rgba(255,255,255,.05);
+    border:1px solid var(--line);border-radius:8px;padding:5px 9px;cursor:pointer;transition:all .16s}
+  .chips button[aria-pressed="true"]{color:#04121c;background:var(--acc);border-color:var(--acc);font-weight:650}
+  .ctl{display:flex;align-items:center;gap:8px;margin:7px 0}
+  .ctl label{flex:0 0 62px;font-size:11px;color:var(--dim)}
+  .ctl output{flex:0 0 46px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+  input[type=range]{flex:1 1 auto;min-width:0;appearance:none;height:20px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(255,255,255,.16)}
+  input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:var(--acc);border:0}
+  input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.16)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:0;border-radius:50%;background:var(--acc)}
+  .panel .go{width:100%;margin-top:9px;appearance:none;font:inherit;font-size:12.5px;color:#04121c;font-weight:650;
+    background:var(--acc);border:0;border-radius:10px;padding:9px;cursor:pointer}
+
+  main{max-width:1020px;margin:0 auto;padding:78px 18px 90px}
+  h1{margin:0 0 6px;font-size:clamp(25px,5vw,40px);letter-spacing:-.02em;font-weight:680}
+  .lede{margin:0 0 6px;color:var(--dim);max-width:60ch}
+  code{font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(56,189,248,.12);
+    color:#a5e4ff;padding:1px 6px;border-radius:5px}
+  h2{margin:42px 0 4px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:650}
+  h2 + p{margin:0 0 16px;color:var(--dim);font-size:13.5px;max-width:64ch}
+
+  .deck{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
+  .tile{border:1px solid var(--line);border-radius:15px;padding:15px;min-height:108px;
+    background:linear-gradient(160deg,rgba(56,189,248,.14),rgba(167,139,250,.07));
+    display:flex;flex-direction:column;justify-content:space-between;will-change:translate,scale,opacity,filter}
+  .tile b{font-size:19px;font-weight:660;letter-spacing:-.01em}
+  .tile span{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+
+  .trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
+  .trio section{border:1px solid var(--line);border-radius:15px;padding:14px;background:rgba(255,255,255,.028)}
+  .trio h3{margin:0 0 3px;font-size:13.5px;font-weight:640}
+  .trio p{margin:0 0 12px;font-size:11.5px;color:var(--dim);font-family:ui-monospace,Menlo,monospace}
+  .bar{height:52px;border-radius:11px;margin-bottom:7px;will-change:translate,scale,opacity,filter;
+    background:linear-gradient(90deg,rgba(56,189,248,.5),rgba(167,139,250,.32));
+    border:1px solid rgba(255,255,255,.14)}
+  footer{max-width:1020px;margin:0 auto;padding:0 18px 34px;color:#5f6880;font-size:11.5px}
+  @media (max-width:820px){ .panel{position:static;width:auto;margin:0 0 18px} main{padding-top:66px} }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<main>
+  <h1>Composable Motion</h1>
+  <p class="lede">One <code>@keyframes</code> rule. Seven typed custom properties. Switch an axis on and it
+    joins the entrance; switch it off and it contributes nothing — because every axis defaults to its
+    own resting value, not to a hard-coded one.</p>
+
+  <div class="panel">
+    <h4>Axes</h4>
+    <div class="chips" id="chips"></div>
+    <div class="ctl"><label>Duration</label><input type="range" id="dur" min="200" max="1600" step="50" value="720"><output id="oDur"></output></div>
+    <div class="ctl"><label>Stagger</label><input type="range" id="stag" min="0" max="140" step="5" value="45"><output id="oStag"></output></div>
+    <div class="ctl"><label>Overshoot</label><input type="range" id="ease" min="0" max="100" step="5" value="35"><output id="oEase"></output></div>
+    <button class="go" id="replay">Replay ⟳</button>
+  </div>
+
+  <h2>Twelve tiles, one keyframe</h2>
+  <p>Each tile carries the same <code>.xyz.run</code> class. The only difference between them is
+    <code>--i</code>, which multiplies the stagger.</p>
+  <div class="deck" id="deck"></div>
+
+  <h2>The same rule, three settings</h2>
+  <p>Nothing here is a separate animation. These three groups differ only in which variables they set.</p>
+  <div class="trio">
+    <section><h3>Rise</h3><p>--ty --op</p>
+      <div class="bar xyz ax-up ax-fade" style="--i:0"></div>
+      <div class="bar xyz ax-up ax-fade" style="--i:1"></div>
+      <div class="bar xyz ax-up ax-fade" style="--i:2"></div></section>
+    <section><h3>Unfurl</h3><p>--rot --sc --op</p>
+      <div class="bar xyz ax-rot ax-scale ax-fade" style="--i:0"></div>
+      <div class="bar xyz ax-rot ax-scale ax-fade" style="--i:1"></div>
+      <div class="bar xyz ax-rot ax-scale ax-fade" style="--i:2"></div></section>
+    <section><h3>Focus</h3><p>--bl --sk --tx</p>
+      <div class="bar xyz ax-blur ax-skew ax-left" style="--i:0"></div>
+      <div class="bar xyz ax-blur ax-skew ax-left" style="--i:1"></div>
+      <div class="bar xyz ax-blur ax-skew ax-left" style="--i:2"></div></section>
+  </div>
+</main>
+
+<footer>Inspired by ingram-projects/animxyz · UI Spotlight Day 127 · Drop #1</footer>
+
+<script>
+"use strict";
+const AXES = [
+  {k:"fade", cls:"ax-fade", on:true},
+  {k:"up", cls:"ax-up", on:true},
+  {k:"left", cls:"ax-left", on:false},
+  {k:"rotate", cls:"ax-rot", on:false},
+  {k:"scale", cls:"ax-scale", on:true},
+  {k:"skew", cls:"ax-skew", on:false},
+  {k:"blur", cls:"ax-blur", on:false}
+];
+const deck = document.getElementById("deck");
+const chips = document.getElementById("chips");
+const els = {dur:document.getElementById("dur"), stag:document.getElementById("stag"),
+             ease:document.getElementById("ease"), replay:document.getElementById("replay")};
+const outs = {dur:document.getElementById("oDur"), stag:document.getElementById("oStag"),
+              ease:document.getElementById("oEase")};
+
+/* twelve tiles */
+const tiles = [];
+for(let i=0;i<12;i++){
+  const d = document.createElement("div");
+  d.className = "tile xyz";
+  d.style.setProperty("--i", i);
+  d.innerHTML = "<b></b><span></span>";
+  d.querySelector("b").textContent = String(i+1).padStart(2,"0");
+  d.querySelector("span").textContent = "--i: " + i;
+  deck.appendChild(d);
+  tiles.push(d);
+}
+
+/* axis chips */
+AXES.forEach(a=>{
+  const b = document.createElement("button");
+  b.textContent = a.k;
+  b.setAttribute("aria-pressed", a.on ? "true" : "false");
+  b.onclick = ()=>{
+    a.on = !a.on;
+    b.setAttribute("aria-pressed", a.on ? "true" : "false");
+    applyAxes(); replay();
+  };
+  chips.appendChild(b);
+});
+function applyAxes(){
+  tiles.forEach(t=>AXES.forEach(a=>t.classList.toggle(a.cls, a.on)));
+}
+
+/* knobs */
+function syncKnobs(){
+  const dur = +els.dur.value, stag = +els.stag.value, over = +els.ease.value;
+  outs.dur.textContent = dur + "ms";
+  outs.stag.textContent = stag + "ms";
+  outs.ease.textContent = over + "%";
+  // a bezier whose second control point overshoots by the chosen amount
+  const ease = "cubic-bezier(.22,.9," + (0.25 - over/380).toFixed(3) + "," + (1 + over/95).toFixed(3) + ")";
+  document.querySelectorAll(".xyz").forEach(n=>{
+    n.style.setProperty("--dur", dur + "ms");
+    n.style.setProperty("--stagger", stag + "ms");
+    n.style.setProperty("--ease", ease);
+  });
+}
+["input","change"].forEach(ev=>{
+  els.dur.addEventListener(ev, ()=>{syncKnobs(); replay();});
+  els.stag.addEventListener(ev, ()=>{syncKnobs(); replay();});
+  els.ease.addEventListener(ev, ()=>{syncKnobs(); replay();});
+});
+
+let pending = 0;
+function replay(){
+  clearTimeout(pending);
+  const all = document.querySelectorAll(".xyz");
+  all.forEach(n=>n.classList.remove("run"));
+  // one forced reflow, then restart every animation together
+  void document.body.offsetWidth;
+  pending = setTimeout(()=>all.forEach(n=>n.classList.add("run")), 20);
+}
+els.replay.onclick = replay;
+
+/* replay a group when it scrolls into view */
+if("IntersectionObserver" in window){
+  const io = new IntersectionObserver(es=>{
+    es.forEach(e=>{
+      if(e.isIntersecting){
+        e.target.querySelectorAll(".xyz").forEach((n,i)=>{
+          n.classList.remove("run"); void n.offsetWidth; n.style.setProperty("--i", i); n.classList.add("run");
+        });
+      }
+    });
+  }, {threshold:.35});
+  document.querySelectorAll(".trio section").forEach(s=>io.observe(s));
+}
+
+applyAxes();
+syncKnobs();
+replay();
+</script>
+</body>
+</html>

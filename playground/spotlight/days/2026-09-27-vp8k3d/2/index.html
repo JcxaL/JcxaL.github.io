@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Paint Only What Shows — UI Spotlight Day 127 · Drop 2</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#040a08; --ink:#e8f6ee; --dim:#87a196; --line:rgba(255,255,255,.11);
+    --acc:#34d399; --glass:rgba(11,26,21,.74);
+  }
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1000px 640px at 8% -10%,#0a2a22 0%,transparent 58%),
+      radial-gradient(900px 600px at 104% 106%,#10261c 0%,transparent 55%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .back-link{
+    position:fixed;left:14px;top:14px;z-index:40;display:inline-flex;align-items:center;gap:7px;
+    padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:13px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px) saturate(160%);
+    -webkit-backdrop-filter:blur(14px) saturate(160%);transition:background .2s,transform .2s}
+  .back-link:hover{background:rgba(20,44,35,.86);transform:translateX(-2px)}
+  .panel{
+    position:fixed;right:14px;top:14px;z-index:40;width:236px;padding:13px;border-radius:15px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(16px) saturate(160%);
+    -webkit-backdrop-filter:blur(16px) saturate(160%);box-shadow:0 18px 44px rgba(0,0,0,.45)}
+  .panel h4{margin:0 0 9px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .sw{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:8px 0}
+  .sw span{font-size:11.5px;color:var(--dim)}
+  .sw button{appearance:none;font:inherit;font-size:11.5px;font-weight:650;border:1px solid var(--line);
+    border-radius:8px;padding:5px 11px;cursor:pointer;background:rgba(255,255,255,.05);color:var(--dim)}
+  .sw button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#052015}
+  .stat{display:flex;justify-content:space-between;font-size:11.5px;padding:4px 0;border-top:1px dashed rgba(255,255,255,.1)}
+  .stat b{font-variant-numeric:tabular-nums;font-weight:650}
+
+  main{max-width:1080px;margin:0 auto;padding:78px 18px 60px}
+  h1{margin:0 0 6px;font-size:clamp(25px,5vw,40px);letter-spacing:-.02em;font-weight:680}
+  .lede{margin:0 0 4px;color:var(--dim);max-width:62ch}
+  code{font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(52,211,153,.13);
+    color:#9df0ce;padding:1px 6px;border-radius:5px}
+  h2{margin:38px 0 4px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:650}
+  h2 small{float:right;text-transform:none;letter-spacing:0;font-size:11px;font-variant-numeric:tabular-nums;color:var(--acc)}
+  h2 + p{margin:0 0 14px;color:var(--dim);font-size:13.5px;max-width:66ch}
+
+  /* ---------- the technique ---------- */
+  .scroller{
+    height:330px;overflow:auto;border:1px solid var(--line);border-radius:15px;padding:11px;
+    background:rgba(255,255,255,.022);overscroll-behavior:contain;
+    content-visibility:auto;                 /* the scroller itself can be skipped too */
+    contain-intrinsic-size:auto 330px;
+  }
+  /* every row opts out of rendering while it is off-screen, and declares the size
+     it would have had so the scrollbar never lies */
+  body[data-cv="1"] .item{
+    content-visibility:auto;
+    contain-intrinsic-size:auto var(--h);
+  }
+  .item{
+    --h:74px;
+    min-height:var(--h);margin-bottom:9px;border:1px solid rgba(255,255,255,.09);border-radius:12px;
+    padding:10px 12px;background:linear-gradient(120deg,rgba(52,211,153,.09),rgba(56,189,248,.05));
+    display:flex;gap:11px;align-items:center;position:relative
+  }
+  .item.rendered,.grow.rendered{outline:1px solid rgba(52,211,153,.55);outline-offset:-1px}
+  .av{flex:none;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;
+    font-size:13px;font-weight:700;color:#04140e;background:var(--acc)}
+  .who{font-size:13.5px;font-weight:620}
+  .txt{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tag{position:absolute;right:9px;top:8px;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--acc);opacity:0;transition:opacity .25s}
+  .item.rendered .tag{opacity:.85}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:9px}
+  .tile{aspect-ratio:1;border-radius:12px;border:1px solid rgba(255,255,255,.09);--h:auto;
+    display:grid;place-items:center;font-size:12px;font-variant-numeric:tabular-nums;color:#062018;font-weight:650}
+  body[data-cv="1"] .tile{content-visibility:auto;contain-intrinsic-size:110px 110px}
+
+  /* a grid "table": rows are ordinary blocks, so containment applies to them */
+  .gtable{display:grid;grid-template-columns:4.5em 1fr 5em;font-size:12.5px}
+  .grow{display:grid;grid-template-columns:subgrid;grid-column:1/-1;--h:34px;min-height:34px;
+    align-items:center;border-bottom:1px solid rgba(255,255,255,.06)}
+  body[data-cv="1"] .grow{content-visibility:auto;contain-intrinsic-size:auto 34px}
+  .grow > span{padding:5px 8px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grow > span:first-child{color:var(--dim)}
+  .grow.rendered > span:first-child{color:var(--acc)}
+  /* a real table, for contrast: these rows can never be skipped */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  tbody tr{height:34px;border-bottom:1px solid rgba(255,255,255,.06)}
+  body[data-cv="1"] tbody tr{content-visibility:auto;contain-intrinsic-size:auto 34px}
+  td{padding:5px 8px;font-variant-numeric:tabular-nums}
+  td:first-child{color:#c98a8a}
+
+  .three{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:15px}
+  footer{max-width:1080px;margin:0 auto;padding:26px 18px 34px;color:#5c7169;font-size:11.5px}
+  .warn{margin:14px 0 0;padding:10px 12px;border-radius:11px;font-size:12.5px;color:#ffd7a1;
+    background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.28);display:none}
+  body[data-supported="0"] .warn{display:block}
+  @media (max-width:860px){ .panel{position:static;width:auto;margin:0 0 18px} main{padding-top:66px} }
+</style>
+</head>
+<body data-cv="1">
+
+<a href="../" class="back-link">← All 5 drops</a>
+
+<main>
+  <h1>Paint Only What Shows</h1>
+  <p class="lede">Three scrollers holding <b id="total">0</b> elements between them. The browser lays out and
+    paints only the handful you can actually see — and tells you the moment it changes its mind.</p>
+
+  <div class="panel">
+    <h4>content-visibility</h4>
+    <div class="sw"><span>skipping</span><button id="toggle" aria-pressed="true">auto</button></div>
+    <div class="sw"><span>outline rendered</span><button id="mark" aria-pressed="true">on</button></div>
+    <div class="stat"><span>elements</span><b id="sTotal">0</b></div>
+    <div class="stat"><span>rendered now</span><b id="sNow">0</b></div>
+    <div class="stat"><span>skipped</span><b id="sSkip">0</b></div>
+    <div class="stat"><span>state events</span><b id="sEv">0</b></div>
+    <div class="stat"><span>last layout</span><b id="sMs">–</b></div>
+  </div>
+
+  <div class="warn">This browser does not report <code>contentvisibilityautostatechange</code>, so the counters
+    stay still — the layout itself still works.</div>
+
+  <h2>Feed <small id="c1">0 rendered</small></h2>
+  <p>Each row carries <code>content-visibility:auto</code> and a <code>contain-intrinsic-size</code> placeholder,
+    so the scrollbar is honest about a list it has never laid out.</p>
+  <div class="scroller" id="feed"></div>
+
+  <div class="three" style="margin-top:34px">
+    <div>
+      <h2>Gallery <small id="c2">0</small></h2>
+      <p>Square tiles with a fixed intrinsic size.</p>
+      <div class="scroller"><div class="tiles" id="gal"></div></div>
+    </div>
+    <div>
+      <h2>Rows <small id="c3">0</small></h2>
+      <p>A grid laid out like a table — rows are blocks, so they skip.</p>
+      <div class="scroller"><div class="gtable" id="tbl"></div></div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:38px">Where it does not work <small id="c4">0 skipped</small></h2>
+  <p>The same 400 rows in a real <code>&lt;table&gt;</code>, with the same declaration on every
+    <code>&lt;tr&gt;</code>. Not one of them is skipped: containment does not apply to internal table
+    elements, because a table cannot size its columns without looking at every cell. If you need a
+    skippable table, the rows have to stop being table rows — which is what the grid above is.</p>
+  <div class="scroller" style="height:210px"><table><tbody id="realtbl"></tbody></table></div>
+
+  <h2 style="margin-top:38px">What the toggle changes</h2>
+  <p>With skipping off, every element above is laid out, styled and painted on load. With it on, the
+    browser defers all of that until the element approaches the viewport, then fires
+    <code>contentvisibilityautostatechange</code> so you can start or stop your own work in step with it —
+    pausing a video, tearing down a chart, unsubscribing a socket.</p>
+</main>
+
+<footer>Inspired by web.dev — content-visibility · UI Spotlight Day 127 · Drop #2</footer>
+
+<script>
+"use strict";
+const NAMES = ["Ada","Bo","Cyd","Dov","Eun","Fen","Gia","Hal","Ines","Jai","Kit","Lior","Mei","Nils",
+               "Oona","Pax","Quin","Rae","Sol","Tam","Uli","Vin","Wren","Xan","Yara","Zoe"];
+const LINES = ["shipped the formant bank","rewrote the scroller","measured 3000 rows",
+               "found the missing intrinsic size","skipped 2946 paints","held 60fps on a Pixel 6a",
+               "traded a virtual list for four lines of CSS","deferred everything below the fold"];
+const N_FEED = 1400, N_GAL = 900, N_TBL = 900, N_REAL = 400;
+const supported = "oncontentvisibilityautostatechange" in document.createElement("div")
+  || typeof window.ContentVisibilityAutoStateChangeEvent === "function";
+document.body.dataset.supported = supported ? "1" : "0";
+
+const els = {
+  feed:document.getElementById("feed"), gal:document.getElementById("gal"), tbl:document.getElementById("tbl"),
+  toggle:document.getElementById("toggle"), mark:document.getElementById("mark"),
+  sTotal:document.getElementById("sTotal"), sNow:document.getElementById("sNow"),
+  sSkip:document.getElementById("sSkip"), sEv:document.getElementById("sEv"), sMs:document.getElementById("sMs"),
+  total:document.getElementById("total"),
+  c1:document.getElementById("c1"), c2:document.getElementById("c2"), c3:document.getElementById("c3"),
+  c4:document.getElementById("c4")
+};
+
+let events = 0;
+const counts = {feed:0, gal:0, tbl:0};
+
+function watch(node, group){
+  if(!supported) return;
+  node.addEventListener("contentvisibilityautostatechange", e=>{
+    events++;
+    // e.skipped === true means the browser has just stopped rendering this element
+    node.classList.toggle("rendered", !e.skipped);
+    counts[group] += e.skipped ? -1 : 1;
+    if(counts[group] < 0) counts[group] = 0;
+    scheduleReadout();
+  });
+}
+
+let raf = 0;
+function scheduleReadout(){
+  if(raf) return;
+  raf = requestAnimationFrame(()=>{
+    raf = 0;
+    const now = counts.feed + counts.gal + counts.tbl, total = N_FEED + N_GAL + N_TBL;
+    els.sNow.textContent = now;
+    els.sSkip.textContent = Math.max(0, total - now);
+    els.sEv.textContent = events;
+    els.c1.textContent = counts.feed + " rendered";
+    els.c2.textContent = counts.gal + " rendered";
+    els.c3.textContent = counts.tbl + " rendered";
+  });
+}
+
+/* ---- build the three lists ---- */
+let t0 = performance.now();
+const fFrag = document.createDocumentFragment();
+for(let i=0;i<N_FEED;i++){
+  const d = document.createElement("div");
+  d.className = "item";
+  d.style.setProperty("--h", (66 + (i%4)*14) + "px");
+  const who = NAMES[i%NAMES.length];
+  d.innerHTML = '<div class="av"></div><div style="min-width:0"><div class="who"></div>'
+    + '<div class="txt"></div></div><span class="tag">rendered</span>';
+  d.querySelector(".av").textContent = who[0];
+  d.querySelector(".who").textContent = who + " · #" + (i+1);
+  d.querySelector(".txt").textContent = LINES[i%LINES.length] + " — row " + (i+1) + " of " + N_FEED;
+  watch(d, "feed");
+  fFrag.appendChild(d);
+}
+els.feed.appendChild(fFrag);
+
+const gFrag = document.createDocumentFragment();
+for(let i=0;i<N_GAL;i++){
+  const d = document.createElement("div");
+  d.className = "tile";
+  const h = (i*37)%360;
+  d.style.background = "linear-gradient(140deg, hsl("+h+" 62% 58%), hsl("+((h+42)%360)+" 66% 44%))";
+  d.textContent = i+1;
+  watch(d, "gal");
+  gFrag.appendChild(d);
+}
+els.gal.appendChild(gFrag);
+
+const tFrag = document.createDocumentFragment();
+for(let i=0;i<N_TBL;i++){
+  const row = document.createElement("div");
+  row.className = "grow";
+  row.setAttribute("role","row");
+  row.innerHTML = '<span role="cell"></span><span role="cell"></span><span role="cell"></span>';
+  const c = row.children;
+  c[0].textContent = String(i+1).padStart(4,"0");
+  c[1].textContent = NAMES[(i*7)%NAMES.length] + " · " + LINES[i%LINES.length];
+  c[2].textContent = ((i*911)%9973).toString();
+  watch(row, "tbl");
+  tFrag.appendChild(row);
+}
+els.tbl.appendChild(tFrag);
+
+/* the counter-example: identical CSS on real table rows, which the browser must lay out anyway */
+let realSkipped = 0;
+const rFrag = document.createDocumentFragment();
+for(let i=0;i<N_REAL;i++){
+  const tr = document.createElement("tr");
+  tr.innerHTML = "<td></td><td></td><td></td>";
+  const c = tr.children;
+  c[0].textContent = String(i+1).padStart(4,"0");
+  c[1].textContent = NAMES[(i*5)%NAMES.length];
+  c[2].textContent = ((i*733)%9973).toString();
+  if(supported) tr.addEventListener("contentvisibilityautostatechange", e=>{
+    if(e.skipped) realSkipped++;
+    els.c4.textContent = realSkipped + " skipped";
+  });
+  rFrag.appendChild(tr);
+}
+document.getElementById("realtbl").appendChild(rFrag);
+
+/* force a layout so the number below is the real cost of this DOM */
+void els.feed.offsetHeight; void els.gal.offsetHeight; void els.tbl.offsetHeight;
+els.c4.textContent = supported ? "0 skipped" : "no events here";
+els.sMs.textContent = (performance.now()-t0).toFixed(1) + "ms";
+els.sTotal.textContent = els.total.textContent = N_FEED + N_GAL + N_TBL;
+scheduleReadout();
+
+/* ---- controls ---- */
+els.toggle.onclick = ()=>{
+  const on = document.body.dataset.cv !== "1";
+  document.body.dataset.cv = on ? "1" : "0";
+  els.toggle.setAttribute("aria-pressed", on ? "true" : "false");
+  els.toggle.textContent = on ? "auto" : "visible";
+  if(!on){
+    counts.feed = N_FEED; counts.gal = N_GAL; counts.tbl = N_TBL;
+    document.querySelectorAll(".item,.tile,.grow").forEach(n=>n.classList.add("rendered"));
+  }else{
+    counts.feed = counts.gal = counts.tbl = 0;
+    document.querySelectorAll(".item,.tile,.grow").forEach(n=>n.classList.remove("rendered"));
+  }
+  const t = performance.now();
+  void document.body.offsetHeight;
+  els.sMs.textContent = (performance.now()-t).toFixed(1) + "ms";
+  scheduleReadout();
+};
+els.mark.onclick = ()=>{
+  const on = els.mark.getAttribute("aria-pressed") !== "true";
+  els.mark.setAttribute("aria-pressed", on ? "true" : "false");
+  els.mark.textContent = on ? "on" : "off";
+  document.querySelectorAll(".scroller").forEach(s=>s.style.setProperty("--mark", on ? 1 : 0));
+  const sheet = document.getElementById("markStyle") || (()=>{
+    const s = document.createElement("style"); s.id = "markStyle"; document.head.appendChild(s); return s;
+  })();
+  sheet.textContent = on ? "" : ".item.rendered,.grow.rendered{outline:0}.item.rendered .tag{opacity:0}";
+};
+</script>
+</body>
+</html>
