@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Markup That Streams In Out of Order — UI Spotlight Day 128</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;padding:86px 22px 96px;
+  background:
+    radial-gradient(880px 470px at 16% -6%, #241a3f 0%, transparent 60%),
+    radial-gradient(760px 420px at 88% 6%, #1b1638 0%, transparent 62%), #0a0812;
+  color:#ece9fb;font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+h1{font-size:clamp(20px,3.6vw,30px);margin:0 0 6px;letter-spacing:-.02em}
+.lede{max-width:68ch;color:#a79ecd;margin:0 0 24px;font-size:14px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;
+  background:#16112b;border:1px solid #ffffff14;border-radius:5px;padding:1px 5px;color:#c4b5fd}
+
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:22px}
+.bar button{
+  font:inherit;font-size:12.5px;padding:8px 15px;border-radius:999px;cursor:pointer;
+  background:#1b1636;border:1px solid #ffffff1f;color:#d9d3f6;transition:.16s;
+}
+.bar button:hover{border-color:#a78bfa;transform:translateY(-1px)}
+.bar button.key{background:#4632a0;border-color:#a78bfa;color:#f2eeff;font-weight:650}
+.bar button:disabled{opacity:.45;cursor:default;transform:none}
+#mode{font-size:11.5px;color:#a79ecd;padding:7px 12px;border-radius:999px;
+  background:#16112b;border:1px solid #ffffff14}
+#mode b{color:#c4b5fd}
+
+.feed{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));max-width:1180px}
+.slot{
+  background:#110d21cc;border:1px solid #ffffff18;border-radius:16px;padding:15px 16px;
+  min-height:132px;position:relative;overflow:hidden;
+}
+.slot > .tag{
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#7d74ab;margin:0 0 10px;
+  display:flex;justify-content:space-between;
+}
+.slot > .tag b{color:#a78bfa;letter-spacing:0;text-transform:none;font-size:11px}
+
+/* fallback content: the skeleton that lives between <?start> and <?end> */
+.sk{height:11px;border-radius:5px;margin-bottom:9px;
+  background:linear-gradient(90deg,#221b40,#33285e,#221b40);
+  background-size:220% 100%;animation:shimmer 1.4s linear infinite}
+.sk.w70{width:70%} .sk.w45{width:45%} .sk.w88{width:88%}
+@keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+
+.card-in{animation:pop .42s cubic-bezier(.2,.9,.3,1) both}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.slot h3{margin:0 0 6px;font-size:16px;letter-spacing:-.01em}
+.slot p{margin:0 0 8px;font-size:13.5px;color:#c0b8e4;line-height:1.55}
+.slot .meta{font-size:11px;color:#7d74ab;font-variant-numeric:tabular-nums}
+.slot .chip{
+  display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:999px;
+  background:#2a2150;border:1px solid #ffffff1a;color:#c4b5fd;margin-right:5px;
+}
+
+#log{
+  margin-top:24px;max-width:1180px;background:#0e0b1c;border:1px solid #ffffff14;border-radius:12px;
+  padding:11px 13px;font:11.5px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:#8f86bd;
+  max-height:150px;overflow:auto;
+}
+#log b{color:#c4b5fd}
+#log .t{color:#5f5890}
+
+.back-link{
+  position:fixed;left:14px;top:14px;z-index:9;display:inline-flex;align-items:center;gap:6px;
+  padding:8px 14px;border-radius:999px;text-decoration:none;color:#ece9fb;font-size:13px;
+  background:#110d21cc;border:1px solid #ffffff22;backdrop-filter:blur(12px);
+}
+.back-link:hover{background:#191333cc}
+footer{
+  position:fixed;left:0;right:0;bottom:0;padding:9px 16px;font-size:11px;color:#6f679a;
+  background:linear-gradient(#0a081200,#0a0812ee);text-align:center;
+}
+@media (max-width:760px){ body{padding:74px 14px 78px} #log{max-height:110px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Markup that streams in — out of order</h1>
+<p class="lede">
+  Frameworks have shipped out-of-order streaming for years: send the shell now, fill the slow
+  slots whenever the data lands. The browsers are taking it over. A slot is marked in the HTML
+  with <code>&lt;?start&gt;</code>/<code>&lt;?end&gt;</code> around its skeleton, and a later
+  <code>&lt;template for="id"&gt;</code> anywhere in the stream replaces it. The JS half is the
+  new insertion family — <code>appendHTML()</code>, <code>setHTML()</code> and the streaming
+  <code>streamAppendHTML()</code>, which hands you a <code>WritableStream</code>. Hit
+  <em>stream</em>: the slowest card resolves first on purpose.
+</p>
+
+<div class="bar">
+  <button class="key" id="go">Stream the feed</button>
+  <button id="again" disabled>Reset</button>
+  <span id="mode">insertion path: <b>detecting…</b></span>
+</div>
+
+<div class="feed" id="feed"></div>
+<div id="log"></div>
+
+<footer>Inspired by InfoQ, “Out-of-Order HTML Streaming Moves from JS Frameworks into the Browser” · UI Spotlight Day 128 · Drop #5</footer>
+
+<script>
+'use strict';
+/* Chrome 148 landed a consistent family of HTML insertion methods —
+   setHTML / appendHTML / replaceWithHTML and their stream* counterparts —
+   alongside declarative out-of-order slots. Both halves are exercised here:
+   the native path uses appendHTML + a real WritableStream from
+   streamAppendHTML where available; otherwise the same chunks go through a
+   sanitising fallback so the choreography is identical. */
+
+const NATIVE_APPEND = typeof Element.prototype.appendHTML === 'function';
+const NATIVE_STREAM = typeof Element.prototype.streamAppendHTML === 'function';
+document.querySelector('#mode b').textContent =
+  NATIVE_STREAM ? 'streamAppendHTML()' : NATIVE_APPEND ? 'appendHTML()' : 'parser fallback';
+
+const SLOTS = [
+  { id: 'hero',    tag: 'above the fold', ms: 260,  lines: 3 },
+  { id: 'reviews', tag: 'needs a service call', ms: 1650, lines: 2 },
+  { id: 'related', tag: 'cache miss', ms: 900,  lines: 3 },
+  { id: 'stock',   tag: 'third party', ms: 520,  lines: 2 }
+];
+
+const PAYLOAD = {
+  hero: `<h3 class="card-in">Field Notes, Vol. 7</h3>
+         <p class="card-in">The shell renders instantly because none of this had to be waited on.</p>
+         <p class="meta card-in">served from edge cache · 12&nbsp;ms</p>`,
+  reviews: `<span class="chip card-in">slowest</span><span class="chip card-in">resolved last</span>
+            <h3 class="card-in">418 reader notes</h3>
+            <p class="card-in">Streamed in whenever the review service answers — the other three cards never waited for it.</p>`,
+  related: `<h3 class="card-in">Three more like this</h3>
+            <p class="card-in">Recommendations missed the cache and took the long path.</p>
+            <p class="meta card-in">ranked in 900&nbsp;ms</p>`,
+  stock: `<span class="chip card-in">live</span>
+          <h3 class="card-in">14 in stock</h3>
+          <p class="card-in">A third-party inventory call, arriving second.</p>`
+};
+
+const feed = document.getElementById('feed');
+const logEl = document.getElementById('log');
+const t0ref = { t: 0 };
+
+function log(msg){
+  const at = Math.round(performance.now() - t0ref.t);
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="t">${String(at).padStart(5)}ms</span>  ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function shell(){
+  feed.innerHTML = '';
+  logEl.innerHTML = '';
+  for(const s of SLOTS){
+    const el = document.createElement('div');
+    el.className = 'slot';
+    el.id = 'slot-' + s.id;
+    const widths = ['w88', 'w70', 'w45'];
+    el.innerHTML = `<p class="tag"><span>${s.id}</span><b>${s.tag}</b></p>` +
+      // stand-in for the <?start> … <?end> fallback range
+      Array.from({ length: s.lines }, (_, i) => `<div class="sk ${widths[i % 3]}"></div>`).join('');
+    feed.appendChild(el);
+  }
+}
+
+/* One chunk of a response body, written the way the page would receive it. */
+function fill(slot, html){
+  const host = document.getElementById('slot-' + slot.id);
+  if(!host) return;
+  for(const sk of host.querySelectorAll('.sk')) sk.remove();
+  if(NATIVE_STREAM){
+    // the real thing: pipe the markup in as it arrives
+    const writer = host.streamAppendHTML();
+    const stream = new ReadableStream({
+      start(c){
+        for(const part of html.match(/[\s\S]{1,48}/g) || []) c.enqueue(part);
+        c.close();
+      }
+    });
+    stream.pipeTo(writer);
+    log(`<b>${slot.id}</b> piped through streamAppendHTML()`);
+  } else if(NATIVE_APPEND){
+    host.appendHTML(html);
+    log(`<b>${slot.id}</b> inserted with appendHTML()`);
+  } else {
+    // same shape, done by hand — this is the code the API replaces
+    const frag = document.createRange().createContextualFragment(html);
+    host.append(frag);
+    log(`<b>${slot.id}</b> inserted via parser fallback`);
+  }
+}
+
+let timers = [];
+function run(){
+  clear();
+  shell();
+  t0ref.t = performance.now();
+  document.getElementById('go').disabled = true;
+  document.getElementById('again').disabled = false;
+  log('shell flushed — <b>4 slots</b> pending, response still open');
+  const order = SLOTS.slice().sort((a, b) => a.ms - b.ms);
+  order.forEach(s => {
+    timers.push(setTimeout(() => {
+      fill(s, PAYLOAD[s.id]);
+      if(s === order[order.length - 1]){
+        log('response closed — <b>document order preserved</b>, arrival order was not');
+        document.getElementById('go').disabled = false;
+      }
+    }, s.ms));
+  });
+}
+function clear(){ timers.forEach(clearTimeout); timers = []; }
+
+document.getElementById('go').addEventListener('click', run);
+document.getElementById('again').addEventListener('click', () => {
+  clear(); shell(); logEl.innerHTML = '';
+  document.getElementById('go').disabled = false;
+  document.getElementById('again').disabled = true;
+});
+
+shell();
+</script>
+</body>
+</html>

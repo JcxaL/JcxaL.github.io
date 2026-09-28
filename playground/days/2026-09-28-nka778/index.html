@@ -1,0 +1,1413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Glyphsmith — Pocket Type Foundry</title>
+<meta name="description" content="Draw skeleton letterforms, dial weight / width / slant / contrast, and export a real .ttf you can install.">
+<style>
+:root{
+  --ink:#f2ece1; --bg:#100e13; --bg2:#17141c; --panel:#1d1a25; --line:#302b3c;
+  --amber:#f0b429; --rose:#ef5f6b; --mint:#59d3a9; --violet:#9b8cf5; --dim:#9a92a8;
+  --r:12px; --fast:.16s cubic-bezier(.3,.9,.3,1);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:
+    radial-gradient(1100px 620px at 12% -10%, #241c30 0%, transparent 60%),
+    radial-gradient(900px 500px at 96% 4%, #12242a 0%, transparent 62%),
+    var(--bg);
+  color:var(--ink);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow:hidden;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+
+/* ---------- shell ---------- */
+#app{display:flex;flex-direction:column;height:100%}
+header{
+  flex:0 0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:10px 14px;border-bottom:1px solid var(--line);
+  background:linear-gradient(#1a1722cc,#14111bcc);backdrop-filter:blur(10px);
+}
+.brand{display:flex;align-items:baseline;gap:9px;margin-right:auto}
+.brand b{font-size:17px;letter-spacing:-.02em}
+.brand span{font-size:11.5px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  border:1px solid var(--line);background:#221e2c;color:var(--dim);
+  border-radius:999px;padding:5px 11px;font-size:12px;transition:var(--fast);
+}
+.chip:hover{color:var(--ink);border-color:#463e5c}
+.chip[data-on]{background:var(--amber);border-color:var(--amber);color:#20180a;font-weight:650}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.btn{
+  border:1px solid var(--line);background:#231f2e;border-radius:9px;
+  padding:7px 12px;font-size:12.5px;font-weight:600;transition:var(--fast);
+}
+.btn:hover{border-color:#5b5079;transform:translateY(-1px)}
+.btn.key{background:linear-gradient(#f3bc3d,#dca114);border-color:#f3bc3d;color:#20180a}
+.btn.ghost{background:transparent}
+
+main{flex:1 1 auto;display:grid;grid-template-columns:104px minmax(0,1fr) 274px;min-height:0}
+
+/* ---------- glyph rail ---------- */
+/* Fixed-size flex cells. A grid with aspect-ratio/percentage-padding cells is a
+   trap here: percentage padding contributes 0 to intrinsic row sizing, so the
+   tracks collapse and the thumbnails get clipped. */
+#rail{
+  border-right:1px solid var(--line);background:#16131d;overflow-y:auto;
+  padding:8px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start;justify-content:center;
+}
+.gcell{
+  position:relative;flex:0 0 auto;width:42px;height:42px;
+  border:1px solid var(--line);border-radius:9px;
+  background:#1e1a27;padding:0;overflow:hidden;transition:var(--fast);cursor:pointer;
+}
+.gcell:focus-visible{outline:2px solid var(--violet);outline-offset:1px}
+.gcell canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.gcell:hover{border-color:#57496f}
+.gcell[data-sel]{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+.gcell i{
+  position:absolute;left:3px;top:2px;font-style:normal;font-size:9px;color:#6d6480;
+  font-variant-numeric:tabular-nums;
+}
+.gcell[data-edited] i{color:var(--mint)}
+
+/* ---------- stage ---------- */
+#stage{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0}
+#board{flex:1 1 auto;position:relative;min-height:0;touch-action:none}
+#board canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#hint{
+  position:absolute;left:12px;top:10px;z-index:3;font-size:11.5px;color:var(--dim);
+  background:#17141ecc;border:1px solid var(--line);border-radius:999px;padding:5px 11px;
+  pointer-events:none;backdrop-filter:blur(6px);max-width:min(78%,520px);
+}
+#toolbar{
+  position:absolute;right:10px;top:10px;z-index:3;display:flex;flex-direction:column;gap:5px;
+}
+.tool{
+  width:40px;height:38px;border:1px solid var(--line);border-radius:10px;background:#1e1a27cc;
+  display:grid;place-items:center;font-size:15px;transition:var(--fast);backdrop-filter:blur(6px);
+}
+.tool[data-on]{background:var(--violet);border-color:var(--violet);color:#14101f}
+.tool:hover{border-color:#5b5079}
+
+/* ---------- specimen ---------- */
+#specimen{
+  flex:0 0 auto;border-top:1px solid var(--line);background:#14111b;
+  padding:8px 12px 10px;display:flex;flex-direction:column;gap:7px;
+}
+.srow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.srow label{font-size:11px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+#specText{
+  flex:1 1 220px;min-width:140px;background:#1d1a25;border:1px solid var(--line);
+  border-radius:8px;padding:7px 10px;font-size:13px;
+}
+#specCv{width:100%;height:96px;display:block;border-radius:10px;background:#0d0b11;border:1px solid var(--line)}
+#liveWrap{display:none;gap:10px;align-items:center}
+#liveWrap[data-on]{display:flex}
+#liveText{
+  flex:1;font-family:"Glyphsmith Live",system-ui;font-size:30px;line-height:1.15;
+  padding:6px 10px;background:#0d0b11;border:1px dashed #3b3450;border-radius:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#liveTag{font-size:10.5px;color:var(--mint);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+
+/* ---------- inspector ---------- */
+#side{border-left:1px solid var(--line);background:#16131d;overflow-y:auto;padding:12px 12px 26px}
+.sec{margin-bottom:16px}
+.sec > h4{
+  margin:0 0 8px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#7d7492;
+  display:flex;justify-content:space-between;align-items:baseline;
+}
+.sec > h4 em{font-style:normal;color:var(--amber);font-size:11px;letter-spacing:0}
+.fld{margin-bottom:9px}
+.fld > span{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin-bottom:3px}
+.fld > span b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:20px;background:transparent;
+}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:#312b40}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--amber);
+  margin-top:-5.5px;border:0;box-shadow:0 1px 6px #0008;
+}
+input[type=range]::-moz-range-track{height:4px;border-radius:3px;background:#312b40}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border:0;border-radius:50%;background:var(--amber)}
+.seg{display:flex;gap:4px}
+.seg button{
+  flex:1;border:1px solid var(--line);background:#221e2c;border-radius:8px;padding:6px 0;
+  font-size:11.5px;color:var(--dim);transition:var(--fast);
+}
+.seg button[data-on]{background:#2f2942;border-color:var(--violet);color:var(--ink)}
+.stack{display:flex;flex-direction:column;gap:5px}
+.wide{width:100%;justify-content:center}
+.note{font-size:11px;color:#6f6785;line-height:1.4}
+#status{
+  min-height:16px;font-size:11.5px;color:var(--mint);
+}
+#status[data-err]{color:var(--rose)}
+
+/* ---------- mobile ---------- */
+@media (max-width:860px){
+  body{overflow:auto}
+  #app{height:auto;min-height:100%}
+  main{grid-template-columns:1fr;grid-template-rows:auto auto auto}
+  #rail{
+    border-right:0;border-bottom:1px solid var(--line);
+    max-height:124px;order:1;justify-content:flex-start;
+  }
+  #stage{order:2}
+  #board{height:56vh;min-height:300px}
+  #side{order:3;border-left:0;border-top:1px solid var(--line)}
+  header{padding:8px 10px;gap:9px}
+  .brand span{display:none}
+  .chips{flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:2px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .acts .btn{padding:6px 10px;font-size:12px}
+  #hint{font-size:11px;max-width:62%}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>Glyphsmith</b><span>Pocket Type Foundry</span></div>
+    <div class="chips" id="presets"></div>
+    <div class="acts">
+      <button class="btn key" id="btnTtf">Export .ttf</button>
+      <button class="btn" id="btnLive">Preview in real font</button>
+      <button class="btn ghost" id="btnJson">Save .json</button>
+      <button class="btn ghost" id="btnLoad">Open</button>
+      <button class="btn ghost" id="btnShare">Share link</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="rail" aria-label="Glyph set"></div>
+
+    <div id="stage">
+      <div id="board">
+        <canvas id="cv"></canvas>
+        <div id="hint">Drag a node to reshape. Pen tool: tap to add nodes, Enter to finish.</div>
+        <div id="toolbar">
+          <button class="tool" id="tSelect" data-on title="Move nodes (V)">✥</button>
+          <button class="tool" id="tPen" title="Pen — new stroke (P)">✎</button>
+          <button class="tool" id="tErase" title="Erase node (E)">⌫</button>
+          <button class="tool" id="tOutline" data-on title="Toggle filled outline (O)">◍</button>
+          <button class="tool" id="tReset" title="Revert this glyph (R)">⟲</button>
+        </div>
+      </div>
+
+      <div id="specimen">
+        <div class="srow">
+          <label for="specText">Specimen</label>
+          <input id="specText" value="HAMBURGEFONSTIV 0123" spellcheck="false">
+          <label for="specSize" style="letter-spacing:0;text-transform:none">size</label>
+          <input id="specSize" type="range" min="28" max="130" value="72" style="flex:0 0 96px">
+        </div>
+        <canvas id="specCv"></canvas>
+        <div id="liveWrap">
+          <span id="liveTag">live @font-face</span>
+          <div id="liveText">HAMBURGEFONSTIV 0123</div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="side">
+      <div class="sec">
+        <h4>Variation axes <em id="axLabel">Grotesk</em></h4>
+        <div class="fld"><span>Weight <b id="vWeight">86</b></span>
+          <input id="aWeight" type="range" min="14" max="210" value="86"></div>
+        <div class="fld"><span>Width <b id="vWidth">100%</b></span>
+          <input id="aWidth" type="range" min="62" max="146" value="100"></div>
+        <div class="fld"><span>Slant <b id="vSlant">0°</b></span>
+          <input id="aSlant" type="range" min="-18" max="18" value="0"></div>
+        <div class="fld"><span>Contrast <b id="vContrast">0.10</b></span>
+          <input id="aContrast" type="range" min="0" max="80" value="10"></div>
+        <div class="fld"><span>Tracking <b id="vTrack">0</b></span>
+          <input id="aTrack" type="range" min="-60" max="220" value="0"></div>
+      </div>
+
+      <div class="sec">
+        <h4>Terminals</h4>
+        <div class="seg" id="capSeg">
+          <button data-cap="round" data-on>Round</button>
+          <button data-cap="butt">Flat</button>
+          <button data-cap="wedge">Wedge</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h4>Stencil gap</h4>
+        <div class="fld"><span>Break strokes <b id="vStencil">off</b></span>
+          <input id="aStencil" type="range" min="0" max="150" value="0"></div>
+        <p class="note">Cuts a gap through the middle of every stroke — the classic stencil trick.</p>
+      </div>
+
+      <div class="sec">
+        <h4>Glyph <em id="glyphName">A</em></h4>
+        <div class="fld"><span>Advance <b id="vAdv">600</b></span>
+          <input id="aAdv" type="range" min="200" max="1100" value="600"></div>
+        <div class="fld"><span>Stroke weight ×<b id="vSw">1.00</b></span>
+          <input id="aSw" type="range" min="30" max="220" value="100"></div>
+        <div class="stack">
+          <button class="btn ghost wide" id="btnSmooth">Toggle smooth on selected stroke</button>
+          <button class="btn ghost wide" id="btnDelStroke">Delete selected stroke</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h4>Metrics</h4>
+        <div class="fld"><span>Cap height <b id="vCap">700</b></span>
+          <input id="aCap" type="range" min="480" max="820" value="700"></div>
+        <p class="note" id="mInfo">1000 units/em · ascender 800 · descender −200</p>
+      </div>
+
+      <div class="sec">
+        <h4>Foundry</h4>
+        <div class="fld"><span>Family name</span>
+          <input id="famName" value="Glyphsmith Sans" spellcheck="false"
+                 style="width:100%;background:#1d1a25;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px"></div>
+        <div id="status"></div>
+        <p class="note">Everything is stored in your browser. The .ttf is built here, byte by byte — no server, no library.</p>
+      </div>
+    </aside>
+  </main>
+</div>
+<input type="file" id="filePick" accept=".json,application/json" hidden>
+<script>
+/* ============================================================================
+   Glyphsmith — a skeleton-driven type foundry.
+   Letters are stored as centre-line strokes; every outline you see (and every
+   byte of the exported TrueType file) is generated by offsetting those
+   skeletons with the current weight / width / slant / contrast axes.
+   ========================================================================== */
+'use strict';
+
+const EM = 1000, ASC = 800, DESC = -200;
+
+/* --- skeleton alphabet -----------------------------------------------------
+   S(...) straight polyline, Q(...) smoothed through its points,
+   QC(...) smoothed + closed ring. Coordinates: y up, baseline 0, cap 700.  */
+const S  = (...p) => ({ pts: chunk(p), smooth: false, closed: false });
+const Q  = (...p) => ({ pts: chunk(p), smooth: true,  closed: false });
+const QC = (...p) => ({ pts: chunk(p), smooth: true,  closed: true  });
+function chunk(flat){ const o=[]; for(let i=0;i<flat.length;i+=2) o.push({x:flat[i],y:flat[i+1]}); return o; }
+const G = (adv, ...strokes) => ({ adv, strokes });
+
+const ALPHABET = {
+  'A': G(600, S(80,0, 300,700, 520,0), S(163,240, 437,240)),
+  'B': G(600, S(120,0, 120,700),
+              Q(120,700, 350,700, 452,600, 448,470, 350,378, 120,378),
+              Q(120,378, 392,378, 492,272, 486,132, 380,0, 120,0)),
+  'C': G(620, Q(500,540, 404,700, 232,700, 92,520, 92,180, 232,0, 404,0, 500,160)),
+  'D': G(620, S(120,0, 120,700), Q(120,700, 344,700, 506,556, 506,306, 344,0, 120,0)),
+  'E': G(560, S(120,0, 120,700), S(120,700, 484,700), S(120,352, 428,352), S(120,0, 484,0)),
+  'F': G(540, S(120,0, 120,700), S(120,700, 484,700), S(120,352, 424,352)),
+  'G': G(640, Q(500,540, 404,700, 232,700, 92,520, 92,180, 232,0, 428,0, 508,148, 508,300),
+              S(508,300, 344,300)),
+  'H': G(620, S(120,0, 120,700), S(500,0, 500,700), S(120,352, 500,352)),
+  'I': G(300, S(150,0, 150,700)),
+  'J': G(520, Q(430,700, 430,186, 344,32, 196,14, 96,140)),
+  'K': G(600, S(120,0, 120,700), S(508,700, 152,330), S(236,412, 520,0)),
+  'L': G(520, S(120,700, 120,0), S(120,0, 470,0)),
+  'M': G(700, S(96,0, 96,700, 300,296, 504,700, 504,0)),
+  'N': G(620, S(120,0, 120,700, 500,0, 500,700)),
+  'O': G(660, QC(300,700, 108,558, 108,142, 300,0, 492,142, 492,558, 300,700)),
+  'P': G(580, S(120,0, 120,700), Q(120,700, 372,700, 470,592, 466,464, 368,358, 120,358)),
+  'Q': G(680, QC(300,700, 108,558, 108,142, 300,0, 492,142, 492,558, 300,700),
+              S(372,156, 532,-56)),
+  'R': G(600, S(120,0, 120,700), Q(120,700, 372,700, 470,592, 466,464, 368,358, 120,358),
+              S(300,358, 512,0)),
+  'S': G(580, Q(478,566, 378,700, 212,688, 140,556, 224,424, 400,330, 480,198, 420,32, 240,4, 106,110)),
+  'T': G(560, S(88,700, 508,700), S(298,700, 298,0)),
+  'U': G(620, Q(120,700, 120,206, 232,4, 392,4, 502,206, 502,700)),
+  'V': G(600, S(92,700, 300,0, 508,700)),
+  'W': G(800, S(70,700, 200,0, 336,470, 472,0, 602,700)),
+  'X': G(600, S(96,700, 504,0), S(504,700, 96,0)),
+  'Y': G(600, S(96,700, 300,334, 504,700), S(300,334, 300,0)),
+  'Z': G(580, S(108,700, 498,700, 108,0, 498,0)),
+
+  '0': G(620, QC(300,700, 124,556, 124,144, 300,0, 476,144, 476,556, 300,700), S(196,140, 404,560)),
+  '1': G(420, S(148,552, 292,700, 292,0)),
+  '2': G(580, Q(112,556, 198,700, 382,700, 470,556, 396,378, 112,0), S(112,0, 480,0)),
+  '3': G(580, Q(126,598, 234,700, 404,672, 448,530, 322,398),
+              Q(322,398, 470,338, 468,136, 346,8, 152,58)),
+  '4': G(600, S(378,0, 378,700, 88,240, 512,240)),
+  '5': G(580, S(454,700, 168,700, 148,424), Q(148,424, 382,462, 480,330, 468,148, 328,8, 126,68)),
+  '6': G(580, Q(454,620, 328,700, 160,562, 128,282, 258,98, 418,128, 470,290, 340,392, 168,338)),
+  '7': G(560, S(96,700, 498,700, 238,0)),
+  '8': G(600, QC(300,700, 152,620, 158,452, 300,378, 456,452, 452,620, 300,700),
+              QC(300,378, 118,298, 118,110, 300,8, 484,110, 484,298, 300,378)),
+  '9': G(580, Q(130,78, 262,-2, 432,140, 464,420, 336,600, 176,570, 124,410, 254,308, 426,360)),
+
+  ' ': G(300),
+  '.': G(300, S(150,36, 150,58)),
+  ',': G(300, Q(168,72, 150,-24, 96,-96)),
+  '-': G(480, S(92,338, 388,338)),
+  '—': G(700, S(70,338, 630,338)),
+  '!': G(360, S(180,700, 180,188), S(180,58, 180,80)),
+  '?': G(520, Q(104,566, 186,700, 352,690, 420,548, 300,414, 300,246), S(300,116, 300,138)),
+  ':': G(300, S(150,432, 150,454), S(150,58, 150,80)),
+  ';': G(300, S(150,432, 150,454), Q(168,72, 150,-24, 96,-96)),
+  "'": G(280, S(140,700, 140,548)),
+  '"': G(420, S(128,700, 128,548), S(292,700, 292,548)),
+  '/': G(500, S(78,-46, 422,746)),
+  '(': G(380, Q(322,746, 158,482, 158,178, 322,-64)),
+  ')': G(380, Q(112,746, 276,482, 276,178, 112,-64)),
+  '&': G(700, Q(560,0, 220,430, 190,588, 268,684, 368,656, 372,540, 120,300, 108,120, 240,4, 420,40, 520,190)),
+  '@': G(760, Q(520,232, 470,120, 330,124, 266,244, 300,392, 418,428, 480,352, 470,180, 528,120, 616,196, 630,380, 508,586, 292,614, 120,468, 100,244, 240,34, 470,10)),
+  '#': G(620, S(176,700, 116,0), S(420,700, 360,0), S(88,486, 512,486), S(72,206, 496,206)),
+  '+': G(560, S(280,530, 280,146), S(88,338, 472,338)),
+  '=': G(560, S(88,442, 472,442), S(88,234, 472,234)),
+  '*': G(440, S(220,660, 220,340), S(96,600, 344,400), S(344,600, 96,400))
+};
+const ORDER = Object.keys(ALPHABET);
+
+/* --- geometry helpers ---------------------------------------------------- */
+function catmull(pts, closed, seg){
+  // Uniform Catmull-Rom through pts -> dense polyline.
+  const n = pts.length;
+  if(n < 3) return pts.map(p => ({...p}));
+  const src = pts.slice();
+  if(closed && (src[0].x!==src[n-1].x || src[0].y!==src[n-1].y)) src.push({...src[0]});
+  const m = src.length, out = [];
+  const at = i => src[closed ? ((i % (m-1)) + (m-1)) % (m-1) : Math.max(0, Math.min(m-1, i))];
+  const last = closed ? m-2 : m-2;
+  for(let i=0;i<=last;i++){
+    const p0=at(i-1), p1=at(i), p2=at(i+1), p3=at(i+2);
+    for(let s=0;s<seg;s++){
+      const t=s/seg, t2=t*t, t3=t2*t;
+      out.push({
+        x: 0.5*((2*p1.x)+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+        y: 0.5*((2*p1.y)+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3)
+      });
+    }
+  }
+  if(!closed) out.push({...src[m-1]});
+  return out;
+}
+
+function dedupe(pts, eps){
+  const o=[];
+  for(const p of pts){
+    const q=o[o.length-1];
+    if(!q || Math.hypot(p.x-q.x, p.y-q.y) > eps) o.push(p);
+  }
+  return o;
+}
+
+function signedArea(c){
+  let a=0;
+  for(let i=0,n=c.length;i<n;i++){ const p=c[i], q=c[(i+1)%n]; a += p.x*q.y - q.x*p.y; }
+  return a/2;
+}
+const orient = (c, positive) => (signedArea(c) < 0) === positive ? c.slice().reverse() : c;
+
+/* Offset an open polyline into a closed ribbon contour. */
+function ribbon(line, halfAt, cap, wedgeAmt){
+  const n = line.length;
+  if(n < 2) return [];
+  const norms = [], tans = [];
+  for(let i=0;i<n-1;i++){
+    const dx=line[i+1].x-line[i].x, dy=line[i+1].y-line[i].y, L=Math.hypot(dx,dy)||1;
+    tans.push({x:dx/L, y:dy/L});
+    norms.push({x:-dy/L, y:dx/L});
+  }
+  const vN = [], vT = [];
+  for(let i=0;i<n;i++){
+    const a = norms[Math.max(0,i-1)], b = norms[Math.min(norms.length-1,i)];
+    let nx=a.x+b.x, ny=a.y+b.y, L=Math.hypot(nx,ny);
+    if(L < 1e-6){ nx=b.x; ny=b.y; L=1; }
+    nx/=L; ny/=L;
+    const miter = Math.min(2.6, 1/Math.max(0.38, nx*b.x+ny*b.y));
+    vN.push({x:nx*miter, y:ny*miter});
+    const ta = tans[Math.max(0,i-1)], tb = tans[Math.min(tans.length-1,i)];
+    vT.push({x:(ta.x+tb.x)/2, y:(ta.y+tb.y)/2});
+  }
+  const half = i => halfAt(vT[i], line[i]);
+  const L=[], R=[];
+  for(let i=0;i<n;i++){
+    const h = half(i);
+    L.push({x:line[i].x + vN[i].x*h, y:line[i].y + vN[i].y*h});
+    R.push({x:line[i].x - vN[i].x*h, y:line[i].y - vN[i].y*h});
+  }
+  const out = L.slice();
+  // end cap
+  const hEnd = half(n-1), tEnd = tans[tans.length-1], nEnd = norms[norms.length-1];
+  if(cap === 'round') out.push(...arcCap(line[n-1], nEnd, tEnd, hEnd, +1));
+  else if(cap === 'wedge') out.push({x:line[n-1].x + tEnd.x*hEnd*wedgeAmt, y:line[n-1].y + tEnd.y*hEnd*wedgeAmt});
+  out.push(...R.reverse());
+  // start cap
+  const h0 = half(0), t0 = tans[0], n0 = norms[0];
+  if(cap === 'round') out.push(...arcCap(line[0], n0, t0, h0, -1));
+  else if(cap === 'wedge') out.push({x:line[0].x - t0.x*h0*wedgeAmt, y:line[0].y - t0.y*h0*wedgeAmt});
+  return out;
+}
+function arcCap(c, nrm, tan, h, dir){
+  /* Semicircle p(a) = c + nrm*cos(a)*h + tan*sin(a)*h*dir.
+     dir=+1 sweeps a: 0 -> PI (leaves the +nrm side, bulges along +tan).
+     dir=-1 sweeps a: PI -> 0 (leaves the -nrm side, bulges along -tan).  */
+  const steps = 8, o = [];
+  for(let i=1;i<steps;i++){
+    const a = dir > 0 ? Math.PI*i/steps : Math.PI*(1 - i/steps);
+    const co = Math.cos(a), si = Math.sin(a)*dir;
+    o.push({ x: c.x + nrm.x*co*h + tan.x*si*h, y: c.y + nrm.y*co*h + tan.y*si*h });
+  }
+  return o;
+}
+
+/* Offset a closed ring into outer + inner contours. */
+function ring(line, halfAt){
+  const n = line.length, outer = [], inner = [];
+  for(let i=0;i<n;i++){
+    const p=line[i], a=line[(i-1+n)%n], b=line[(i+1)%n];
+    let tx=b.x-a.x, ty=b.y-a.y, L=Math.hypot(tx,ty)||1; tx/=L; ty/=L;
+    const nx=-ty, ny=tx, h=halfAt({x:tx,y:ty}, p);
+    outer.push({x:p.x+nx*h, y:p.y+ny*h});
+    inner.push({x:p.x-nx*h, y:p.y-ny*h});
+  }
+  return [orient(outer, true), orient(inner, false)];
+}
+/* --- axes / project state ------------------------------------------------- */
+const PRESETS = {
+  Grotesk:  { weight:86,  width:100, slant:0,   contrast:10, track:0,   cap:'round', stencil:0,   capHeight:700 },
+  Hairline: { weight:22,  width:104, slant:0,   contrast:0,  track:60,  cap:'butt',  stencil:0,   capHeight:700 },
+  Black:    { weight:186, width:108, slant:0,   contrast:22, track:-28, cap:'butt',  stencil:0,   capHeight:700 },
+  Italic:   { weight:96,  width:92,  slant:14,  contrast:34, track:0,   cap:'wedge', stencil:0,   capHeight:720 },
+  Stencil:  { weight:150, width:112, slant:0,   contrast:8,  track:20,  cap:'butt',  stencil:86,  capHeight:700 },
+  Condensed:{ weight:72,  width:66,  slant:0,   contrast:16, track:-16, cap:'round', stencil:0,   capHeight:760 },
+  Backslant:{ weight:110, width:118, slant:-12, contrast:44, track:8,   cap:'round', stencil:0,   capHeight:660 }
+};
+
+const state = {
+  axes: { ...PRESETS.Grotesk },
+  preset: 'Grotesk',
+  family: 'Glyphsmith Sans',
+  edits: {},            // char -> {adv?, sw?, strokes?}
+  sel: 'A',
+  tool: 'select',
+  showOutline: true,
+  selStroke: 0,
+  specText: 'HAMBURGEFONSTIV 0123',
+  specSize: 72
+};
+
+function baseGlyph(ch){ return ALPHABET[ch] || ALPHABET[' ']; }
+function glyphOf(ch){
+  const b = baseGlyph(ch), e = state.edits[ch] || {};
+  return {
+    adv: e.adv != null ? e.adv : b.adv,
+    sw: e.sw != null ? e.sw : 1,
+    strokes: e.strokes ? e.strokes : b.strokes.map(s => ({
+      pts: s.pts.map(p => ({...p})), smooth: s.smooth, closed: s.closed
+    }))
+  };
+}
+function editable(ch){
+  if(!state.edits[ch]) state.edits[ch] = {};
+  const e = state.edits[ch];
+  if(!e.strokes){
+    e.strokes = baseGlyph(ch).strokes.map(s => ({
+      pts: s.pts.map(p => ({...p})), smooth: s.smooth, closed: s.closed
+    }));
+  }
+  return e;
+}
+
+/* --- build outline contours for one glyph -------------------------------- */
+function axisXform(p){
+  const a = state.axes, y = p.y * (a.capHeight / 700);
+  return { x: p.x * (a.width / 100) + y * Math.tan(a.slant * Math.PI / 180), y };
+}
+function axisUnform(P){
+  const a = state.axes;
+  const y = P.y / (a.capHeight / 700);
+  return { x: (P.x - P.y * Math.tan(a.slant * Math.PI / 180)) / (a.width / 100), y };
+}
+function contoursFor(ch){
+  const g = glyphOf(ch), a = state.axes;
+  const contrast = a.contrast / 100;
+  const baseHalf = (a.weight * g.sw) / 2;
+  const stencil = a.stencil / 100;
+  const xform = axisXform;
+  const halfAt = (t) => {
+    const L = Math.hypot(t.x, t.y) || 1;
+    const ux = Math.abs(t.x / L);
+    return baseHalf * (1 - contrast * ux);
+  };
+  const out = [];
+  for(const st of g.strokes){
+    if(st.pts.length === 0) continue;
+    let line = st.smooth ? catmull(st.pts, st.closed, 9) : st.pts.map(p => ({...p}));
+    if(!st.smooth && st.closed && line.length > 2) line = line.slice(0, -1);
+    line = dedupe(line.map(xform), 0.4);
+    if(st.closed){
+      if(line.length < 3) continue;
+      out.push(...ring(line, halfAt));
+    } else {
+      if(line.length < 2){
+        // a lone node still deserves a dot
+        const h = baseHalf, c = line[0];
+        const dot = [];
+        for(let i=0;i<12;i++){ const t=i/12*Math.PI*2; dot.push({x:c.x+Math.cos(t)*h, y:c.y+Math.sin(t)*h}); }
+        out.push(orient(dot, true));
+        continue;
+      }
+      const pieces = stencil > 0.02 ? splitForStencil(line, stencil) : [line];
+      for(const piece of pieces){
+        if(piece.length < 2) continue;
+        const c = ribbon(piece, halfAt, a.cap, 1.0);
+        if(c.length >= 3) out.push(orient(dedupe(c, 0.25), true));
+      }
+    }
+  }
+  return out;
+}
+
+/* Cut a gap out of the middle of a polyline — the stencil move. */
+function splitForStencil(line, amount){
+  const segs = [], lens = [];
+  let total = 0;
+  for(let i=0;i<line.length-1;i++){
+    const d = Math.hypot(line[i+1].x-line[i].x, line[i+1].y-line[i].y);
+    lens.push(d); total += d;
+  }
+  if(total < 60) return [line];
+  const gap = Math.min(total * 0.42, amount * 120);
+  const a = (total - gap) / 2, b = a + gap;
+  const at = dist => {
+    let acc = 0;
+    for(let i=0;i<lens.length;i++){
+      if(acc + lens[i] >= dist){
+        const t = lens[i] ? (dist - acc) / lens[i] : 0;
+        return { x: line[i].x + (line[i+1].x-line[i].x)*t, y: line[i].y + (line[i+1].y-line[i].y)*t, i };
+      }
+      acc += lens[i];
+    }
+    return { ...line[line.length-1], i: line.length-2 };
+  };
+  const pa = at(a), pb = at(b);
+  const first = line.slice(0, pa.i+1).concat([{x:pa.x, y:pa.y}]);
+  const second = [{x:pb.x, y:pb.y}].concat(line.slice(pb.i+1));
+  segs.push(first, second);
+  return segs;
+}
+
+/* --- binary writer ------------------------------------------------------- */
+class Buf {
+  constructor(){ this.a = []; }
+  u8(v){ this.a.push(v & 0xff); return this; }
+  u16(v){ this.a.push((v>>8)&0xff, v&0xff); return this; }
+  i16(v){ return this.u16(v < 0 ? v + 0x10000 : v); }
+  u32(v){ this.a.push((v>>>24)&0xff, (v>>>16)&0xff, (v>>>8)&0xff, v&0xff); return this; }
+  tag(s){ for(let i=0;i<4;i++) this.a.push(s.charCodeAt(i) & 0xff); return this; }
+  str16(s){ for(const c of s){ const cp = c.codePointAt(0); this.u16(cp > 0xffff ? 0xfffd : cp); } return this; }
+  bytes(arr){ for(const b of arr) this.a.push(b & 0xff); return this; }
+  get length(){ return this.a.length; }
+  out(){ return new Uint8Array(this.a); }
+}
+function pad4(u8){
+  const r = (4 - (u8.length % 4)) % 4;
+  if(!r) return u8;
+  const o = new Uint8Array(u8.length + r); o.set(u8); return o;
+}
+function checksum(u8){
+  let sum = 0;
+  const n = u8.length;
+  for(let i=0;i<n;i+=4){
+    const v = ((u8[i]||0)<<24 | (u8[i+1]||0)<<16 | (u8[i+2]||0)<<8 | (u8[i+3]||0)) >>> 0;
+    sum = (sum + v) >>> 0;
+  }
+  return sum >>> 0;
+}
+
+/* --- TrueType assembler ---------------------------------------------------
+   Every contour is emitted as on-curve points only, so the curves you see are
+   the sampled polylines — valid TrueType, no quadratic bookkeeping needed.  */
+function buildTTF(){
+  const family = (state.family || 'Glyphsmith Sans').trim().slice(0, 48) || 'Glyphsmith Sans';
+  const chars = ORDER.filter(c => c !== ' ').slice();
+  const glyphOrder = [null, ' ', ...chars];      // gid0 = .notdef, gid1 = space
+  const metrics = [], glyfParts = [], loca = [0];
+  let maxPoints = 0, maxContours = 0;
+  let xMin = 32767, yMin = 32767, xMax = -32768, yMax = -32768, advMax = 0;
+
+  for(let gid=0; gid<glyphOrder.length; gid++){
+    const ch = glyphOrder[gid];
+    let adv, contours;
+    if(ch === null){ adv = 500; contours = []; }
+    else { adv = Math.round(glyphOf(ch).adv * (state.axes.width/100)) + state.axes.track; contours = ch === ' ' ? [] : contoursFor(ch); }
+    adv = Math.max(0, Math.min(3000, adv));
+    advMax = Math.max(advMax, adv);
+
+    const clean = contours
+      .map(c => dedupe(c.map(p => ({x: Math.round(p.x), y: Math.round(p.y)})), 0.5))
+      .filter(c => c.length >= 3);
+
+    if(!clean.length){
+      metrics.push({ adv, lsb: 0 });
+      glyfParts.push(new Uint8Array(0));
+      loca.push(loca[loca.length-1]);
+      continue;
+    }
+    let gx0=32767, gy0=32767, gx1=-32768, gy1=-32768, pts=0;
+    for(const c of clean){ pts += c.length; for(const p of c){
+      if(p.x<gx0)gx0=p.x; if(p.y<gy0)gy0=p.y; if(p.x>gx1)gx1=p.x; if(p.y>gy1)gy1=p.y;
+    }}
+    maxPoints = Math.max(maxPoints, pts);
+    maxContours = Math.max(maxContours, clean.length);
+    xMin = Math.min(xMin, gx0); yMin = Math.min(yMin, gy0);
+    xMax = Math.max(xMax, gx1); yMax = Math.max(yMax, gy1);
+
+    const b = new Buf();
+    b.i16(clean.length).i16(gx0).i16(gy0).i16(gx1).i16(gy1);
+    let end = -1;
+    for(const c of clean){ end += c.length; b.u16(end); }
+    b.u16(0);                                    // instructionLength
+    for(let i=0;i<pts;i++) b.u8(0x01);           // every point on-curve, i16 deltas
+    let px = 0;
+    for(const c of clean) for(const p of c){ b.i16(p.x - px); px = p.x; }
+    let py = 0;
+    for(const c of clean) for(const p of c){ b.i16(p.y - py); py = p.y; }
+
+    const data = pad4(b.out());
+    metrics.push({ adv, lsb: gx0 });
+    glyfParts.push(data);
+    loca.push(loca[loca.length-1] + data.length);
+  }
+  if(xMin > xMax){ xMin = 0; yMin = 0; xMax = 1; yMax = 1; }
+  const numGlyphs = glyphOrder.length;
+
+  /* glyf + loca */
+  const glyf = new Uint8Array(loca[loca.length-1]);
+  { let o = 0; for(const g of glyfParts){ glyf.set(g, o); o += g.length; } }
+  const locaB = new Buf(); for(const v of loca) locaB.u32(v);
+
+  /* head */
+  const head = new Buf();
+  head.u32(0x00010000).u32(0x00010000).u32(0)         // version, fontRevision, checkSumAdjustment
+      .u32(0x5F0F3CF5).u16(0x000B).u16(EM)            // magic, flags, unitsPerEm
+      .u32(0).u32(0x00000000).u32(0).u32(0x00000000)  // created / modified (LONGDATETIME)
+      .i16(xMin).i16(yMin).i16(xMax).i16(yMax)
+      .u16(state.axes.slant > 6 ? 2 : 0)              // macStyle: italic bit
+      .u16(8).i16(2).i16(1).i16(0);                   // lowestRecPPEM, fontDirectionHint, indexToLocFormat=1(long), glyphDataFormat
+
+  /* hhea + hmtx */
+  const hhea = new Buf();
+  hhea.u32(0x00010000).i16(ASC).i16(DESC).i16(90)
+      .u16(advMax).i16(xMin).i16(xMax).i16(Math.max(1, yMax))
+      .i16(1).i16(0).i16(0)                            // caretSlopeRise/Run/Offset
+      .i16(0).i16(0).i16(0).i16(0)                     // reserved x4
+      .i16(0).u16(numGlyphs);                          // metricDataFormat, numberOfHMetrics
+  const hmtx = new Buf();
+  for(const m of metrics) hmtx.u16(m.adv).i16(m.lsb);
+
+  /* maxp */
+  const maxp = new Buf();
+  maxp.u32(0x00010000).u16(numGlyphs).u16(maxPoints).u16(maxContours)
+      .u16(0).u16(0).u16(2).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0).u16(0);
+
+  /* cmap format 4 — uppercase chars are also mapped from their lowercase codes */
+  const map = new Map();
+  glyphOrder.forEach((ch, gid) => {
+    if(ch === null) return;
+    map.set(ch.codePointAt(0), gid);
+    const lo = ch.toLowerCase();
+    if(lo !== ch && lo.length === 1 && !map.has(lo.codePointAt(0))) map.set(lo.codePointAt(0), gid);
+  });
+  const codes = [...map.keys()].filter(c => c <= 0xffff).sort((a,b) => a-b);
+  const segs = [];
+  for(const c of codes){
+    const last = segs[segs.length-1];
+    if(last && c === last.end + 1 && map.get(c) === map.get(last.end) + 1) last.end = c;
+    else segs.push({ start: c, end: c });
+  }
+  segs.push({ start: 0xffff, end: 0xffff, pad: true });
+  const segCount = segs.length, sc2 = segCount * 2;
+  const sub = new Buf();
+  sub.u16(4).u16(16 + sc2*4).u16(0).u16(sc2);
+  const searchRange = 2 * Math.pow(2, Math.floor(Math.log2(segCount)));
+  sub.u16(searchRange).u16(Math.log2(searchRange/2)).u16(sc2 - searchRange);
+  for(const s of segs) sub.u16(s.end);
+  sub.u16(0);
+  for(const s of segs) sub.u16(s.start);
+  for(const s of segs) sub.i16(s.pad ? 1 : map.get(s.start) - s.start);
+  for(const s of segs) sub.u16(0);
+  const subBytes = sub.out();
+  const cmap = new Buf();
+  cmap.u16(0).u16(2)
+      .u16(0).u16(3).u32(20)                           // Unicode BMP
+      .u16(3).u16(1).u32(20)                           // Windows BMP
+      .bytes(subBytes);
+
+  /* name */
+  const psName = family.replace(/[^A-Za-z0-9]/g, '').slice(0, 40) || 'GlyphsmithSans';
+  const style = state.axes.slant > 6 ? 'Italic' : 'Regular';
+  const records = [
+    [1, family], [2, style], [3, 'Glyphsmith:' + psName + ':' + style],
+    [4, family + ' ' + style], [5, 'Version 1.000'], [6, psName + '-' + style],
+    [8, 'Glyphsmith Pocket Foundry'], [11, 'https://jccl.me/playground/']
+  ];
+  const nameB = new Buf();
+  nameB.u16(0).u16(records.length).u16(6 + records.length*12);
+  let strOff = 0;
+  const strs = [];
+  for(const [id, txt] of records){
+    const sb = new Buf().str16(txt).out();
+    strs.push(sb);
+    nameB.u16(3).u16(1).u16(0x0409).u16(id).u16(sb.length).u16(strOff);
+    strOff += sb.length;
+  }
+  for(const sb of strs) nameB.bytes(sb);
+
+  /* OS/2 v4 */
+  const wClass = Math.max(100, Math.min(900,
+    Math.round(state.axes.weight / 86 * 4) * 100)) || 400;
+  const os2 = new Buf();                               // version 4 == 96 bytes
+  os2.u16(4).i16(Math.round(560 * state.axes.width/100)).u16(wClass)
+     .u16(Math.max(1, Math.min(9, Math.round(state.axes.width/100*5)))).u16(0)
+     .i16(130).i16(130).i16(0).i16(90)                 // subscript size / offset
+     .i16(140).i16(140).i16(0).i16(360)                // superscript size / offset
+     .i16(50).i16(300)                                 // strikeout size / position
+     .i16(0)                                           // sFamilyClass
+     .bytes([2, 11, Math.round(wClass/100), 9, 2, 2, 2, 2, 2, 4])   // PANOSE
+     .u32(0x00000003).u32(0).u32(0).u32(0)             // ulUnicodeRange1..4
+     .tag('GLPH')
+     .u16(state.axes.slant > 6 ? 0x0001 : 0x0040)      // fsSelection
+     .u16(codes[0] || 32).u16(codes[codes.length-1] || 32)
+     .i16(ASC).i16(DESC).i16(90).u16(ASC).u16(-DESC)
+     .u32(3).u32(0)                                    // ulCodePageRange1..2
+     .i16(Math.round(state.axes.capHeight * 0.72)).i16(state.axes.capHeight)
+     .u16(0).u16(0).u16(2);
+
+  /* post 3.0 */
+  const post = new Buf();
+  post.u32(0x00030000).u32(state.axes.slant ? (-state.axes.slant << 16) >>> 0 : 0)
+      .i16(-90).i16(60).u32(0).u32(0).u32(0).u32(0).u32(0);
+
+  const tables = [
+    ['OS/2', os2.out()], ['cmap', cmap.out()], ['glyf', glyf], ['head', head.out()],
+    ['hhea', hhea.out()], ['hmtx', hmtx.out()], ['loca', locaB.out()],
+    ['maxp', maxp.out()], ['name', nameB.out()], ['post', post.out()]
+  ].sort((a, b) => a[0] < b[0] ? -1 : 1);
+
+  const num = tables.length;
+  const entrySel = Math.floor(Math.log2(num));
+  const dirLen = 12 + num * 16;
+  let off = dirLen;
+  const padded = tables.map(([tag, data]) => {
+    const d = pad4(data), rec = { tag, data: d, off, len: data.length };
+    off += d.length; return rec;
+  });
+  const file = new Uint8Array(off);
+  const dir = new Buf();
+  dir.u32(0x00010000).u16(num).u16(Math.pow(2, entrySel) * 16).u16(entrySel)
+     .u16(num * 16 - Math.pow(2, entrySel) * 16);
+  for(const t of padded) dir.tag(t.tag).u32(checksum(t.data)).u32(t.off).u32(t.len);
+  file.set(dir.out(), 0);
+  for(const t of padded) file.set(t.data, t.off);
+
+  /* checkSumAdjustment lives at head + 8 */
+  const headRec = padded.find(t => t.tag === 'head');
+  const adj = (0xB1B0AFBA - checksum(file)) >>> 0;
+  const dv = new DataView(file.buffer);
+  dv.setUint32(headRec.off + 8, adj);
+  return file;
+}
+
+/* --- app plumbing --------------------------------------------------------- */
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const specCv = $('specCv'), sctx = specCv.getContext('2d');
+let cache = new Map();
+const bump = () => cache.clear();
+
+function cached(ch){
+  let c = cache.get(ch);
+  if(!c){ c = contoursFor(ch); cache.set(ch, c); }
+  return c;
+}
+function advOf(ch){
+  return Math.round(glyphOf(ch).adv * (state.axes.width/100)) + state.axes.track;
+}
+
+function fitCanvas(c){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const r = c.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if(c.width !== w || c.height !== h){ c.width = w; c.height = h; }
+  return dpr;
+}
+
+let view = { s:1, ox:0, oy:0 };
+function computeView(){
+  const w = cv.width, h = cv.height;
+  const adv = Math.max(300, advOf(state.sel));
+  const gw = adv + 320, gh = (ASC - DESC) + 200;
+  const s = Math.min(w / gw, h / gh);
+  view = { s, ox: (w - adv * s) / 2, oy: h / 2 + ((ASC + DESC) / 2) * s };
+}
+const toScreen = p => ({ x: view.ox + p.x * view.s, y: view.oy - p.y * view.s });
+const toGlyph  = (x, y) => ({ x: (x - view.ox) / view.s, y: (view.oy - y) / view.s });
+
+function pathOf(c, contours){
+  const p = new Path2D();
+  for(const cont of contours){
+    if(cont.length < 3) continue;
+    p.moveTo(cont[0].x, cont[0].y);
+    for(let i=1;i<cont.length;i++) p.lineTo(cont[i].x, cont[i].y);
+    p.closePath();
+  }
+  return p;
+}
+
+/* --- main editing canvas -------------------------------------------------- */
+function drawBoard(){
+  fitCanvas(cv); computeView();
+  const w = cv.width, h = cv.height, s = view.s;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,w,h);
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'#14111b'); grad.addColorStop(1,'#0d0b11');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+
+  const adv = advOf(state.sel);
+  const lineY = v => view.oy - v * s;
+  // metric guides
+  const guides = [
+    [0, '#4a4262', 'baseline'], [state.axes.capHeight, '#3d3a58', 'cap'],
+    [Math.round(state.axes.capHeight*0.72), '#2f2c46', 'x-height'],
+    [ASC, '#262340', 'ascender'], [DESC, '#262340', 'descender']
+  ];
+  ctx.lineWidth = 1; ctx.font = `${11*Math.min(2,devicePixelRatio||1)}px system-ui`;
+  for(const [v, col, label] of guides){
+    ctx.strokeStyle = col; ctx.beginPath();
+    ctx.moveTo(0, lineY(v)+.5); ctx.lineTo(w, lineY(v)+.5); ctx.stroke();
+    ctx.fillStyle = col; ctx.fillText(label, 6, lineY(v) - 4);
+  }
+  // sidebearings
+  ctx.strokeStyle = '#3a3352'; ctx.setLineDash([4,5]);
+  for(const gx of [0, adv]){
+    const sx = view.ox + gx * s;
+    ctx.beginPath(); ctx.moveTo(sx+.5, 0); ctx.lineTo(sx+.5, h); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.save();
+  ctx.translate(view.ox, view.oy); ctx.scale(s, -s);
+
+  if(state.showOutline){
+    const p = pathOf(ctx, cached(state.sel));
+    ctx.fillStyle = '#f2ece1';
+    ctx.fill(p, 'nonzero');
+  }
+
+  const g = glyphOf(state.sel);
+  ctx.lineWidth = 2.2 / s;
+  g.strokes.forEach((st, si) => {
+    const dense = st.smooth ? catmull(st.pts, st.closed, 9) : st.pts;
+    ctx.strokeStyle = si === state.selStroke ? '#f0b429' : (state.showOutline ? '#ffffff55' : '#9b8cf5');
+    ctx.beginPath();
+    dense.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    if(st.closed) ctx.closePath();
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // nodes
+  g.strokes.forEach((st, si) => {
+    st.pts.forEach((p, pi) => {
+      const q = toScreen(axisXform(p));
+      const on = si === state.selStroke;
+      const r = (on ? 5.5 : 4.2) * Math.min(2, devicePixelRatio||1);
+      ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, 7);
+      ctx.fillStyle = on ? '#f0b429' : '#6f6590';
+      ctx.fill();
+      if(drag && drag.si === si && drag.pi === pi){
+        ctx.strokeStyle = '#59d3a9'; ctx.lineWidth = 2; ctx.stroke();
+      }
+    });
+  });
+}
+
+/* --- glyph rail ----------------------------------------------------------- */
+const railCells = new Map();
+function buildRail(){
+  const rail = $('rail'); rail.innerHTML = '';
+  railCells.clear();
+  for(const ch of ORDER){
+    // a div, not a button: percentage padding on a button's pseudo-element
+    // collapses in Chromium, which flattens the square cell.
+    const b = document.createElement('div');
+    b.className = 'gcell';
+    b.setAttribute('role', 'button');
+    b.tabIndex = 0;
+    b.title = ch === ' ' ? 'space' : ch;
+    const tag = document.createElement('i'); tag.textContent = ch === ' ' ? '␣' : ch;
+    const c = document.createElement('canvas');
+    b.append(c, tag);
+    const pick = () => { state.sel = ch; state.selStroke = 0; draft = null; syncGlyphPanel(); render(); };
+    b.addEventListener('click', pick);
+    b.addEventListener('keydown', ev => {
+      if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); ev.stopPropagation(); pick(); }
+    });
+    rail.appendChild(b);
+    railCells.set(ch, { el: b, cv: c });
+  }
+}
+function drawRail(only){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  for(const [ch, cell] of railCells){
+    cell.el.toggleAttribute('data-sel', ch === state.sel);
+    cell.el.toggleAttribute('data-edited', !!(state.edits[ch] && state.edits[ch].strokes));
+    if(only && ch !== only && ch !== state.sel) continue;
+    const c = cell.cv;
+    const px = Math.round(46 * dpr);
+    if(c.width !== px){ c.width = px; c.height = px; }
+    const x = c.getContext('2d');
+    x.setTransform(1,0,0,1,0,0); x.clearRect(0,0,px,px);
+    const conts = cached(ch);
+    const adv = Math.max(200, advOf(ch));
+    const sc = px / Math.max(adv + 160, ASC - DESC + 120);
+    x.translate((px - adv*sc)/2, px/2 + ((ASC+DESC)/2)*sc);
+    x.scale(sc, -sc);
+    x.fillStyle = ch === state.sel ? '#f0b429' : '#cfc7bb';
+    x.fill(pathOf(x, conts), 'nonzero');
+  }
+}
+
+/* --- specimen ------------------------------------------------------------- */
+function drawSpecimen(){
+  const dpr = fitCanvas(specCv);
+  const w = specCv.width, h = specCv.height;
+  sctx.setTransform(1,0,0,1,0,0);
+  sctx.clearRect(0,0,w,h);
+  sctx.fillStyle = '#0d0b11'; sctx.fillRect(0,0,w,h);
+  const txt = (state.specText || '').toUpperCase();
+  let total = 0;
+  for(const ch of txt) total += ALPHABET[ch] ? advOf(ch) : advOf(' ');
+  if(!total) return;
+  const px = state.specSize * dpr;
+  let sc = px / EM;
+  if(total * sc > w - 24*dpr) sc = (w - 24*dpr) / total;
+  sctx.save();
+  sctx.translate(12*dpr, h/2 + (state.axes.capHeight/2)*sc);
+  sctx.scale(sc, -sc);
+  sctx.fillStyle = '#f2ece1';
+  let pen = 0;
+  for(const ch of txt){
+    const key = ALPHABET[ch] ? ch : ' ';
+    if(key !== ' '){
+      sctx.save(); sctx.translate(pen, 0);
+      sctx.fill(pathOf(sctx, cached(key)), 'nonzero');
+      sctx.restore();
+    }
+    pen += advOf(key);
+  }
+  sctx.restore();
+}
+
+function render(only){ drawBoard(); drawRail(only); drawSpecimen(); }
+let raf = 0, pendingOnly = null, settleTimer = 0;
+function schedule(){ pendingOnly = null; queue(); }
+function scheduleSoft(){                     // cheap frame now, full rail once input settles
+  if(pendingOnly !== false) pendingOnly = state.sel;
+  queue();
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(schedule, 140);
+}
+function queue(){
+  if(raf) return;
+  raf = requestAnimationFrame(() => { const only = pendingOnly; raf = 0; pendingOnly = null; render(only); });
+}
+
+/* --- pointer editing ------------------------------------------------------ */
+let drag = null, draft = null;
+const HIT = 16;
+
+function hitNode(sx, sy){
+  const g = glyphOf(state.sel);
+  let best = null, bd = HIT * HIT * (devicePixelRatio > 1 ? 2.2 : 1);
+  g.strokes.forEach((st, si) => st.pts.forEach((p, pi) => {
+    const q = toScreen(axisXform(p));
+    const d = (q.x-sx)*(q.x-sx) + (q.y-sy)*(q.y-sy);
+    if(d < bd){ bd = d; best = { si, pi }; }
+  }));
+  return best;
+}
+function hitStroke(sx, sy){
+  const g = glyphOf(state.sel);
+  let best = null, bd = 26 * 26 * (devicePixelRatio > 1 ? 2.2 : 1);
+  g.strokes.forEach((st, si) => {
+    const dense = (st.smooth ? catmull(st.pts, st.closed, 9) : st.pts).map(p => toScreen(axisXform(p)));
+    for(let i=0;i<dense.length-1;i++){
+      const a = dense[i], b = dense[i+1];
+      const dx = b.x-a.x, dy = b.y-a.y, L2 = dx*dx+dy*dy || 1;
+      let t = ((sx-a.x)*dx + (sy-a.y)*dy) / L2;
+      t = Math.max(0, Math.min(1, t));
+      const px = a.x+dx*t - sx, py = a.y+dy*t - sy;
+      const d = px*px + py*py;
+      if(d < bd){ bd = d; best = si; }
+    }
+  });
+  return best;
+}
+function localPoint(ev){
+  const r = cv.getBoundingClientRect();
+  const dpr = cv.width / r.width;
+  return { x: (ev.clientX - r.left) * dpr, y: (ev.clientY - r.top) * dpr };
+}
+
+cv.addEventListener('pointerdown', ev => {
+  cv.setPointerCapture(ev.pointerId);
+  const { x, y } = localPoint(ev);
+  const gp = axisUnform(toGlyph(x, y));
+
+  if(state.tool === 'pen'){
+    const e = editable(state.sel);
+    if(draft == null){
+      e.strokes.push({ pts: [{ x: Math.round(gp.x), y: Math.round(gp.y) }], smooth: true, closed: false });
+      draft = e.strokes.length - 1;
+    } else {
+      e.strokes[draft].pts.push({ x: Math.round(gp.x), y: Math.round(gp.y) });
+    }
+    state.selStroke = draft;
+    bump(); syncGlyphPanel(); schedule(); persist();
+    return;
+  }
+  const n = hitNode(x, y);
+  if(state.tool === 'erase'){
+    if(n){
+      const e = editable(state.sel);
+      e.strokes[n.si].pts.splice(n.pi, 1);
+      if(e.strokes[n.si].pts.length === 0) e.strokes.splice(n.si, 1);
+      state.selStroke = Math.min(state.selStroke, Math.max(0, e.strokes.length-1));
+      bump(); schedule(); persist();
+    }
+    return;
+  }
+  if(n){
+    state.selStroke = n.si;
+    drag = { ...n, mode: 'node' };
+  } else {
+    const si = hitStroke(x, y);
+    if(si != null){
+      state.selStroke = si;
+      drag = { si, mode: 'stroke', last: gp };
+    }
+  }
+  syncGlyphPanel(); schedule();
+});
+
+cv.addEventListener('pointermove', ev => {
+  if(!drag) return;
+  const { x, y } = localPoint(ev);
+  const gp = axisUnform(toGlyph(x, y));
+  const e = editable(state.sel);
+  if(drag.mode === 'node'){
+    const p = e.strokes[drag.si].pts[drag.pi];
+    if(!p) { drag = null; return; }
+    p.x = Math.round(gp.x); p.y = Math.round(gp.y);
+  } else {
+    const dx = gp.x - drag.last.x, dy = gp.y - drag.last.y;
+    for(const p of e.strokes[drag.si].pts){ p.x = Math.round(p.x + dx); p.y = Math.round(p.y + dy); }
+    drag.last = gp;
+  }
+  bump(); scheduleSoft();
+});
+const endDrag = () => { if(drag){ drag = null; persist(); schedule(); } };
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('dblclick', () => { draft = null; setHint('Stroke finished.'); });
+
+/* --- controls -------------------------------------------------------------- */
+function setTool(t){
+  state.tool = t; draft = null;
+  for(const [id, name] of [['tSelect','select'],['tPen','pen'],['tErase','erase']])
+    $(id).toggleAttribute('data-on', name === t);
+  setHint(t === 'pen' ? 'Pen: tap to drop nodes, double-tap to finish the stroke.'
+        : t === 'erase' ? 'Erase: tap a node to remove it.'
+        : 'Drag a node to reshape, or drag a stroke to move the whole thing.');
+}
+let hintTimer = 0;
+function setHint(txt){
+  $('hint').textContent = txt;
+  clearTimeout(hintTimer);
+}
+function say(msg, err){
+  const el = $('status');
+  el.textContent = msg;
+  el.toggleAttribute('data-err', !!err);
+  clearTimeout(say._t);
+  say._t = setTimeout(() => { el.textContent = ''; el.removeAttribute('data-err'); }, 5200);
+}
+
+const AX = [
+  ['aWeight','vWeight','weight', v => v],
+  ['aWidth','vWidth','width', v => v + '%'],
+  ['aSlant','vSlant','slant', v => v + '°'],
+  ['aContrast','vContrast','contrast', v => (v/100).toFixed(2)],
+  ['aTrack','vTrack','track', v => v],
+  ['aStencil','vStencil','stencil', v => v ? (v/100).toFixed(2) : 'off'],
+  ['aCap','vCap','capHeight', v => v]
+];
+function syncAxes(){
+  for(const [inp, out, key, fmt] of AX){
+    $(inp).value = state.axes[key];
+    $(out).textContent = fmt(state.axes[key]);
+  }
+  for(const b of $('capSeg').children) b.toggleAttribute('data-on', b.dataset.cap === state.axes.cap);
+  $('axLabel').textContent = state.preset;
+  $('mInfo').textContent = `1000 units/em · ascender ${ASC} · descender ${DESC} · x-height ${Math.round(state.axes.capHeight*0.72)}`;
+  for(const c of $('presets').children) c.toggleAttribute('data-on', c.textContent === state.preset);
+}
+for(const [inp, out, key, fmt] of AX){
+  $(inp).addEventListener('input', e => {
+    state.axes[key] = +e.target.value;
+    $(out).textContent = fmt(state.axes[key]);
+    state.preset = 'Custom'; $('axLabel').textContent = 'Custom';
+    for(const c of $('presets').children) c.removeAttribute('data-on');
+    $('mInfo').textContent = `1000 units/em · ascender ${ASC} · descender ${DESC} · x-height ${Math.round(state.axes.capHeight*0.72)}`;
+    bump(); scheduleSoft(); persist();
+  });
+}
+$('capSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  state.axes.cap = b.dataset.cap;
+  state.preset = 'Custom';
+  syncAxes(); bump(); schedule(); persist();
+});
+
+function syncGlyphPanel(){
+  const g = glyphOf(state.sel);
+  $('glyphName').textContent = state.sel === ' ' ? 'space' : state.sel;
+  $('aAdv').value = g.adv; $('vAdv').textContent = g.adv;
+  $('aSw').value = Math.round(g.sw * 100); $('vSw').textContent = g.sw.toFixed(2);
+}
+$('aAdv').addEventListener('input', e => {
+  editable(state.sel).adv = +e.target.value;
+  $('vAdv').textContent = e.target.value;
+  bump(); schedule(); persist();
+});
+$('aSw').addEventListener('input', e => {
+  const v = +e.target.value / 100;
+  editable(state.sel).sw = v;
+  $('vSw').textContent = v.toFixed(2);
+  bump(); schedule(); persist();
+});
+$('btnSmooth').addEventListener('click', () => {
+  const e = editable(state.sel), st = e.strokes[state.selStroke];
+  if(!st) return say('No stroke selected.', true);
+  st.smooth = !st.smooth;
+  bump(); schedule(); persist();
+  say(st.smooth ? 'Stroke smoothed.' : 'Stroke straightened.');
+});
+$('btnDelStroke').addEventListener('click', () => {
+  const e = editable(state.sel);
+  if(!e.strokes.length) return say('Nothing to delete.', true);
+  e.strokes.splice(state.selStroke, 1);
+  state.selStroke = Math.max(0, Math.min(state.selStroke, e.strokes.length-1));
+  draft = null; bump(); schedule(); persist();
+});
+$('tSelect').addEventListener('click', () => setTool('select'));
+$('tPen').addEventListener('click', () => setTool('pen'));
+$('tErase').addEventListener('click', () => setTool('erase'));
+$('tOutline').addEventListener('click', () => {
+  state.showOutline = !state.showOutline;
+  $('tOutline').toggleAttribute('data-on', state.showOutline);
+  schedule();
+});
+$('tReset').addEventListener('click', () => {
+  delete state.edits[state.sel];
+  state.selStroke = 0; draft = null;
+  bump(); syncGlyphPanel(); schedule(); persist();
+  say('Reverted to the built-in skeleton.');
+});
+
+$('specText').addEventListener('input', e => { state.specText = e.target.value; $('liveText').textContent = e.target.value; schedule(); persist(); });
+$('specSize').addEventListener('input', e => { state.specSize = +e.target.value; schedule(); });
+$('famName').addEventListener('input', e => { state.family = e.target.value; persist(); });
+
+const presetBar = $('presets');
+for(const name of Object.keys(PRESETS)){
+  const b = document.createElement('button');
+  b.className = 'chip'; b.type = 'button'; b.textContent = name;
+  b.addEventListener('click', () => {
+    Object.assign(state.axes, PRESETS[name]);
+    state.preset = name;
+    syncAxes(); bump(); schedule(); persist();
+  });
+  presetBar.appendChild(b);
+}
+
+/* --- export / import / persistence ---------------------------------------- */
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return blob.size;
+}
+const safeName = () => (state.family || 'Glyphsmith').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'Glyphsmith';
+
+$('btnTtf').addEventListener('click', () => {
+  try{
+    const bytes = buildTTF();
+    if(!bytes || bytes.length < 1000) throw new Error('font came out empty');
+    const size = download(new Blob([bytes], { type: 'font/ttf' }), safeName() + '.ttf');
+    say(`Exported ${safeName()}.ttf — ${(size/1024).toFixed(1)} KB, ${ORDER.length} glyphs.`);
+  }catch(err){ say('Export failed: ' + err.message, true); }
+});
+
+let liveFace = null;
+$('btnLive').addEventListener('click', async () => {
+  try{
+    const bytes = buildTTF();
+    const face = new FontFace('Glyphsmith Live', bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    await face.load();
+    if(liveFace) document.fonts.delete(liveFace);
+    document.fonts.add(face); liveFace = face;
+    $('liveWrap').setAttribute('data-on', '');
+    $('liveText').textContent = state.specText || 'HAMBURGEFONSTIV';
+    say('Font parsed and installed for this page — the line below is real text.');
+  }catch(err){ say('The browser rejected the font: ' + err.message, true); }
+});
+
+$('btnJson').addEventListener('click', () => {
+  const size = download(new Blob([JSON.stringify(snapshot(), null, 1)], { type: 'application/json' }), safeName() + '.glyphsmith.json');
+  say(`Project saved — ${(size/1024).toFixed(1)} KB.`);
+});
+$('btnLoad').addEventListener('click', () => $('filePick').click());
+$('filePick').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  try{
+    restore(JSON.parse(await f.text()));
+    say('Project loaded from ' + f.name);
+  }catch(err){ say('Could not read that file: ' + err.message, true); }
+  e.target.value = '';
+});
+$('btnShare').addEventListener('click', async () => {
+  try{
+    const json = JSON.stringify(snapshot());
+    const raw = new TextEncoder().encode(json);
+    let bin = '';
+    for(let i=0;i<raw.length;i+=0x2000) bin += String.fromCharCode.apply(null, raw.subarray(i, i+0x2000));
+    const b64 = btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    const url = location.origin + location.pathname + '#f=' + b64;
+    history.replaceState(null, '', '#f=' + b64);
+    let copied = false;
+    try{ await navigator.clipboard.writeText(url); copied = true; }catch(_){}
+    say(copied ? `Link copied — ${url.length} characters.` : 'Link is in the address bar (clipboard blocked).');
+  }catch(err){ say('Could not build a link: ' + err.message, true); }
+});
+
+function snapshot(){
+  return {
+    format: 'glyphsmith/1',
+    family: state.family,
+    preset: state.preset,
+    axes: { ...state.axes },
+    specText: state.specText,
+    edits: state.edits
+  };
+}
+function restore(data){
+  if(!data || typeof data !== 'object') throw new Error('not a Glyphsmith project');
+  if(data.axes) Object.assign(state.axes, data.axes);
+  if(typeof data.family === 'string') state.family = data.family;
+  if(typeof data.preset === 'string') state.preset = data.preset;
+  if(typeof data.specText === 'string') state.specText = data.specText;
+  if(data.edits && typeof data.edits === 'object'){
+    state.edits = {};
+    for(const [ch, e] of Object.entries(data.edits)){
+      if(!ALPHABET[ch] || !e || typeof e !== 'object') continue;
+      const clean = {};
+      if(Number.isFinite(e.adv)) clean.adv = Math.max(0, Math.min(2000, e.adv));
+      if(Number.isFinite(e.sw)) clean.sw = Math.max(0.05, Math.min(3, e.sw));
+      if(Array.isArray(e.strokes)){
+        clean.strokes = e.strokes
+          .filter(st => st && Array.isArray(st.pts))
+          .map(st => ({
+            smooth: !!st.smooth, closed: !!st.closed,
+            pts: st.pts.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+                       .map(p => ({ x: p.x, y: p.y }))
+          }))
+          .filter(st => st.pts.length);
+      }
+      state.edits[ch] = clean;
+    }
+  }
+  $('famName').value = state.family;
+  $('specText').value = state.specText;
+  $('liveText').textContent = state.specText;
+  draft = null; state.selStroke = 0;
+  bump(); syncAxes(); syncGlyphPanel(); schedule();
+}
+
+const LS = 'glyphsmith_v1';
+let persistTimer = 0;
+function persist(){
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    try{ localStorage.setItem(LS, JSON.stringify(snapshot())); }catch(_){}
+  }, 350);
+}
+
+/* --- keyboard ------------------------------------------------------------- */
+addEventListener('keydown', ev => {
+  if(ev.target.matches('input, textarea')) return;
+  const k = ev.key;
+  if(k === 'Enter' || k === 'Escape'){ draft = null; setHint('Stroke finished.'); return; }
+  if(k === 'v' || k === 'V') return setTool('select');
+  if(k === 'p' || k === 'P') return setTool('pen');
+  if(k === 'e' || k === 'E') return setTool('erase');
+  if(k === 'o' || k === 'O') return $('tOutline').click();
+  if(k === 'r' || k === 'R') return $('tReset').click();
+  if(k.length === 1){
+    const up = k.toUpperCase();
+    if(ALPHABET[up]){ state.sel = up; state.selStroke = 0; draft = null; syncGlyphPanel(); schedule(); }
+  }
+});
+addEventListener('resize', schedule);
+
+/* --- boot ----------------------------------------------------------------- */
+(function boot(){
+  buildRail();
+  let loaded = false;
+  const hash = location.hash.match(/#f=([A-Za-z0-9\-_]+)/);
+  if(hash){
+    try{
+      const b64 = hash[1].replace(/-/g,'+').replace(/_/g,'/');
+      const bin = atob(b64 + '==='.slice((b64.length + 3) % 4));
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      restore(JSON.parse(new TextDecoder().decode(bytes)));
+      loaded = true;
+      say('Loaded a shared type design from the link.');
+    }catch(_){ }
+  }
+  if(!loaded){
+    try{
+      const raw = localStorage.getItem(LS);
+      if(raw){ restore(JSON.parse(raw)); loaded = true; }
+    }catch(_){ }
+  }
+  $('famName').value = state.family;
+  $('specText').value = state.specText;
+  $('liveText').textContent = state.specText;
+  setTool('select');
+  syncAxes(); syncGlyphPanel();
+  render();
+  // the rail measures itself from layout, so give it one more pass after paint
+  requestAnimationFrame(render);
+  setTimeout(render, 60);
+})();
+</script>
+</body>
+</html>
