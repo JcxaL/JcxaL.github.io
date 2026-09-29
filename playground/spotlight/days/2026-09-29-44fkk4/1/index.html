@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Timelines You Can Hold — UI Spotlight Day 129</title>
+<meta name="description" content="ScrollTimeline and ViewTimeline built in JavaScript, handed to element.animate(), and shared across a whole page.">
+<style>
+:root{
+  --bg:#070b12; --ink:#e8eef7; --dim:#8ba0ba; --line:#1d2a3b; --accent:#38bdf8;
+  --glass:#0d1622cc;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:
+    radial-gradient(900px 500px at 15% -5%, #10243a 0%, transparent 60%),
+    radial-gradient(800px 480px at 95% 20%, #101f34 0%, transparent 62%), var(--bg);
+  color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:inherit}
+
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:50;display:inline-flex;align-items:center;gap:7px;
+  padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;
+  background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(12px);
+  transition:.18s cubic-bezier(.3,.9,.3,1)}
+.back-link:hover{background:#16263acc;transform:translateX(-2px)}
+
+.panel{
+  position:fixed;top:14px;right:14px;z-index:50;width:230px;padding:12px 13px;
+  background:var(--glass);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(12px);
+  font-size:12.5px}
+.panel h4{margin:0 0 9px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.panel label{display:flex;align-items:center;gap:8px;margin:8px 0}
+.panel label span{flex:0 0 66px;color:var(--dim)}
+.panel select,.panel input[type=range]{flex:1;min-width:0}
+.panel select{
+  background:#0f1a28;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 7px;font:inherit}
+input[type=range]{-webkit-appearance:none;appearance:none;height:18px;background:none}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:#243346}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--accent);margin-top:-5px;border:2px solid #070b12}
+input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:#243346}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border:2px solid #070b12;border-radius:50%;background:var(--accent)}
+.meter{margin-top:10px;font:11px ui-monospace,Menlo,monospace;color:var(--dim)}
+.meter b{color:var(--accent)}
+.bar{height:4px;border-radius:3px;background:#1a2636;margin-top:5px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+
+header.hero{
+  min-height:88vh;display:grid;place-content:center;text-align:center;padding:80px 22px 40px;position:relative;overflow:hidden}
+.hero h1{font-size:clamp(30px,7vw,66px);margin:0 0 14px;letter-spacing:-.03em;line-height:1.02}
+.hero p{max-width:52ch;margin:0 auto;color:var(--dim);font-size:clamp(14px,2.2vw,17px)}
+#glow{
+  position:absolute;left:50%;bottom:-30%;width:min(78vw,700px);margin-left:calc(min(78vw,700px) / -2);aspect-ratio:1;
+  border-radius:50%;background:radial-gradient(circle,#38bdf855,transparent 66%);filter:blur(10px);pointer-events:none}
+.scrollcue{margin-top:34px;color:var(--dim);font-size:12px;letter-spacing:.2em;text-transform:uppercase}
+
+main{max-width:940px;margin:0 auto;padding:0 20px 34vh}
+.card{
+  display:grid;grid-template-columns:78px 1fr;gap:18px;align-items:start;
+  padding:22px;margin:16vh 0;border:1px solid var(--line);border-radius:18px;
+  background:linear-gradient(150deg,#0e1a28cc,#0a1119cc);backdrop-filter:blur(6px);
+  will-change:transform,opacity}
+.card .n{
+  font:600 26px/1 ui-monospace,Menlo,monospace;color:var(--accent);
+  padding-top:4px;letter-spacing:-.04em}
+.card h3{margin:0 0 6px;font-size:19px;letter-spacing:-.01em}
+.card p{margin:0;color:var(--dim);font-size:14px}
+.card .track{height:5px;border-radius:4px;background:#17222f;margin-top:14px;overflow:hidden}
+.card .track i{display:block;height:100%;width:100%;transform-origin:left;background:linear-gradient(90deg,#38bdf8,#a78bfa)}
+@media (min-width:821px){ main{padding-right:272px} }
+@media (max-width:700px){
+  .panel{right:10px;left:10px;width:auto;top:auto;bottom:10px}
+  .back-link{top:10px;left:10px}
+  .card{grid-template-columns:1fr;gap:8px;margin:12vh 0}
+  main{padding-bottom:40vh}
+}
+footer.credit{
+  padding:28px 20px 90px;text-align:center;color:#61748c;font-size:12px}
+footer.credit a{color:#7f93ab}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h4>Timeline controls</h4>
+  <label><span>Range</span>
+    <select id="range">
+      <option value="entry 0% / cover 45%">entry → cover 45%</option>
+      <option value="entry 0% / entry 100%">entry 0 → 100%</option>
+      <option value="cover 0% / cover 100%">cover 0 → 100%</option>
+      <option value="contain 0% / contain 100%">contain 0 → 100%</option>
+      <option value="exit 0% / exit 100%">exit 0 → 100%</option>
+    </select>
+  </label>
+  <label><span>Lift</span><input type="range" id="lift" min="0" max="120" value="52"></label>
+  <label><span>Rotate</span><input type="range" id="rot" min="0" max="14" value="5"></label>
+  <label><span>Scale</span><input type="range" id="scl" min="0" max="30" value="12"></label>
+  <div class="meter">document ScrollTimeline · <b id="pct">0%</b>
+    <div class="bar"><i id="fill"></i></div>
+  </div>
+</div>
+
+<header class="hero">
+  <div id="glow"></div>
+  <h1>Timelines you can<br>hand around</h1>
+  <p>Every animation on this page is a plain <code>element.animate()</code> call. None of them know about
+     scrolling. They were each handed a <b>ScrollTimeline</b> or a <b>ViewTimeline</b> object built in
+     JavaScript — and that object does the scrubbing.</p>
+  <div class="scrollcue">scroll ↓</div>
+</header>
+
+<main id="cards"></main>
+
+<footer class="credit">
+  Inspired by <a href="https://developer.mozilla.org/en-US/docs/Web/API/ViewTimeline" target="_blank" rel="noopener">MDN · ViewTimeline / ScrollTimeline</a>
+  · UI Spotlight Day 129 · Drop #1
+</footer>
+
+<script>
+(function(){
+'use strict';
+const COPY = [
+  ['Construct, don’t declare', 'new ViewTimeline({subject}) builds the timeline in JS, so you can keep it in a variable, hand it to five animations, or throw it away.'],
+  ['One timeline, many animations', 'The same object is passed as options.timeline to every animate() call on this card — opacity, lift, tilt and the bar below all share one clock.'],
+  ['Ranges are options, not CSS', 'rangeStart / rangeEnd take the same entry / contain / cover / exit keywords as animation-range, but you can swap them at runtime.'],
+  ['Nothing is playing', 'These animations have no duration and never tick. currentTime is a percentage of scroll, so the compositor interpolates and the main thread stays idle.'],
+  ['Progressive by nature', 'If ScrollTimeline is missing, the same animate() call runs on the document timeline instead — a plain entrance, no branching in the CSS.'],
+  ['Scrub it yourself', 'Because the timeline is a real object, timeline.currentTime is readable at any moment — which is exactly what the meter in the corner is reading.']
+];
+
+const host = document.getElementById('cards');
+const cards = COPY.map(([h, p], i) => {
+  const el = document.createElement('article');
+  el.className = 'card';
+  el.innerHTML = '<div class="n">' + String(i+1).padStart(2,'0') + '</div>' +
+    '<div><h3></h3><p></p><div class="track"><i></i></div></div>';
+  el.querySelector('h3').textContent = h;
+  el.querySelector('p').textContent = p;
+  host.appendChild(el);
+  return el;
+});
+
+let docTimeline = null;
+const hasScrollTimeline = typeof ScrollTimeline === 'function' && typeof ViewTimeline === 'function';
+let live = [];
+
+function build(){
+  live.forEach(a => a.cancel());
+  live = [];
+  const lift = +document.getElementById('lift').value;
+  const rot  = +document.getElementById('rot').value;
+  const scl  = +document.getElementById('scl').value / 100;
+  const [rs, re] = document.getElementById('range').value.split(' / ');
+
+  cards.forEach((card, i) => {
+    const dir = i % 2 ? 1 : -1;
+    const opts = hasScrollTimeline
+      ? { timeline: new ViewTimeline({ subject: card, axis: 'block' }), rangeStart: rs, rangeEnd: re, fill: 'both' }
+      : { duration: 700, delay: i * 80, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' };
+    live.push(card.animate([
+      { opacity: 0, transform: 'translateY(' + lift + 'px) scale(' + (1-scl) + ') rotate(' + (rot*dir) + 'deg)' },
+      { opacity: 1, transform: 'none' }
+    ], opts));
+    const bar = card.querySelector('.track i');
+    live.push(bar.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }],
+      hasScrollTimeline
+        ? { timeline: new ViewTimeline({ subject: card, axis: 'block' }), rangeStart: rs, rangeEnd: re, fill: 'both' }
+        : { duration: 900, delay: i * 80 + 120, fill: 'both' }));
+  });
+
+  if (hasScrollTimeline){
+    const doc = new ScrollTimeline({ source: document.documentElement, axis: 'block' });
+    live.push(document.getElementById('fill').animate(
+      [{ width: '0%' }, { width: '100%' }], { timeline: doc, fill: 'both' }));
+    live.push(document.getElementById('glow').animate(
+      [{ transform: 'translateY(0) scale(1)', opacity: .95 },
+       { transform: 'translateY(-38vh) scale(1.7)', opacity: 0 }],
+      { timeline: doc, rangeStart: '0%', rangeEnd: '40%', fill: 'both' }));
+    docTimeline = doc;
+  }
+}
+
+build();
+['range','lift','rot','scl'].forEach(id => document.getElementById(id).addEventListener('input', build));
+
+const pct = document.getElementById('pct');
+(function tick(){
+  if (docTimeline && docTimeline.currentTime)
+    pct.textContent = Math.round(parseFloat(docTimeline.currentTime.toString())) + '%';
+  requestAnimationFrame(tick);
+})();
+
+if (!hasScrollTimeline){
+  const n = document.createElement('div');
+  n.className = 'meter';
+  n.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#0d1622cc;border:1px solid #1d2a3b;padding:8px 14px;border-radius:999px';
+  n.textContent = 'No ScrollTimeline here — the same animate() calls fell back to the document timeline.';
+  document.body.appendChild(n);
+}
+})();
+</script>
+</body>
+</html>
