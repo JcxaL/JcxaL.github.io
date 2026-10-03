@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Motion on a Ray — UI Spotlight</title>
+<style>
+  *{box-sizing:border-box}
+  :root{--acc:#38bdf8;--bg:#06070f;--ink:#e8eef7;--mut:#8ea0b8;--line:#1b2434}
+  html,body{margin:0;min-height:100%}
+  body{background:radial-gradient(120% 90% at 80% -10%,#0d1b2c,transparent 60%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    padding:76px 20px 90px;-webkit-font-smoothing:antialiased}
+  .back-link{position:fixed;top:14px;left:14px;z-index:50;text-decoration:none;color:var(--ink);
+    background:rgba(12,18,28,.72);border:1px solid var(--line);border-radius:999px;padding:8px 15px;
+    font-size:13px;backdrop-filter:blur(12px)}
+  .back-link:hover{border-color:var(--acc)}
+  h1{font-size:clamp(23px,4.4vw,36px);margin:0 0 6px;letter-spacing:-.02em}
+  h1 em{font-style:normal;color:var(--acc)}
+  .lede{color:var(--mut);max-width:62ch;margin:0 auto 30px}
+  .wrap{max-width:1080px;margin:0 auto;text-align:center}
+  .panel{position:fixed;top:14px;right:14px;z-index:50;background:rgba(12,18,28,.74);
+    border:1px solid var(--line);border-radius:14px;padding:12px 13px;backdrop-filter:blur(12px);
+    width:208px;text-align:left;font-size:12px}
+  .panel h2{margin:0 0 9px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut)}
+  .panel label{display:block;margin:8px 0 3px;color:var(--mut)}
+  .panel select,.panel input[type=range]{width:100%}
+  .panel select{background:#111a27;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 6px}
+  .panel .ck{display:flex;align-items:center;gap:7px;margin-top:9px;color:var(--mut)}
+  @media(max-width:760px){.panel{display:none}}
+  .stage{position:relative;border:1px solid var(--line);border-radius:20px;margin:0 0 26px;
+    background:linear-gradient(180deg,#090e18,#070910);overflow:hidden}
+  .stage h3{position:absolute;top:12px;left:16px;margin:0;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--mut);font-weight:600}
+  .burst{height:min(62vh,420px);display:grid;place-items:center}
+  .hub{width:74px;height:74px;border-radius:50%;border:1px solid var(--acc);color:var(--ink);
+    background:#0d1a28;cursor:pointer;font:600 13px/1 system-ui;letter-spacing:.08em;
+    box-shadow:0 0 36px -10px var(--acc);transition:transform .25s cubic-bezier(.22,1,.36,1)}
+  .hub:active{transform:scale(.94)}
+  .ring{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+  .spoke{position:absolute;offset-position:50% 50%;offset-rotate:var(--rot,0deg);
+    offset-path:ray(var(--a) var(--sz,closest-side) var(--con,));
+    offset-distance:0%;opacity:0;
+    transition:offset-distance var(--dur,.62s) cubic-bezier(.22,1.3,.36,1) var(--de,0s),
+               opacity .3s ease var(--de,0s);}
+  .open .spoke{offset-distance:var(--spread,78%);opacity:1}
+  .chip{display:grid;place-items:center;min-width:62px;height:34px;padding:0 12px;border-radius:999px;
+    background:#102033;border:1px solid #27425f;font-size:12.5px;white-space:nowrap;color:#cfe3f7}
+  .loader{height:230px;position:relative}
+  .loader .spoke{animation:pulse 1.9s linear infinite var(--de,0s);transition:none}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--acc);box-shadow:0 0 14px var(--acc)}
+  @keyframes pulse{0%{offset-distance:4%;opacity:0}18%{opacity:1}100%{offset-distance:100%;opacity:0}}
+  .spark-stage{height:260px;position:relative;cursor:crosshair}
+  .spark{position:absolute;offset-path:ray(var(--a) var(--sz,closest-side) var(--con,));
+    offset-distance:0%;opacity:1;width:7px;height:7px;border-radius:50%;
+    animation:fly var(--d,900ms) cubic-bezier(.12,.75,.3,1) forwards}
+  @keyframes fly{to{offset-distance:var(--spread,78%);opacity:0;scale:.3}}
+  .hint{color:var(--mut);font-size:12.5px;margin:10px 0 0}
+  footer{margin:34px auto 0;color:#6b7b91;font-size:12px;max-width:1080px;text-align:center}
+  footer a{color:#89a2bf}
+  .warn{display:none;background:#2a1a10;border:1px solid #6b4423;border-radius:12px;padding:10px 14px;
+    color:#f0c08a;font-size:13px;margin:0 0 22px}
+  .warn.on{display:block}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h2>ray() parameters</h2>
+  <label for="sz">size keyword</label>
+  <select id="sz">
+    <option>closest-side</option><option>closest-corner</option>
+    <option>farthest-side</option><option>farthest-corner</option><option>sides</option>
+  </select>
+  <label for="spread">offset-distance <span id="vSpread">78%</span></label>
+  <input type="range" id="spread" min="20" max="100" value="78">
+  <label for="dur">duration <span id="vDur">620ms</span></label>
+  <input type="range" id="dur" min="150" max="1600" value="620">
+  <label class="ck"><input type="checkbox" id="con"> contain</label>
+  <label class="ck"><input type="checkbox" id="rot"> offset-rotate: auto</label>
+</div>
+
+<div class="wrap">
+  <h1>Motion on a <em>ray</em></h1>
+  <p class="lede">One line of CSS replaces a pile of sine and cosine: <code>offset-path: ray(40deg closest-side)</code>
+  gives an element a straight path outward from its own origin, and <code>offset-distance</code> slides it along.
+  No transforms to compose, no trigonometry, and <code>contain</code> keeps everything inside the box.</p>
+
+  <div class="warn" id="warn">This browser doesn’t support <code>offset-path: ray()</code>, so the elements below will sit still.</div>
+
+  <section class="stage burst" id="s1">
+    <h3>1 · Radial menu</h3>
+    <button class="hub" id="hub">OPEN</button>
+    <div class="ring" id="ring"></div>
+  </section>
+
+  <section class="stage loader" id="s2">
+    <h3>2 · Spoke loader</h3>
+    <div class="ring" id="ring2"></div>
+  </section>
+
+  <section class="stage spark-stage" id="s3">
+    <h3>3 · Sparks — tap anywhere</h3>
+  </section>
+  <p class="hint">Every element above travels on its own ray; only the angle custom property differs.</p>
+</div>
+
+<footer>Inspired by <a href="https://www.w3.org/TR/motion-1/">CSS Motion Path Level 1 — the ray() function</a> · UI Spotlight Day 131 · Drop #1</footer>
+
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  var root=document.documentElement;
+  if(!CSS.supports('offset-path','ray(45deg closest-side)'))$('#warn').classList.add('on');
+
+  /* 1 — radial menu */
+  var labels=['Share','Copy','Pin','Edit','Mute','Move','Tag','Delete'],ring=$('#ring');
+  labels.forEach(function(t,i){
+    var a=(360/labels.length)*i;
+    var el=document.createElement('div');
+    el.className='spoke';el.style.setProperty('--a',a+'deg');
+    el.style.setProperty('--de',(i*28)+'ms');
+    el.innerHTML='<span class="chip">'+t+'</span>';
+    ring.appendChild(el);
+  });
+  $('#hub').addEventListener('click',function(){
+    var on=$('#s1').classList.toggle('open');
+    this.textContent=on?'CLOSE':'OPEN';
+  });
+
+  /* 2 — spoke loader */
+  var ring2=$('#ring2');
+  for(var i=0;i<14;i++){
+    var el=document.createElement('div');
+    el.className='spoke';
+    el.style.setProperty('--a',((360/14)*i)+'deg');
+    el.style.setProperty('--de',(i*135)+'ms');
+    el.innerHTML='<span class="dot"></span>';
+    ring2.appendChild(el);
+  }
+
+  /* 3 — sparks */
+  var stage=$('#s3'),hues=['#38bdf8','#7dd3fc','#a78bfa','#f0abfc'];
+  function burst(x,y){
+    for(var i=0;i<26;i++){
+      var s=document.createElement('i');
+      s.className='spark';
+      s.style.left=x+'px';s.style.top=y+'px';
+      s.style.setProperty('--a',(Math.random()*360).toFixed(1)+'deg');
+      s.style.setProperty('--d',(520+Math.random()*700).toFixed(0)+'ms');
+      s.style.setProperty('--spread',(30+Math.random()*60).toFixed(0)+'%');
+      s.style.background=hues[i%hues.length];
+      s.style.boxShadow='0 0 10px '+hues[i%hues.length];
+      stage.appendChild(s);
+      s.addEventListener('animationend',function(){this.remove()});
+    }
+  }
+  stage.addEventListener('pointerdown',function(e){
+    var b=stage.getBoundingClientRect();burst(e.clientX-b.left,e.clientY-b.top);
+  });
+  var auto=setInterval(function(){
+    if(!document.hidden&&stage.isConnected){
+      var b=stage.getBoundingClientRect();
+      burst(b.width*(.25+Math.random()*.5),b.height*(.3+Math.random()*.4));
+    }
+  },2200);
+  window.addEventListener('pagehide',function(){clearInterval(auto)});
+
+  /* panel */
+  function sync(){
+    root.style.setProperty('--sz',$('#sz').value);
+    root.style.setProperty('--spread',$('#spread').value+'%');
+    root.style.setProperty('--dur',$('#dur').value+'ms');
+    root.style.setProperty('--con',$('#con').checked?'contain':' ');
+    root.style.setProperty('--rot',$('#rot').checked?'auto':'0deg');
+    $('#vSpread').textContent=$('#spread').value+'%';
+    $('#vDur').textContent=$('#dur').value+'ms';
+  }
+  ['#sz','#spread','#dur','#con','#rot'].forEach(function(s){
+    $(s).addEventListener('input',sync);$(s).addEventListener('change',sync);
+  });
+  sync();
+  setTimeout(function(){$('#hub').click()},700);
+})();
+</script>
+</body>
+</html>
