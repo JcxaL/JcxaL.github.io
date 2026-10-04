@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Animating What Isn't There — UI Spotlight</title>
+<style>
+  *{box-sizing:border-box}
+  :root{ --bg:#05070e; --ink:#eaf0ff; --dim:#8a96b4; --ac:#38bdf8; --line:rgba(255,255,255,.12) }
+  html,body{margin:0;min-height:100%}
+  body{
+    background:radial-gradient(1000px 600px at 20% -10%,#0d2740,transparent 60%),var(--bg);
+    color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:76px 20px 100px; display:flex; flex-direction:column; align-items:center; gap:34px;
+  }
+  .back-link{
+    position:fixed; top:14px; left:14px; z-index:30; text-decoration:none; color:var(--ink);
+    background:rgba(255,255,255,.08); border:1px solid var(--line); backdrop-filter:blur(12px);
+    padding:9px 15px; border-radius:999px; font:600 12.5px system-ui;
+  }
+  .back-link:hover{background:rgba(255,255,255,.16)}
+  h1{font-size:clamp(22px,4.6vw,34px); margin:0; text-align:center; letter-spacing:-.025em}
+  h1 em{font-style:normal; color:var(--ac)}
+  .lede{max-width:620px; text-align:center; color:var(--dim); font-size:14.5px; line-height:1.6; margin:0}
+  section{width:min(960px,100%); display:flex; flex-direction:column; gap:14px}
+  h2{font:700 11px/1 system-ui; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); margin:0}
+  /* ---- A: sheen cards (::before animated from JS) ---- */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px}
+  .card{
+    position:relative; overflow:hidden; border-radius:16px; border:1px solid var(--line);
+    background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.02));
+    padding:22px 18px; min-height:122px
+  }
+  .card::before{
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:0;
+    background:linear-gradient(105deg,transparent 36%,rgba(56,189,248,.55) 50%,transparent 64%);
+    transform:translateX(-120%);
+  }
+  .card b{display:block; font-size:16px; margin-bottom:5px}
+  .card span{font-size:12.5px; color:var(--dim); line-height:1.5}
+  /* ---- B: tag underlines (::after animated from JS) ---- */
+  .tags{display:flex; flex-wrap:wrap; gap:10px}
+  .tag{
+    position:relative; border:1px solid var(--line); border-radius:11px; padding:11px 16px;
+    font:600 13px system-ui; background:rgba(255,255,255,.04)
+  }
+  .tag::after{
+    content:""; position:absolute; left:10px; right:10px; bottom:6px; height:2px; border-radius:2px;
+    background:linear-gradient(90deg,var(--ac),#a78bfa); transform:scaleX(0); transform-origin:left
+  }
+  /* ---- C: dialog with an animated ::backdrop ---- */
+  dialog{
+    border:1px solid var(--line); background:#0b1220; color:var(--ink); border-radius:18px;
+    padding:26px 28px; max-width:400px; box-shadow:0 40px 90px -20px #000
+  }
+  dialog::backdrop{ background:rgba(3,6,14,.7) }
+  dialog h3{margin:0 0 8px; font-size:18px}
+  dialog p{margin:0 0 16px; color:var(--dim); font-size:13.5px; line-height:1.6}
+  /* ---- transport + panel ---- */
+  .transport{
+    display:flex; gap:9px; align-items:center; flex-wrap:wrap; border:1px solid var(--line);
+    border-radius:14px; padding:12px; background:rgba(255,255,255,.04)
+  }
+  button{
+    border:1px solid var(--line); background:rgba(255,255,255,.06); color:var(--ink);
+    border-radius:10px; padding:9px 14px; font:600 12.5px system-ui; cursor:pointer
+  }
+  button:hover{background:rgba(255,255,255,.14)}
+  button.p{background:var(--ac); color:#03202e; border-color:transparent}
+  input[type=range]{accent-color:var(--ac); flex:1 1 150px; min-width:120px}
+  .panel{
+    position:fixed; top:14px; right:14px; z-index:30; width:216px; border-radius:14px;
+    border:1px solid var(--line); background:rgba(10,14,24,.82); backdrop-filter:blur(14px); padding:12px
+  }
+  .panel h4{margin:0 0 9px; font:700 10px system-ui; letter-spacing:.14em; text-transform:uppercase; color:var(--dim)}
+  .panel label{display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--dim); padding:4px 0}
+  .panel output{font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
+  .panel select{width:100%; background:rgba(0,0,0,.4); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:6px; font:500 11.5px system-ui}
+  .readout{font:500 12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim)}
+  .readout b{color:var(--ac)}
+  footer{color:#5d6783; font-size:11.5px; text-align:center; padding-top:10px}
+  footer a{color:#7f8aa8}
+  @media (max-width:760px){ .panel{position:static; width:min(420px,100%)} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Animating <em>What Isn't There</em></h1>
+<p class="lede">Pseudo-elements have no DOM node, so for years the only way to move them was to
+swap a class and let CSS run the show. <code>element.animate()</code> takes a
+<code>pseudoElement</code> option — which means <code>::before</code>, <code>::after</code> and
+<code>::backdrop</code> get the full Web Animations API: one shared timeline you can pause,
+reverse and scrub.</p>
+
+<aside class="panel">
+  <h4>Parameters</h4>
+  <label>Duration <output id="oDur">1400</output></label>
+  <input type="range" id="sDur" min="400" max="3000" step="100" value="1400" style="width:100%">
+  <label>Stagger <output id="oStag">160</output></label>
+  <input type="range" id="sStag" min="0" max="600" step="20" value="160" style="width:100%">
+  <label style="display:block">Easing</label>
+  <select id="selEase">
+    <option>cubic-bezier(.22,1,.36,1)</option>
+    <option>linear</option>
+    <option>ease-in-out</option>
+    <option>cubic-bezier(.68,-.55,.27,1.55)</option>
+  </select>
+  <p class="readout" style="margin:10px 0 0">live: <b id="oCount">0</b> pseudo animations</p>
+</aside>
+
+<section>
+  <h2>1 · ::before sheen on three cards</h2>
+  <div class="cards">
+    <div class="card" data-sheen><b>Ingest</b><span>The sweep lives entirely in the card's ::before layer.</span></div>
+    <div class="card" data-sheen><b>Resolve</b><span>No extra element, no class toggling, no animationend plumbing.</span></div>
+    <div class="card" data-sheen><b>Emit</b><span>JS holds the Animation object, so it can scrub it mid-flight.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>2 · ::after underlines, staggered</h2>
+  <div class="tags">
+    <span class="tag" data-rule>pseudoElement</span>
+    <span class="tag" data-rule>getAnimations()</span>
+    <span class="tag" data-rule>currentTime</span>
+    <span class="tag" data-rule>updatePlaybackRate()</span>
+    <span class="tag" data-rule>reverse()</span>
+  </div>
+</section>
+
+<section>
+  <h2>3 · ::backdrop, animated from script</h2>
+  <div class="transport">
+    <button class="p" id="openDlg">Open dialog</button>
+    <span class="readout">its backdrop is animated by <b>animate(…, {pseudoElement:'::backdrop'})</b></span>
+  </div>
+</section>
+
+<section>
+  <h2>Transport — one scrubber over every pseudo-element</h2>
+  <div class="transport">
+    <button class="p" id="bPlay">▶ Play all</button>
+    <button id="bPause">❚❚ Pause</button>
+    <button id="bRev">↺ Reverse</button>
+    <button id="bHalf">½ speed</button>
+    <input type="range" id="scrub" min="0" max="1000" value="0">
+  </div>
+  <p class="readout" id="status">idle</p>
+</section>
+
+<dialog id="dlg">
+  <h3>Backdrop under script control</h3>
+  <p>The dark wash behind this panel is a Web Animations keyframe set running on
+  <code>::backdrop</code> — the same transport below drives it.</p>
+  <button class="p" id="closeDlg">Close</button>
+</dialog>
+
+<footer>Inspired by the Web Animations spec's <a href="https://www.w3.org/TR/web-animations-1/">pseudoElement option</a> · UI Spotlight Day 132 · Drop #1</footer>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const sDur = $('#sDur'), sStag = $('#sStag'), selEase = $('#selEase');
+let anims = [];
+
+function opts(i){
+  return {
+    duration: +sDur.value,
+    delay: i * +sStag.value,
+    easing: selEase.value,
+    iterations: Infinity,
+    direction: 'alternate'
+  };
+}
+
+function build(){
+  anims.forEach(a => a.cancel());
+  anims = [];
+
+  document.querySelectorAll('[data-sheen]').forEach((el,i)=>{
+    anims.push(el.animate(
+      [ { transform:'translateX(-120%)', opacity:0 },
+        { transform:'translateX(-20%)',  opacity:1, offset:.4 },
+        { transform:'translateX(120%)',  opacity:0 } ],
+      Object.assign(opts(i), { pseudoElement:'::before', direction:'normal' })
+    ));
+  });
+
+  document.querySelectorAll('[data-rule]').forEach((el,i)=>{
+    anims.push(el.animate(
+      [ { transform:'scaleX(0)', opacity:.4 }, { transform:'scaleX(1)', opacity:1 } ],
+      Object.assign(opts(i), { pseudoElement:'::after' })
+    ));
+  });
+
+  $('#oCount').textContent = anims.length;
+  report();
+}
+
+function backdropAnim(){
+  const d = $('#dlg');
+  try{
+    const a = d.animate(
+      [ { opacity:0, backdropFilter:'blur(0px)' },
+        { opacity:1, backdropFilter:'blur(7px)' } ],
+      { duration:+sDur.value, easing:selEase.value, pseudoElement:'::backdrop', fill:'both' }
+    );
+    anims.push(a);
+    $('#oCount').textContent = anims.length;
+  }catch(e){ /* pseudoElement unsupported — the dialog still opens */ }
+}
+
+function report(){
+  const all = document.getAnimations();
+  const pseudo = all.filter(a => a.effect && a.effect.pseudoElement);
+  const st = pseudo.length ? pseudo[0].playState : '—';
+  $('#status').textContent =
+    'document.getAnimations() → ' + all.length + ' total, ' + pseudo.length +
+    ' on pseudo-elements · state: ' + st +
+    ' · rate ×' + (pseudo[0] ? pseudo[0].playbackRate.toFixed(2) : '1.00');
+}
+
+$('#bPlay').onclick  = ()=>{ anims.forEach(a=>a.play()); report(); };
+$('#bPause').onclick = ()=>{ anims.forEach(a=>a.pause()); report(); };
+$('#bRev').onclick   = ()=>{ anims.forEach(a=>a.reverse()); report(); };
+$('#bHalf').onclick  = ()=>{
+  const r = anims[0] && anims[0].playbackRate === 1 ? .35 : 1;
+  anims.forEach(a=>a.updatePlaybackRate(r)); report();
+};
+$('#scrub').oninput = e=>{
+  const t = e.target.value/1000;
+  anims.forEach(a=>{
+    a.pause();
+    const d = a.effect.getTiming().duration;
+    a.currentTime = t * (typeof d === 'number' ? d : 1000);
+  });
+  report();
+};
+[sDur,sStag,selEase].forEach(c=>c.addEventListener('input',()=>{
+  $('#oDur').textContent = sDur.value;
+  $('#oStag').textContent = sStag.value;
+  build();
+}));
+
+$('#openDlg').onclick = ()=>{ $('#dlg').showModal(); backdropAnim(); };
+$('#closeDlg').onclick = ()=>$('#dlg').close();
+
+build();
+setInterval(report, 500);
+</script>
+</body>
+</html>

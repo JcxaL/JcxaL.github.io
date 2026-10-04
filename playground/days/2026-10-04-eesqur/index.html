@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>Pinball Workshop — Table Designer &amp; Arcade</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#070a12; --panel:rgba(255,255,255,.055); --line:rgba(255,255,255,.12);
+    --ink:#eaf0ff; --dim:#8b97b4;
+    --a:#ff2d87; --b:#28e0d8; --c:#ffd23f; --d:#7c5cff; --e:#48ff9b;
+  }
+  html,body{height:100%;margin:0}
+  body{
+    background:
+      radial-gradient(1200px 700px at 15% -10%, #1a1040 0%, transparent 60%),
+      radial-gradient(900px 600px at 110% 20%, #06303a 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; overflow:hidden; touch-action:manipulation;
+  }
+  /* ---------- top bar ---------- */
+  header{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px; padding:10px 12px;
+    border-bottom:1px solid var(--line); background:rgba(8,11,20,.72); backdrop-filter:blur(14px);
+  }
+  .brand{font-weight:800; letter-spacing:-.02em; font-size:15px; white-space:nowrap}
+  .brand span{color:var(--a)}
+  .seg{display:flex; background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:3px; gap:2px}
+  .seg button{
+    border:0; background:transparent; color:var(--dim); font:600 12px/1 system-ui;
+    padding:8px 13px; border-radius:999px; cursor:pointer; transition:.18s
+  }
+  .seg button[aria-pressed="true"]{background:linear-gradient(180deg,var(--a),#c01e68); color:#fff; box-shadow:0 2px 10px rgba(255,45,135,.35)}
+  .grow{flex:1 1 auto}
+  .hud{display:flex; gap:8px; align-items:center; font-variant-numeric:tabular-nums}
+  .chip{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:5px 9px; font:600 11px/1.35 system-ui; color:var(--dim); white-space:nowrap
+  }
+  .chip b{display:block; font-size:14px; color:var(--ink); letter-spacing:-.01em}
+  .chip.mult b{color:var(--c)} .chip.hi b{color:var(--b)}
+  /* ---------- stage ---------- */
+  main{flex:1 1 auto; display:flex; min-height:0; position:relative}
+  #stage{
+    flex:1 1 auto; position:relative; display:grid; place-items:center; min-width:0; padding:10px;
+  }
+  canvas{
+    touch-action:none; border-radius:16px; display:block;
+    box-shadow:0 30px 80px -20px #000, 0 0 0 1px rgba(255,255,255,.09), inset 0 0 60px rgba(0,0,0,.6);
+    background:#080b14;
+  }
+  /* ---------- side panel ---------- */
+  aside{
+    flex:0 0 268px; border-left:1px solid var(--line); background:rgba(8,11,20,.6);
+    backdrop-filter:blur(14px); overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:12px;
+  }
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:11px}
+  .card h3{margin:0 0 9px; font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--dim)}
+  .tools{display:grid; grid-template-columns:repeat(2,1fr); gap:6px}
+  .tool{
+    display:flex; align-items:center; gap:7px; border:1px solid var(--line); background:rgba(255,255,255,.03);
+    color:var(--ink); border-radius:10px; padding:8px; font:600 11.5px/1 system-ui; cursor:pointer; transition:.15s
+  }
+  .tool:hover{background:rgba(255,255,255,.08)}
+  .tool[aria-pressed="true"]{border-color:var(--b); background:rgba(40,224,216,.14); box-shadow:0 0 0 1px rgba(40,224,216,.35) inset}
+  .dot{width:13px;height:13px;border-radius:50%;flex:0 0 auto}
+  .row{display:flex; gap:6px; flex-wrap:wrap}
+  button.btn{
+    flex:1 1 auto; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--ink);
+    border-radius:10px; padding:9px 10px; font:600 11.5px/1 system-ui; cursor:pointer; transition:.15s; white-space:nowrap
+  }
+  button.btn:hover{background:rgba(255,255,255,.1)}
+  button.btn.p{background:linear-gradient(180deg,var(--b),#149e99); border-color:transparent; color:#02211f}
+  button.btn.g{background:linear-gradient(180deg,var(--e),#1dba66); border-color:transparent; color:#03261a}
+  label.f{display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--dim); padding:4px 0}
+  label.f input[type=range]{flex:1 1 auto; accent-color:var(--a); min-width:0}
+  label.f input[type=checkbox]{accent-color:var(--b); width:16px;height:16px}
+  label.f output{font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600; min-width:32px; text-align:right}
+  select,input[type=text]{
+    width:100%; background:rgba(0,0,0,.35); color:var(--ink); border:1px solid var(--line);
+    border-radius:9px; padding:8px; font:500 12px system-ui
+  }
+  .hint{font-size:11px; line-height:1.5; color:var(--dim); margin:0}
+  .hint kbd{background:rgba(255,255,255,.1); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font:600 10px system-ui}
+  /* ---------- mobile flipper pads + bottom sheet ---------- */
+  .pads{position:fixed; inset:auto 0 0 0; height:30vh; display:none; z-index:5; pointer-events:none}
+  .pads i{
+    position:absolute; bottom:0; width:50%; height:100%; pointer-events:auto;
+    background:linear-gradient(0deg,rgba(255,45,135,.12),transparent);
+  }
+  .pads i:last-child{right:0; background:linear-gradient(0deg,rgba(40,224,216,.12),transparent)}
+  .pads i.on{background:linear-gradient(0deg,rgba(255,255,255,.22),transparent)}
+  #sheetBtn{display:none}
+  @media (max-width:860px){
+    aside{
+      position:fixed; inset:auto 0 0 0; flex:0 0 auto; max-height:72vh; border-left:0;
+      border-top:1px solid var(--line); border-radius:18px 18px 0 0; z-index:20;
+      transform:translateY(102%); transition:transform .3s cubic-bezier(.3,1.3,.4,1);
+      background:rgba(10,13,24,.96)
+    }
+    aside.open{transform:translateY(0)}
+    #sheetBtn{display:block}
+    .pads{display:block}
+    header{flex-wrap:wrap}
+    .brand{font-size:13px}
+    .tools{grid-template-columns:repeat(3,1fr)}
+  }
+  /* ---------- toast ---------- */
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translate(-50%,24px); opacity:0;
+    background:rgba(12,16,28,.95); border:1px solid var(--line); color:var(--ink);
+    padding:10px 16px; border-radius:999px; font:600 12.5px system-ui; z-index:60;
+    transition:.26s; pointer-events:none; box-shadow:0 16px 40px -10px #000; max-width:86vw; text-align:center
+  }
+  #toast.on{opacity:1; transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">PINBALL <span>WORKSHOP</span></div>
+  <div class="seg" role="group" aria-label="Mode">
+    <button id="mPlay" aria-pressed="true">▶ Play</button>
+    <button id="mEdit" aria-pressed="false">✎ Design</button>
+  </div>
+  <div class="grow"></div>
+  <div class="hud">
+    <div class="chip">SCORE<b id="hScore">0</b></div>
+    <div class="chip mult">MULT<b id="hMult">×1</b></div>
+    <div class="chip">BALLS<b id="hBalls">3</b></div>
+    <div class="chip hi">BEST<b id="hBest">0</b></div>
+  </div>
+  <button class="btn" id="sheetBtn" style="flex:0 0 auto">⚙︎</button>
+</header>
+
+<main>
+  <div id="stage"><canvas id="cv" width="420" height="720"></canvas></div>
+
+  <aside id="panel">
+    <div class="card" id="playCard">
+      <h3>Table</h3>
+      <select id="tableSel"></select>
+      <div class="row" style="margin-top:8px">
+        <button class="btn g" id="launchBtn">Launch ball</button>
+        <button class="btn" id="newGame">New game</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="nudgeBtn">Nudge</button>
+        <button class="btn" id="shotBtn">Save PNG</button>
+      </div>
+      <p class="hint" style="margin-top:9px">
+        <kbd>A</kbd>/<kbd>←</kbd> left flipper · <kbd>L</kbd>/<kbd>→</kbd> right ·
+        <kbd>Space</kbd> launch · <kbd>N</kbd> nudge. On phones tap the bottom-left or
+        bottom-right of the screen.
+      </p>
+    </div>
+
+    <div class="card" id="editCard" hidden>
+      <h3>Toolbox</h3>
+      <div class="tools" id="tools"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="clearBtn">Clear table</button>
+        <button class="btn" id="mirrorBtn">Mirror ⇄</button>
+      </div>
+      <label class="f"><span>Snap to grid</span><input type="checkbox" id="snapChk" checked></label>
+      <p class="hint">Pick a part, then tap the table to drop it. <b>Wall</b> is drag-to-draw.
+      <b>Move</b> drags parts, <b>Erase</b> removes them. Flippers and the outer shell are fixed.</p>
+    </div>
+
+    <div class="card">
+      <h3>Physics</h3>
+      <label class="f"><span>Gravity</span><input type="range" id="sGrav" min="6" max="40" value="20"><output id="oGrav">0.20</output></label>
+      <label class="f"><span>Bounce</span><input type="range" id="sRest" min="60" max="150" value="100"><output id="oRest">1.00</output></label>
+      <label class="f"><span>Flipper kick</span><input type="range" id="sKick" min="40" max="160" value="100"><output id="oKick">1.00</output></label>
+      <label class="f"><span>Sound</span><input type="checkbox" id="sndChk" checked></label>
+      <label class="f"><span>Ball trail</span><input type="checkbox" id="trailChk" checked></label>
+    </div>
+
+    <div class="card">
+      <h3>Theme</h3>
+      <div class="row" id="themes"></div>
+    </div>
+
+    <div class="card">
+      <h3>Library &amp; export</h3>
+      <input type="text" id="nameIn" placeholder="Table name" maxlength="28">
+      <div class="row" style="margin-top:7px">
+        <button class="btn p" id="saveBtn">Save</button>
+        <button class="btn" id="delBtn">Delete</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="jsonBtn">Export .json</button>
+        <button class="btn" id="linkBtn">Share link</button>
+      </div>
+      <p class="hint" style="margin-top:8px">Saved tables and high scores live in this browser.
+      A share link packs the whole table into the URL.</p>
+    </div>
+  </aside>
+</main>
+
+<div class="pads" id="pads"><i id="padL"></i><i id="padR"></i></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   Pinball Workshop — a table designer welded to a pinball game.
+   Fixed logical table of 420x720; everything scales to fit.
+   ============================================================ */
+
+const W = 420, H = 720;
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+
+/* ---------- part catalogue ------------------------------------ */
+const PARTS = {
+  bumper : { label:'Bumper',  r:18, rest:1.28, kick:1.6, score:100, col:'--a' },
+  peg    : { label:'Peg',     r:7,  rest:1.05, kick:0.3, score:25,  col:'--b' },
+  kicker : { label:'Kicker',  r:14, rest:1.10, kick:3.4, score:150, col:'--e' },
+  target : { label:'Target',  r:11, rest:0.85, kick:0.4, score:500, col:'--c', drop:true },
+  spinner: { label:'Spinner', r:13, rest:1.00, kick:0.8, score:250, col:'--d', spin:true },
+  wall   : { label:'Wall',    rest:0.62, score:0, col:'--line', seg:true }
+};
+const PART_KEYS = ['bumper','peg','kicker','target','spinner','wall'];
+
+const THEMES = {
+  neon : { name:'Neon',  a:'#ff2d87', b:'#28e0d8', c:'#ffd23f', d:'#7c5cff', e:'#48ff9b', felt:'#0a0f1d', glow:'#2a1050' },
+  amber: { name:'Amber', a:'#ff7a18', b:'#ffd166', c:'#fff3b0', d:'#ff4d6d', e:'#9bf6ff', felt:'#140d08', glow:'#4a2208' },
+  ice  : { name:'Ice',   a:'#7cc6ff', b:'#c9f1ff', c:'#e9d5ff', d:'#6ea8ff', e:'#9affd6', felt:'#070d16', glow:'#0c2a4a' }
+};
+
+/* ---------- built-in tables (logical coords) ------------------- */
+function tbl(name, el){ return { name, el, builtin:true }; }
+const BUILTINS = [
+  tbl('Classic Drop', [
+    {t:'bumper',x:140,y:200},{t:'bumper',x:280,y:200},{t:'bumper',x:210,y:290},
+    {t:'target',x:90,y:130},{t:'target',x:210,y:110},{t:'target',x:330,y:130},
+    {t:'spinner',x:210,y:400},
+    {t:'peg',x:120,y:470},{t:'peg',x:160,y:500},{t:'peg',x:260,y:500},{t:'peg',x:300,y:470},
+    {t:'kicker',x:58,y:330},{t:'kicker',x:338,y:330},
+    {t:'wall',x:44,y:520,x2:124,y2:572},{t:'wall',x:348,y:520,x2:268,y2:572}
+  ]),
+  tbl('Pachinko', (()=>{
+    const a=[];
+    for(let r=0;r<7;r++) for(let c=0;c<8;c++){
+      const x = 70 + c*40 + (r%2?20:0), y = 130 + r*52;
+      if(x>44 && x<348) a.push({t:'peg',x,y});
+    }
+    a.push({t:'bumper',x:210,y:95},{t:'spinner',x:110,y:510},{t:'spinner',x:310,y:510});
+    a.push({t:'target',x:210,y:540},{t:'kicker',x:210,y:586});
+    return a;
+  })()),
+  tbl('Gauntlet', [
+    {t:'wall',x:76,y:150,x2:76,y2:420},{t:'wall',x:344,y:150,x2:344,y2:420},
+    {t:'bumper',x:210,y:170},{t:'bumper',x:210,y:260},{t:'bumper',x:210,y:350},
+    {t:'kicker',x:48,y:470},{t:'kicker',x:336,y:470},
+    {t:'target',x:120,y:100},{t:'target',x:300,y:100},
+    {t:'spinner',x:210,y:450},
+    {t:'peg',x:150,y:540},{t:'peg',x:270,y:540},{t:'peg',x:210,y:590}
+  ]),
+  tbl('Starburst', (()=>{
+    const a=[{t:'spinner',x:210,y:300}];
+    for(let i=0;i<8;i++){
+      const an = i/8*Math.PI*2, R=110;
+      a.push({t:'bumper',x:Math.round(210+Math.cos(an)*R), y:Math.round(300+Math.sin(an)*R)});
+      const an2 = (i+.5)/8*Math.PI*2, R2=172;
+      const x=Math.round(210+Math.cos(an2)*R2), y=Math.round(300+Math.sin(an2)*R2);
+      if(x>44&&x<348&&y>64&&y<520) a.push({t:'peg',x,y});
+    }
+    a.push({t:'target',x:96,y:544},{t:'target',x:324,y:544},{t:'kicker',x:210,y:586});
+    return a;
+  })())
+];
+
+/* ---------- persisted state ----------------------------------- */
+const LS = {
+  tables:'pw_tables_v1', theme:'pw_theme_v1', cfg:'pw_cfg_v1', hs:'pw_hs_v1'
+};
+const read = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } };
+const write = (k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
+
+let saved  = read(LS.tables, []);
+let scores = read(LS.hs, {});
+let cfg    = Object.assign({ grav:20, rest:100, kick:100, snd:true, trail:true, snap:true, theme:'neon' }, read(LS.cfg,{}));
+
+/* ---------- live state ---------------------------------------- */
+let theme = THEMES[cfg.theme] || THEMES.neon;
+let mode  = 'play';                 // 'play' | 'edit'
+let tool  = 'bumper';
+let table = null;                   // {name, el:[...]}
+let parts = [];                     // live parts (with runtime fields)
+let balls = [], score = 0, mult = 1, ballsLeft = 3, best = 0, gameOver = false;
+let drawing = null, dragging = null;
+let tiltHeat = 0, shake = 0, frame = 0, searchFlash = 0;
+let pending = false;                // a ball is waiting on the plunger
+
+/* ---------- geometry: the fixed shell ------------------------- */
+// Outer shell as a list of segments: side rails, arched top, and the
+// two inlanes that funnel toward the drain.
+const SHELL = (()=>{
+  const s = [];
+  const push=(x1,y1,x2,y2,rest=0.55)=>s.push({a:{x:x1,y:y1},b:{x:x2,y:y2},rest});
+  push(22,120, 22,580);                 // left rail
+  push(398,120, 398,645);               // right rail
+  for(let i=0;i<16;i++){                // arched top (upper half-ellipse)
+    const t1 = Math.PI + i/16*Math.PI, t2 = Math.PI + (i+1)/16*Math.PI;
+    push(210+Math.cos(t1)*188, 120+Math.sin(t1)*96,
+         210+Math.cos(t2)*188, 120+Math.sin(t2)*96);
+  }
+  push(366,180, 366,620, .35);          // plunger-lane divider
+  push(366,645, 398,645, .25);          // plunger floor
+  push(366,620, 302,662, .45);          // right inlane → right flipper
+  push(22,580,  118,662, .45);          // left inlane  → left flipper
+  return s;
+})();
+
+const FLIP = {
+  L:{ px:118, py:646, len:76, rest: 0.40,          act:-0.60,          ang: 0.40,          w:0 },
+  R:{ px:302, py:646, len:76, rest: Math.PI-0.40,  act:Math.PI+0.60,   ang: Math.PI-0.40,  w:0 }
+};
+const FLIP_TH = 8;                      // flipper half-thickness
+let holdL=false, holdR=false;
+
+/* ---------- audio (created on first gesture) ------------------- */
+let AC = null;
+function ac(){
+  if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ AC=false; } }
+  if(AC && AC.state === 'suspended') AC.resume();
+  return AC || null;
+}
+function blip(freq, dur, type, gain){
+  if(!cfg.snd) return;
+  const a = ac(); if(!a) return;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type || 'triangle'; o.frequency.value = freq;
+  g.gain.value = 0;
+  const t = a.currentTime;
+  g.gain.linearRampToValueAtTime(gain == null ? .14 : gain, t + .006);
+  g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g); g.connect(a.destination);
+  o.start(t); o.stop(t + dur + .02);
+}
+
+/* ---------- small helpers ------------------------------------- */
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const len=(x,y)=>Math.hypot(x,y);
+function closestOnSeg(p,a,b){
+  const vx=b.x-a.x, vy=b.y-a.y, wx=p.x-a.x, wy=p.y-a.y;
+  const d=vx*vx+vy*vy;
+  const t = d ? clamp((wx*vx+wy*vy)/d, 0, 1) : 0;
+  return { x:a.x+vx*t, y:a.y+vy*t, t };
+}
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove('on'),1800);
+}
+
+/* ---------- table load / serialise ---------------------------- */
+function allTables(){ return BUILTINS.concat(saved); }
+
+function loadTable(t){
+  table = { name:t.name, el: t.el.map(e=>Object.assign({},e)) };
+  parts = table.el.map(e=>({
+    t:e.t, x:e.x, y:e.y, x2:e.x2, y2:e.y2,
+    flash:0, down:0, spin:0
+  }));
+  best = scores[table.name] || 0;
+  document.getElementById('nameIn').value = table.name;
+  resetGame();
+  syncHUD();
+}
+function compact(){
+  return {
+    n: table.name,
+    e: parts.map(p => p.t === 'wall'
+      ? [PART_KEYS.indexOf(p.t), Math.round(p.x), Math.round(p.y), Math.round(p.x2), Math.round(p.y2)]
+      : [PART_KEYS.indexOf(p.t), Math.round(p.x), Math.round(p.y)])
+  };
+}
+function expand(c){
+  if(!c || !Array.isArray(c.e)) throw new Error('bad table');
+  const el = c.e.map(a=>{
+    const t = PART_KEYS[a[0]];
+    if(!t) throw new Error('bad part');
+    const o = { t, x:clamp(+a[1],0,W), y:clamp(+a[2],0,H) };
+    if(t === 'wall'){ o.x2 = clamp(+a[3],0,W); o.y2 = clamp(+a[4],0,H); }
+    return o;
+  });
+  return { name: String(c.n || 'Shared table').slice(0,28), el };
+}
+
+/* ---------- game control -------------------------------------- */
+function resetGame(){
+  balls = []; score = 0; mult = 1; ballsLeft = 3; gameOver = false; pending = true;
+  tiltHeat = 0; searchFlash = 0;
+  parts.forEach(p=>{ p.down=0; p.flash=0; p.spin=0; });
+  syncHUD();
+}
+function launch(){
+  if(mode !== 'edit') ac();
+  if(mode === 'edit' || gameOver || balls.length || !pending) return;
+  pending = false;
+  balls.push({ x:382, y:628, vx:0, vy:-15.2 - Math.random()*1.4, r:9, trail:[], idle:0 });
+  blip(180, .18, 'sawtooth', .1);
+  syncHUD();
+}
+function addScore(n){
+  score += n * mult;
+  if(score > best){ best = score; scores[table.name] = best; write(LS.hs, scores); }
+  syncHUD();
+}
+function lostBall(){
+  balls = [];
+  ballsLeft--;
+  blip(110, .4, 'sine', .12);
+  if(ballsLeft <= 0){ gameOver = true; toast('Game over — '+score.toLocaleString()+' points'); }
+  else { pending = true; mult = 1; }
+  syncHUD();
+}
+function syncHUD(){
+  document.getElementById('hScore').textContent = score.toLocaleString();
+  document.getElementById('hMult').textContent  = '×'+mult;
+  document.getElementById('hBalls').textContent = gameOver ? '—' : ballsLeft;
+  document.getElementById('hBest').textContent  = best.toLocaleString();
+}
+
+/* ---------- physics ------------------------------------------- */
+function flipperSeg(f){
+  return { a:{x:f.px, y:f.py}, b:{x:f.px+Math.cos(f.ang)*f.len, y:f.py+Math.sin(f.ang)*f.len} };
+}
+function stepFlipper(f, held, h){
+  const target = held ? f.act : f.rest;
+  const prev = f.ang;
+  const speed = 0.42 * (cfg.kick/100);
+  f.ang += clamp(target - f.ang, -speed*h*3, speed*h*3);
+  f.w = (f.ang - prev) / Math.max(h, 1e-6);
+}
+function hitCircle(b, cx, cy, r, rest, kick){
+  const dx = b.x-cx, dy = b.y-cy, d = len(dx,dy) || 1e-6;
+  if(d >= b.r + r) return false;
+  const nx = dx/d, ny = dy/d;
+  const vn = b.vx*nx + b.vy*ny;
+  if(vn < 0){
+    const e = rest * (cfg.rest/100);
+    const j = -(1+e) * vn;
+    b.vx += j*nx; b.vy += j*ny;
+  }
+  b.vx += nx*kick; b.vy += ny*kick;
+  b.x = cx + nx*(b.r+r+0.01); b.y = cy + ny*(b.r+r+0.01);
+  return true;
+}
+function hitSeg(b, a, c, rest, th, omega, pivot){
+  const cp = closestOnSeg(b, a, c);
+  let dx = b.x-cp.x, dy = b.y-cp.y, d = len(dx,dy);
+  if(d >= b.r + th) return false;
+  if(d < 1e-6){ dx = 0; dy = -1; d = 1e-6; }
+  const nx = dx/d, ny = dy/d;
+  let sx = 0, sy = 0;
+  if(omega && pivot){ sx = -omega*(cp.y-pivot.y); sy = omega*(cp.x-pivot.x); }
+  const rvn = (b.vx-sx)*nx + (b.vy-sy)*ny;
+  if(rvn < 0){
+    const e = rest * (cfg.rest/100);
+    const j = -(1+e) * rvn;
+    b.vx += j*nx; b.vy += j*ny;
+  }
+  b.x = cp.x + nx*(b.r+th+0.01); b.y = cp.y + ny*(b.r+th+0.01);
+  return true;
+}
+
+function physics(){
+  const SUB = 4, h = 1/SUB;
+  const g = (cfg.grav/100) * 1.0;
+
+  stepFlipper(FLIP.L, holdL, 1);
+  stepFlipper(FLIP.R, holdR, 1);
+  const segL = flipperSeg(FLIP.L), segR = flipperSeg(FLIP.R);
+
+  for(let s=0; s<SUB; s++){
+    for(let i=balls.length-1; i>=0; i--){
+      const b = balls[i];
+      b.vy += g*h;
+      b.vx *= 1 - 0.0006*h; b.vy *= 1 - 0.0006*h;
+      const sp = len(b.vx,b.vy);
+      if(sp > 26){ b.vx = b.vx/sp*26; b.vy = b.vy/sp*26; }
+      b.x += b.vx*h; b.y += b.vy*h;
+
+      // shell
+      for(const sg of SHELL) if(hitSeg(b, sg.a, sg.b, sg.rest, 5)) blip(520, .04, 'square', .05);
+
+      // flippers
+      if(hitSeg(b, segL.a, segL.b, 0.85, FLIP_TH, FLIP.L.w, {x:FLIP.L.px,y:FLIP.L.py}))
+        blip(300, .07, 'square', .09);
+      if(hitSeg(b, segR.a, segR.b, 0.85, FLIP_TH, FLIP.R.w, {x:FLIP.R.px,y:FLIP.R.py}))
+        blip(300, .07, 'square', .09);
+
+      // parts
+      for(const p of parts){
+        const spec = PARTS[p.t];
+        if(spec.seg){
+          if(hitSeg(b, {x:p.x,y:p.y}, {x:p.x2,y:p.y2}, spec.rest, 5)){ p.flash = 1; blip(420,.05,'square',.05); }
+          continue;
+        }
+        if(p.down > 0) continue;
+        if(hitCircle(b, p.x, p.y, spec.r, spec.rest, spec.kick)){
+          p.flash = 1;
+          addScore(spec.score);
+          if(spec.drop){ p.down = 400; blip(880,.2,'triangle',.14); }
+          else if(spec.spin){ mult = Math.min(9, mult+1); p.spin = 1; blip(660,.14,'sine',.12); syncHUD(); }
+          else blip(p.t==='kicker'?240:500, .08, 'triangle', .11);
+        }
+      }
+
+      // drain
+      if(b.y > H + 30 || b.x < -40 || b.x > W+40){ balls.splice(i,1); lostBall(); }
+    }
+  }
+
+  // Ball search — a part layout (especially a hand-built one) can trap the
+  // ball in a pocket forever. Real machines kick it loose; so do we.
+  for(const b of balls){
+    if(len(b.vx, b.vy) < 0.55) b.idle = (b.idle||0) + 1; else b.idle = 0;
+    if(b.idle > 100){
+      b.idle = 0; searchFlash = 1;
+      b.vx += (Math.random()<.5?-1:1) * (2.4 + Math.random()*1.6);
+      b.vy -= 3.4 + Math.random()*1.6;
+      blip(140, .16, 'sine', .1);
+    }
+  }
+  if(searchFlash > 0) searchFlash = Math.max(0, searchFlash - 0.014);
+
+  for(const p of parts){
+    if(p.flash > 0) p.flash = Math.max(0, p.flash - 0.06);
+    if(p.down  > 0) p.down -= 1;
+    if(p.spin  > 0) p.spin = Math.max(0, p.spin - 0.02);
+  }
+  if(tiltHeat > 0) tiltHeat = Math.max(0, tiltHeat - 0.6);
+  if(shake > 0) shake *= 0.86;
+}
+
+function nudge(){
+  if(mode === 'edit' || !balls.length) return;
+  tiltHeat += 34; shake = 7;
+  const dir = Math.random() < .5 ? -1 : 1;
+  balls.forEach(b=>{ b.vx += dir*2.6; b.vy -= 1.4; });
+  blip(90, .12, 'sine', .1);
+  if(tiltHeat > 100){ toast('TILT!'); balls = []; lostBall(); }
+}
+
+/* ---------- rendering ----------------------------------------- */
+function css(v){ return v.startsWith('--') ? theme[v.slice(2)] || '#ffffff' : v; }
+
+function render(){
+  ctx.save();
+  if(shake > .3) ctx.translate((Math.random()-.5)*shake, (Math.random()-.5)*shake);
+
+  // felt
+  const bg = ctx.createRadialGradient(W/2, 180, 40, W/2, 420, 560);
+  bg.addColorStop(0, theme.glow); bg.addColorStop(1, theme.felt);
+  ctx.fillStyle = bg; ctx.fillRect(-20,-20,W+40,H+40);
+
+  // faint design grid
+  if(mode === 'edit'){
+    ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let x=0;x<=W;x+=20){ ctx.moveTo(x,0); ctx.lineTo(x,H); }
+    for(let y=0;y<=H;y+=20){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+    ctx.stroke();
+  }
+
+  // shell
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle='rgba(255,255,255,.26)'; ctx.lineWidth=9;
+  ctx.beginPath();
+  for(const s of SHELL){ ctx.moveTo(s.a.x,s.a.y); ctx.lineTo(s.b.x,s.b.y); }
+  ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.lineWidth=3; ctx.stroke();
+
+  // drain mouth
+  ctx.fillStyle='rgba(0,0,0,.45)';
+  ctx.beginPath(); ctx.moveTo(118,662); ctx.lineTo(302,662); ctx.lineTo(302,H); ctx.lineTo(118,H); ctx.fill();
+
+  // parts
+  for(const p of parts){
+    const spec = PARTS[p.t], col = css(spec.col);
+    if(spec.seg){
+      ctx.strokeStyle = p.flash>0 ? '#fff' : 'rgba(255,255,255,.5)';
+      ctx.lineWidth = 10; ctx.beginPath();
+      ctx.moveTo(p.x,p.y); ctx.lineTo(p.x2,p.y2); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke();
+      continue;
+    }
+    const r = spec.r;
+    if(p.down > 0){
+      ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.stroke();
+      continue;
+    }
+    const f = p.flash;
+    ctx.shadowColor = col; ctx.shadowBlur = 14 + f*30;
+    const gr = ctx.createRadialGradient(p.x-r*.35, p.y-r*.4, r*.1, p.x, p.y, r);
+    gr.addColorStop(0, '#ffffff'); gr.addColorStop(.35, col); gr.addColorStop(1, 'rgba(0,0,0,.55)');
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r + f*2.5, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    if(spec.spin){
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(frame*0.06 + p.spin*8);
+      ctx.strokeStyle='rgba(0,0,0,.6)'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.moveTo(-r*.7,0); ctx.lineTo(r*.7,0); ctx.moveTo(0,-r*.7); ctx.lineTo(0,r*.7); ctx.stroke();
+      ctx.restore();
+    }
+    if(spec.drop){
+      ctx.fillStyle='rgba(0,0,0,.65)'; ctx.font='700 10px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('500', p.x, p.y+.5);
+    }
+  }
+
+  // flippers
+  for(const k of ['L','R']){
+    const f = FLIP[k], s = flipperSeg(f);
+    ctx.lineCap='round';
+    ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.lineWidth=FLIP_TH*2+6;
+    ctx.beginPath(); ctx.moveTo(s.a.x,s.a.y); ctx.lineTo(s.b.x,s.b.y); ctx.stroke();
+    const grad = ctx.createLinearGradient(s.a.x,s.a.y,s.b.x,s.b.y);
+    grad.addColorStop(0, k==='L'?css('--a'):css('--b')); grad.addColorStop(1, '#ffffff');
+    ctx.strokeStyle=grad; ctx.lineWidth=FLIP_TH*2;
+    ctx.beginPath(); ctx.moveTo(s.a.x,s.a.y); ctx.lineTo(s.b.x,s.b.y); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.35)';
+    ctx.beginPath(); ctx.arc(f.px,f.py,4,0,7); ctx.fill();
+  }
+
+  // plunger hint
+  if(pending && !gameOver && mode==='play'){
+    ctx.fillStyle='rgba(255,255,255,.14)';
+    ctx.beginPath(); ctx.arc(382,628,9,0,7); ctx.fill();
+    ctx.save(); ctx.translate(382,560); ctx.rotate(-Math.PI/2);
+    ctx.fillStyle='rgba(255,255,255,.5)'; ctx.font='700 11px system-ui'; ctx.textAlign='center';
+    ctx.fillText('LAUNCH ↑', 0, 4); ctx.restore();
+  }
+
+  // balls + trail
+  for(const b of balls){
+    if(cfg.trail){
+      b.trail.push({x:b.x,y:b.y});
+      if(b.trail.length > 11) b.trail.shift();
+      for(let i=0;i<b.trail.length;i++){
+        const t=b.trail[i], a=(i/b.trail.length)*0.3;
+        ctx.fillStyle='rgba(255,255,255,'+a.toFixed(3)+')';
+        ctx.beginPath(); ctx.arc(t.x,t.y,b.r*(0.3+0.6*i/b.trail.length),0,7); ctx.fill();
+      }
+    }
+    const g2 = ctx.createRadialGradient(b.x-3,b.y-4,1,b.x,b.y,b.r);
+    g2.addColorStop(0,'#fff'); g2.addColorStop(.5,'#c9d4ea'); g2.addColorStop(1,'#4a5570');
+    ctx.shadowColor='rgba(255,255,255,.6)'; ctx.shadowBlur=12;
+    ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
+    ctx.shadowBlur=0;
+  }
+
+  // wall being drawn
+  if(drawing){
+    ctx.setLineDash([6,6]); ctx.strokeStyle=css('--b'); ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(drawing.x,drawing.y); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // overlays
+  if(mode==='edit'){
+    ctx.fillStyle='rgba(255,255,255,.5)'; ctx.font='700 11px system-ui'; ctx.textAlign='left';
+    ctx.fillText('DESIGN MODE · '+parts.length+' parts', 30, 36);
+  } else if(gameOver){
+    ctx.fillStyle='rgba(4,6,12,.72)'; ctx.fillRect(0,0,W,H);
+    ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='800 34px system-ui';
+    ctx.fillText('GAME OVER', W/2, H/2-24);
+    ctx.font='600 16px system-ui'; ctx.fillStyle=css('--b');
+    ctx.fillText(score.toLocaleString()+' points', W/2, H/2+8);
+    ctx.fillStyle='rgba(255,255,255,.6)'; ctx.font='500 13px system-ui';
+    ctx.fillText('Best on "'+table.name+'": '+best.toLocaleString(), W/2, H/2+34);
+    ctx.fillText('Press New game', W/2, H/2+58);
+  }
+  if(searchFlash > 0 && !gameOver && mode === 'play'){
+    ctx.textAlign='center'; ctx.font='700 12px system-ui';
+    ctx.fillStyle='rgba(255,255,255,'+(searchFlash*.75).toFixed(2)+')';
+    ctx.fillText('BALL SEARCH', W/2, 56);
+  }
+  if(tiltHeat > 40 && !gameOver){
+    ctx.strokeStyle='rgba(255,80,80,'+(tiltHeat/160).toFixed(2)+')'; ctx.lineWidth=6;
+    ctx.strokeRect(3,3,W-6,H-6);
+  }
+  ctx.restore();
+}
+
+function loop(){
+  frame++;
+  if(mode === 'play' && !gameOver) physics();
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- canvas sizing ------------------------------------- */
+function fit(){
+  const st = document.getElementById('stage');
+  const pad = 20;
+  const availH = st.clientHeight - pad, availW = st.clientWidth - pad;
+  const scale = Math.min(availW / W, availH / H);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+  cv.style.width  = Math.round(W*scale)+'px';
+  cv.style.height = Math.round(H*scale)+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener('resize', fit);
+
+/* ---------- pointer → logical coords -------------------------- */
+function pos(ev){
+  const r = cv.getBoundingClientRect();
+  return { x: (ev.clientX-r.left)/r.width*W, y: (ev.clientY-r.top)/r.height*H };
+}
+function snap(v){ return cfg.snap ? Math.round(v/10)*10 : Math.round(v); }
+function nearest(p){
+  let bestP=null, bd=Infinity;
+  for(const q of parts){
+    const spec=PARTS[q.t];
+    const d = spec.seg
+      ? (()=>{ const cp=closestOnSeg(p,{x:q.x,y:q.y},{x:q.x2,y:q.y2}); return len(p.x-cp.x,p.y-cp.y); })()
+      : len(p.x-q.x, p.y-q.y) - spec.r;
+    if(d < bd){ bd=d; bestP=q; }
+  }
+  return bd < 22 ? bestP : null;
+}
+function FORBID(p){
+  if(p.y > 600 || p.y < 42 || p.x < 36 || p.x > 352) return true;     // shell, flippers, plunger lane
+  if(p.y < 120 && Math.hypot((p.x-210)/176, (p.y-120)/84) > 1) return true;  // outside the arch
+  return false;
+}
+
+cv.addEventListener('pointerdown', e=>{
+  cv.setPointerCapture(e.pointerId);
+  ac();
+  if(mode !== 'edit'){ launch(); return; }
+  const p = pos(e);
+  if(tool === 'erase'){
+    const t = nearest(p);
+    if(t){ parts.splice(parts.indexOf(t),1); blip(200,.06,'square',.08); }
+    return;
+  }
+  if(tool === 'move'){
+    const t = nearest(p);
+    if(t) dragging = { p:t, dx:t.x-p.x, dy:t.y-p.y, dx2:(t.x2||0)-p.x, dy2:(t.y2||0)-p.y };
+    return;
+  }
+  if(tool === 'wall'){ drawing = { x:snap(p.x), y:snap(p.y), x2:snap(p.x), y2:snap(p.y) }; return; }
+  if(FORBID(p)){ toast('Too close to the shell or flippers'); return; }
+  parts.push({ t:tool, x:snap(p.x), y:snap(p.y), flash:1, down:0, spin:0 });
+  blip(520,.05,'triangle',.08);
+});
+cv.addEventListener('pointermove', e=>{
+  if(mode !== 'edit') return;
+  const p = pos(e);
+  if(drawing){ drawing.x2 = snap(p.x); drawing.y2 = snap(p.y); }
+  else if(dragging){
+    const t = dragging.p;
+    t.x = clamp(snap(p.x+dragging.dx), 26, W-26);
+    t.y = clamp(snap(p.y+dragging.dy), 42, 600);
+    if(t.x2 !== undefined){
+      t.x2 = clamp(snap(p.x+dragging.dx2), 26, W-26);
+      t.y2 = clamp(snap(p.y+dragging.dy2), 42, 600);
+    }
+  }
+});
+function endPointer(){
+  if(drawing){
+    if(len(drawing.x2-drawing.x, drawing.y2-drawing.y) > 18)
+      parts.push({ t:'wall', x:drawing.x, y:drawing.y, x2:drawing.x2, y2:drawing.y2, flash:1, down:0, spin:0 });
+    drawing = null;
+  }
+  dragging = null;
+}
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+
+/* ---------- keyboard ------------------------------------------ */
+addEventListener('keydown', e=>{
+  const k = e.key.toLowerCase();
+  if(k === 'a' || e.key === 'ArrowLeft'){ holdL = true; ac(); e.preventDefault(); }
+  if(k === 'l' || e.key === 'ArrowRight'){ holdR = true; ac(); e.preventDefault(); }
+  if(k === ' '){ launch(); e.preventDefault(); }
+  if(k === 'n') nudge();
+});
+addEventListener('keyup', e=>{
+  const k = e.key.toLowerCase();
+  if(k === 'a' || e.key === 'ArrowLeft') holdL = false;
+  if(k === 'l' || e.key === 'ArrowRight') holdR = false;
+});
+
+/* ---------- mobile flipper pads ------------------------------- */
+function pad(el, set){
+  el.addEventListener('pointerdown', e=>{ e.preventDefault(); ac(); set(true); el.classList.add('on'); if(pending) launch(); });
+  const off = ()=>{ set(false); el.classList.remove('on'); };
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+}
+pad(document.getElementById('padL'), v=>holdL=v);
+pad(document.getElementById('padR'), v=>holdR=v);
+
+/* ---------- UI wiring ----------------------------------------- */
+function setMode(m){
+  mode = m;
+  document.getElementById('mPlay').setAttribute('aria-pressed', m==='play');
+  document.getElementById('mEdit').setAttribute('aria-pressed', m==='edit');
+  document.getElementById('playCard').hidden = m!=='play';
+  document.getElementById('editCard').hidden = m!=='edit';
+  document.getElementById('pads').style.display = m==='play' ? '' : 'none';
+  if(m==='edit'){ balls=[]; pending=true; }
+  else { table.el = parts.map(p=>{
+      const o={t:p.t,x:p.x,y:p.y}; if(p.x2!==undefined){o.x2=p.x2;o.y2=p.y2;} return o; });
+    resetGame(); }
+}
+document.getElementById('mPlay').onclick = ()=>setMode('play');
+document.getElementById('mEdit').onclick = ()=>setMode('edit');
+
+// toolbox
+const toolsEl = document.getElementById('tools');
+const TOOL_LIST = [['move','Move','--line'],['erase','Erase','--line']]
+  .concat(PART_KEYS.map(k=>[k, PARTS[k].label, PARTS[k].col]));
+TOOL_LIST.forEach(([key,label,col])=>{
+  const b = document.createElement('button');
+  b.className='tool'; b.dataset.tool=key;
+  b.setAttribute('aria-pressed', key===tool);
+  b.innerHTML = '<span class="dot" style="background:'+ (col==='--line'?'rgba(255,255,255,.3)':'var('+col+')') +'"></span>'+label;
+  b.onclick = ()=>{ tool=key; [...toolsEl.children].forEach(c=>c.setAttribute('aria-pressed', c.dataset.tool===key)); };
+  toolsEl.appendChild(b);
+});
+
+document.getElementById('clearBtn').onclick = ()=>{ parts=[]; toast('Table cleared'); };
+document.getElementById('mirrorBtn').onclick = ()=>{
+  const add = parts.filter(p=>Math.abs(p.x-210)>6).map(p=>{
+    const o={t:p.t,x:W-p.x,y:p.y,flash:0,down:0,spin:0};
+    if(p.x2!==undefined){o.x2=W-p.x2;o.y2=p.y2;}
+    return o;
+  });
+  parts = parts.concat(add); toast('Mirrored '+add.length+' parts');
+};
+
+// table picker
+const tableSel = document.getElementById('tableSel');
+function refreshTables(keep){
+  tableSel.innerHTML='';
+  allTables().forEach((t,i)=>{
+    const o=document.createElement('option');
+    o.value=String(i); o.textContent=(t.builtin?'◆ ':'★ ')+t.name;
+    tableSel.appendChild(o);
+  });
+  if(keep != null) tableSel.value = String(keep);
+}
+tableSel.onchange = ()=>{ const t = allTables()[+tableSel.value]; if(t){ loadTable(t); setMode(mode); } };
+
+// sliders
+function bindRange(id, outId, key, fmt){
+  const s=document.getElementById(id), o=document.getElementById(outId);
+  const upd=()=>{ cfg[key]=+s.value; o.textContent=fmt(+s.value); write(LS.cfg,cfg); };
+  s.value = cfg[key]; s.addEventListener('input', upd); upd();
+}
+bindRange('sGrav','oGrav','grav', v=>(v/100).toFixed(2));
+bindRange('sRest','oRest','rest', v=>(v/100).toFixed(2));
+bindRange('sKick','oKick','kick', v=>(v/100).toFixed(2));
+function bindCheck(id,key){
+  const c=document.getElementById(id);
+  c.checked = !!cfg[key];
+  c.addEventListener('change', ()=>{ cfg[key]=c.checked; write(LS.cfg,cfg); if(key==='snd'&&c.checked) ac(); });
+}
+bindCheck('sndChk','snd'); bindCheck('trailChk','trail'); bindCheck('snapChk','snap');
+
+// themes
+const themesEl = document.getElementById('themes');
+Object.keys(THEMES).forEach(k=>{
+  const b=document.createElement('button');
+  b.className='btn'; b.textContent=THEMES[k].name;
+  b.onclick=()=>{
+    theme=THEMES[k]; cfg.theme=k; write(LS.cfg,cfg);
+    const r=document.documentElement.style;
+    ['a','b','c','d','e'].forEach(c=>r.setProperty('--'+c, theme[c]));
+  };
+  themesEl.appendChild(b);
+});
+
+// library + export
+document.getElementById('saveBtn').onclick = ()=>{
+  const name = (document.getElementById('nameIn').value || 'Untitled').trim().slice(0,28);
+  const el = parts.map(p=>{ const o={t:p.t,x:Math.round(p.x),y:Math.round(p.y)};
+    if(p.x2!==undefined){o.x2=Math.round(p.x2);o.y2=Math.round(p.y2);} return o; });
+  const i = saved.findIndex(t=>t.name===name);
+  if(i>=0) saved[i]={name,el}; else saved.push({name,el});
+  write(LS.tables, saved);
+  table.name = name; best = scores[name] || 0;
+  refreshTables(BUILTINS.length + saved.findIndex(t=>t.name===name));
+  syncHUD(); toast('Saved "'+name+'"');
+};
+document.getElementById('delBtn').onclick = ()=>{
+  const name=(document.getElementById('nameIn').value||'').trim();
+  const i=saved.findIndex(t=>t.name===name);
+  if(i<0){ toast('No saved table by that name'); return; }
+  saved.splice(i,1); write(LS.tables,saved); refreshTables(0); toast('Deleted "'+name+'"');
+};
+function download(blob, filename){
+  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+document.getElementById('jsonBtn').onclick = ()=>{
+  const data = { format:'pinball-workshop/1', name:table.name,
+    parts: parts.map(p=>{ const o={type:p.t,x:Math.round(p.x),y:Math.round(p.y)};
+      if(p.x2!==undefined){o.x2=Math.round(p.x2);o.y2=Math.round(p.y2);} return o; }) };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  download(blob, table.name.replace(/\W+/g,'-').toLowerCase()+'-table.json');
+  toast('Exported '+data.parts.length+' parts');
+};
+function encodeTable(){
+  const json = JSON.stringify(compact());
+  return btoa(String.fromCharCode.apply(null, new TextEncoder().encode(json)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+document.getElementById('linkBtn').onclick = async ()=>{
+  const url = location.origin + location.pathname + '#t=' + encodeTable();
+  history.replaceState(null,'','#t='+encodeTable());
+  try{ await navigator.clipboard.writeText(url); toast('Share link copied'); }
+  catch(e){ toast('Link is in the address bar'); }
+};
+document.getElementById('shotBtn').onclick = ()=>{
+  cv.toBlob(b=>{
+    if(!b || !b.size){ toast('Snapshot failed'); return; }
+    download(b, table.name.replace(/\W+/g,'-').toLowerCase()+'.png');
+    toast('Saved PNG ('+Math.round(b.size/1024)+' KB)');
+  }, 'image/png');
+};
+document.getElementById('launchBtn').onclick = ()=>{ ac(); launch(); };
+document.getElementById('newGame').onclick  = ()=>{ resetGame(); toast('3 balls, good luck'); };
+document.getElementById('nudgeBtn').onclick = nudge;
+document.getElementById('sheetBtn').onclick = ()=>document.getElementById('panel').classList.toggle('open');
+
+/* ---------- boot ---------------------------------------------- */
+function fromHash(){
+  const m = /[#&]t=([A-Za-z0-9\-_]+)/.exec(location.hash);
+  if(!m) return null;
+  try{
+    const b64 = m[1].replace(/-/g,'+').replace(/_/g,'/');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    return expand(JSON.parse(new TextDecoder().decode(bytes)));
+  }catch(e){ return null; }
+}
+(function boot(){
+  const r=document.documentElement.style;
+  ['a','b','c','d','e'].forEach(c=>r.setProperty('--'+c, theme[c]));
+  refreshTables(0);
+  const shared = fromHash();
+  if(shared){ loadTable(shared); toast('Loaded shared table "'+shared.name+'"'); }
+  else loadTable(BUILTINS[0]);
+  setMode('play');
+  fit();
+  loop();
+})();
+</script>
+</body>
+</html>
