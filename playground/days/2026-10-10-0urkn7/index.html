@@ -1,0 +1,1238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fluxgraph — Sankey Flow Studio</title>
+<meta name="description" content="Type flows, get a publishable Sankey diagram. Drag nodes, restyle, export PNG / SVG / JSON, share by link.">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root{
+    --bg:#070b12; --bg2:#0b1220; --panel:rgba(18,27,43,.72); --line:rgba(130,160,200,.16);
+    --ink:#e8eefb; --dim:#8da0bd; --dim2:#64748b;
+    --acc:#5eead4; --acc2:#60a5fa; --warn:#fbbf24; --bad:#fb7185;
+    --r:14px; --tap:40px;
+  }
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%; overscroll-behavior:none;
+  }
+  button,input,select,textarea{font:inherit;color:inherit;}
+  button{cursor:pointer;}
+
+  #app{display:flex;flex-direction:column;height:100dvh;min-height:0;}
+
+  /* ---------- header ---------- */
+  header{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:9px 14px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0d1627,#080e19);
+  }
+  .brand{display:flex;align-items:baseline;gap:9px;}
+  .brand b{
+    font-size:16px;letter-spacing:.14em;text-transform:uppercase;
+    background:linear-gradient(100deg,var(--acc),var(--acc2) 60%,#c084fc);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .brand span{font-size:10.5px;color:var(--dim2);letter-spacing:.1em;text-transform:uppercase;}
+  #stats{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;}
+  #stats div{
+    font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    padding:6px 9px;border-radius:999px;background:rgba(94,234,212,.07);
+    border:1px solid rgba(94,234,212,.17);color:#9ae7d8;white-space:nowrap;
+  }
+  #stats div i{font-style:normal;color:var(--dim2);margin-right:5px;}
+  #sheetBtn{display:none;}
+
+  /* ---------- main ---------- */
+  main{display:grid;grid-template-columns:minmax(0,1fr) 352px;flex:1;min-height:0;}
+  #stage{position:relative;min-width:0;min-height:0;background:
+    radial-gradient(1100px 600px at 70% -10%,rgba(96,165,250,.09),transparent 60%),var(--bg);}
+  canvas{display:block;width:100%;height:100%;touch-action:none;}
+  #hint{
+    position:absolute;left:12px;bottom:12px;pointer-events:none;
+    font:10.5px/1.5 ui-monospace,Menlo,monospace;color:var(--dim2);
+    background:rgba(7,11,18,.62);border:1px solid var(--line);border-radius:9px;padding:5px 9px;
+    backdrop-filter:blur(6px);max-width:62%;
+    transition:opacity .5s ease;
+  }
+  #hint.gone{opacity:0;}
+  #tip{
+    position:absolute;z-index:5;pointer-events:none;opacity:0;transform:translate(-50%,-116%);
+    transition:opacity .12s;background:rgba(9,14,24,.93);border:1px solid rgba(94,234,212,.3);
+    border-radius:10px;padding:7px 10px;font-size:12px;white-space:nowrap;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+  #tip.on{opacity:1;}
+  #tip b{color:var(--acc);font-weight:600;}
+  #tip em{font-style:normal;color:var(--dim);}
+
+  /* ---------- panel ---------- */
+  #panel{
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    border-left:1px solid var(--line);background:var(--bg2);
+  }
+  #tabs{display:flex;gap:4px;padding:8px 8px 0;flex:0 0 auto;}
+  #tabs button{
+    flex:1;min-height:34px;border:1px solid transparent;border-radius:10px 10px 0 0;
+    background:transparent;color:var(--dim);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;
+  }
+  #tabs button[aria-selected=true]{
+    background:var(--panel);border-color:var(--line);border-bottom-color:transparent;color:var(--ink);
+  }
+  .tabwrap{flex:1;min-height:0;overflow:auto;padding:12px;-webkit-overflow-scrolling:touch;}
+  .tabpane{display:none;}
+  .tabpane.on{display:block;}
+  .grp{margin-bottom:16px;}
+  .grp > h4{
+    margin:0 0 7px;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--dim2);font-weight:600;
+  }
+  .chips{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip{
+    min-height:32px;padding:0 11px;border-radius:999px;border:1px solid var(--line);
+    background:rgba(255,255,255,.035);color:var(--dim);font-size:12px;
+  }
+  .chip:hover{border-color:rgba(94,234,212,.4);color:var(--ink);}
+  .chip[aria-pressed=true]{background:rgba(94,234,212,.15);border-color:rgba(94,234,212,.5);color:#bdf5ea;}
+  textarea#flows{
+    width:100%;min-height:208px;resize:vertical;border-radius:12px;padding:10px 11px;
+    background:#060a11;border:1px solid var(--line);color:#cfe0f5;
+    font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  textarea#flows:focus,input:focus,select:focus{outline:2px solid rgba(94,234,212,.45);outline-offset:1px;}
+  #parse{margin-top:7px;font:11px/1.5 ui-monospace,Menlo,monospace;color:var(--dim2);min-height:17px;}
+  #parse.bad{color:var(--bad);}
+  .addrow{display:grid;grid-template-columns:1fr 1fr 62px 36px;gap:5px;margin-top:8px;}
+  .addrow input{
+    min-width:0;min-height:34px;padding:0 8px;border-radius:9px;background:#060a11;
+    border:1px solid var(--line);font-size:12px;
+  }
+  .addrow button{
+    border-radius:9px;border:1px solid rgba(94,234,212,.4);background:rgba(94,234,212,.14);
+    color:#bdf5ea;font-size:17px;line-height:1;
+  }
+  .slider{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;margin-bottom:9px;}
+  .slider label{font-size:12px;color:var(--dim);}
+  .slider output{font:11px/1 ui-monospace,Menlo,monospace;color:var(--acc);}
+  .slider input{grid-column:1/-1;width:100%;accent-color:var(--acc);height:26px;}
+  .pals{display:flex;gap:7px;flex-wrap:wrap;}
+  .pal{
+    padding:3px;border-radius:10px;border:1px solid var(--line);background:transparent;
+    display:flex;gap:2px;min-height:32px;align-items:center;
+  }
+  .pal[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 0 2px rgba(94,234,212,.2);}
+  .pal i{width:11px;height:20px;border-radius:3px;display:block;}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+  .btn{
+    min-height:var(--tap);border-radius:11px;border:1px solid var(--line);
+    background:rgba(255,255,255,.04);color:var(--ink);font-size:12.5px;
+  }
+  .btn:hover{border-color:rgba(96,165,250,.5);background:rgba(96,165,250,.1);}
+  .btn.pri{background:linear-gradient(180deg,rgba(94,234,212,.22),rgba(94,234,212,.1));border-color:rgba(94,234,212,.45);color:#c8f7ee;}
+  .btn.wide{grid-column:1/-1;}
+  .saverow{display:grid;grid-template-columns:1fr auto;gap:6px;}
+  .saverow input{min-height:var(--tap);padding:0 10px;border-radius:11px;background:#060a11;border:1px solid var(--line);font-size:12.5px;min-width:0;}
+  #lib{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;}
+  #lib li{
+    display:grid;grid-template-columns:1fr auto auto;gap:5px;align-items:center;
+    background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:11px;padding:6px 7px 6px 11px;
+  }
+  #lib b{font-size:12.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #lib small{display:block;color:var(--dim2);font:10.5px/1.3 ui-monospace,Menlo,monospace;}
+  #lib button{min-height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:11.5px;}
+  #lib button.del{border-color:rgba(251,113,133,.35);color:#fda4af;}
+  #libEmpty{color:var(--dim2);font-size:12px;margin:8px 0 0;}
+  .note{color:var(--dim2);font-size:11.5px;line-height:1.55;margin:7px 0 0;}
+  #toast{
+    position:fixed;left:50%;bottom:22px;transform:translate(-50%,16px);z-index:30;opacity:0;
+    pointer-events:none;transition:opacity .2s,transform .2s;
+    background:rgba(9,14,24,.95);border:1px solid rgba(94,234,212,.4);border-radius:999px;
+    padding:9px 17px;font-size:12.5px;box-shadow:0 14px 40px rgba(0,0,0,.55);
+  }
+  #toast.on{opacity:1;transform:translate(-50%,0);}
+
+  @media (max-width:880px){
+    main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto;}
+    #panel{border-left:0;border-top:1px solid var(--line);max-height:50dvh;}
+    #stage{min-height:40dvh;}
+    #stats div:nth-child(n+4){display:none;}
+    #hint{display:none;}
+    header{padding:8px 11px;gap:9px;}
+    #sheetBtn{
+      display:block;min-height:32px;padding:0 12px;border-radius:999px;
+      border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:11.5px;
+    }
+    #panel.hid{display:none;}
+    .addrow{grid-template-columns:1fr 1fr 56px 34px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>Fluxgraph</b><span>Sankey Studio</span></div>
+    <button id="sheetBtn" type="button">Editor</button>
+    <div id="stats"></div>
+  </header>
+  <main>
+    <section id="stage">
+      <canvas id="cv"></canvas>
+      <div id="tip" role="status" aria-live="polite"></div>
+      <div id="hint">drag a node vertically to re-stack · hover for totals · <b>r</b> reset · <b>g</b> gradient · <b>l</b> labels · <b>p</b> png</div>
+    </section>
+
+    <aside id="panel">
+      <div id="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-tab="flows">Flows</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="style">Style</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="out">Export</button>
+      </div>
+      <div class="tabwrap">
+
+        <div class="tabpane on" id="pane-flows">
+          <div class="grp">
+            <h4>Starters</h4>
+            <div class="chips" id="presets"></div>
+          </div>
+          <div class="grp">
+            <h4>Flows — <code>source, target, value</code></h4>
+            <textarea id="flows" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Flow definitions"></textarea>
+            <div id="parse"></div>
+            <div class="addrow">
+              <input id="qs" placeholder="source" aria-label="New flow source">
+              <input id="qt" placeholder="target" aria-label="New flow target">
+              <input id="qv" placeholder="qty" inputmode="decimal" aria-label="New flow value">
+              <button id="qadd" type="button" title="Add flow">+</button>
+            </div>
+            <p class="note">One flow per line. <code>A, B, 12</code> or <code>A -&gt; B: 12</code>. Lines starting with <code>#</code> are notes. Cycles are laid out left-to-right by longest path.</p>
+          </div>
+        </div>
+
+        <div class="tabpane" id="pane-style">
+          <div class="grp">
+            <h4>Geometry</h4>
+            <div class="slider"><label for="sNodeW">Node width</label><output id="oNodeW"></output><input id="sNodeW" type="range" min="6" max="46" step="1"></div>
+            <div class="slider"><label for="sPad">Node gap</label><output id="oPad"></output><input id="sPad" type="range" min="2" max="60" step="1"></div>
+            <div class="slider"><label for="sCurve">Ribbon curve</label><output id="oCurve"></output><input id="sCurve" type="range" min="0" max="95" step="1"></div>
+            <div class="slider"><label for="sOpacity">Ribbon opacity</label><output id="oOpacity"></output><input id="sOpacity" type="range" min="10" max="100" step="1"></div>
+          </div>
+          <div class="grp">
+            <h4>Palette</h4>
+            <div class="pals" id="pals"></div>
+          </div>
+          <div class="grp">
+            <h4>Toggles</h4>
+            <div class="chips">
+              <button class="chip" id="tGrad" type="button" aria-pressed="true">Gradient ribbons</button>
+              <button class="chip" id="tLabels" type="button" aria-pressed="true">Labels</button>
+              <button class="chip" id="tValues" type="button" aria-pressed="true">Values</button>
+              <button class="chip" id="tLight" type="button" aria-pressed="false">Light canvas</button>
+              <button class="chip" id="tJustify" type="button" aria-pressed="true">Sinks right</button>
+            </div>
+          </div>
+          <div class="grp">
+            <h4>Layout</h4>
+            <div class="btns"><button class="btn wide" id="resetPos" type="button">Reset dragged nodes</button></div>
+          </div>
+        </div>
+
+        <div class="tabpane" id="pane-out">
+          <div class="grp">
+            <h4>Download</h4>
+            <div class="btns">
+              <button class="btn pri" id="exPng" type="button">PNG @2x</button>
+              <button class="btn pri" id="exSvg" type="button">SVG</button>
+              <button class="btn" id="exJson" type="button">JSON</button>
+              <button class="btn" id="exCsv" type="button">CSV</button>
+              <button class="btn wide" id="exLink" type="button">Copy share link</button>
+            </div>
+          </div>
+          <div class="grp">
+            <h4>Library <small style="color:var(--dim2)">(this browser)</small></h4>
+            <div class="saverow">
+              <input id="saveName" placeholder="diagram name" aria-label="Diagram name">
+              <button class="btn" id="saveBtn" type="button" style="padding:0 14px">Save</button>
+            </div>
+            <ul id="lib"></ul>
+            <p id="libEmpty">Nothing saved yet.</p>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+  </main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ======================= constants ======================= */
+var PALETTES = {
+  aurora: ['#5eead4','#60a5fa','#a78bfa','#f472b6','#fbbf24','#34d399','#38bdf8','#c084fc'],
+  ember:  ['#fb923c','#f87171','#fbbf24','#fca5a5','#f59e0b','#ef4444','#fdba74','#eab308'],
+  candy:  ['#f472b6','#c084fc','#60a5fa','#22d3ee','#a3e635','#fde047','#fb7185','#818cf8'],
+  forest: ['#4ade80','#22c55e','#14b8a6','#a3e635','#84cc16','#2dd4bf','#65a30d','#10b981'],
+  slate:  ['#e2e8f0','#b9c3d1','#94a3b8','#7c8798','#cbd5e1','#aab4c4','#64748b','#dbe3ee']
+};
+var PRESETS = {
+  'Funnel':
+'# website conversion, one month\n'+
+'Visitors, Signed Up, 2400\n'+
+'Visitors, Bounced, 7600\n'+
+'Signed Up, Activated, 1500\n'+
+'Signed Up, Idle, 900\n'+
+'Activated, Subscribed, 620\n'+
+'Activated, Churned, 880\n'+
+'Subscribed, Renewed, 430\n'+
+'Subscribed, Cancelled, 190',
+  'Energy':
+'# generation to end use (TWh)\n'+
+'Coal, Electricity, 120\n'+
+'Gas, Electricity, 180\n'+
+'Nuclear, Electricity, 90\n'+
+'Wind, Electricity, 75\n'+
+'Solar, Electricity, 45\n'+
+'Electricity, Grid Losses, 40\n'+
+'Electricity, Homes, 160\n'+
+'Electricity, Industry, 190\n'+
+'Electricity, Transport, 120\n'+
+'Gas, Homes, 95\n'+
+'Gas, Industry, 60',
+  'Budget':
+'# where the money actually goes\n'+
+'Salary, Take Home, 4200\n'+
+'Side Work, Take Home, 600\n'+
+'Take Home, Housing, 1600\n'+
+'Take Home, Food, 700\n'+
+'Take Home, Transport, 350\n'+
+'Take Home, Bills, 400\n'+
+'Take Home, Fun, 550\n'+
+'Take Home, Savings, 1200\n'+
+'Savings, Index Fund, 800\n'+
+'Savings, Emergency, 400',
+  'Carbon':
+'# emissions by carrier and sector (Mt)\n'+
+'Electricity, Buildings, 190\n'+
+'Electricity, Industry, 240\n'+
+'Oil, Transport, 300\n'+
+'Oil, Industry, 110\n'+
+'Gas, Buildings, 140\n'+
+'Gas, Industry, 90\n'+
+'Buildings, Emissions, 330\n'+
+'Industry, Emissions, 440\n'+
+'Transport, Emissions, 300',
+  'Recycling':
+'# municipal waste stream (kt)\n'+
+'Households, Kerbside, 520\n'+
+'Households, Refuse, 340\n'+
+'Business, Kerbside, 180\n'+
+'Business, Refuse, 260\n'+
+'Kerbside, Sorting, 700\n'+
+'Sorting, Paper, 230\n'+
+'Sorting, Glass, 140\n'+
+'Sorting, Plastic, 180\n'+
+'Sorting, Residue, 150\n'+
+'Refuse, Energy Recovery, 380\n'+
+'Refuse, Landfill, 220\n'+
+'Residue, Landfill, 150'
+};
+var LS_DOC = 'fluxgraph_doc_v1', LS_LIB = 'fluxgraph_lib_v1';
+var M = { l:16, r:16, t:22, b:22 };
+
+/* ======================= state ======================= */
+var st = {
+  nodeW:16, pad:16, curve:50, opacity:52,
+  palette:'aurora', gradient:true, labels:true, values:true, light:false, justify:true
+};
+var flowsText = PRESETS.Funnel;
+var offsets = {};
+var LO = null, hoverNode = null, hoverLink = null, W = 0, H = 0, dpr = 1;
+var drag = null, needsDraw = true, rafId = 0;
+
+/* ======================= dom ======================= */
+function $(id){ return document.getElementById(id); }
+var cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage'),
+    tip = $('tip'), taEl = $('flows'), parseEl = $('parse');
+
+/* ======================= helpers ======================= */
+function fmt(n){
+  if(!isFinite(n)) return '0';
+  var a = Math.abs(n);
+  if(a >= 1e9) return (n/1e9).toFixed(a>=1e10?0:1)+'B';
+  if(a >= 1e6) return (n/1e6).toFixed(a>=1e7?0:1)+'M';
+  if(a >= 1e4) return (n/1e3).toFixed(0)+'k';
+  if(a >= 1000) return n.toLocaleString('en-US',{maximumFractionDigits:0});
+  return String(Math.round(n*100)/100);
+}
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+var toastT = 0;
+function toast(msg){
+  var el = $('toast'); el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(function(){ el.classList.remove('on'); }, 1900);
+}
+function bgColor(){ return st.light ? '#f6f8fc' : '#070b12'; }
+function inkColor(){ return st.light ? '#0f1b2d' : '#e8eefb'; }
+function dimColor(){ return st.light ? 'rgba(15,27,45,.55)' : 'rgba(141,160,189,.8)'; }
+function colorOf(node){
+  var p = PALETTES[st.palette] || PALETTES.aurora;
+  return p[node.idx % p.length];
+}
+function b64urlEncode(str){
+  var bytes = new TextEncoder().encode(str), bin = '';
+  for(var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64urlDecode(s){
+  var t = s.replace(/-/g,'+').replace(/_/g,'/');
+  while(t.length % 4) t += '=';
+  var bin = atob(t), bytes = new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function download(blob, name){
+  var url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 1200);
+}
+
+/* ======================= parse ======================= */
+function parseFlows(text){
+  var links = [], errors = [], lines = String(text).split(/\r?\n/);
+  for(var i=0;i<lines.length;i++){
+    var line = lines[i].trim();
+    if(!line || line.charAt(0) === '#') continue;
+    var parts = line.split(/\s*[,\t;]\s*/);
+    if(parts.length < 3){
+      var m = line.match(/^(.+?)\s*(?:->|=>|→)\s*(.+?)\s*[:=]?\s*([0-9]*\.?[0-9]+)\s*$/);
+      if(m) parts = [m[1], m[2], m[3]];
+    }
+    if(parts.length < 3){ errors.push('line '+(i+1)+': expected source, target, value'); continue; }
+    var s = parts[0].trim(), t = parts[1].trim(), v = parseFloat(parts[2]);
+    if(!s || !t){ errors.push('line '+(i+1)+': empty node name'); continue; }
+    if(!isFinite(v) || v <= 0){ errors.push('line '+(i+1)+': value must be a number > 0'); continue; }
+    if(s === t){ errors.push('line '+(i+1)+': self-loop "'+s+'" skipped'); continue; }
+    links.push({ s:s, t:t, v:v });
+  }
+  return { links:links, errors:errors };
+}
+
+/* ======================= layout ======================= */
+function computeLayout(rawLinks, w, h){
+  if(!rawLinks.length) return null;
+  var map = Object.create(null), nodes = [];
+  function get(name){
+    var n = map[name];
+    if(!n){ n = { name:name, idx:nodes.length, inL:[], outL:[], depth:0 }; map[name] = n; nodes.push(n); }
+    return n;
+  }
+  var links = rawLinks.map(function(l){
+    var o = { v:l.v, src:get(l.s), tgt:get(l.t) };
+    o.src.outL.push(o); o.tgt.inL.push(o);
+    return o;
+  });
+
+  /* longest-path depth, cycle-safe (bounded passes) */
+  for(var pass=0; pass<nodes.length; pass++){
+    var changed = false;
+    for(var i=0;i<links.length;i++){
+      var l = links[i];
+      if(l.tgt.depth < l.src.depth + 1){ l.tgt.depth = l.src.depth + 1; changed = true; }
+    }
+    if(!changed) break;
+  }
+  var maxD = 0;
+  nodes.forEach(function(n){ if(n.depth > maxD) maxD = n.depth; });
+  if(st.justify) nodes.forEach(function(n){ if(!n.outL.length) n.depth = maxD; });
+
+  var buckets = [], d;
+  for(d=0; d<=maxD; d++) buckets.push([]);
+  nodes.forEach(function(n){ buckets[n.depth].push(n); });
+  var cols = buckets.filter(function(c){ return c.length; });
+  cols.forEach(function(c, i){ c.forEach(function(n){ n.col = i; }); });
+
+  nodes.forEach(function(n){
+    var o = 0, inn = 0;
+    n.outL.forEach(function(l){ o += l.v; });
+    n.inL.forEach(function(l){ inn += l.v; });
+    n.outTotal = o; n.inTotal = inn;
+    n.value = Math.max(o, inn, 1e-9);
+  });
+
+  /* x geometry */
+  var xA = M.l, xB = w - M.r;
+  var nodeW = Math.min(st.nodeW, Math.max(4, (xB - xA) / Math.max(1, cols.length * 2)));
+  var span = cols.length > 1 ? (xB - xA - nodeW) / (cols.length - 1) : 0;
+  cols.forEach(function(c, i){ c.forEach(function(n){ n.x = xA + span * i; n.w = nodeW; }); });
+
+  /* vertical scale: shrink the gap until every column fits */
+  var avail = h - M.t - M.b;
+  var totals = cols.map(function(c){ return c.reduce(function(a,n){ return a + n.value; }, 0); });
+  var pad = st.pad, k = 0;
+  for(var g=0; g<40; g++){
+    var best = Infinity, ok = true;
+    for(var ci=0; ci<cols.length; ci++){
+      var free = avail - (cols[ci].length - 1) * pad;
+      if(free <= 1){ ok = false; break; }
+      best = Math.min(best, free / totals[ci]);
+    }
+    if(ok && isFinite(best) && best > 0){ k = best; break; }
+    pad *= 0.65;
+    if(pad < 0.2){ pad = 0; }
+  }
+  if(!(k > 0) || !isFinite(k)){
+    pad = 0;
+    k = avail / Math.max(1e-9, Math.max.apply(null, totals));
+  }
+
+  /* initial order = first appearance, then barycenter relaxation */
+  cols.forEach(function(c){ c.sort(function(a,b){ return a.idx - b.idx; }); });
+  function restack(){
+    for(var ci=0; ci<cols.length; ci++){
+      var c = cols[ci], used = totals[ci] * k + (c.length - 1) * pad;
+      var y = M.t + (avail - used) / 2;
+      for(var i=0;i<c.length;i++){
+        c[i].h = Math.max(2, c[i].value * k);
+        c[i].y = y;
+        y += c[i].h + pad;
+      }
+    }
+  }
+  restack();
+  for(var sweep=0; sweep<10; sweep++){
+    var forward = (sweep % 2) === 0;
+    var order = forward ? cols : cols.slice().reverse();
+    for(var oi=0; oi<order.length; oi++){
+      var col = order[oi];
+      for(var ni=0; ni<col.length; ni++){
+        var n = col[ni], rel = forward ? n.inL : n.outL;
+        if(rel.length){
+          var sum = 0, wt = 0;
+          for(var ri=0; ri<rel.length; ri++){
+            var other = forward ? rel[ri].src : rel[ri].tgt;
+            sum += (other.y + other.h / 2) * rel[ri].v;
+            wt += rel[ri].v;
+          }
+          n.bary = sum / wt;
+        } else n.bary = n.y + n.h / 2;
+      }
+      col.sort(function(a,b){ return (a.bary - b.bary) || (a.idx - b.idx); });
+    }
+    restack();
+  }
+
+  /* user drags */
+  nodes.forEach(function(n){
+    var off = offsets[n.name];
+    if(off) n.y = clamp(n.y + off, 2, Math.max(2, h - n.h - 2));
+  });
+
+  /* ribbon endpoints, stacked by the other end's position */
+  nodes.forEach(function(n){
+    n.outL.sort(function(a,b){ return (a.tgt.y + a.tgt.h/2) - (b.tgt.y + b.tgt.h/2) || (a.tgt.idx - b.tgt.idx); });
+    var y = n.y;
+    n.outL.forEach(function(l){ l.th = Math.max(0.8, l.v * k); l.sy = y + l.th/2; y += l.th; });
+    n.inL.sort(function(a,b){ return (a.src.y + a.src.h/2) - (b.src.y + b.src.h/2) || (a.src.idx - b.src.idx); });
+    y = n.y;
+    n.inL.forEach(function(l){ l.th = Math.max(0.8, l.v * k); l.ty = y + l.th/2; y += l.th; });
+  });
+
+  var grand = 0;
+  cols[0].forEach(function(n){ grand += n.value; });
+  return { nodes:nodes, links:links, cols:cols, k:k, pad:pad, grand:grand, w:w, h:h, nodeW:nodeW, span:span };
+}
+
+/* ======================= drawing ======================= */
+function ribbonPath(p, l, curve){
+  var x0 = l.src.x + l.src.w, x1 = l.tgt.x;
+  var c = clamp(curve/100, 0.01, 0.99);
+  var cx0 = x0 + (x1 - x0) * c, cx1 = x1 - (x1 - x0) * c;
+  var t0 = l.sy - l.th/2, b0 = l.sy + l.th/2, t1 = l.ty - l.th/2, b1 = l.ty + l.th/2;
+  p.moveTo(x0, t0);
+  p.bezierCurveTo(cx0, t0, cx1, t1, x1, t1);
+  p.lineTo(x1, b1);
+  p.bezierCurveTo(cx1, b1, cx0, b0, x0, b0);
+  p.closePath();
+}
+function roundRect(p, x, y, w, h, r){
+  r = Math.min(r, w/2, h/2);
+  if(p.roundRect){ p.roundRect(x, y, w, h, r); return; }
+  p.moveTo(x+r, y);
+  p.lineTo(x+w-r, y); p.quadraticCurveTo(x+w, y, x+w, y+r);
+  p.lineTo(x+w, y+h-r); p.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  p.lineTo(x+r, y+h); p.quadraticCurveTo(x, y+h, x, y+h-r);
+  p.lineTo(x, y+r); p.quadraticCurveTo(x, y, x+r, y);
+  p.closePath();
+}
+function fitText(c, txt, maxW){
+  if(maxW <= 14) return '';
+  if(c.measureText(txt).width <= maxW) return txt;
+  var lo = 0, hi = txt.length;
+  while(lo < hi){
+    var mid = (lo + hi + 1) >> 1;
+    if(c.measureText(txt.slice(0, mid) + '\u2026').width <= maxW) lo = mid; else hi = mid - 1;
+  }
+  return lo > 0 ? txt.slice(0, lo) + '\u2026' : '';
+}
+function labelFont(h){ return '500 ' + clamp(Math.round(h / 34), 10, 15) + 'px system-ui, -apple-system, sans-serif'; }
+/* Decide each node's rendered label once so canvas and SVG agree. Labels live in
+   the lane between two columns; anything longer is ellipsised instead of being
+   allowed to run over (and halo out) the next column's nodes. */
+function computeLabels(lo){
+  var m = ctx;
+  m.save();
+  m.font = labelFont(lo.h);
+  var lane = (lo.cols.length > 1 ? lo.span : (lo.w - M.l - M.r)) - lo.nodeW - 13;
+  var roomy = lane >= 150;
+  for(var i=0;i<lo.nodes.length;i++){
+    var n = lo.nodes[i];
+    var val = st.values ? '  ' + fmt(n.value) : '';
+    var full = n.name + val;
+    if(m.measureText(full).width <= lane){ n._label = full; continue; }
+    if(!roomy && val && m.measureText(n.name).width <= lane){ n._label = n.name; continue; }
+    n._label = fitText(m, full, lane);
+  }
+  m.restore();
+}
+function render(c, lo, w, h, opts){
+  opts = opts || {};
+  var hi = opts.highlight || null;
+  c.save();
+  c.fillStyle = opts.bg || bgColor();
+  c.fillRect(0, 0, w, h);
+  if(!lo){
+    c.fillStyle = dimColor();
+    c.font = '500 14px system-ui, sans-serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('Add at least one flow to draw a diagram', w/2, h/2);
+    c.restore(); return;
+  }
+  var base = clamp(st.opacity/100, 0.1, 1);
+
+  /* ribbons */
+  for(var i=0;i<lo.links.length;i++){
+    var l = lo.links[i];
+    var lit = !hi || hi === l.src.name || hi === l.tgt.name;
+    c.globalAlpha = lit ? base : base * 0.14;
+    c.beginPath();
+    ribbonPath(c, l, st.curve);
+    var x0 = l.src.x + l.src.w, x1 = l.tgt.x;
+    if(st.gradient && Math.abs(x1 - x0) > 1){
+      var g = c.createLinearGradient(x0, 0, x1, 0);
+      g.addColorStop(0, colorOf(l.src));
+      g.addColorStop(1, colorOf(l.tgt));
+      c.fillStyle = g;
+    } else c.fillStyle = colorOf(l.src);
+    c.fill();
+  }
+  c.globalAlpha = 1;
+
+  /* labels sit above the ribbons but below the nodes, so a long label's halo
+     can never erase the node it points at (matters most on phone widths) */
+  if(st.labels){
+    computeLabels(lo);
+    c.font = labelFont(h);
+    c.textBaseline = 'middle';
+    c.lineJoin = 'round';
+    for(var n3=0;n3<lo.nodes.length;n3++){
+      var nd = lo.nodes[n3];
+      if(!nd._label) continue;
+      var last = nd.col === lo.cols.length - 1;
+      var tx = last ? nd.x - 7 : nd.x + nd.w + 7;
+      var ty = nd.y + nd.h/2;
+      c.textAlign = last ? 'right' : 'left';
+      c.globalAlpha = (!hi || hi === nd.name) ? 1 : 0.35;
+      c.lineWidth = 3.5;
+      c.strokeStyle = opts.bg || bgColor();
+      c.strokeText(nd._label, tx, ty);
+      c.fillStyle = inkColor();
+      c.fillText(nd._label, tx, ty);
+      c.globalAlpha = 1;
+    }
+  }
+
+  /* nodes */
+  for(var n2=0;n2<lo.nodes.length;n2++){
+    var n = lo.nodes[n2];
+    var lit2 = !hi || hi === n.name ||
+      n.inL.some(function(l){ return l.src.name === hi; }) ||
+      n.outL.some(function(l){ return l.tgt.name === hi; });
+    c.globalAlpha = lit2 ? 1 : 0.3;
+    c.beginPath();
+    roundRect(c, n.x, n.y, n.w, n.h, Math.min(4, n.w/2));
+    c.fillStyle = colorOf(n);
+    c.fill();
+    if(hi === n.name){
+      c.lineWidth = 2;
+      c.strokeStyle = st.light ? 'rgba(15,27,45,.8)' : 'rgba(255,255,255,.9)';
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  }
+  c.restore();
+}
+
+/* ======================= raf loop ======================= */
+function invalidate(){ needsDraw = true; if(!rafId) rafId = requestAnimationFrame(frame); }
+function frame(){
+  rafId = 0;
+  if(!needsDraw) return;
+  needsDraw = false;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  render(ctx, LO, W, H, { highlight: hoverNode });
+}
+
+/* ======================= sizing ======================= */
+function relayout(){
+  var parsed = parseFlows(flowsText);
+  reportParse(parsed);
+  LO = computeLayout(parsed.links, W, H);
+  updateStats(parsed);
+  invalidate();
+}
+function resize(){
+  var r = stage.getBoundingClientRect();
+  W = Math.max(120, Math.round(r.width));
+  H = Math.max(120, Math.round(r.height));
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  relayout();
+}
+
+/* ======================= readouts ======================= */
+function reportParse(p){
+  if(p.errors.length){
+    parseEl.className = 'bad';
+    parseEl.textContent = p.errors.length + ' issue' + (p.errors.length>1?'s':'') + ' — ' + p.errors[0];
+  } else {
+    parseEl.className = '';
+    parseEl.textContent = p.links.length + ' flow' + (p.links.length===1?'':'s') + ' parsed';
+  }
+}
+function updateStats(p){
+  var host = $('stats');
+  if(!LO){ host.innerHTML = '<div><i>flows</i>0</div>'; return; }
+  var biggest = LO.nodes[0];
+  LO.nodes.forEach(function(n){ if(n.value > biggest.value) biggest = n; });
+  var rows = [
+    ['nodes', LO.nodes.length],
+    ['flows', LO.links.length],
+    ['stages', LO.cols.length],
+    ['input', fmt(LO.grand)],
+    ['peak', biggest.name]
+  ];
+  host.innerHTML = rows.map(function(r){
+    return '<div><i>' + esc(r[0]) + '</i>' + esc(String(r[1])) + '</div>';
+  }).join('');
+}
+
+/* ======================= hit testing ======================= */
+function bez(a,b,c,d,t){
+  var mt = 1 - t;
+  return mt*mt*mt*a + 3*mt*mt*t*b + 3*mt*t*t*c + t*t*t*d;
+}
+function nodeAt(x, y){
+  if(!LO) return null;
+  for(var i=0;i<LO.nodes.length;i++){
+    var n = LO.nodes[i];
+    if(x >= n.x - 3 && x <= n.x + n.w + 3 && y >= n.y && y <= n.y + n.h) return n;
+  }
+  return null;
+}
+function linkAt(x, y){
+  if(!LO) return null;
+  var c = clamp(st.curve/100, 0.01, 0.99);
+  for(var i=0;i<LO.links.length;i++){
+    var l = LO.links[i];
+    var x0 = l.src.x + l.src.w, x1 = l.tgt.x;
+    if(x < Math.min(x0,x1) - 1 || x > Math.max(x0,x1) + 1) continue;
+    var cx0 = x0 + (x1 - x0) * c, cx1 = x1 - (x1 - x0) * c;
+    var N = 28, px = x0, py = l.sy;
+    for(var s=1;s<=N;s++){
+      var t = s / N;
+      var nx = bez(x0, cx0, cx1, x1, t), ny = bez(l.sy, l.sy, l.ty, l.ty, t);
+      var lo2 = Math.min(px, nx), hi2 = Math.max(px, nx);
+      if(x >= lo2 && x <= hi2){
+        var f = (hi2 - lo2) < 1e-6 ? 0 : (x - px) / (nx - px);
+        var yy = py + (ny - py) * clamp(f, 0, 1);
+        if(Math.abs(y - yy) <= l.th/2 + 1) return l;
+      }
+      px = nx; py = ny;
+    }
+  }
+  return null;
+}
+
+/* ======================= pointer ======================= */
+function localPt(e){
+  var r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+var hintTimer = setTimeout(dismissHint, 9000);
+function dismissHint(){
+  clearTimeout(hintTimer);
+  var el = $('hint');
+  if(el) el.classList.add('gone');
+}
+cv.addEventListener('pointerdown', function(e){
+  dismissHint();
+  var p = localPt(e), n = nodeAt(p.x, p.y);
+  if(!n) return;
+  drag = { name:n.name, startY:p.y, base:(offsets[n.name] || 0), moved:false };
+  hoverNode = n.name;
+  try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  cv.style.cursor = 'grabbing';
+  invalidate();
+  e.preventDefault();
+});
+cv.addEventListener('pointermove', function(e){
+  var p = localPt(e);
+  if(drag){
+    var dy = p.y - drag.startY;
+    if(Math.abs(dy) > 1.5) drag.moved = true;
+    offsets[drag.name] = drag.base + dy;
+    relayout();
+    showTipFor(nodeByName(drag.name), p);
+    return;
+  }
+  var n = nodeAt(p.x, p.y);
+  var l = n ? null : linkAt(p.x, p.y);
+  var newHi = n ? n.name : null;
+  if(newHi !== hoverNode){ hoverNode = newHi; invalidate(); }
+  cv.style.cursor = n ? 'grab' : (l ? 'help' : 'default');
+  if(n) showTipFor(n, p);
+  else if(l) showTipLink(l, p);
+  else hideTip();
+});
+function endDrag(e){
+  if(!drag) return;
+  if(!drag.moved) delete offsets[drag.name];
+  drag = null;
+  cv.style.cursor = 'default';
+  save(); relayout();
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', function(){ if(!drag){ hoverNode = null; hideTip(); invalidate(); } });
+
+function nodeByName(name){
+  if(!LO) return null;
+  for(var i=0;i<LO.nodes.length;i++) if(LO.nodes[i].name === name) return LO.nodes[i];
+  return null;
+}
+function placeTip(p, html){
+  tip.innerHTML = html;
+  tip.style.left = clamp(p.x, 70, W - 70) + 'px';
+  tip.style.top = clamp(p.y, 44, H - 8) + 'px';
+  tip.classList.add('on');
+}
+function showTipFor(n, p){
+  if(!n) return hideTip();
+  var parts = ['<b>' + esc(n.name) + '</b>'];
+  if(n.inTotal > 0) parts.push('<em>in</em> ' + fmt(n.inTotal));
+  if(n.outTotal > 0) parts.push('<em>out</em> ' + fmt(n.outTotal));
+  if(LO && LO.grand > 0) parts.push('<em>share</em> ' + (n.value / LO.grand * 100).toFixed(1) + '%');
+  placeTip(p, parts.join(' &nbsp;'));
+}
+function showTipLink(l, p){
+  placeTip(p, '<b>' + esc(l.src.name) + ' → ' + esc(l.tgt.name) + '</b> &nbsp;' + fmt(l.v));
+}
+function hideTip(){ tip.classList.remove('on'); }
+
+/* ======================= persistence ======================= */
+function docObj(){
+  return { f: flowsText, s: st, o: offsets };
+}
+function applyDoc(d){
+  if(!d || typeof d !== 'object') return false;
+  if(typeof d.f === 'string') flowsText = d.f;
+  if(d.s && typeof d.s === 'object'){
+    Object.keys(st).forEach(function(k){
+      if(typeof d.s[k] === typeof st[k]) st[k] = d.s[k];
+    });
+    if(!PALETTES[st.palette]) st.palette = 'aurora';
+    st.nodeW = clamp(+st.nodeW || 16, 6, 46);
+    st.pad = clamp(+st.pad || 16, 2, 60);
+    st.curve = clamp(+st.curve, 0, 95);
+    st.opacity = clamp(+st.opacity || 52, 10, 100);
+  }
+  offsets = {};
+  if(d.o && typeof d.o === 'object'){
+    Object.keys(d.o).forEach(function(k){
+      var v = +d.o[k];
+      if(isFinite(v)) offsets[k] = clamp(v, -4000, 4000);
+    });
+  }
+  return true;
+}
+function save(){
+  try{ localStorage.setItem(LS_DOC, JSON.stringify(docObj())); }catch(e){}
+}
+function readLib(){
+  try{
+    var raw = localStorage.getItem(LS_LIB);
+    var arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return []; }
+}
+function writeLib(arr){
+  try{ localStorage.setItem(LS_LIB, JSON.stringify(arr.slice(0, 40))); }catch(e){}
+}
+function renderLib(){
+  var arr = readLib(), host = $('lib');
+  $('libEmpty').style.display = arr.length ? 'none' : 'block';
+  host.innerHTML = '';
+  arr.forEach(function(item, i){
+    var li = document.createElement('li');
+    li.innerHTML = '<div><b>' + esc(item.name) + '</b><small>' + esc(item.when || '') + '</small></div>';
+    var load = document.createElement('button');
+    load.type = 'button'; load.textContent = 'Load';
+    load.addEventListener('click', function(){
+      applyDoc(item.doc); syncControls(); taEl.value = flowsText; relayout(); save();
+      toast('Loaded “' + item.name + '”');
+    });
+    var del = document.createElement('button');
+    del.type = 'button'; del.className = 'del'; del.textContent = 'Delete';
+    del.addEventListener('click', function(){
+      var a = readLib(); a.splice(i, 1); writeLib(a); renderLib(); toast('Deleted');
+    });
+    li.appendChild(load); li.appendChild(del);
+    host.appendChild(li);
+  });
+}
+
+/* ======================= exports ======================= */
+function exportPNG(){
+  var scale = 2, pad = 28;
+  var ow = Math.round(W * scale + pad * 2), oh = Math.round(H * scale + pad * 2);
+  var off = document.createElement('canvas');
+  off.width = ow; off.height = oh;
+  var c = off.getContext('2d');
+  c.fillStyle = bgColor(); c.fillRect(0, 0, ow, oh);
+  c.translate(pad, pad); c.scale(scale, scale);
+  render(c, LO, W, H, {});
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.fillStyle = dimColor();
+  c.font = '500 13px system-ui, sans-serif';
+  c.textAlign = 'right'; c.textBaseline = 'alphabetic';
+  c.fillText('Fluxgraph', ow - pad, oh - 9);
+  if(off.toBlob){
+    off.toBlob(function(b){
+      if(!b || !b.size) return toast('PNG export failed');
+      download(b, 'fluxgraph-' + Date.now() + '.png');
+      toast('PNG saved (' + Math.round(b.size/1024) + ' kB)');
+    }, 'image/png');
+  } else {
+    var url = off.toDataURL('image/png');
+    var a = document.createElement('a'); a.href = url; a.download = 'fluxgraph.png'; a.click();
+    toast('PNG saved');
+  }
+}
+function buildSVG(){
+  if(!LO) return null;
+  var pad = 24, ow = W + pad*2, oh = H + pad*2;
+  var out = [];
+  out.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + ow + '" height="' + oh + '" viewBox="0 0 ' + ow + ' ' + oh + '" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">');
+  var defs = [], body = [];
+  var c = clamp(st.curve/100, 0.01, 0.99);
+  var alpha = clamp(st.opacity/100, 0.1, 1);
+  LO.links.forEach(function(l, i){
+    var x0 = l.src.x + l.src.w, x1 = l.tgt.x;
+    var cx0 = x0 + (x1 - x0) * c, cx1 = x1 - (x1 - x0) * c;
+    var t0 = l.sy - l.th/2, b0 = l.sy + l.th/2, t1 = l.ty - l.th/2, b1 = l.ty + l.th/2;
+    var r3 = function(v){ return Math.round(v*100)/100; };
+    var d = 'M' + r3(x0) + ' ' + r3(t0) +
+            ' C' + r3(cx0) + ' ' + r3(t0) + ' ' + r3(cx1) + ' ' + r3(t1) + ' ' + r3(x1) + ' ' + r3(t1) +
+            ' L' + r3(x1) + ' ' + r3(b1) +
+            ' C' + r3(cx1) + ' ' + r3(b1) + ' ' + r3(cx0) + ' ' + r3(b0) + ' ' + r3(x0) + ' ' + r3(b0) + ' Z';
+    var fill;
+    if(st.gradient && Math.abs(x1 - x0) > 1){
+      var gid = 'g' + i;
+      defs.push('<linearGradient id="' + gid + '" gradientUnits="userSpaceOnUse" x1="' + r3(x0) + '" y1="0" x2="' + r3(x1) + '" y2="0">' +
+        '<stop offset="0" stop-color="' + colorOf(l.src) + '"/><stop offset="1" stop-color="' + colorOf(l.tgt) + '"/></linearGradient>');
+      fill = 'url(#' + gid + ')';
+    } else fill = colorOf(l.src);
+    body.push('<path d="' + d + '" fill="' + fill + '" fill-opacity="' + alpha + '"/>');
+  });
+  if(st.labels){
+    computeLabels(LO);
+    var fs = clamp(Math.round(LO.h / 34), 10, 15);
+    LO.nodes.forEach(function(n){
+      if(!n._label) return;
+      var last = n.col === LO.cols.length - 1;
+      var tx = last ? n.x - 7 : n.x + n.w + 7;
+      var ty = n.y + n.h/2;
+      body.push('<text x="' + (Math.round(tx*100)/100) + '" y="' + (Math.round(ty*100)/100) +
+        '" font-size="' + fs + '" font-weight="500" dominant-baseline="middle" text-anchor="' +
+        (last ? 'end' : 'start') + '" fill="' + inkColor() + '" stroke="' + bgColor() +
+        '" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">' + esc(n._label) + '</text>');
+    });
+  }
+  LO.nodes.forEach(function(n){
+    var r = Math.min(4, n.w/2);
+    body.push('<rect x="' + (Math.round(n.x*100)/100) + '" y="' + (Math.round(n.y*100)/100) +
+      '" width="' + (Math.round(n.w*100)/100) + '" height="' + (Math.round(n.h*100)/100) +
+      '" rx="' + r + '" fill="' + colorOf(n) + '"/>');
+  });
+
+  out.push('<rect width="' + ow + '" height="' + oh + '" fill="' + bgColor() + '"/>');
+  if(defs.length) out.push('<defs>' + defs.join('') + '</defs>');
+  out.push('<g transform="translate(' + pad + ',' + pad + ')">' + body.join('') + '</g>');
+  out.push('</svg>');
+  return out.join('');
+}
+function exportSVG(){
+  var s = buildSVG();
+  if(!s) return toast('Nothing to export');
+  download(new Blob([s], { type:'image/svg+xml;charset=utf-8' }), 'fluxgraph-' + Date.now() + '.svg');
+  toast('SVG saved (' + Math.round(s.length/1024) + ' kB)');
+}
+function exportJSON(){
+  var p = parseFlows(flowsText);
+  var payload = {
+    generator: 'Fluxgraph',
+    exported: new Date().toISOString(),
+    style: st,
+    nodes: LO ? LO.nodes.map(function(n){
+      return { name:n.name, stage:n.col, inflow:n.inTotal, outflow:n.outTotal, value:n.value };
+    }) : [],
+    links: p.links.map(function(l){ return { source:l.s, target:l.t, value:l.v }; })
+  };
+  var s = JSON.stringify(payload, null, 2);
+  download(new Blob([s], { type:'application/json' }), 'fluxgraph-' + Date.now() + '.json');
+  toast('JSON saved');
+}
+function exportCSV(){
+  var p = parseFlows(flowsText);
+  var q = function(v){ return /[",\n]/.test(v) ? '"' + String(v).replace(/"/g, '""') + '"' : v; };
+  var rows = ['source,target,value'].concat(p.links.map(function(l){
+    return q(l.s) + ',' + q(l.t) + ',' + l.v;
+  }));
+  download(new Blob([rows.join('\n')], { type:'text/csv' }), 'fluxgraph-' + Date.now() + '.csv');
+  toast('CSV saved');
+}
+function shareLink(){
+  var hash = '#d=' + b64urlEncode(JSON.stringify(docObj()));
+  var url = location.origin + location.pathname + hash;
+  try{ history.replaceState(null, '', hash); }catch(e){}
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){
+      toast('Share link copied');
+    }, function(){ toast('Link is in the address bar'); });
+  } else toast('Link is in the address bar');
+}
+
+/* ======================= controls ======================= */
+function syncControls(){
+  var S = [['sNodeW','nodeW','oNodeW','px'],['sPad','pad','oPad','px'],
+           ['sCurve','curve','oCurve','%'],['sOpacity','opacity','oOpacity','%']];
+  S.forEach(function(r){
+    $(r[0]).value = st[r[1]];
+    $(r[2]).textContent = st[r[1]] + r[3];
+  });
+  $('tGrad').setAttribute('aria-pressed', String(st.gradient));
+  $('tLabels').setAttribute('aria-pressed', String(st.labels));
+  $('tValues').setAttribute('aria-pressed', String(st.values));
+  $('tLight').setAttribute('aria-pressed', String(st.light));
+  $('tJustify').setAttribute('aria-pressed', String(st.justify));
+  [].forEach.call(document.querySelectorAll('#pals .pal'), function(b){
+    b.setAttribute('aria-pressed', String(b.dataset.pal === st.palette));
+  });
+}
+function wireSlider(id, key, outId, unit){
+  var el = $(id);
+  el.addEventListener('input', function(){
+    st[key] = +el.value;
+    $(outId).textContent = el.value + unit;
+    relayout(); save();
+  });
+}
+function wireToggle(id, key){
+  $(id).addEventListener('click', function(){
+    st[key] = !st[key];
+    $(id).setAttribute('aria-pressed', String(st[key]));
+    relayout(); save();
+  });
+}
+
+/* presets */
+Object.keys(PRESETS).forEach(function(name){
+  var b = document.createElement('button');
+  b.type = 'button'; b.className = 'chip'; b.textContent = name;
+  b.addEventListener('click', function(){
+    flowsText = PRESETS[name];
+    taEl.value = flowsText;
+    offsets = {};
+    relayout(); save();
+    toast(name + ' loaded');
+  });
+  $('presets').appendChild(b);
+});
+
+/* palettes */
+Object.keys(PALETTES).forEach(function(name){
+  var b = document.createElement('button');
+  b.type = 'button'; b.className = 'pal'; b.dataset.pal = name;
+  b.title = name;
+  b.setAttribute('aria-label', 'Palette ' + name);
+  PALETTES[name].slice(0, 5).forEach(function(col){
+    var i = document.createElement('i'); i.style.background = col; b.appendChild(i);
+  });
+  b.addEventListener('click', function(){
+    st.palette = name; syncControls(); invalidate(); save();
+  });
+  $('pals').appendChild(b);
+});
+
+/* tabs */
+[].forEach.call(document.querySelectorAll('#tabs button'), function(btn){
+  btn.addEventListener('click', function(){
+    [].forEach.call(document.querySelectorAll('#tabs button'), function(b){
+      b.setAttribute('aria-selected', String(b === btn));
+    });
+    [].forEach.call(document.querySelectorAll('.tabpane'), function(p){
+      p.classList.toggle('on', p.id === 'pane-' + btn.dataset.tab);
+    });
+    if(btn.dataset.tab === 'out') renderLib();
+  });
+});
+
+/* flow editing */
+var typeT = 0;
+taEl.addEventListener('input', function(){
+  flowsText = taEl.value;
+  clearTimeout(typeT);
+  typeT = setTimeout(function(){ relayout(); save(); }, 160);
+});
+$('qadd').addEventListener('click', function(){
+  var s = $('qs').value.trim(), t = $('qt').value.trim(), v = parseFloat($('qv').value);
+  if(!s || !t || !isFinite(v) || v <= 0) return toast('Need source, target and a value > 0');
+  flowsText = (flowsText.replace(/\s+$/, '') + '\n' + s + ', ' + t + ', ' + v).replace(/^\n/, '');
+  taEl.value = flowsText;
+  taEl.scrollTop = taEl.scrollHeight;
+  $('qs').value = ''; $('qt').value = ''; $('qv').value = '';
+  relayout(); save();
+  toast('Flow added');
+});
+['qs','qt','qv'].forEach(function(id){
+  $(id).addEventListener('keydown', function(e){ if(e.key === 'Enter') $('qadd').click(); });
+});
+
+/* style wiring */
+wireSlider('sNodeW','nodeW','oNodeW','px');
+wireSlider('sPad','pad','oPad','px');
+wireSlider('sCurve','curve','oCurve','%');
+wireSlider('sOpacity','opacity','oOpacity','%');
+wireToggle('tGrad','gradient');
+wireToggle('tLabels','labels');
+wireToggle('tValues','values');
+wireToggle('tLight','light');
+wireToggle('tJustify','justify');
+$('resetPos').addEventListener('click', function(){
+  offsets = {}; relayout(); save(); toast('Layout reset');
+});
+
+/* exports */
+$('exPng').addEventListener('click', exportPNG);
+$('exSvg').addEventListener('click', exportSVG);
+$('exJson').addEventListener('click', exportJSON);
+$('exCsv').addEventListener('click', exportCSV);
+$('exLink').addEventListener('click', shareLink);
+$('saveBtn').addEventListener('click', function(){
+  var name = ($('saveName').value || '').trim() || ('Diagram ' + (readLib().length + 1));
+  var arr = readLib();
+  arr.unshift({ name:name, when:new Date().toLocaleString(), doc:docObj() });
+  writeLib(arr); renderLib();
+  $('saveName').value = '';
+  toast('Saved “' + name + '”');
+});
+
+/* mobile sheet */
+$('sheetBtn').addEventListener('click', function(){
+  $('panel').classList.toggle('hid');
+  requestAnimationFrame(resize);
+});
+
+/* keyboard */
+document.addEventListener('keydown', function(e){
+  var t = e.target, tag = t && t.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+  var k = e.key.toLowerCase();
+  if(k === 'r'){ offsets = {}; relayout(); save(); toast('Layout reset'); }
+  else if(k === 'g'){ st.gradient = !st.gradient; syncControls(); invalidate(); save(); }
+  else if(k === 'l'){ st.labels = !st.labels; syncControls(); relayout(); save(); }
+  else if(k === 'p'){ exportPNG(); }
+  else if(k === 'escape'){ hoverNode = null; hideTip(); invalidate(); }
+  else return;
+  e.preventDefault();
+});
+
+/* ======================= boot ======================= */
+(function boot(){
+  var loaded = false;
+  var h = location.hash;
+  if(h && h.indexOf('#d=') === 0){
+    try{ loaded = applyDoc(JSON.parse(b64urlDecode(h.slice(3)))); }catch(e){ loaded = false; }
+  }
+  if(!loaded){
+    try{
+      var raw = localStorage.getItem(LS_DOC);
+      if(raw) loaded = applyDoc(JSON.parse(raw));
+    }catch(e){}
+  }
+  taEl.value = flowsText;
+  syncControls();
+  renderLib();
+
+  if(window.ResizeObserver){
+    new ResizeObserver(function(){ resize(); }).observe(stage);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function(){ setTimeout(resize, 160); });
+  resize();
+  window.addEventListener('hashchange', function(){
+    var hh = location.hash;
+    if(hh && hh.indexOf('#d=') === 0){
+      try{
+        if(applyDoc(JSON.parse(b64urlDecode(hh.slice(3))))){
+          taEl.value = flowsText; syncControls(); relayout(); save();
+        }
+      }catch(e){}
+    }
+  });
+})();
+
+/* expose a tiny surface for automated checks */
+window.__flux = {
+  layout: function(){ return LO; },
+  state: st,
+  setFlows: function(txt){ flowsText = txt; taEl.value = txt; relayout(); },
+  svg: buildSVG,
+  pngBlob: function(){
+    return new Promise(function(res){
+      var off = document.createElement('canvas');
+      off.width = Math.max(2, W); off.height = Math.max(2, H);
+      var c = off.getContext('2d');
+      render(c, LO, W, H, {});
+      off.toBlob(function(b){ res(b); }, 'image/png');
+    });
+  },
+  pixel: function(x, y){ return ctx.getImageData(Math.round(x*dpr), Math.round(y*dpr), 1, 1).data; },
+  doc: docObj,
+  hitNode: nodeAt,
+  hitLink: linkAt
+};
+})();
+</script>
+</body>
+</html>
