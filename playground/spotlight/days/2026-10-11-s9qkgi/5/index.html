@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A Clock That Knows Where It Is — UI Spotlight Day 134</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;}
+  :root{
+    --bucket:#a78bfa;
+    --bg:#0a0714; --ink:#f0ebff; --dim:#a99ccb; --faint:#7b6ca3;
+    --good:#34d399; --bad:#fb7185;
+  }
+  html,body{height:100%;}
+  body{
+    margin:0;background:
+      radial-gradient(900px 540px at 80% -12%,rgba(167,139,250,.14),transparent 62%),
+      radial-gradient(680px 470px at 0% 108%,rgba(56,189,248,.09),transparent 60%),
+      var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100dvh;padding:76px 20px 92px;
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:40;text-decoration:none;color:var(--ink);
+    font-size:12.5px;padding:9px 15px;border-radius:999px;
+    background:rgba(16,11,30,.8);border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  }
+  .back-link:hover{border-color:var(--bucket);}
+  .wrap{max-width:900px;margin:0 auto;}
+  h1{margin:0 0 6px;font-size:clamp(24px,5.2vw,40px);line-height:1.08;letter-spacing:-.025em;font-weight:650;}
+  h1 b{color:var(--bucket);font-weight:650;}
+  .lede{margin:0 0 18px;color:var(--dim);max-width:64ch;font-size:14.5px;}
+  code{font:.92em ui-monospace,SFMono-Regular,Menlo,monospace;color:#dcd0ff;}
+
+  .note{
+    margin:0 0 20px;padding:10px 13px;border-radius:12px;font-size:12.5px;color:var(--dim);
+    background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.09);
+  }
+  .note b{color:var(--ink);font-weight:600;}
+  .engine{
+    display:inline-block;margin-left:6px;padding:3px 8px;border-radius:999px;
+    font:600 9.5px/1.4 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;
+    border:1px solid currentColor;
+  }
+  .engine.t{color:var(--good);} .engine.d{color:#fbbf24;}
+
+  .card{
+    border-radius:18px;padding:16px 18px 18px;margin-bottom:14px;
+    background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.014));
+    border:1px solid rgba(255,255,255,.09);
+  }
+  .card h2{
+    margin:0 0 12px;font:600 10px/1 system-ui,sans-serif;letter-spacing:.17em;text-transform:uppercase;color:var(--faint);
+  }
+
+  .form{display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end;}
+  .fld{display:flex;flex-direction:column;gap:5px;}
+  .fld label{font:600 9.5px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);}
+  input,select,button{
+    font:13px/1 inherit;color:var(--ink);background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:9px 10px;
+  }
+  input,select{min-width:0;}
+  button{cursor:pointer;transition:border-color .18s,background .18s;}
+  button:hover{border-color:var(--bucket);background:rgba(167,139,250,.14);}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--bucket);outline-offset:2px;}
+
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;}
+  .steps button{font-size:12px;padding:8px 11px;}
+  .steps button.reset{border-color:rgba(255,255,255,.2);}
+
+  .board{display:flex;flex-direction:column;gap:7px;margin-top:4px;}
+  .zrow{
+    display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
+    padding:11px 13px;border-radius:12px;
+    background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);
+    transition:border-color .2s,background .2s;
+  }
+  .zrow.home{border-color:rgba(167,139,250,.55);background:rgba(167,139,250,.11);}
+  .zrow.night{background:rgba(2,4,14,.5);}
+  .zname{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .zname b{font-size:13.5px;font-weight:600;letter-spacing:-.01em;}
+  .zname i{font-style:normal;font:10.5px/1.3 ui-monospace,Menlo,monospace;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ztime{font:600 16px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:right;white-space:nowrap;}
+  .ztime span{display:block;font:11px/1.4 system-ui,sans-serif;font-weight:400;color:var(--dim);margin-top:3px;}
+  .zoff{
+    font:600 11px/1 ui-monospace,Menlo,monospace;padding:5px 8px;border-radius:999px;
+    color:var(--dim);border:1px solid rgba(255,255,255,.12);white-space:nowrap;
+  }
+  .sun{font-size:13px;}
+
+  table{width:100%;border-collapse:collapse;margin-top:4px;font-size:13px;}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:top;}
+  th{font:600 9.5px/1.2 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);}
+  td.mono{font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;}
+  td b.ok{color:var(--good);font-weight:600;} td b.no{color:var(--bad);font-weight:600;}
+  .hours{
+    display:inline-block;margin-left:7px;padding:3px 8px;border-radius:999px;
+    font:600 10px/1.4 ui-monospace,Menlo,monospace;border:1px solid currentColor;color:var(--bucket);
+  }
+  .why{margin:12px 0 0;font-size:12px;line-height:1.55;color:var(--faint);}
+
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:40;width:236px;
+    padding:13px;border-radius:16px;
+    background:rgba(14,10,26,.86);border:1px solid rgba(255,255,255,.12);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  }
+  .panel h3{margin:0 0 10px;font:600 10px/1 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);}
+  .panel button{display:block;width:100%;margin-bottom:6px;text-align:left;font-size:12px;padding:8px 10px;}
+  .panel p{margin:9px 0 0;font-size:10.5px;line-height:1.5;color:#7b6ca3;}
+
+  .credit{margin:40px auto 0;max-width:900px;color:#7b6ca3;font-size:11.5px;text-align:center;}
+  .credit a{color:#b3a3d9;}
+
+  @media (max-width:980px){ .panel{position:static;width:auto;margin:0 0 16px;} body{padding-top:64px;} }
+  @media (max-width:560px){ .zrow{grid-template-columns:1fr auto;} .zoff{display:none;} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<aside class="panel">
+  <h3>Jump to</h3>
+  <button data-j="now">Right now</button>
+  <button data-j="eu-dst">EU clocks change · 25 Oct</button>
+  <button data-j="us-dst">US clocks change · 1 Nov</button>
+  <button data-j="chatham">An offset of +12:45</button>
+  <p>Each preset moves the instant to a moment where naive millisecond arithmetic and
+  calendar arithmetic disagree — then shows both answers side by side.</p>
+</aside>
+
+<div class="wrap">
+  <h1>A clock that <b>knows where it is</b></h1>
+  <p class="lede">
+    <code>Date</code> has one number and no idea what a day is. <code>Temporal</code> ships a
+    <code>ZonedDateTime</code> that carries its zone, knows that some days are 23 or 25 hours long,
+    and can tell you so — <code>hoursInDay</code>. Here is the same meeting-planner component built
+    on whichever of the two this browser has.
+  </p>
+
+  <p class="note" id="support"></p>
+
+  <section class="card">
+    <h2>1 · One instant, every desk</h2>
+    <div class="form">
+      <div class="fld"><label for="d">Date</label><input type="date" id="d" value="2026-10-24"></div>
+      <div class="fld"><label for="t">Time</label><input type="time" id="t" value="22:30"></div>
+      <div class="fld" style="flex:1 1 170px;"><label for="home">Home zone</label>
+        <select id="home"></select></div>
+      <button id="bNow">Use now</button>
+    </div>
+    <div class="steps" id="steps">
+      <button data-add="minutes:15">+15 min</button>
+      <button data-add="hours:1">+1 hour</button>
+      <button data-add="days:1">+1 day</button>
+      <button data-add="weeks:1">+1 week</button>
+      <button data-add="months:1">+1 month</button>
+      <button data-add="days:-1">−1 day</button>
+      <button class="reset" data-add="reset">Reset</button>
+    </div>
+    <div class="board" id="board"></div>
+  </section>
+
+  <section class="card">
+    <h2>2 · The day that isn't 24 hours</h2>
+    <table>
+      <thead><tr><th>Question</th><th>Calendar arithmetic</th><th>Millisecond arithmetic</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Same wall-clock time, one day later<span class="hours" id="hid">—</span></td>
+          <td class="mono" id="calAdd">—</td>
+          <td class="mono" id="msAdd">—</td>
+        </tr>
+        <tr>
+          <td>Length of that local day</td>
+          <td class="mono" id="calLen">—</td>
+          <td class="mono" id="msLen">—</td>
+        </tr>
+        <tr>
+          <td>Hours between the two instants</td>
+          <td class="mono" id="calGap">—</td>
+          <td class="mono" id="msGap">—</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="why" id="why">—</p>
+  </section>
+
+  <p class="credit">
+    Inspired by <a href="https://blog.openreplay.com/replace-date-temporal/" target="_blank" rel="noopener">OpenReplay — “Replacing Date with the Temporal API”</a>
+    · UI Spotlight Day 134 · Drop #5
+  </p>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var HAS_T = typeof globalThis.Temporal !== 'undefined' && !!globalThis.Temporal.ZonedDateTime;
+  var ENGINE = HAS_T ? 'temporal' : 'date';
+
+  var ZONES = [
+    { id:'America/Los_Angeles', name:'San Francisco' },
+    { id:'America/New_York',    name:'New York' },
+    { id:'Europe/London',       name:'London' },
+    { id:'Europe/Berlin',       name:'Berlin' },
+    { id:'Asia/Kolkata',        name:'Bengaluru' },
+    { id:'Asia/Tokyo',          name:'Tokyo' },
+    { id:'Australia/Sydney',    name:'Sydney' },
+    { id:'Pacific/Chatham',     name:'Chatham Islands' }
+  ];
+
+  document.getElementById('support').innerHTML = HAS_T
+    ? 'Running on <b>Temporal</b><span class="engine t">ZonedDateTime</span> — the “+1 day” button adds a <em>calendar</em> day, so the wall clock stays put even when the day is 23 or 25 hours long.'
+    : 'No <code>Temporal</code> in this browser, so the component falls back to <b>Date + Intl</b><span class="engine d">legacy engine</span>. Everything still works, but “+1 day” can only add 86,400,000 ms — watch the second table disagree with itself.';
+
+  /* ── zone helpers that work in both engines ─────────────────────── */
+  function offsetMinutes(epochMs, zone){
+    var f = new Intl.DateTimeFormat('en-US', { timeZone:zone, timeZoneName:'longOffset' });
+    var name = '';
+    f.formatToParts(new Date(epochMs)).forEach(function(p){ if(p.type === 'timeZoneName') name = p.value; });
+    var m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
+    if(!m) return 0;
+    var mins = parseInt(m[2], 10) * 60 + (m[3] ? parseInt(m[3], 10) : 0);
+    return m[1] === '-' ? -mins : mins;
+  }
+  function fmtOffset(mins){
+    var s = mins < 0 ? '-' : '+', a = Math.abs(mins);
+    return 'UTC' + s + String((a / 60) | 0).padStart(2, '0') + ':' + String(a % 60).padStart(2, '0');
+  }
+  /* wall clock in a zone -> epoch ms (two-pass, handles DST shifts) */
+  function wallToEpoch(y, mo, da, h, mi, zone){
+    var guess = Date.UTC(y, mo - 1, da, h, mi, 0, 0);
+    for(var i = 0; i < 2; i++){
+      var off = offsetMinutes(guess, zone);
+      var next = Date.UTC(y, mo - 1, da, h, mi, 0, 0) - off * 60000;
+      if(next === guess) break;
+      guess = next;
+    }
+    return guess;
+  }
+  function partsIn(epochMs, zone){
+    var f = new Intl.DateTimeFormat('en-GB', {
+      timeZone:zone, year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', weekday:'short', hour12:false
+    });
+    var o = {};
+    f.formatToParts(new Date(epochMs)).forEach(function(p){ o[p.type] = p.value; });
+    if(o.hour === '24') o.hour = '00';
+    return o;
+  }
+
+  /* ── state ──────────────────────────────────────────────────────── */
+  var homeSel = document.getElementById('home');
+  ZONES.forEach(function(z){
+    var o = document.createElement('option');
+    o.value = z.id; o.textContent = z.name + ' — ' + z.id;
+    homeSel.appendChild(o);
+  });
+  homeSel.value = 'Europe/London';
+
+  var dEl = document.getElementById('d'), tEl = document.getElementById('t');
+  var base = { date:dEl.value, time:tEl.value, zone:homeSel.value };
+  var epoch = 0;
+
+  function recompute(){
+    var p = base.date.split('-').map(Number), q = base.time.split(':').map(Number);
+    epoch = wallToEpoch(p[0], p[1], p[2], q[0], q[1], base.zone);
+  }
+
+  /* calendar-aware add: Temporal does it properly; the fallback does what Date can */
+  function addUnits(unit, n){
+    if(HAS_T){
+      var zdt = Temporal.Instant.fromEpochMilliseconds(epoch).toZonedDateTimeISO(base.zone);
+      var d = {}; d[unit] = n;
+      var next = zdt.add(d);
+      epoch = next.epochMilliseconds;
+      var np = partsIn(epoch, base.zone);
+      base.date = np.year + '-' + np.month + '-' + np.day;
+      base.time = np.hour + ':' + np.minute;
+    }else{
+      var MS = { minutes:60000, hours:3600000, days:86400000, weeks:604800000 };
+      if(unit === 'months'){
+        var pp = base.date.split('-').map(Number);
+        var mo = pp[1] + n, yr = pp[0] + Math.floor((mo - 1) / 12);
+        mo = ((mo - 1) % 12 + 12) % 12 + 1;
+        var dim = new Date(Date.UTC(yr, mo, 0)).getUTCDate();
+        base.date = yr + '-' + String(mo).padStart(2, '0') + '-' + String(Math.min(pp[2], dim)).padStart(2, '0');
+        recompute();
+      }else{
+        epoch += MS[unit] * n;
+        var np2 = partsIn(epoch, base.zone);
+        base.date = np2.year + '-' + np2.month + '-' + np2.day;
+        base.time = np2.hour + ':' + np2.minute;
+      }
+    }
+    dEl.value = base.date; tEl.value = base.time;
+    paint();
+  }
+
+  /* ── the board ──────────────────────────────────────────────────── */
+  var board = document.getElementById('board');
+  function paint(){
+    var rows = ZONES.map(function(z){
+      var off = offsetMinutes(epoch, z.id);
+      return { z:z, off:off, p:partsIn(epoch, z.id) };
+    }).sort(function(a, b){ return a.off - b.off; });
+
+    board.textContent = '';
+    rows.forEach(function(r){
+      var hour = parseInt(r.p.hour, 10);
+      var night = hour < 7 || hour >= 21;
+      var el = document.createElement('div');
+      el.className = 'zrow' + (r.z.id === base.zone ? ' home' : '') + (night ? ' night' : '');
+      el.innerHTML =
+        '<span class="zname"><b>' + r.z.name + ' <span class="sun">' + (night ? '☽' : '☀︎') + '</span></b><i>' + r.z.id + '</i></span>' +
+        '<span class="ztime">' + r.p.hour + ':' + r.p.minute +
+          '<span>' + r.p.weekday + ' ' + r.p.day + '/' + r.p.month + '</span></span>' +
+        '<span class="zoff">' + fmtOffset(r.off) + '</span>';
+      board.appendChild(el);
+    });
+    paintTable();
+  }
+
+  /* ── the 23/25-hour day table ───────────────────────────────────── */
+  function paintTable(){
+    var zone = base.zone;
+    var pNow = partsIn(epoch, zone);
+    var msNext = epoch + 86400000;
+    var pMs = partsIn(msNext, zone);
+
+    var calEpoch, pCal, hoursInDay = null;
+    if(HAS_T){
+      var zdt = Temporal.Instant.fromEpochMilliseconds(epoch).toZonedDateTimeISO(zone);
+      var nextDay = zdt.add({ days:1 });
+      calEpoch = nextDay.epochMilliseconds;
+      pCal = partsIn(calEpoch, zone);
+      hoursInDay = nextDay.hoursInDay;
+    }else{
+      /* same wall clock tomorrow, resolved through the zone's offset by hand */
+      var p = pNow.year + '-' + pNow.month + '-' + pNow.day;
+      var d0 = new Date(Date.UTC(+pNow.year, +pNow.month - 1, +pNow.day));
+      d0.setUTCDate(d0.getUTCDate() + 1);
+      calEpoch = wallToEpoch(d0.getUTCFullYear(), d0.getUTCMonth() + 1, d0.getUTCDate(),
+                             +pNow.hour, +pNow.minute, zone);
+      pCal = partsIn(calEpoch, zone);
+      var startNext = wallToEpoch(d0.getUTCFullYear(), d0.getUTCMonth() + 1, d0.getUTCDate(), 0, 0, zone);
+      var d1 = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate()));
+      d1.setUTCDate(d1.getUTCDate() + 1);
+      var startAfter = wallToEpoch(d1.getUTCFullYear(), d1.getUTCMonth() + 1, d1.getUTCDate(), 0, 0, zone);
+      hoursInDay = (startAfter - startNext) / 3600000;
+    }
+
+    function lbl(p, ep){
+      return p.weekday + ' ' + p.day + '/' + p.month + ' ' + p.hour + ':' + p.minute +
+             ' ' + fmtOffset(offsetMinutes(ep, zone));
+    }
+    var sameWall = pCal.hour === pNow.hour && pCal.minute === pNow.minute;
+    var msSameWall = pMs.hour === pNow.hour && pMs.minute === pNow.minute;
+
+    document.getElementById('hid').textContent = hoursInDay + 'h day';
+    document.getElementById('calAdd').innerHTML = lbl(pCal, calEpoch) +
+      '<br><b class="' + (sameWall ? 'ok' : 'no') + '">' + (sameWall ? 'wall clock kept' : 'wall clock moved') + '</b>';
+    document.getElementById('msAdd').innerHTML = lbl(pMs, msNext) +
+      '<br><b class="' + (msSameWall ? 'ok' : 'no') + '">' + (msSameWall ? 'wall clock kept' : 'wall clock moved') + '</b>';
+    document.getElementById('calLen').textContent = hoursInDay + ' hours' + (hoursInDay === 24 ? '' : ' (clocks change)');
+    document.getElementById('msLen').textContent = '24 hours, always assumed';
+    document.getElementById('calGap').textContent = ((calEpoch - epoch) / 3600000).toFixed(2) + ' h';
+    document.getElementById('msGap').textContent = '24.00 h';
+
+    document.getElementById('why').innerHTML = hoursInDay === 24
+      ? 'On this date the two agree — pick <em>EU clocks change</em> or <em>US clocks change</em> in the panel to land on a day where they cannot.'
+      : 'This local day is <b>' + hoursInDay + ' hours</b> long. “Tomorrow at the same time” and “86,400,000 ms later” are therefore different instants — ' +
+        ((calEpoch - epoch) / 3600000).toFixed(0) + ' h apart versus 24 h. A meeting invite that gets this wrong moves by an hour for half its guests.';
+  }
+
+  /* ── inputs ─────────────────────────────────────────────────────── */
+  function readInputs(){
+    base.date = dEl.value || base.date;
+    base.time = tEl.value || base.time;
+    base.zone = homeSel.value;
+    recompute(); paint();
+  }
+  dEl.addEventListener('change', readInputs);
+  tEl.addEventListener('change', readInputs);
+  homeSel.addEventListener('change', readInputs);
+
+  var initial = { date:base.date, time:base.time, zone:base.zone };
+  document.getElementById('steps').addEventListener('click', function(ev){
+    var b = ev.target.closest('button'); if(!b) return;
+    var a = b.dataset.add;
+    if(a === 'reset'){
+      base = { date:initial.date, time:initial.time, zone:initial.zone };
+      dEl.value = base.date; tEl.value = base.time; homeSel.value = base.zone;
+      recompute(); paint(); return;
+    }
+    var parts = a.split(':');
+    addUnits(parts[0], parseInt(parts[1], 10));
+  });
+
+  document.getElementById('bNow').addEventListener('click', function(){ jump('now'); });
+
+  function jump(which){
+    if(which === 'now'){
+      var p = partsIn(Date.now(), base.zone);
+      base.date = p.year + '-' + p.month + '-' + p.day;
+      base.time = p.hour + ':' + p.minute;
+    }else if(which === 'eu-dst'){
+      base.zone = 'Europe/London'; base.date = '2026-10-24'; base.time = '22:30';
+    }else if(which === 'us-dst'){
+      base.zone = 'America/New_York'; base.date = '2026-10-31'; base.time = '23:15';
+    }else if(which === 'chatham'){
+      base.zone = 'Pacific/Chatham'; base.date = '2026-10-11'; base.time = '09:00';
+    }
+    dEl.value = base.date; tEl.value = base.time; homeSel.value = base.zone;
+    recompute(); paint();
+  }
+  [].slice.call(document.querySelectorAll('.panel button[data-j]')).forEach(function(b){
+    b.addEventListener('click', function(){ jump(b.dataset.j); });
+  });
+
+  recompute(); paint();
+
+  window.__drop5 = {
+    engine: ENGINE,
+    hasTemporal: HAS_T,
+    zones: ZONES.length,
+    epoch: function(){ return epoch; },
+    base: function(){ return { date:base.date, time:base.time, zone:base.zone }; },
+    rows: function(){
+      return [].slice.call(document.querySelectorAll('.zrow')).map(function(r){
+        return {
+          name: r.querySelector('.zname b').textContent.trim(),
+          time: r.querySelector('.ztime').firstChild.textContent.trim(),
+          off: r.querySelector('.zoff') ? r.querySelector('.zoff').textContent : null
+        };
+      });
+    },
+    add: addUnits,
+    jump: jump,
+    table: function(){
+      return {
+        hoursInDay: document.getElementById('hid').textContent,
+        cal: document.getElementById('calAdd').textContent,
+        ms: document.getElementById('msAdd').textContent,
+        gap: document.getElementById('calGap').textContent
+      };
+    },
+    offsetOf: function(z){ return offsetMinutes(epoch, z); }
+  };
+})();
+</script>
+</body>
+</html>
