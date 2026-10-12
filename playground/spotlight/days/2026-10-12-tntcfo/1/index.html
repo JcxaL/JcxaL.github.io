@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Zoom That Reflows — UI Spotlight Day 135</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#070b12;--card:#111a28;--line:#22304a;--ink:#dbe6f5;--dim:#8296b2;--faint:#56688a;--accent:#38bdf8}
+body{min-height:100vh;background:radial-gradient(1100px 600px at 20% -10%,#102440 0%,transparent 60%),var(--bg);
+  color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:74px 20px 96px;-webkit-text-size-adjust:100%}
+.back-link{position:fixed;top:14px;left:14px;z-index:30;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;background:#111a28cc;border:1px solid var(--line);
+  backdrop-filter:blur(12px);color:var(--ink);text-decoration:none;font-size:13px;font-weight:600}
+.back-link:hover{background:#1a2638cc;border-color:#33456a}
+.panel{position:fixed;top:14px;right:14px;z-index:30;width:238px;padding:13px 14px;border-radius:14px;
+  background:#101a28d9;border:1px solid var(--line);backdrop-filter:blur(14px);box-shadow:0 14px 40px #0009}
+.panel h4{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+.panel label{display:block;font-size:11.5px;color:var(--dim);margin:9px 0 3px;display:flex;justify-content:space-between}
+.panel label b{color:var(--accent);font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}
+.panel input[type=range]{width:100%;accent-color:var(--accent)}
+.panel .row{display:flex;gap:6px;margin-top:10px}
+.panel button{flex:1;padding:7px;border-radius:9px;border:1px solid var(--line);background:#16233a;color:var(--ink);
+  font:600 11.5px system-ui;cursor:pointer}
+.panel button:hover{background:#1d2d49}
+.sup{margin-top:10px;font:11px ui-monospace,monospace;color:var(--faint);line-height:1.5;border-top:1px solid var(--line);padding-top:9px}
+.sup b{color:#4ade80}.sup b.no{color:#fb7185}
+header{max-width:1080px;margin:0 auto 26px}
+h1{font-size:clamp(25px,4.6vw,40px);letter-spacing:-.025em;line-height:1.08}
+h1 em{font-style:normal;color:var(--accent)}
+.lede{margin-top:10px;color:var(--dim);font-size:15px;max-width:60ch;line-height:1.6}
+.stage{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+.demo{background:#0c1420;border:1px solid var(--line);border-radius:16px;padding:16px}
+.demo>h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+.demo>p{font-size:13px;color:var(--dim);margin-bottom:14px;line-height:1.55}
+.track{display:flex;gap:12px;align-items:flex-start;overflow:hidden;padding:6px 0;min-height:168px}
+.cd{flex:0 0 200px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px}
+.cd h3{font-size:13.5px;margin-bottom:6px}
+.cd p{font-size:12px;color:var(--dim);line-height:1.5}
+.cd.subject{border-color:var(--accent);box-shadow:0 0 0 1px #38bdf855,0 10px 30px #38bdf822}
+#zoomCard{zoom:1}
+#xfCard{transform:scale(1);transform-origin:top left}
+#fsCard{font-size:1rem}
+.readout{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font:11.5px ui-monospace,monospace;color:var(--faint)}
+.readout span b{color:var(--ink)}
+.note{margin-top:8px;font-size:12.5px;color:var(--dim);line-height:1.55;border-left:2px solid var(--accent);padding-left:10px}
+footer{max-width:1080px;margin:40px auto 0;font-size:12px;color:var(--faint);line-height:1.6}
+footer a{color:var(--dim)}
+@media (max-width:760px){
+  body{padding:66px 13px 90px}
+  .panel{position:static;width:auto;margin:0 auto 20px;max-width:480px}
+  .back-link{padding:8px 13px;font-size:12.5px}
+  .cd{flex:0 0 150px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h4>Controls</h4>
+  <label>scale <b id="vScale">1.00</b></label>
+  <input id="rScale" type="range" min="100" max="220" value="100">
+  <label>duration <b id="vDur">600 ms</b></label>
+  <input id="rDur" type="range" min="0" max="1600" step="50" value="600">
+  <div class="row"><button id="bPlay">Animate</button><button id="bReset">Reset</button></div>
+  <div class="sup" id="sup"></div>
+</div>
+
+<header>
+  <h1>Scaling that the <em>layout believes in</em></h1>
+  <p class="lede">Chrome 150 made <code>zoom</code> animatable. That matters because <code>zoom</code> is not
+  <code>transform: scale()</code>: zoom changes the box the layout engine measures, so neighbours move, text re-wraps
+  and scrollbars update. A transform only magnifies the painted result after layout has already been decided.</p>
+</header>
+
+<div class="stage">
+  <div class="demo">
+    <h2>1 · zoom — the siblings move</h2>
+    <p>The middle card is zoomed. Because zoom feeds back into layout, the card to its right is pushed along.</p>
+    <div class="track">
+      <div class="cd"><h3>Before</h3><p>A sibling that holds its ground.</p></div>
+      <div class="cd subject" id="zoomCard"><h3>Zoomed</h3><p>Line breaks are recomputed at the new size, and this box takes up real room.</p></div>
+      <div class="cd"><h3>After</h3><p>Watch me get pushed to the right.</p></div>
+    </div>
+    <div class="readout">
+      <span>layout width <b id="zW">—</b></span><span>lines <b id="zL">—</b></span><span>neighbour x <b id="zN">—</b></span>
+    </div>
+  </div>
+
+  <div class="demo">
+    <h2>2 · transform: scale() — the siblings don't</h2>
+    <p>Same scale factor, applied as a transform. Layout never hears about it, so the card overlaps its neighbour instead of displacing it.</p>
+    <div class="track">
+      <div class="cd"><h3>Before</h3><p>A sibling that holds its ground.</p></div>
+      <div class="cd subject" id="xfCard"><h3>Transformed</h3><p>Line breaks are recomputed at the new size, and this box takes up real room.</p></div>
+      <div class="cd"><h3>After</h3><p>Watch me get pushed to the right.</p></div>
+    </div>
+    <div class="readout">
+      <span>layout width <b id="xW">—</b></span><span>lines <b id="xL">—</b></span><span>neighbour x <b id="xN">—</b></span>
+    </div>
+  </div>
+
+  <div class="demo">
+    <h2>3 · font-size — text grows, the frame doesn't</h2>
+    <p>The third option scales type but leaves padding, borders and radii at their original size, so the card's proportions drift.</p>
+    <div class="track">
+      <div class="cd"><h3>Before</h3><p>A sibling that holds its ground.</p></div>
+      <div class="cd subject" id="fsCard"><h3>Resized</h3><p>Line breaks are recomputed at the new size, and this box takes up real room.</p></div>
+      <div class="cd"><h3>After</h3><p>Watch me get pushed to the right.</p></div>
+    </div>
+    <div class="readout">
+      <span>layout width <b id="fW">—</b></span><span>lines <b id="fL">—</b></span><span>padding <b id="fP">—</b></span>
+    </div>
+    <p class="note">Only <code>zoom</code> scales the whole box — type, padding, border width and radius together — while staying
+    part of the layout. That is the reason it became worth animating.</p>
+  </div>
+</div>
+
+<footer>
+  Inspired by web-standards.dev's Chrome&nbsp;150 round-up · UI Spotlight Day 135 · Drop #1<br>
+  Source: <a href="https://web-standards.dev/news/2026/07/chrome-150/">web-standards.dev/news/2026/07/chrome-150</a>
+</footer>
+
+<script>
+"use strict";
+const $=i=>document.getElementById(i);
+const zoomCard=$("zoomCard"), xfCard=$("xfCard"), fsCard=$("fsCard");
+const nativeZoomAnim=CSS.supports("transition-property","zoom");
+$("sup").innerHTML="native animatable zoom: <b class='"+(nativeZoomAnim?"":"no")+"'>"+
+  (nativeZoomAnim?"yes":"no")+"</b><br>"+(nativeZoomAnim
+    ? "transitioning zoom in CSS."
+    : "stepping zoom per frame instead — the layout behaviour shown is identical.");
+if(nativeZoomAnim) zoomCard.style.transitionProperty="zoom";
+
+let scale=1, raf=0;
+function lineCount(el){
+  const p=el.querySelector("p");
+  const lh=parseFloat(getComputedStyle(p).lineHeight)||18;
+  return Math.max(1,Math.round(p.getBoundingClientRect().height/lh));
+}
+function apply(s){
+  scale=s;
+  zoomCard.style.zoom=s;
+  xfCard.style.transform="scale("+s+")";
+  fsCard.style.fontSize=(s*16).toFixed(2)+"px";
+  $("vScale").textContent=s.toFixed(2);
+  measure();
+}
+function measure(){
+  const tracks=document.querySelectorAll(".track");
+  const nb=i=>tracks[i].children[2].getBoundingClientRect().left-tracks[i].getBoundingClientRect().left;
+  $("zW").textContent=Math.round(zoomCard.getBoundingClientRect().width)+"px";
+  $("zL").textContent=lineCount(zoomCard);
+  $("zN").textContent=Math.round(nb(0))+"px";
+  $("xW").textContent=Math.round(xfCard.offsetWidth)+"px (unscaled)";
+  $("xL").textContent=lineCount(xfCard);
+  $("xN").textContent=Math.round(nb(1))+"px";
+  $("fW").textContent=Math.round(fsCard.getBoundingClientRect().width)+"px";
+  $("fL").textContent=lineCount(fsCard);
+  $("fP").textContent=getComputedStyle(fsCard).paddingTop;
+}
+$("rScale").addEventListener("input",e=>{ cancelAnimationFrame(raf); setDur(0); apply(+e.target.value/100); });
+$("rDur").addEventListener("input",e=>{ $("vDur").textContent=e.target.value+" ms"; });
+function setDur(ms){
+  const t=ms?ms+"ms":"0ms";
+  zoomCard.style.transitionDuration=t;
+  xfCard.style.transitionDuration=t; xfCard.style.transitionProperty="transform";
+  fsCard.style.transitionDuration=t; fsCard.style.transitionProperty="font-size";
+}
+function play(){
+  cancelAnimationFrame(raf);
+  const dur=+$("rDur").value, from=scale, to=from>1.4?1:2;
+  $("rScale").value=Math.round(to*100);
+  if(!dur){ apply(to); return; }
+  if(nativeZoomAnim){ setDur(dur); apply(to); setTimeout(measure,dur+30); return; }
+  setDur(dur);                       // transform + font-size still transition natively
+  const t0=performance.now();
+  (function tick(now){
+    const k=Math.min(1,(now-t0)/dur), e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+    zoomCard.style.zoom=(from+(to-from)*e).toFixed(4);
+    if(k<1) raf=requestAnimationFrame(tick); else { apply(to); }
+    measure();
+  })(t0);
+}
+$("bPlay").addEventListener("click",play);
+$("bReset").addEventListener("click",()=>{ cancelAnimationFrame(raf); setDur(0); $("rScale").value=100; apply(1); });
+addEventListener("resize",measure);
+setDur(0); apply(1);
+</script>
+</body>
+</html>
