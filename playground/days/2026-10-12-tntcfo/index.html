@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Microcode — 8-Bit CPU Workbench</title>
+<meta name="description" content="Write assembly, watch an 8-bit CPU execute it, and draw to a memory-mapped display.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07090d; --bg2:#0d1219; --panel:#111826; --panel2:#151d2c;
+  --line:#22304a; --line2:#2e405f;
+  --ink:#dbe6f5; --dim:#7d8da6; --faint:#4d5c75;
+  --grn:#4ade80; --amb:#fbbf24; --cyn:#38bdf8; --pnk:#f472b6; --vio:#a78bfa; --red:#fb7185;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:12px;
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, #11203a 0%, transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, #1b1430 0%, transparent 55%),
+    var(--bg);
+  color:var(--ink); font-family:var(--ui);
+  -webkit-text-size-adjust:100%; overflow:hidden;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+.app{height:100vh;height:100dvh;display:flex;flex-direction:column}
+
+/* ---------- top bar ---------- */
+.bar{
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 14px;border-bottom:1px solid var(--line);
+  background:linear-gradient(#111826f2,#0b111bf2);backdrop-filter:blur(10px);
+}
+.brand{display:flex;align-items:baseline;gap:9px;margin-right:2px}
+.brand b{font-size:15px;letter-spacing:-.2px}
+.brand span{font-size:10.5px;color:var(--faint);font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.sep{width:1px;height:22px;background:var(--line);margin:0 2px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:9px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+  font-size:12.5px;font-weight:600;transition:.14s;white-space:nowrap;
+}
+.btn:hover{background:#1c2638;border-color:var(--line2)}
+.btn:active{transform:translateY(1px)}
+.btn.go{background:linear-gradient(#1d5c3a,#15492e);border-color:#2a7a4e;color:#d9ffe9}
+.btn.go:hover{background:linear-gradient(#236e45,#1a5636)}
+.btn.go.on{background:linear-gradient(#7a2d2d,#5e2222);border-color:#9c3c3c;color:#ffe2e2}
+.btn.ghost{background:transparent}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.btn kbd{font-family:var(--mono);font-size:9.5px;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:0 3px;background:#0b111b}
+.spd{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--dim);font-family:var(--mono)}
+.spd input{width:104px;accent-color:var(--cyn)}
+.grow{flex:1 1 auto}
+.pill{
+  font-family:var(--mono);font-size:11px;padding:5px 9px;border-radius:8px;
+  border:1px solid var(--line);background:#0b111b;color:var(--dim);white-space:nowrap
+}
+.pill.ok{color:var(--grn);border-color:#1e5c3c;background:#0b1a13}
+.pill.err{color:var(--red);border-color:#6b2731;background:#1a0d10}
+select.btn{height:32px;padding:0 8px;-webkit-appearance:none;appearance:none;padding-right:22px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+  background-position:calc(100% - 13px) 14px,calc(100% - 8px) 14px;background-size:5px 5px;background-repeat:no-repeat}
+
+/* ---------- body ---------- */
+.wrap{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,42%);gap:12px;padding:12px}
+.col{min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px}
+.card{
+  background:linear-gradient(#111826,#0e141f);border:1px solid var(--line);border-radius:var(--r);
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
+  box-shadow:0 10px 30px #00000055;
+}
+.card>h3{
+  flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);
+  padding:9px 12px;border-bottom:1px solid var(--line);font-family:var(--mono)
+}
+.card>h3 .tag{margin-left:auto;font-weight:600;letter-spacing:.04em;text-transform:none;color:var(--dim)}
+
+/* editor */
+.edcard{flex:1 1 auto}
+.ed{position:relative;flex:1 1 auto;min-height:0;display:flex;overflow:hidden}
+.gut{
+  flex:0 0 46px;padding:10px 8px 10px 0;text-align:right;overflow:hidden;
+  font-family:var(--mono);font-size:12.5px;line-height:19px;color:var(--faint);
+  background:#0b111b;border-right:1px solid var(--line);user-select:none;
+}
+.gut div.cur{color:var(--amb)}
+.gut div.pc{color:var(--cyn);font-weight:700}
+.edscroll{position:relative;flex:1 1 auto;min-width:0;overflow:hidden}
+#hl,#src{
+  margin:0;padding:10px 12px;font-family:var(--mono);font-size:12.5px;line-height:19px;
+  white-space:pre;tab-size:4;border:0;letter-spacing:0;
+}
+#hl{position:absolute;inset:0;overflow:hidden;pointer-events:none;color:var(--ink)}
+#src{
+  position:absolute;inset:0;width:100%;height:100%;resize:none;background:transparent;
+  color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--amb);outline:none;overflow:auto;
+}
+#src::selection{background:#2b63a855}
+.t-mn{color:var(--cyn);font-weight:600}
+.t-dir{color:var(--vio);font-weight:600}
+.t-lbl{color:var(--amb);font-weight:600}
+.t-num{color:var(--grn)}
+.t-cm{color:#52627c;font-style:italic}
+.t-reg{color:var(--pnk)}
+.t-str{color:var(--grn)}
+.errs{flex:0 0 auto;max-height:84px;overflow:auto;border-top:1px solid var(--line);background:#150d11}
+.errs:empty{display:none}
+.errs button{display:block;width:100%;text-align:left;padding:5px 12px;font-family:var(--mono);font-size:11.5px;color:#ffc4cc}
+.errs button:hover{background:#1f1116}
+.errs b{color:var(--red)}
+
+/* machine column */
+.mrow{flex:0 0 auto;display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px}
+.scrn{padding:10px;display:flex;align-items:center;justify-content:center}
+#vid{
+  width:176px;height:176px;image-rendering:pixelated;border-radius:6px;background:#05070a;
+  box-shadow:0 0 0 1px #1d2a40, 0 0 34px #38bdf822, inset 0 0 40px #000;
+}
+.regs{padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(58px,1fr));gap:7px;align-content:start}
+.reg{background:#0b111b;border:1px solid var(--line);border-radius:8px;padding:5px 6px;transition:.18s}
+.reg.hot{border-color:var(--amb);box-shadow:0 0 12px #fbbf2433;background:#17120a}
+.reg i{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--faint);font-style:normal}
+.reg b{display:block;font-family:var(--mono);font-size:14.5px;color:var(--grn);line-height:1.3}
+.reg small{font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.flags{display:flex;gap:5px;margin-top:2px}
+.flg{
+  flex:1;text-align:center;font-family:var(--mono);font-size:10px;padding:3px 0;border-radius:5px;
+  background:#0b111b;border:1px solid var(--line);color:var(--faint)
+}
+.flg.on{color:#07090d;background:var(--amb);border-color:var(--amb);font-weight:700}
+
+/* datapath */
+.dp{padding:8px 10px 10px}
+#dpCard{flex:0 0 auto}
+.dp svg{max-width:430px;margin:0 auto}
+.dp svg{width:100%;height:auto;display:block}
+.dp .bx{fill:#0b111b;stroke:#22304a;stroke-width:1}
+.dp .bx.lit{fill:#13233a;stroke:var(--cyn)}
+.dp .lb{fill:var(--dim);font:600 7.5px var(--mono);letter-spacing:.06em}
+.dp .lb.lit{fill:var(--cyn)}
+.dp .bus{stroke:#24324b;stroke-width:1.4;fill:none;stroke-linecap:round}
+.dp .bus.lit{stroke:var(--amb);stroke-width:2.2;filter:drop-shadow(0 0 3px #fbbf2499)}
+.dp .vl{fill:var(--grn);font:700 8px var(--mono)}
+
+/* memory */
+.memcard{flex:1 1 auto}
+.memnav{flex:0 0 auto;display:flex;gap:6px;padding:7px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.memnav button{font-family:var(--mono);font-size:10.5px;padding:3px 7px;border-radius:6px;border:1px solid var(--line);background:#0b111b;color:var(--dim)}
+.memnav button:hover{color:var(--ink);border-color:var(--line2)}
+.memnav .key{margin-left:auto;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.memnav .key i{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:3px;vertical-align:middle}
+#mem{flex:1 1 auto;overflow:auto;padding:8px 10px;font-family:var(--mono);font-size:11px;line-height:1.55}
+.mline{display:flex;gap:8px;white-space:pre}
+.mline>i{color:var(--faint);font-style:normal;flex:0 0 auto}
+.mline>span{flex:1 1 auto;display:flex;gap:4px}
+.mb{width:16px;text-align:center;border-radius:3px;color:#5d6d86;transition:background .3s,color .3s}
+.mb.nz{color:var(--ink)}
+.mb.pc{background:#0e3a57;color:#9fe3ff;box-shadow:0 0 0 1px #38bdf8}
+.mb.wr{background:#4a3208;color:#ffd979}
+.mb.sp{background:#4a1535;color:#ffb8dd}
+.mb.vr{color:#c6b5ff}
+
+/* console */
+.con{flex:0 0 auto;height:118px}
+#out{flex:1 1 auto;overflow:auto;padding:8px 11px;font-family:var(--mono);font-size:11.5px;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:var(--amb)}
+#out .sys{color:var(--faint)}
+#out .warn{color:var(--red)}
+
+/* mobile tabs */
+.tabs{display:none}
+.sheet{position:fixed;inset:auto 0 0 0;z-index:40;background:#0d1219f2;border-top:1px solid var(--line);backdrop-filter:blur(12px);padding:10px 12px 14px;transform:translateY(102%);transition:transform .3s cubic-bezier(.2,.9,.25,1)}
+.sheet.open{transform:none}
+.sheet h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-family:var(--mono);margin-bottom:8px}
+.sheet .row{display:flex;gap:8px;flex-wrap:wrap}
+.sheet .row button{flex:1 1 128px}
+.shclose{position:absolute;top:8px;right:10px;color:var(--dim);font-size:18px;line-height:1;padding:4px 8px}
+.save-list{max-height:150px;overflow:auto;display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.save-list div{display:flex;gap:6px;align-items:center;background:#0b111b;border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-family:var(--mono);font-size:11.5px}
+.save-list div span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.save-list div button{padding:2px 7px;border-radius:6px;border:1px solid var(--line);font-size:10.5px;color:var(--dim)}
+.save-list div button:hover{color:var(--ink)}
+.save-list p{color:var(--faint);font-family:var(--mono);font-size:11px}
+
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,24px);z-index:60;
+  background:#0f1826;border:1px solid var(--line2);color:var(--ink);padding:9px 15px;border-radius:10px;
+  font-size:12.5px;box-shadow:0 12px 34px #000a;opacity:0;transition:.26s;pointer-events:none;max-width:90vw;text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:900px){
+  .wrap{grid-template-columns:minmax(0,1fr);padding:9px;gap:9px}
+  .tabs{display:flex;gap:6px;flex:0 0 auto;padding:0 9px 8px}
+  .tabs button{flex:1;height:32px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font-size:12.5px;font-weight:600;color:var(--dim)}
+  .tabs button.on{background:#1d2a40;color:var(--ink);border-color:var(--line2)}
+  .col.hide{display:none}
+  .mrow{grid-template-columns:minmax(0,1fr)}
+  .scrn{padding:8px}
+  #vid{width:min(62vw,230px);height:min(62vw,230px)}
+  .brand span{display:none}
+  .dp{display:none}
+  .con{height:96px}
+  .col{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+  .edcard{min-height:54vh}
+  .memcard{flex:0 0 auto;height:320px}
+  .card{box-shadow:0 6px 18px #00000044}
+}
+@media (max-width:560px){
+  .bar{gap:7px;padding:8px 10px}
+  .btn{height:30px;padding:0 9px;font-size:12px}
+  .btn kbd{display:none}
+  .spd input{width:70px}
+  .spd label{display:none}
+  .bar{row-gap:6px}
+  .brand b{font-size:14px}
+  .pill{font-size:10.5px;padding:4px 7px}
+  select.btn{max-width:132px}
+}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <div class="brand"><b>Microcode</b><span>8-bit workbench</span></div>
+    <div class="sep"></div>
+    <button class="btn go" id="bRun" title="Run / Stop">▶ Run <kbd>⌃↵</kbd></button>
+    <button class="btn" id="bStep" title="Execute one instruction">⤼ Step <kbd>F8</kbd></button>
+    <button class="btn" id="bReset" title="Reset CPU and reload program">⟲ Reset</button>
+    <div class="spd"><label for="spd">CLK</label><input id="spd" type="range" min="0" max="7" step="1" value="3"><b id="spdv">60 Hz</b></div>
+    <div class="sep"></div>
+    <select class="btn" id="exSel" title="Load an example program"></select>
+    <button class="btn" id="bSave" title="Projects">▤ Projects</button>
+    <button class="btn" id="bExp" title="Export">⭳ Export</button>
+    <div class="grow"></div>
+    <div class="pill" id="asmStat">—</div>
+  </div>
+
+  <div class="tabs">
+    <button id="tEd" class="on">Code</button>
+    <button id="tMa">Machine</button>
+  </div>
+
+  <div class="wrap">
+    <div class="col" id="colEd">
+      <div class="card edcard">
+        <h3>Source <span class="tag" id="srcName">untitled.asm</span></h3>
+        <div class="ed">
+          <div class="gut" id="gut"></div>
+          <div class="edscroll">
+            <pre id="hl" aria-hidden="true"></pre>
+            <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+          </div>
+        </div>
+        <div class="errs" id="errs"></div>
+      </div>
+      <div class="card con">
+        <h3>Console <span class="tag" id="cycles">0 cycles</span></h3>
+        <div id="out"></div>
+      </div>
+    </div>
+
+    <div class="col hide" id="colMa">
+      <div class="mrow">
+        <div class="card scrn"><canvas id="vid" width="16" height="16"></canvas></div>
+        <div class="card">
+          <h3>Registers</h3>
+          <div class="regs" id="regs"></div>
+        </div>
+      </div>
+      <div class="card dp" id="dpCard">
+        <h3>Datapath</h3>
+        <div class="dp" id="dp"></div>
+      </div>
+      <div class="card memcard">
+        <h3>Memory <span class="tag" id="memTag">1024 B</span></h3>
+        <div class="memnav" id="memnav">
+          <button data-go="0">$000 code</button>
+          <button data-go="384">$180 stack</button>
+          <button data-go="512">$200 vram</button>
+          <button data-go="768">$300 ports</button>
+          <span class="key"><span><i style="background:#38bdf8"></i>pc</span><span><i style="background:#fbbf24"></i>write</span><span><i style="background:#f472b6"></i>sp</span></span>
+        </div>
+        <div id="mem"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="sheet">
+  <button class="shclose" id="shX">×</button>
+  <div id="shBody"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ============================================================
+   Microcode — 8-bit CPU workbench
+   Memory: 1024 bytes.  $000 code/data · $180-$1FF stack
+           $200-$2FF VRAM (16x16, palette index 0-15)
+           $300 OUT (write=char) · $301 RND (read) · $302 TICK (read)
+   ============================================================ */
+const MEMSZ=1024, VRAM=0x200, P_OUT=0x300, P_RND=0x301, P_TICK=0x302;
+const STACK_TOP=0x1FF;
+
+const OPS={
+  NOP:{imp:0x00},
+  LDA:{imm:0x01,abs:0x02,idx:0x03}, STA:{abs:0x04,idx:0x05},
+  LDX:{imm:0x06,abs:0x07}, STX:{abs:0x08},
+  LDY:{imm:0x09,abs:0x0A}, STY:{abs:0x0B},
+  TAX:{imp:0x0C}, TXA:{imp:0x0D}, TAY:{imp:0x0E}, TYA:{imp:0x0F},
+  ADD:{imm:0x10,abs:0x11}, SUB:{imm:0x12,abs:0x13},
+  AND:{imm:0x14,abs:0x15}, ORA:{imm:0x16,abs:0x17},
+  EOR:{imm:0x18,abs:0x19}, CMP:{imm:0x1A,abs:0x1B},
+  INA:{imp:0x1C}, DEA:{imp:0x1D}, INX:{imp:0x1E}, DEX:{imp:0x1F},
+  INY:{imp:0x20}, DEY:{imp:0x21}, INC:{abs:0x22}, DEC:{abs:0x23},
+  SHL:{imp:0x24}, SHR:{imp:0x25}, NOT:{imp:0x26},
+  JMP:{abs:0x30}, JZ:{abs:0x31}, JNZ:{abs:0x32}, JC:{abs:0x33},
+  JNC:{abs:0x34}, JN:{abs:0x35}, JSR:{abs:0x36}, RTS:{imp:0x37},
+  PSH:{imp:0x38}, POP:{imp:0x39}, RND:{imp:0x3A}, WAIT:{imp:0x3B},
+  LDA_Y:{idx:0x3C}, STA_Y:{idx:0x3D},
+  HLT:{imp:0xFF}
+};
+const MNEMONICS=Object.keys(OPS).filter(k=>!k.includes("_"));
+const MN_SET=new Set(MNEMONICS);
+const DIRECTIVES=new Set([".BYTE",".WORD",".ORG",".ASCII",".FILL"]);
+
+/* ---------------- assembler ---------------- */
+function tokenizeLine(raw){
+  // strip comment that is outside a quoted string
+  let s="", q=0;
+  for(let i=0;i<raw.length;i++){
+    const c=raw[i];
+    if(c==='"'&&q!==2) q=q?0:1;
+    else if(c==="'"&&q!==1) q=q?0:2;
+    if(c===";"&&!q) break;
+    s+=c;
+  }
+  return s;
+}
+function parseNum(t,labels,ctx){
+  t=t.trim();
+  if(!t) throw "missing value";
+  let m;
+  if((m=/^(.+?)\s*([+\-])\s*(.+)$/.exec(t)) && !/^[$%]/.test(t) && !/^'/.test(t)){
+    const a=parseNum(m[1],labels,ctx), b=parseNum(m[3],labels,ctx);
+    return m[2]==="+"?a+b:a-b;
+  }
+  if(t[0]==="$"){ const v=parseInt(t.slice(1),16); if(isNaN(v)) throw "bad hex "+t; return v; }
+  if(t[0]==="%"){ const v=parseInt(t.slice(1),2);  if(isNaN(v)) throw "bad binary "+t; return v; }
+  if(t[0]==="'"){ if(t.length<2) throw "bad char"; return t.charCodeAt(1)&255; }
+  if(/^-?\d+$/.test(t)) return parseInt(t,10);
+  const key=t.toUpperCase();
+  if(Object.prototype.hasOwnProperty.call(labels,key)) return labels[key];
+  if(ctx.pass===1) return 0;              // forward reference, resolved on pass 2
+  throw "unknown label '"+t+"'";
+}
+function splitArgs(s){
+  const out=[]; let cur="", q=0;
+  for(const c of s){
+    if(c==='"'&&q!==2) q=q?0:1;
+    else if(c==="'"&&q!==1) q=q?0:2;
+    if(c===","&&!q){ out.push(cur); cur=""; } else cur+=c;
+  }
+  out.push(cur);
+  return out.map(x=>x.trim()).filter(x=>x!=="");
+}
+function assemble(src){
+  const lines=src.split("\n");
+  const errors=[], labels={};
+  let bytes=null, lineOfAddr=null, endAddr=0;
+
+  for(let pass=1;pass<=2;pass++){
+    const ctx={pass};
+    let pc=0;
+    if(pass===2){ bytes=new Uint8Array(MEMSZ); lineOfAddr=new Int16Array(MEMSZ).fill(-1); }
+    for(let li=0;li<lines.length;li++){
+      let s=tokenizeLine(lines[li]).trim();
+      if(!s) continue;
+      // labels
+      let guard=0;
+      while(guard++<4){
+        const m=/^([A-Za-z_.][\w.]*)\s*:\s*/.exec(s);
+        if(!m) break;
+        if(pass===1){
+          const k=m[1].toUpperCase();
+          if(MN_SET.has(k)) errors.push({line:li,msg:"'"+m[1]+"' is a mnemonic, not a valid label"});
+          else if(Object.prototype.hasOwnProperty.call(labels,k)) errors.push({line:li,msg:"duplicate label '"+m[1]+"'"});
+          else labels[k]=pc;
+        }
+        s=s.slice(m[0].length);
+      }
+      s=s.trim();
+      if(!s) continue;
+
+      const sp=s.search(/\s/);
+      const head=(sp<0?s:s.slice(0,sp)).toUpperCase();
+      const rest=(sp<0?"":s.slice(sp)).trim();
+      const emit=(...bs)=>{
+        for(const b of bs){
+          if(pc>=MEMSZ){ if(pass===2) errors.push({line:li,msg:"program exceeds 1024 bytes"}); return; }
+          if(pass===2){ bytes[pc]=b&255; if(lineOfAddr[pc]<0) lineOfAddr[pc]=li; }
+          pc++;
+        }
+      };
+
+      try{
+        if(DIRECTIVES.has(head)){
+          if(head===".ORG"){
+            const v=parseNum(rest,labels,ctx);
+            if(v<0||v>=MEMSZ) throw ".org out of range";
+            pc=v;
+          } else if(head===".BYTE"){
+            const args=splitArgs(rest);
+            if(!args.length) throw ".byte needs at least one value";
+            for(const a of args){
+              if(a[0]==='"'){ const str=a.slice(1,a.lastIndexOf('"')); for(const ch of str) emit(ch.charCodeAt(0)); }
+              else emit(parseNum(a,labels,ctx));
+            }
+          } else if(head===".ASCII"){
+            const q=rest.indexOf('"');
+            if(q<0) throw '.ascii needs a "quoted string"';
+            const str=rest.slice(q+1,rest.lastIndexOf('"'));
+            for(const ch of str) emit(ch.charCodeAt(0));
+          } else if(head===".WORD"){
+            for(const a of splitArgs(rest)){ const v=parseNum(a,labels,ctx); emit(v&255,(v>>8)&255); }
+          } else if(head===".FILL"){
+            const args=splitArgs(rest);
+            const n=parseNum(args[0],labels,ctx), v=args[1]?parseNum(args[1],labels,ctx):0;
+            if(n<0||n>MEMSZ) throw ".fill count out of range";
+            for(let i=0;i<n;i++) emit(v);
+          }
+          endAddr=Math.max(endAddr,pc);
+          continue;
+        }
+
+        if(!MN_SET.has(head)) throw "unknown instruction '"+(sp<0?s:s.slice(0,sp))+"'";
+        const modes=OPS[head];
+        let operand=rest, indexReg=null;
+        const ix=/,\s*([XY])\s*$/i.exec(operand);
+        if(ix){ indexReg=ix[1].toUpperCase(); operand=operand.slice(0,ix.index).trim(); }
+
+        if(operand===""){
+          if(modes.imp===undefined) throw head+" needs an operand";
+          emit(modes.imp);
+        } else if(operand[0]==="#"){
+          if(modes.imm===undefined) throw head+" has no immediate form";
+          if(indexReg) throw "cannot index an immediate";
+          const v=parseNum(operand.slice(1),labels,ctx);
+          if(pass===2&&(v<-128||v>255)) throw "immediate "+v+" out of byte range";
+          emit(modes.imm,v);
+        } else {
+          const v=parseNum(operand,labels,ctx);
+          if(pass===2&&(v<0||v>=MEMSZ)) throw "address $"+v.toString(16)+" out of range (max $3FF)";
+          if(indexReg){
+            const key=indexReg==="Y"?head+"_Y":head;
+            const alt=OPS[key];
+            if(!alt||alt.idx===undefined) throw head+" cannot be indexed by "+indexReg;
+            emit(alt.idx,v&255,(v>>8)&255);
+          } else {
+            if(modes.abs===undefined) throw head+" has no absolute form";
+            emit(modes.abs,v&255,(v>>8)&255);
+          }
+        }
+        endAddr=Math.max(endAddr,pc);
+      }catch(e){
+        errors.push({line:li,msg:String(e)});
+      }
+    }
+    if(pass===1&&errors.length) { /* keep going: pass 2 produces address errors too */ }
+  }
+  const seen=new Set(), uniq=[];
+  for(const e of errors){ const k=e.line+"|"+e.msg; if(!seen.has(k)){seen.add(k);uniq.push(e);} }
+  return {bytes:bytes||new Uint8Array(MEMSZ),lineOfAddr:lineOfAddr||new Int16Array(MEMSZ).fill(-1),
+          errors:uniq.slice(0,12),size:endAddr,labels};
+}
+
+/* ---------------- CPU ---------------- */
+const cpu={
+  mem:new Uint8Array(MEMSZ), A:0,X:0,Y:0,PC:0,SP:STACK_TOP,
+  Z:0,C:0,N:0, halted:true, cycles:0, tick:0,
+  lastWrite:-1, bus:0, err:null,
+  out:"", outDirty:false, dirty:true
+};
+const BUS={PC:1,MEM:2,IR:4,ALU:8,A:16,X:32,Y:64,F:128,SP:256};
+
+function cpuLoad(bytes){
+  cpu.mem.set(bytes);
+  cpu.A=cpu.X=cpu.Y=0; cpu.PC=0; cpu.SP=STACK_TOP;
+  cpu.Z=cpu.C=cpu.N=0; cpu.halted=false; cpu.cycles=0; cpu.tick=0;
+  cpu.lastWrite=-1; cpu.bus=0; cpu.err=null; cpu.dirty=true;
+}
+function rd(a){
+  a&=MEMSZ-1;
+  if(a===P_RND) return (Math.random()*256)|0;
+  if(a===P_TICK) return cpu.tick&255;
+  return cpu.mem[a];
+}
+function wr(a,v){
+  a&=MEMSZ-1; v&=255;
+  cpu.lastWrite=a;
+  if(a===P_OUT){ cpu.out+=v===10?"\n":String.fromCharCode(v); cpu.outDirty=true; cpu.mem[a]=v; return; }
+  cpu.mem[a]=v;
+}
+function setNZ(v){ cpu.Z=v===0?1:0; cpu.N=(v&128)?1:0; }
+function push(v){ cpu.mem[cpu.SP]=v&255; cpu.lastWrite=cpu.SP; cpu.SP=cpu.SP>0x180?cpu.SP-1:STACK_TOP; }
+function pop(){ cpu.SP=cpu.SP<STACK_TOP?cpu.SP+1:0x180; return cpu.mem[cpu.SP]; }
+
+/* returns: 0 normal · 1 halted · 2 yielded (WAIT) */
+function cpuStep(){
+  if(cpu.halted) return 1;
+  const m=cpu.mem;
+  const pc0=cpu.PC&(MEMSZ-1);
+  const op=m[pc0];
+  let b=BUS.PC|BUS.MEM|BUS.IR;
+  const imm=()=>{ const v=m[(pc0+1)&(MEMSZ-1)]; cpu.PC=pc0+2; return v; };
+  const addr=()=>{ const v=m[(pc0+1)&(MEMSZ-1)]|(m[(pc0+2)&(MEMSZ-1)]<<8); cpu.PC=pc0+3; return v&(MEMSZ-1); };
+  cpu.PC=pc0+1;
+  cpu.cycles++;
+
+  switch(op){
+    case 0x00: break;
+    case 0x01: cpu.A=imm(); setNZ(cpu.A); b|=BUS.A|BUS.F; break;
+    case 0x02: cpu.A=rd(addr()); setNZ(cpu.A); b|=BUS.A|BUS.F; break;
+    case 0x03: cpu.A=rd(addr()+cpu.X); setNZ(cpu.A); b|=BUS.A|BUS.X|BUS.F; break;
+    case 0x3C: cpu.A=rd(addr()+cpu.Y); setNZ(cpu.A); b|=BUS.A|BUS.Y|BUS.F; break;
+    case 0x04: wr(addr(),cpu.A); b|=BUS.A; break;
+    case 0x05: wr(addr()+cpu.X,cpu.A); b|=BUS.A|BUS.X; break;
+    case 0x3D: wr(addr()+cpu.Y,cpu.A); b|=BUS.A|BUS.Y; break;
+    case 0x06: cpu.X=imm(); setNZ(cpu.X); b|=BUS.X|BUS.F; break;
+    case 0x07: cpu.X=rd(addr()); setNZ(cpu.X); b|=BUS.X|BUS.F; break;
+    case 0x08: wr(addr(),cpu.X); b|=BUS.X; break;
+    case 0x09: cpu.Y=imm(); setNZ(cpu.Y); b|=BUS.Y|BUS.F; break;
+    case 0x0A: cpu.Y=rd(addr()); setNZ(cpu.Y); b|=BUS.Y|BUS.F; break;
+    case 0x0B: wr(addr(),cpu.Y); b|=BUS.Y; break;
+    case 0x0C: cpu.X=cpu.A; setNZ(cpu.X); b|=BUS.A|BUS.X|BUS.F; break;
+    case 0x0D: cpu.A=cpu.X; setNZ(cpu.A); b|=BUS.A|BUS.X|BUS.F; break;
+    case 0x0E: cpu.Y=cpu.A; setNZ(cpu.Y); b|=BUS.A|BUS.Y|BUS.F; break;
+    case 0x0F: cpu.A=cpu.Y; setNZ(cpu.A); b|=BUS.A|BUS.Y|BUS.F; break;
+    case 0x10: case 0x11: {
+      const v=op===0x10?imm():rd(addr());
+      const r=cpu.A+v; cpu.C=r>255?1:0; cpu.A=r&255; setNZ(cpu.A);
+      b|=BUS.ALU|BUS.A|BUS.F; break; }
+    case 0x12: case 0x13: {
+      const v=op===0x12?imm():rd(addr());
+      const r=cpu.A-v; cpu.C=r<0?1:0; cpu.A=r&255; setNZ(cpu.A);
+      b|=BUS.ALU|BUS.A|BUS.F; break; }
+    case 0x14: case 0x15: { const v=op===0x14?imm():rd(addr()); cpu.A&=v; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break; }
+    case 0x16: case 0x17: { const v=op===0x16?imm():rd(addr()); cpu.A|=v; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break; }
+    case 0x18: case 0x19: { const v=op===0x18?imm():rd(addr()); cpu.A^=v; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break; }
+    case 0x1A: case 0x1B: {
+      const v=op===0x1A?imm():rd(addr());
+      const r=cpu.A-v; cpu.C=r<0?1:0; setNZ(r&255); b|=BUS.ALU|BUS.F; break; }
+    case 0x1C: cpu.A=(cpu.A+1)&255; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break;
+    case 0x1D: cpu.A=(cpu.A-1)&255; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break;
+    case 0x1E: cpu.X=(cpu.X+1)&255; setNZ(cpu.X); b|=BUS.ALU|BUS.X|BUS.F; break;
+    case 0x1F: cpu.X=(cpu.X-1)&255; setNZ(cpu.X); b|=BUS.ALU|BUS.X|BUS.F; break;
+    case 0x20: cpu.Y=(cpu.Y+1)&255; setNZ(cpu.Y); b|=BUS.ALU|BUS.Y|BUS.F; break;
+    case 0x21: cpu.Y=(cpu.Y-1)&255; setNZ(cpu.Y); b|=BUS.ALU|BUS.Y|BUS.F; break;
+    case 0x22: { const a=addr(); const v=(rd(a)+1)&255; wr(a,v); setNZ(v); b|=BUS.ALU|BUS.F; break; }
+    case 0x23: { const a=addr(); const v=(rd(a)-1)&255; wr(a,v); setNZ(v); b|=BUS.ALU|BUS.F; break; }
+    case 0x24: { const r=cpu.A<<1; cpu.C=(r>255)?1:0; cpu.A=r&255; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break; }
+    case 0x25: { cpu.C=cpu.A&1; cpu.A=cpu.A>>1; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break; }
+    case 0x26: cpu.A=(~cpu.A)&255; setNZ(cpu.A); b|=BUS.ALU|BUS.A|BUS.F; break;
+    case 0x30: cpu.PC=addr(); b|=BUS.PC; break;
+    case 0x31: { const a=addr(); if(cpu.Z) cpu.PC=a; b|=BUS.PC|BUS.F; break; }
+    case 0x32: { const a=addr(); if(!cpu.Z) cpu.PC=a; b|=BUS.PC|BUS.F; break; }
+    case 0x33: { const a=addr(); if(cpu.C) cpu.PC=a; b|=BUS.PC|BUS.F; break; }
+    case 0x34: { const a=addr(); if(!cpu.C) cpu.PC=a; b|=BUS.PC|BUS.F; break; }
+    case 0x35: { const a=addr(); if(cpu.N) cpu.PC=a; b|=BUS.PC|BUS.F; break; }
+    case 0x36: { const a=addr(); push(cpu.PC&255); push((cpu.PC>>8)&255); cpu.PC=a; b|=BUS.PC|BUS.SP; break; }
+    case 0x37: { const hi=pop(), lo=pop(); cpu.PC=((hi<<8)|lo)&(MEMSZ-1); b|=BUS.PC|BUS.SP; break; }
+    case 0x38: push(cpu.A); b|=BUS.A|BUS.SP; break;
+    case 0x39: cpu.A=pop(); setNZ(cpu.A); b|=BUS.A|BUS.SP|BUS.F; break;
+    case 0x3A: cpu.A=(Math.random()*256)|0; setNZ(cpu.A); b|=BUS.A|BUS.F; break;
+    case 0x3B: cpu.bus=b; cpu.dirty=true; return 2;
+    case 0xFF: cpu.halted=true; cpu.bus=b|BUS.IR; cpu.dirty=true; return 1;
+    default:
+      cpu.halted=true; cpu.err="illegal opcode $"+op.toString(16).toUpperCase().padStart(2,"0")+" at $"+pc0.toString(16).toUpperCase().padStart(3,"0");
+      cpu.dirty=true; return 1;
+  }
+  cpu.PC&=MEMSZ-1;
+  cpu.bus=b; cpu.dirty=true;
+  return 0;
+}
+
+/* ---------------- disassembly tables ---------------- */
+const OPMN=new Array(256).fill(null), OPLEN=new Uint8Array(256).fill(1), OPMODE=new Array(256).fill("imp");
+for(const mn in OPS){
+  for(const mode in OPS[mn]){
+    const code=OPS[mn][mode];
+    OPMN[code]=mn.replace("_Y","");
+    OPMODE[code]=mode+(mn.endsWith("_Y")?"Y":"");
+    OPLEN[code]=mode==="imp"?1:mode==="imm"?2:3;
+  }
+}
+
+/* ---------------- palette + examples ---------------- */
+const PAL=["#05070a","#10233d","#15385c","#1a4f7a","#1f6a92","#2a86a3","#3aa3ae","#5bbfae",
+           "#8ad79f","#b9e88a","#e2f279","#f8dd6a","#fbb95e","#f58b56","#ea5f5c","#ffffff"];
+const PALRGB=PAL.map(h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]);
+
+const EXAMPLES={
+"banner":`; ── BANNER ─────────────────────────────────
+; Walk a string with X-indexed loads and push
+; each byte to the console port at $300.
+      LDX #0
+loop: LDA msg,X        ; LDA sets Z when it reads 0
+      JZ  done
+      STA $300         ; $300 = character out
+      INX
+      JMP loop
+done: HLT
+
+msg:  .ascii "MICROCODE / 8-BIT CPU"
+      .byte 10
+      .ascii "1024 bytes. 40 opcodes. no excuses."
+      .byte 10, 0`,
+
+"fibonacci":`; ── FIBONACCI IN HEX ───────────────────────
+; 12 terms, printed as hex pairs through a
+; JSR/RTS subroutine with a nibble table.
+      LDA #0
+      STA a
+      LDA #1
+      STA b
+      LDA #12
+      STA cnt
+
+loop: LDA a
+      JSR phex         ; print A as two hex digits
+      LDA #32
+      STA $300         ; space
+      LDA a
+      ADD b
+      TAY              ; Y = a + b
+      LDA b
+      STA a
+      TYA
+      STA b
+      DEC cnt
+      JNZ loop
+      LDA #10
+      STA $300
+      HLT
+
+; ---- print A as $hh ----------------------
+phex: PSH
+      SHR
+      SHR
+      SHR
+      SHR
+      TAX
+      LDA hexd,X
+      STA $300
+      POP
+      AND #15
+      TAX
+      LDA hexd,X
+      STA $300
+      RTS
+
+hexd: .ascii "0123456789ABCDEF"
+a:    .byte 0
+b:    .byte 0
+cnt:  .byte 0`,
+
+"xor plasma":`; ── XOR PLASMA ─────────────────────────────
+; The demoscene classic: colour = (x^y)+t.
+; WAIT yields one video frame, $302 is a
+; free-running tick counter.
+frame:
+      LDX #0
+px:   TXA
+      SHR
+      SHR
+      SHR
+      SHR              ; y = i >> 4
+      STA ty
+      TXA
+      AND #15          ; x = i & 15
+      EOR ty
+      ADD $302         ; + animation tick
+      AND #15
+      STA $200,X       ; $200 = video RAM
+      INX
+      JNZ px           ; 256 pixels, wraps to 0
+      WAIT
+      JMP frame
+
+ty:   .byte 0`,
+
+"bouncing dot":`; ── BOUNCING DOT ───────────────────────────
+; Two's-complement velocity (1 or 255) plus a
+; whole-screen fade subroutine for the trail.
+      LDA #5
+      STA px
+      LDA #3
+      STA py
+      LDA #1
+      STA dx
+      STA dy
+
+main: JSR fade
+      LDA py           ; addr = $200 + y*16 + x
+      SHL
+      SHL
+      SHL
+      SHL
+      ADD px
+      TAX
+      LDA #15
+      STA $200,X
+
+      LDA px           ; step + reflect on X
+      ADD dx
+      STA px
+      CMP #16
+      JC  xok
+      LDA #0
+      SUB dx
+      STA dx
+      LDA px
+      ADD dx
+      ADD dx
+      STA px
+xok:
+      LDA py           ; step + reflect on Y
+      ADD dy
+      STA py
+      CMP #16
+      JC  yok
+      LDA #0
+      SUB dy
+      STA dy
+      LDA py
+      ADD dy
+      ADD dy
+      STA py
+yok:
+      WAIT
+      JMP main
+
+; ---- dim every lit pixel by one ----------
+fade: LDX #0
+fl:   LDA $200,X
+      JZ  fsk
+      DEA
+      STA $200,X
+fsk:  INX
+      JNZ fl
+      RTS
+
+px:   .byte 0
+py:   .byte 0
+dx:   .byte 0
+dy:   .byte 0`,
+
+"spark rain":`; ── SPARK RAIN ─────────────────────────────
+; Reads the hardware RNG at $301 and uses
+; Y-indexed stores to scatter sparks.
+main: JSR decay
+      LDX #3           ; three new sparks a frame
+spawn:LDA $301         ; random byte = random pixel
+      TAY
+      LDA #15
+      STA $200,Y
+      DEX
+      JNZ spawn
+      WAIT
+      JMP main
+
+decay:LDX #0
+dl:   LDA $200,X
+      JZ  dsk
+      DEA
+      STA $200,X
+dsk:  INX
+      JNZ dl
+      RTS`,
+
+"sieve of eratosthenes":`; ── PRIME SIEVE ────────────────────────────
+; Marks composites in a 64-byte flag table
+; then prints the primes as decimal numbers.
+      LDX #0
+clr:  LDA #0
+      STA flags,X
+      INX
+      TXA
+      CMP #64          ; C set while X < 64
+      JC  clr
+
+sieve:LDX #2
+outer:LDA flags,X
+      JNZ nxt
+      STX stp          ; stp = prime
+      TXA
+      ADD stp          ; start at 2*p
+      STA idx
+mark: LDA idx
+      CMP #64
+      JNC nxt
+      LDY idx
+      LDA #1
+      STA flags,Y
+      LDA idx
+      ADD stp
+      STA idx
+      JMP mark
+nxt:  INX
+      TXA
+      CMP #64
+      JC  outer
+
+      LDX #2
+prt:  LDA flags,X
+      JNZ pn
+      TXA
+      JSR pdec
+      LDA #32
+      STA $300
+pn:   INX
+      TXA
+      CMP #64
+      JC  prt
+      LDA #10
+      STA $300
+      HLT
+
+; ---- print A as decimal (0-99) -----------
+pdec: STA num
+      LDY #0
+d10:  LDA num
+      CMP #10
+      JC  d10d
+      SUB #10
+      STA num
+      INY
+      JMP d10
+d10d: TYA
+      JZ  ones
+      ADD #48
+      STA $300
+ones: LDA num
+      ADD #48
+      STA $300
+      RTS
+
+stp:  .byte 0
+idx:  .byte 0
+num:  .byte 0
+flags: .fill 64, 0`
+};
+
+/* ============================ UI ============================ */
+const $=id=>document.getElementById(id);
+const srcEl=$("src"), hlEl=$("hl"), gutEl=$("gut"), errsEl=$("errs"), outEl=$("out");
+const statEl=$("asmStat"), cycEl=$("cycles"), memEl=$("mem"), regsEl=$("regs"), dpEl=$("dp");
+const vid=$("vid"), vctx=vid.getContext("2d");
+const IPF=[1,4,32,256,2048,16384,131072,1000000];
+const LS_PROJ="mc_projects_v1", LS_DRAFT="mc_draft_v1", LS_SPD="mc_speed_v1";
+let asm={bytes:new Uint8Array(MEMSZ),lineOfAddr:new Int16Array(MEMSZ).fill(-1),errors:[],size:0,labels:{}};
+let running=false, needsReload=true, lastMemPaint=0, lastHl=-1;
+
+function ls(k,d){ try{const v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;} }
+function lsSet(k,v){ try{localStorage.setItem(k,v);}catch(e){} }
+
+let toastT=0;
+function toast(msg){
+  const t=$("toast"); t.textContent=msg; t.classList.add("on");
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),1900);
+}
+
+/* ---------- syntax highlight ---------- */
+const esc=s=>s.replace(/[&<>]/g,c=>c==="&"?"&amp;":c==="<"?"&lt;":"&gt;");
+const HLRE=new RegExp([
+  '("[^"]*"|\'.\')',
+  '(^[ \\t]*[A-Za-z_.][\\w.]*[ \\t]*:)',
+  '(\\.[A-Za-z]+)',
+  '\\b(' + MNEMONICS.join("|") + ')\\b',
+  '(,[ \\t]*[XY]\\b)',
+  '(#?\\$[0-9A-Fa-f]+|#?%[01]+|#?-?\\d+)'
+].join("|"),"gmi");
+function commentIdx(line){
+  let q=0;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'&&q!==2) q=q?0:1;
+    else if(c==="'"&&q!==1) q=q?0:2;
+    else if(c===";"&&!q) return i;
+  }
+  return -1;
+}
+function hiliteLine(line){
+  const ci=commentIdx(line);
+  const code=ci<0?line:line.slice(0,ci);
+  const cm=ci<0?"":line.slice(ci);
+  const body=esc(code).replace(HLRE,(m,str,lbl,dir,mn,ireg,num)=>{
+    const cls=str?"t-str":lbl?"t-lbl":dir?"t-dir":mn?"t-mn":ireg?"t-reg":"t-num";
+    return '<span class="'+cls+'">'+m+"</span>";
+  });
+  return body+(cm?'<span class="t-cm">'+esc(cm)+"</span>":"");
+}
+function paintEditor(){
+  const lines=srcEl.value.split("\n");
+  hlEl.innerHTML=lines.map(hiliteLine).join("\n")+"\n";
+  const pcLine=(!cpu.halted&&asm.lineOfAddr)?asm.lineOfAddr[cpu.PC&(MEMSZ-1)]:-1;
+  let g="";
+  for(let i=0;i<lines.length;i++) g+='<div class="'+(i===pcLine?"pc":"")+'">'+(i+1)+"</div>";
+  gutEl.innerHTML=g;
+  lastHl=pcLine;
+}
+function syncScroll(){
+  hlEl.scrollTop=srcEl.scrollTop; hlEl.scrollLeft=srcEl.scrollLeft;
+  gutEl.scrollTop=srcEl.scrollTop;
+}
+function markPcLine(){
+  const pcLine=(!cpu.halted&&asm.lineOfAddr)?asm.lineOfAddr[cpu.PC&(MEMSZ-1)]:-1;
+  if(pcLine===lastHl) return;
+  const kids=gutEl.children;
+  if(lastHl>=0&&kids[lastHl]) kids[lastHl].className="";
+  if(pcLine>=0&&kids[pcLine]) kids[pcLine].className="pc";
+  lastHl=pcLine;
+}
+
+/* ---------- assemble ---------- */
+let asmT=0;
+function doAssemble(){
+  asm=assemble(srcEl.value);
+  needsReload=true;
+  if(asm.errors.length){
+    statEl.className="pill err";
+    statEl.textContent="✕ "+asm.errors.length+" error"+(asm.errors.length>1?"s":"");
+    errsEl.innerHTML=asm.errors.map(e=>
+      '<button data-line="'+e.line+'"><b>line '+(e.line+1)+"</b> — "+esc(e.msg)+"</button>").join("");
+  }else{
+    statEl.className="pill ok";
+    statEl.textContent="✓ "+asm.size+" B · "+Object.keys(asm.labels).length+" labels";
+    errsEl.innerHTML="";
+  }
+  lsSet(LS_DRAFT,srcEl.value);
+}
+function scheduleAssemble(){
+  paintEditor();
+  clearTimeout(asmT); asmT=setTimeout(doAssemble,260);
+}
+errsEl.addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  const n=+b.dataset.line;
+  const lines=srcEl.value.split("\n");
+  let pos=0; for(let i=0;i<n&&i<lines.length;i++) pos+=lines[i].length+1;
+  srcEl.focus(); srcEl.setSelectionRange(pos,pos+(lines[n]||"").length);
+  srcEl.scrollTop=Math.max(0,n*19-60); syncScroll();
+});
+
+/* ---------- display ---------- */
+const frameBuf=vctx.createImageData(16,16);
+function drawVideo(){
+  const d=frameBuf.data, m=cpu.mem;
+  for(let i=0;i<256;i++){
+    const c=PALRGB[m[VRAM+i]&15], o=i<<2;
+    d[o]=c[0]; d[o+1]=c[1]; d[o+2]=c[2]; d[o+3]=255;
+  }
+  vctx.putImageData(frameBuf,0,0);
+}
+
+/* ---------- registers ---------- */
+const hx=(v,n)=>v.toString(16).toUpperCase().padStart(n,"0");
+let regCache={};
+function buildRegs(){
+  const defs=[["A","a"],["X","x"],["Y","y"],["PC","pc"],["SP","sp"],["IR","ir"]];
+  regsEl.innerHTML=defs.map(([l,k])=>
+    '<div class="reg" id="rg-'+k+'"><i>'+l+'</i><b>00</b><small></small></div>').join("")+
+    '<div style="grid-column:1/-1"><div class="flags">'+
+    ["Z","C","N","H"].map(f=>'<div class="flg" id="fl-'+f+'">'+f+"</div>").join("")+"</div></div>";
+}
+function paintRegs(){
+  const set=(k,txt,sub,hot)=>{
+    const el=$("rg-"+k); if(!el) return;
+    if(regCache[k]!==txt){ el.children[1].textContent=txt; regCache[k]=txt;
+      el.classList.add("hot"); setTimeout(()=>el.classList.remove("hot"),180); }
+    if(el.children[2].textContent!==sub) el.children[2].textContent=sub;
+  };
+  set("a",hx(cpu.A,2),String(cpu.A));
+  set("x",hx(cpu.X,2),String(cpu.X));
+  set("y",hx(cpu.Y,2),String(cpu.Y));
+  set("pc","$"+hx(cpu.PC,3),"");
+  set("sp","$"+hx(cpu.SP,3),"");
+  const op=cpu.mem[cpu.PC&(MEMSZ-1)];
+  set("ir",OPMN[op]||"??","$"+hx(op,2));
+  for(const [f,v] of [["Z",cpu.Z],["C",cpu.C],["N",cpu.N],["H",cpu.halted?1:0]]){
+    const el=$("fl-"+f); if(el) el.classList.toggle("on",!!v);
+  }
+}
+
+/* ---------- datapath ---------- */
+const DP_BOXES=[["PC",8,6,44,18,"PC"],["RAM",68,6,52,18,"MEM"],["IR",136,6,44,18,"IR"],["ALU",196,6,48,18,"ALU"],
+                ["A",8,52,40,18,"A"],["X",56,52,40,18,"X"],["Y",104,52,40,18,"Y"],["F",152,52,40,18,"F"],["SP",200,52,44,18,"SP"]];
+function buildDatapath(){
+  let s='<svg viewBox="0 0 256 78" role="img" aria-label="CPU datapath">';
+  s+='<path class="bus" id="dpr" d="M18 38 H236"/>';
+  for(const [id,x,y,w,h] of DP_BOXES){
+    const cx=x+w/2, stubY=y<30?y+h:y;
+    s+='<path class="bus" id="dps-'+id+'" d="M'+cx+" "+stubY+" V38"+'"/>';
+  }
+  for(const [id,x,y,w,h,lab] of DP_BOXES){
+    s+='<rect class="bx" id="dpb-'+id+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="4"/>';
+    s+='<text class="lb" id="dpl-'+id+'" x="'+(x+w/2)+'" y="'+(y+h/2+3)+'" text-anchor="middle">'+lab+"</text>";
+  }
+  s+="</svg>";
+  dpEl.innerHTML=s;
+}
+const DP_MAP=[["PC",BUS.PC],["RAM",BUS.MEM],["IR",BUS.IR],["ALU",BUS.ALU],
+              ["A",BUS.A],["X",BUS.X],["Y",BUS.Y],["F",BUS.F],["SP",BUS.SP]];
+let dpLast=-1;
+function paintDatapath(){
+  if(cpu.bus===dpLast) return;
+  dpLast=cpu.bus;
+  for(const [id,bit] of DP_MAP){
+    const on=!!(cpu.bus&bit);
+    const b=$("dpb-"+id), st=$("dps-"+id), lb=$("dpl-"+id);
+    if(b) b.classList.toggle("lit",on);
+    if(st) st.classList.toggle("lit",on);
+    if(lb) lb.classList.toggle("lit",on);
+  }
+  const r=$("dpr"); if(r) r.classList.toggle("lit",cpu.bus!==0);
+}
+
+/* ---------- memory view ---------- */
+let memCells=null, memShadow=new Int16Array(MEMSZ).fill(-1), memClsShadow=new Int16Array(MEMSZ).fill(-1);
+function buildMem(){
+  const frag=document.createDocumentFragment();
+  memCells=new Array(MEMSZ);
+  for(let r=0;r<MEMSZ/16;r++){
+    const row=document.createElement("div"); row.className="mline";
+    const i=document.createElement("i"); i.textContent="$"+hx(r*16,3); row.appendChild(i);
+    const sp=document.createElement("span");
+    for(let c=0;c<16;c++){
+      const b=document.createElement("b"); b.className="mb"; b.textContent="00";
+      memCells[r*16+c]=b; sp.appendChild(b);
+    }
+    row.appendChild(sp); frag.appendChild(row);
+  }
+  memEl.innerHTML=""; memEl.appendChild(frag);
+  memShadow.fill(-1); memClsShadow.fill(-1);
+}
+function paintMem(){
+  const m=cpu.mem, pc=cpu.PC&(MEMSZ-1), sp=cpu.SP, lw=cpu.lastWrite;
+  for(let i=0;i<MEMSZ;i++){
+    const v=m[i];
+    let cls=1;
+    if(i===pc&&!cpu.halted) cls=2; else if(i===lw) cls=3; else if(i===sp) cls=4;
+    else if(i>=VRAM&&i<VRAM+256&&v) cls=5; else cls=v?1:0;
+    if(memShadow[i]!==v){ memCells[i].textContent=hx(v,2); memShadow[i]=v; }
+    if(memClsShadow[i]!==cls){
+      memCells[i].className="mb"+(cls===0?"":cls===1?" nz":cls===2?" pc":cls===3?" wr":cls===4?" sp":" vr");
+      memClsShadow[i]=cls;
+    }
+  }
+}
+function memJump(addr){
+  const row=memEl.children[(addr>>4)];
+  if(row) memEl.scrollTop=row.offsetTop-memEl.offsetTop-6;
+}
+$("memnav").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-go]"); if(b) memJump(+b.dataset.go);
+});
+
+/* ---------- console ---------- */
+let progSpan=null;
+function flushOut(){
+  if(!cpu.outDirty) return;
+  cpu.outDirty=false;
+  const delta=cpu.out; cpu.out="";
+  if(!delta) return;
+  if(!progSpan){ progSpan=document.createElement("span"); outEl.appendChild(progSpan); }
+  progSpan.appendChild(document.createTextNode(delta.length>4000?delta.slice(-4000):delta));
+  if(progSpan.childNodes.length>400) progSpan.normalize();
+  while(outEl.childNodes.length>60) outEl.removeChild(outEl.firstChild);
+  outEl.scrollTop=outEl.scrollHeight;
+}
+function sysMsg(txt,kind){
+  const s=document.createElement("span");
+  s.className=kind||"sys"; s.textContent=txt+"\n";
+  outEl.appendChild(s); progSpan=null;
+  while(outEl.childNodes.length>60) outEl.removeChild(outEl.firstChild);
+  outEl.scrollTop=outEl.scrollHeight;
+}
+function clearOut(){ outEl.textContent=""; progSpan=null; cpu.out=""; cpu.outDirty=false; }
+
+/* ---------- machine control ---------- */
+function speedLabel(ipf){
+  const ips=ipf*60;
+  return ips>=1e6?(ips/1e6).toFixed(1).replace(/\.0$/,"")+" M/s"
+       : ips>=1e3?(ips/1e3).toFixed(ips<1e4?1:0).replace(/\.0$/,"")+" k/s"
+       : ips+" /s";
+}
+function reload(){
+  if(asm.errors.length){ toast("Fix "+asm.errors.length+" assembler error"+(asm.errors.length>1?"s":"")+" first"); return false; }
+  clearOut();
+  cpuLoad(asm.bytes);
+  needsReload=false;
+  sysMsg("» loaded "+asm.size+" bytes at $000");
+  dpLast=-1; regCache={}; memShadow.fill(-1); memClsShadow.fill(-1);
+  return true;
+}
+function setRunning(v){
+  running=v;
+  const b=$("bRun");
+  b.classList.toggle("on",v);
+  b.innerHTML=(v?"■ Stop":"▶ Run")+' <kbd>⌃↵</kbd>';
+  $("bStep").disabled=v;
+}
+function stopWith(msg,kind){ setRunning(false); if(msg) sysMsg(msg,kind); }
+
+function doStep(){
+  if(needsReload&&!reload()) return;
+  if(cpu.halted){ toast("CPU halted — press Reset"); return; }
+  const r=cpuStep();
+  if(r===1) stopWith(cpu.err?"✕ "+cpu.err:"» HLT after "+cpu.cycles+" instructions",cpu.err?"warn":null);
+}
+function doRun(){
+  if(running){ stopWith("» stopped at $"+hx(cpu.PC,3)); return; }
+  if(needsReload&&!reload()) return;
+  if(cpu.halted){ if(!reload()) return; }
+  setRunning(true);
+}
+function doReset(){
+  setRunning(false);
+  if(!reload()) return;
+  drawVideo();
+}
+
+let frameId=0;
+function loop(){
+  frameId=requestAnimationFrame(loop);
+  if(running&&!cpu.halted){
+    const budget=IPF[+$("spd").value];
+    cpu.tick++;
+    for(let i=0;i<budget;i++){
+      const r=cpuStep();
+      if(r===1){ stopWith(cpu.err?"✕ "+cpu.err:"» HLT after "+cpu.cycles+" instructions",cpu.err?"warn":null); break; }
+      if(r===2) break;
+    }
+  }
+  drawVideo();
+  flushOut();
+  if(cpu.dirty){ paintRegs(); paintDatapath(); markPcLine(); cpu.dirty=false; }
+  const now=performance.now();
+  if(now-lastMemPaint>110){ lastMemPaint=now; paintMem();
+    cycEl.textContent=cpu.cycles.toLocaleString()+" instr"; }
+}
+
+/* ---------- export helpers ---------- */
+function download(name,blob){
+  const u=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=u; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(u);a.remove();},800);
+}
+function b64url(str){
+  const b=btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  return b.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function unb64url(s){
+  s=s.replace(/-/g,"+").replace(/_/g,"/");
+  while(s.length%4) s+="=";
+  const bin=atob(s), arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new TextDecoder().decode(arr);
+}
+function slug(){ return ($("srcName").textContent||"program").replace(/\.asm$/,"").replace(/[^\w.-]+/g,"-")||"program"; }
+
+function exportAsm(){ download(slug()+".asm",new Blob([srcEl.value],{type:"text/plain"})); toast("Saved "+slug()+".asm"); }
+function exportBin(){
+  if(asm.errors.length){ toast("Assemble cleanly first"); return; }
+  const n=Math.max(1,asm.size);
+  download(slug()+".bin",new Blob([asm.bytes.slice(0,n)],{type:"application/octet-stream"}));
+  toast("Saved "+n+" bytes of machine code");
+}
+function exportHex(){
+  if(asm.errors.length){ toast("Assemble cleanly first"); return; }
+  let t="; "+slug()+" — "+asm.size+" bytes\n";
+  for(let a=0;a<asm.size;a+=16){
+    const row=[]; for(let i=0;i<16&&a+i<asm.size;i++) row.push(hx(asm.bytes[a+i],2));
+    t+="$"+hx(a,3)+"  "+row.join(" ")+"\n";
+  }
+  download(slug()+".hex.txt",new Blob([t],{type:"text/plain"}));
+  toast("Saved hex listing");
+}
+function exportPng(){
+  const sc=24, c=document.createElement("canvas");
+  c.width=c.height=16*sc;
+  const g=c.getContext("2d");
+  g.imageSmoothingEnabled=false;
+  for(let y=0;y<16;y++) for(let x=0;x<16;x++){
+    g.fillStyle=PAL[cpu.mem[VRAM+y*16+x]&15];
+    g.fillRect(x*sc,y*sc,sc,sc);
+  }
+  c.toBlob(b=>{ if(b&&b.size){ download(slug()+"-screen.png",b); toast("Saved screen PNG"); } else toast("PNG export failed"); },"image/png");
+}
+function shareLink(){
+  const url=location.origin+location.pathname+"#p="+b64url(srcEl.value);
+  const done=()=>toast("Share link copied ("+url.length+" chars)");
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done,()=>{location.hash="p="+b64url(srcEl.value);toast("Link is in the address bar");});
+  else { location.hash="p="+b64url(srcEl.value); toast("Link is in the address bar"); }
+}
+
+/* ---------- sheets ---------- */
+const sheet=$("sheet"), shBody=$("shBody");
+function openSheet(html){ shBody.innerHTML=html; sheet.classList.add("open"); }
+function closeSheet(){ sheet.classList.remove("open"); }
+$("shX").onclick=closeSheet;
+document.addEventListener("click",e=>{
+  if(sheet.classList.contains("open")&&!sheet.contains(e.target)&&!e.target.closest("#bSave,#bExp")) closeSheet();
+});
+
+function projects(){ try{ return JSON.parse(ls(LS_PROJ,"[]"))||[]; }catch(e){ return []; } }
+function saveProjects(p){ lsSet(LS_PROJ,JSON.stringify(p.slice(0,40))); }
+function renderProjects(){
+  const p=projects();
+  const list=p.length?p.map((x,i)=>
+    '<div><span>'+esc(x.name)+'</span><button data-ld="'+i+'">load</button><button data-rm="'+i+'">del</button></div>').join("")
+    :"<p>No saved programs yet.</p>";
+  openSheet('<h4>Projects</h4><div class="row">'+
+    '<input id="pname" class="btn" style="flex:2 1 160px;font-family:var(--mono)" placeholder="program name" value="'+esc(slug())+'">'+
+    '<button class="btn go" id="pdo">Save current</button></div>'+
+    '<div class="save-list" id="plist">'+list+"</div>");
+  $("pdo").onclick=()=>{
+    const name=($("pname").value||"untitled").trim().slice(0,40);
+    const p2=projects().filter(x=>x.name!==name);
+    p2.unshift({name,src:srcEl.value,ts:Date.now()});
+    saveProjects(p2); $("srcName").textContent=name+(name.endsWith(".asm")?"":".asm");
+    toast('Saved "'+name+'"'); renderProjects();
+  };
+  $("plist").onclick=e=>{
+    const ld=e.target.closest("button[data-ld]"), rm=e.target.closest("button[data-rm]");
+    if(ld){ const x=projects()[+ld.dataset.ld]; if(x){ loadSource(x.src,x.name); closeSheet(); toast('Loaded "'+x.name+'"'); } }
+    if(rm){ const p2=projects(); p2.splice(+rm.dataset.rm,1); saveProjects(p2); renderProjects(); }
+  };
+}
+function exportSheet(){
+  openSheet('<h4>Export</h4><div class="row">'+
+    '<button class="btn" id="eAsm">⭳ Source .asm</button>'+
+    '<button class="btn" id="eBin">⭳ Machine code .bin</button>'+
+    '<button class="btn" id="eHex">⭳ Hex listing</button>'+
+    '<button class="btn" id="ePng">⭳ Screen .png</button>'+
+    '<button class="btn go" id="eLnk">⧉ Copy share link</button></div>');
+  $("eAsm").onclick=exportAsm; $("eBin").onclick=exportBin;
+  $("eHex").onclick=exportHex; $("ePng").onclick=exportPng; $("eLnk").onclick=shareLink;
+}
+
+/* ---------- source loading ---------- */
+function loadSource(text,name){
+  srcEl.value=text;
+  if(name) $("srcName").textContent=name.endsWith(".asm")?name:name+".asm";
+  paintEditor(); doAssemble(); syncScroll();
+  setRunning(false);
+  cpu.mem.fill(0); cpu.halted=true; cpu.cycles=0; cpu.PC=0; cpu.A=cpu.X=cpu.Y=0;
+  clearOut(); drawVideo(); paintRegs(); paintMem(); dpLast=-1;
+  cycEl.textContent="0 instr";
+}
+
+/* ---------- wiring ---------- */
+srcEl.addEventListener("input",scheduleAssemble);
+srcEl.addEventListener("scroll",syncScroll);
+srcEl.addEventListener("keydown",e=>{
+  if(e.key==="Tab"){
+    e.preventDefault();
+    const s=srcEl.selectionStart,t=srcEl.selectionEnd;
+    srcEl.value=srcEl.value.slice(0,s)+"  "+srcEl.value.slice(t);
+    srcEl.selectionStart=srcEl.selectionEnd=s+2;
+    scheduleAssemble();
+  }
+});
+$("bRun").onclick=doRun;
+$("bStep").onclick=doStep;
+$("bReset").onclick=doReset;
+$("bSave").onclick=()=>{ sheet.classList.contains("open")?closeSheet():renderProjects(); };
+$("bExp").onclick=()=>{ sheet.classList.contains("open")?closeSheet():exportSheet(); };
+$("spd").addEventListener("input",()=>{
+  $("spdv").textContent=speedLabel(IPF[+$("spd").value]);
+  lsSet(LS_SPD,$("spd").value);
+});
+const exSel=$("exSel");
+exSel.innerHTML='<option value="">Examples…</option>'+
+  Object.keys(EXAMPLES).map(k=>'<option value="'+k+'">'+k.replace(/\b\w/g,c=>c.toUpperCase())+"</option>").join("");
+exSel.addEventListener("change",()=>{
+  const k=exSel.value; if(!k) return;
+  loadSource(EXAMPLES[k],k.replace(/\s+/g,"-"));
+  exSel.value="";
+  toast("Loaded “"+k+"” — hit Run");
+});
+addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); doRun(); }
+  else if(e.key==="F8"){ e.preventDefault(); if(!running) doStep(); }
+  else if(e.key==="Escape"&&running){ e.preventDefault(); stopWith("» stopped at $"+hx(cpu.PC,3)); }
+});
+$("tEd").onclick=()=>{ $("colEd").classList.remove("hide"); $("colMa").classList.add("hide");
+  $("tEd").classList.add("on"); $("tMa").classList.remove("on"); };
+$("tMa").onclick=()=>{ $("colMa").classList.remove("hide"); $("colEd").classList.add("hide");
+  $("tMa").classList.add("on"); $("tEd").classList.remove("on"); memJump(VRAM); };
+function layout(){
+  const wide=innerWidth>900;
+  if(wide){ $("colEd").classList.remove("hide"); $("colMa").classList.remove("hide"); }
+  else if(!$("colEd").classList.contains("hide")&&!$("colMa").classList.contains("hide")) $("colMa").classList.add("hide");
+}
+addEventListener("resize",layout);
+
+/* ---------- boot ---------- */
+buildRegs(); buildDatapath(); buildMem();
+$("spd").value=ls(LS_SPD,"5");
+$("spdv").textContent=speedLabel(IPF[+$("spd").value]);
+let boot=null, bootName=null;
+if(location.hash.startsWith("#p=")){
+  try{ boot=unb64url(location.hash.slice(3)); bootName="shared"; }catch(e){ boot=null; }
+}
+if(!boot){ const d=ls(LS_DRAFT,null); if(d&&d.trim()){ boot=d; bootName="draft"; } }
+if(!boot){ boot=EXAMPLES["xor plasma"]; bootName="xor-plasma"; }
+loadSource(boot,bootName);
+layout();
+if(bootName==="xor-plasma"||bootName==="shared"){ if(reload()) setRunning(true); }
+drawVideo(); paintRegs(); paintMem();
+sysMsg("» Microcode ready. Examples… ▾ loads a program; ⌃↵ runs it.");
+frameId=requestAnimationFrame(loop);
+</script>
+</body>
+</html>
