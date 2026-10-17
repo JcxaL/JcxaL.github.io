@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Overshoot From One Number — UI Spotlight</title>
+<meta name="description" content="CSS progress() maps one driver value into many curves — and Safari 27's no-clamp lets the result run past the ends.">
+<style>
+@property --t { syntax:'<number>'; inherits:true; initial-value:0 }
+@property --p { syntax:'<number>'; inherits:false; initial-value:0 }
+
+*{box-sizing:border-box;margin:0;padding:0}
+:root{ --b:#38bdf8; --bg:#070a0f; --fg:#e8eef6; --dim:#8893a6; --line:rgba(255,255,255,.1); }
+html,body{min-height:100%}
+body{
+  background:
+    radial-gradient(900px 520px at 78% -10%, rgba(56,189,248,.14), transparent 62%),
+    radial-gradient(700px 480px at 8% 108%, rgba(56,189,248,.08), transparent 60%),
+    var(--bg);
+  color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:88px 20px 110px;-webkit-text-size-adjust:100%
+}
+.back-link{
+  position:fixed;left:14px;top:14px;z-index:50;text-decoration:none;color:var(--fg);
+  background:rgba(14,18,26,.72);border:1px solid var(--line);backdrop-filter:blur(12px);
+  padding:9px 15px;border-radius:999px;font-size:13px;font-weight:600;
+  transition:background .2s,border-color .2s
+}
+.back-link:hover{background:rgba(26,32,44,.86);border-color:rgba(255,255,255,.26)}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:clamp(25px,5vw,38px);letter-spacing:-.02em;line-height:1.1;font-weight:680}
+h1 em{font-style:normal;color:var(--b)}
+.lede{color:var(--dim);margin-top:10px;max-width:60ch;font-size:14.5px}
+
+.panel{
+  position:fixed;right:14px;top:14px;z-index:50;width:216px;
+  background:rgba(12,16,23,.8);border:1px solid var(--line);border-radius:14px;
+  padding:12px;backdrop-filter:blur(14px);box-shadow:0 14px 40px rgba(0,0,0,.45)
+}
+.panel h2{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+.panel label{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin:9px 0 5px}
+.panel label b{color:var(--fg);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;display:block}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:9px;background:#243041}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:var(--b)}
+input[type=range]::-moz-range-track{height:3px;border-radius:9px;background:#243041}
+input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--b)}
+.panel .row{display:flex;gap:6px;margin-top:10px}
+.panel button{
+  flex:1;appearance:none;cursor:pointer;background:#19202c;border:1px solid var(--line);color:var(--fg);
+  font:600 11.5px/1 system-ui,sans-serif;padding:8px 6px;border-radius:9px
+}
+.panel button[aria-pressed=true]{background:var(--b);color:#04121c;border-color:transparent}
+.badge{
+  display:inline-flex;align-items:center;gap:7px;margin-top:14px;font-size:11.5px;color:var(--dim);
+  border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:rgba(12,16,23,.6)
+}
+.badge i{width:7px;height:7px;border-radius:50%;background:#f0a33c;display:block}
+.badge.ok i{background:#3dd68c}
+
+.driver{
+  margin:26px 0 8px;display:flex;align-items:baseline;gap:12px;
+  font:700 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dim);letter-spacing:.1em
+}
+.driver b{font-size:30px;color:var(--fg);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.track{height:4px;border-radius:9px;background:#18202c;flex:1;position:relative;overflow:hidden;min-width:60px}
+.track i{position:absolute;inset:0 auto 0 0;background:var(--b);width:calc(var(--t) * 100%)}
+
+.lane{
+  display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;
+  border-top:1px solid var(--line);padding:17px 0
+}
+.lane .name{font:600 12.5px/1.35 system-ui,sans-serif;width:104px}
+.lane .name small{display:block;color:var(--dim);font:400 11px/1.4 ui-monospace,Menlo,monospace;margin-top:4px}
+.rail{position:relative;height:40px;border-radius:10px;background:#0d131c;border:1px solid var(--line);overflow:hidden;container-type:inline-size}
+.rail .zone{position:absolute;top:0;bottom:0;left:12%;right:12%;background:rgba(56,189,248,.07);
+  border-left:1px dashed rgba(56,189,248,.3);border-right:1px dashed rgba(56,189,248,.3)}
+.rail .dot{
+  position:absolute;top:50%;left:11px;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;
+  background:var(--b);box-shadow:0 0 18px rgba(56,189,248,.55);
+  translate: calc(var(--p) * (100cqw - 22px)) 0;
+}
+.lane .out{
+  font:600 12.5px/1 ui-monospace,Menlo,monospace;width:62px;text-align:right;
+  color:var(--b);font-variant-numeric:tabular-nums
+}
+.lane.over .dot{background:#f0a33c;box-shadow:0 0 18px rgba(240,163,60,.55)}
+.lane.over .out{color:#f0a33c}
+
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:30px}
+.card{
+  border:1px solid var(--line);border-radius:16px;padding:18px 16px;background:#0c1118;
+  translate: 0 calc((1 - var(--p)) * 26px);
+  rotate: calc((1 - var(--p)) * -5deg);
+  scale: calc(.9 + var(--p) * .1);
+  opacity: clamp(.14, var(--p), 1);
+}
+.card h3{font-size:14px;margin-bottom:6px}
+.card p{font-size:12.5px;color:var(--dim);line-height:1.45}
+.src{
+  margin-top:34px;border:1px solid var(--line);border-radius:14px;background:#0a0f16;
+  padding:14px 16px;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:#9fb3c8;overflow-x:auto;white-space:pre
+}
+.src b{color:var(--b);font-weight:600}
+.credit{
+  position:fixed;left:0;right:0;bottom:0;text-align:center;padding:11px 16px;
+  font-size:11.5px;color:#5d6778;background:linear-gradient(180deg,transparent,rgba(7,10,15,.9) 46%)
+}
+.credit a{color:#7d8899}
+@media (min-width:761px){ body{padding-right:262px} }
+@media (max-width:760px){
+  body{padding:76px 15px 104px}
+  .panel{position:static;width:auto;margin:0 0 22px}
+  .cards{grid-template-columns:1fr}
+  .lane{grid-template-columns:1fr;gap:9px}
+  .lane .name{width:auto}
+  .lane .out{text-align:left;width:auto}
+}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h2>Driver</h2>
+  <label>Speed <b id="vSpeed">1.0×</b></label>
+  <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+  <label>Scrub t <b id="vT">0.00</b></label>
+  <input type="range" id="scrub" min="0" max="1" step="0.001" value="0">
+  <label>Overshoot window <b id="vWin">0.20</b></label>
+  <input type="range" id="win" min="0" max="0.4" step="0.01" value="0.2">
+  <div class="row">
+    <button id="play" aria-pressed="true">Pause</button>
+    <button id="pong" aria-pressed="true">Ping-pong</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <h1>One number in. <em>Four curves out.</em></h1>
+  <p class="lede">A single driver value walks from 0 to 1. Each lane maps it through its own window with
+    <code>progress()</code> — a late start, an early finish, a wider run. The amber lane adds Safari&nbsp;27's
+    <code>no-clamp</code>, so its result is free to run past the ends and spring back.</p>
+
+  <div class="driver"><span>T</span><b id="tNum">0.00</b><span class="track"><i></i></span></div>
+
+  <div id="lanes"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="src" id="src"></div>
+
+  <div class="badge" id="badge"><i></i><span>checking support…</span></div>
+</div>
+
+<footer class="credit">Inspired by <a href="https://developer.apple.com/documentation/safari-release-notes/safari-27-release-notes">Safari 27.0 release notes · progress() no-clamp</a> · UI Spotlight Day 136 · Drop #1</footer>
+
+<script>
+(function(){
+'use strict';
+var NATIVE = CSS.supports('width','calc(1px * progress(0.5 from 0 to 1))');
+var NATIVE_NC = CSS.supports('width','calc(1px * progress(no-clamp 0.5 from 0 to 1))');
+
+var LANES = [
+  { name:'Straight through', from:0,    to:1,    nc:false },
+  { name:'Late and early',   from:0.25, to:0.75, nc:false },
+  { name:'Wide window',      from:-0.2, to:1.2,  nc:false },
+  { name:'No clamp',         from:0.2,  to:0.8,  nc:true  }
+];
+var root = document.documentElement, lanesBox = document.getElementById('lanes');
+
+LANES.forEach(function(L,i){
+  var el = document.createElement('div');
+  el.className = 'lane' + (L.nc ? ' over' : '');
+  el.innerHTML =
+    '<div class="name">' + L.name + '<small class="win"></small></div>' +
+    '<div class="rail"><span class="zone"></span><span class="dot"></span></div>' +
+    '<div class="out">0.00</div>';
+  lanesBox.appendChild(el);
+  L.el = el;
+  L.dot = el.querySelector('.dot');
+  L.out = el.querySelector('.out');
+  L.zone = el.querySelector('.zone');
+  L.lbl = el.querySelector('.win');
+});
+
+var CARDS = [
+  ['Lift', 'The same number raises the card, straightens it and fades it in.'],
+  ['Settle', 'Three properties, one source — they can never drift apart.'],
+  ['Spring', 'Past 1 the card leans the other way, then comes back.']
+];
+var cardBox = document.getElementById('cards');
+CARDS.forEach(function(c){
+  var d = document.createElement('div');
+  d.className = 'card';
+  d.innerHTML = '<h3>' + c[0] + '</h3><p>' + c[1] + '</p>';
+  cardBox.appendChild(d);
+});
+
+/* Native path: each lane declares its own progress() mapping in CSS.
+   Fallback path: the same arithmetic, written from script. */
+var sheet = null;
+function writeRules(){
+  if(!NATIVE) return;
+  if(!sheet){ sheet = document.createElement('style'); document.head.appendChild(sheet); }
+  var css = '';
+  LANES.forEach(function(L,i){
+    var fn = (L.nc && NATIVE_NC) ? 'progress(no-clamp var(--t) from ' : 'progress(var(--t) from ';
+    css += '.lane:nth-of-type(' + (i+1) + '){--p:' + fn + L.from + ' to ' + L.to + ')}\n';
+  });
+  css += '.cards{--p:' + ((LANES[3].nc && NATIVE_NC) ? 'progress(no-clamp var(--t) from ' : 'progress(var(--t) from ')
+       + LANES[3].from + ' to ' + LANES[3].to + ')}\n';
+  sheet.textContent = css;
+}
+function progressOf(L, t){
+  var p = (t - L.from) / (L.to - L.from);
+  if(!(L.nc && NATIVE_NC) && !L.nc) return Math.min(1, Math.max(0, p));
+  return L.nc ? p : Math.min(1, Math.max(0, p));
+}
+function applyFallback(t){
+  LANES.forEach(function(L){ L.el.style.setProperty('--p', progressOf(L,t).toFixed(4)); });
+  cardBox.style.setProperty('--p', progressOf(LANES[3], t).toFixed(4));
+}
+function readout(t){
+  document.getElementById('tNum').textContent = t.toFixed(2);
+  LANES.forEach(function(L){
+    L.out.textContent = progressOf(L,t).toFixed(2);
+    var lo = Math.max(0, Math.min(1, L.from)), hi = Math.max(0, Math.min(1, L.to));
+    L.zone.style.left = (lo*100) + '%';
+    L.zone.style.right = ((1-hi)*100) + '%';
+    L.lbl.textContent = 'from ' + L.from + ' to ' + L.to + (L.nc ? ' · no-clamp' : '');
+  });
+}
+
+var t = 0, dir = 1, playing = true, pong = true, speed = 1, last = 0;
+function setT(v){
+  t = v;
+  root.style.setProperty('--t', t.toFixed(4));
+  if(!NATIVE) applyFallback(t);
+  readout(t);
+  document.getElementById('scrub').value = t;
+  document.getElementById('vT').textContent = t.toFixed(2);
+}
+function frame(now){
+  if(playing){
+    var dt = last ? Math.min(0.05, (now-last)/1000) : 0;
+    last = now;
+    var nt = t + dir*dt*0.42*speed;
+    if(nt > 1){ if(pong){ nt = 1; dir = -1; } else nt = 0; }
+    if(nt < 0){ if(pong){ nt = 0; dir = 1; } else nt = 1; }
+    setT(nt);
+  }else last = now;
+  requestAnimationFrame(frame);
+}
+
+document.getElementById('speed').oninput = function(){
+  speed = parseFloat(this.value);
+  document.getElementById('vSpeed').textContent = speed.toFixed(1) + '×';
+};
+document.getElementById('scrub').oninput = function(){
+  playing = false;
+  var b = document.getElementById('play');
+  b.textContent = 'Play'; b.setAttribute('aria-pressed','false');
+  setT(parseFloat(this.value));
+};
+document.getElementById('win').oninput = function(){
+  var w = parseFloat(this.value);
+  document.getElementById('vWin').textContent = w.toFixed(2);
+  LANES[3].from = w; LANES[3].to = 1 - w;
+  writeRules(); if(!NATIVE) applyFallback(t);
+  readout(t); showSrc();
+};
+document.getElementById('play').onclick = function(){
+  playing = !playing; last = 0;
+  this.textContent = playing ? 'Pause' : 'Play';
+  this.setAttribute('aria-pressed', String(playing));
+};
+document.getElementById('pong').onclick = function(){
+  pong = !pong;
+  this.setAttribute('aria-pressed', String(pong));
+};
+
+function showSrc(){
+  var L = LANES[3];
+  document.getElementById('src').innerHTML =
+    '<b>@property</b> --t { syntax: \'&lt;number&gt;\'; inherits: true; initial-value: 0 }\n\n' +
+    '.lane--late { --p: <b>progress</b>(var(--t) from .25 to .75) }\n' +
+    '.lane--wide { --p: <b>progress</b>(var(--t) from -.2 to 1.2) }\n' +
+    '.lane--free { --p: <b>progress</b>(<b>no-clamp</b> var(--t) from ' + L.from + ' to ' + L.to + ') }\n\n' +
+    '.card { translate: 0 calc((1 - var(--p)) * 26px);\n' +
+    '        rotate: calc((1 - var(--p)) * -5deg);\n' +
+    '        scale: calc(.9 + var(--p) * .1) }';
+}
+
+var badge = document.getElementById('badge');
+if(NATIVE && NATIVE_NC){
+  badge.className = 'badge ok';
+  badge.innerHTML = '<i></i><span>Native <code>progress()</code> with <code>no-clamp</code> — the mapping is pure CSS.</span>';
+}else if(NATIVE){
+  badge.innerHTML = '<i></i><span>Native <code>progress()</code>; <code>no-clamp</code> needs Safari&nbsp;27, so the amber lane is clamped here.</span>';
+}else{
+  badge.innerHTML = '<i></i><span>No <code>progress()</code> in this browser — the same arithmetic is running from script so you can still see the shape.</span>';
+}
+
+writeRules();
+showSrc();
+setT(0);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
