@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reverse From a Standstill — UI Spotlight Day 137</title>
+<meta name="description" content="Firefox 157 made Animation.reverse() work at playbackRate 0 and mirrors startTime when a scroll-driven animation flips direction.">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#070c12; --card:#111a24; --line:#1e2b3a; --ink:#e9f1f8; --mute:#8aa0b6;
+    --accent:#38bdf8; --warm:#fbbf24; --ok:#34d399; --bad:#f87171;
+  }
+  body{
+    margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:76px 18px 92px; -webkit-text-size-adjust:100%;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:radial-gradient(760px 520px at 15% -10%,#0d2d3d 0%,transparent 62%),
+               radial-gradient(620px 420px at 100% 105%,#1d2340 0%,transparent 60%);
+  }
+  .back-link{
+    position:fixed; left:14px; top:14px; z-index:9; text-decoration:none;
+    display:inline-flex; align-items:center; gap:7px; padding:9px 15px;
+    border-radius:999px; color:var(--ink); font-size:13.5px; font-weight:550;
+    background:rgba(13,20,29,.78); border:1px solid var(--line); backdrop-filter:blur(10px);
+  }
+  .back-link:hover{border-color:var(--accent); color:#cdeeff}
+  h1{margin:0 0 6px; font-size:clamp(22px,4.6vw,34px); letter-spacing:-.02em}
+  .sub{margin:0 0 6px; color:var(--mute); max-width:62ch}
+  .wrap{max-width:1040px; margin:0 auto}
+  .badge{
+    display:inline-flex; align-items:center; gap:8px; margin:14px 0 26px;
+    padding:7px 13px; border-radius:999px; font-size:12.5px;
+    border:1px solid var(--line); background:var(--card);
+  }
+  .badge b{font-weight:650}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--mute)}
+  .dot.y{background:var(--ok)} .dot.n{background:var(--bad)}
+  .lane{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:16px 16px 18px; margin-bottom:16px;
+  }
+  .lane h2{margin:0 0 4px; font-size:15px; letter-spacing:.01em}
+  .lane p{margin:0 0 14px; color:var(--mute); font-size:13.5px; max-width:70ch}
+  .track{
+    position:relative; height:62px; border-radius:12px; overflow:hidden;
+    background:linear-gradient(90deg,#0c141d,#0f1a25);
+    border:1px solid #1b2634;
+  }
+  .track::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(90deg,rgba(255,255,255,.05) 0 1px,transparent 1px 10%);
+  }
+  .runner{
+    position:absolute; top:50%; left:0; width:42px; height:42px; margin-top:-21px;
+    border-radius:12px; display:grid; place-items:center; font-weight:650; font-size:13px;
+    background:linear-gradient(145deg,var(--accent),#0ea5e9); color:#04222f;
+    box-shadow:0 8px 22px rgba(56,189,248,.3);
+  }
+  .runner.w{background:linear-gradient(145deg,var(--warm),#f59e0b); box-shadow:0 8px 22px rgba(251,191,36,.26)}
+  .runner.g{background:linear-gradient(145deg,var(--ok),#10b981); box-shadow:0 8px 22px rgba(52,211,153,.26)}
+  .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:13px}
+  button{
+    font:inherit; font-size:13.5px; color:var(--ink); background:#17222f;
+    border:1px solid var(--line); border-radius:10px; padding:8px 13px; cursor:pointer;
+    min-height:40px; transition:background .15s,border-color .15s;
+  }
+  button:hover{background:#1e2c3b; border-color:#2e4154}
+  button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .read{
+    margin-left:auto; font-size:12px; color:var(--mute); font-variant-numeric:tabular-nums;
+    display:flex; gap:12px; flex-wrap:wrap;
+  }
+  .read b{color:var(--ink); font-weight:600}
+  .verdict{
+    margin:12px 0 0 !important; padding:9px 12px; border-radius:10px; font-size:12.5px;
+    background:#0e1822; border:1px solid var(--line); color:var(--mute);
+    font-variant-numeric:tabular-nums;
+  }
+  .verdict b{color:var(--ink)}
+  .verdict.yes{border-color:var(--ok)} .verdict.no{border-color:var(--bad)}
+  .scroller{
+    height:150px; overflow-y:auto; overflow-x:hidden; border-radius:12px;
+    border:1px solid #1b2634; background:#0c141d; scroll-timeline:--sc block;
+  }
+  .scroller .tall{height:520px; padding:12px; color:var(--mute); font-size:13px}
+  .scroller .tall p{margin:0 0 220px}
+  .sbar{
+    position:sticky; top:0; height:6px; border-radius:6px; transform-origin:left;
+    background:linear-gradient(90deg,var(--accent),var(--ok));
+    animation:grow linear both; animation-timeline:--sc;
+  }
+  @keyframes grow{from{transform:scaleX(0)} to{transform:scaleX(1)}}
+  input[type=range]{accent-color:var(--accent); width:min(260px,52vw)}
+  .chips{display:flex; gap:9px; flex-wrap:wrap; margin-top:4px}
+  .chip{
+    padding:9px 14px; border-radius:11px; font-size:13px; font-weight:550;
+    background:#16212d; border:1px solid var(--line);
+    animation:pulse 2.4s ease-in-out infinite alternate both;
+  }
+  @keyframes pulse{
+    from{transform:translateY(0) scale(1); border-color:var(--line); color:var(--mute)}
+    to{transform:translateY(-10px) scale(1.06); border-color:var(--accent); color:#cdeeff}
+  }
+  footer{
+    position:fixed; left:0; right:0; bottom:0; padding:11px 16px;
+    font-size:12px; color:var(--mute); text-align:center;
+    background:linear-gradient(180deg,transparent,rgba(7,12,18,.92) 42%);
+  }
+  footer a{color:#a9c4da}
+  @media (max-width:560px){ .read{margin-left:0; width:100%} body{padding-top:68px} }
+  @media (prefers-reduced-motion:reduce){ .chip{animation-duration:1ms; animation-iteration-count:1} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="wrap">
+  <h1>Reverse From a Standstill</h1>
+  <p class="sub">Two Web Animations fixes landed in Firefox 157. <code>reverse()</code> on an animation
+  whose <code>playbackRate</code> is <code>0</code> used to be swallowed whole; it now seeks — mirroring
+  <code>currentTime</code> to the other end of the duration and marking the animation playing — so the
+  moment you hand it a non-zero rate it carries on from the mirrored position. And flipping the sign of
+  <code>playbackRate</code> on a scroll-driven animation now mirrors <code>startTime</code> to the
+  opposite end of the timeline instead of stranding it.</p>
+  <div class="badge"><span class="dot" id="probeDot"></span><span id="probeText">probing your engine…</span></div>
+
+  <section class="lane">
+    <h2>1 · Frozen, then reversed</h2>
+    <p>Park the runner by setting <code>playbackRate = 0</code> — not <code>pause()</code> — then call
+    <code>reverse()</code>. Nothing moves either way at rate 0; what should change is the clock.
+    Watch <code>currentTime</code> flip to the far side of the duration, then resume at −1 and the
+    runner carries on from there.</p>
+    <div class="track"><div class="runner" id="r1">A</div></div>
+    <div class="row">
+      <button data-a="1" data-do="play">Play</button>
+      <button data-a="1" data-do="freeze">Freeze (rate 0)</button>
+      <button data-a="1" data-do="reverse">reverse()</button>
+      <button data-a="1" data-do="resume">Resume at −1</button>
+      <div class="read">
+        <span>rate <b id="rate1">1</b></span>
+        <span>currentTime <b id="ct1">0</b></span>
+        <span>playState <b id="ps1">—</b></span>
+      </div>
+    </div>
+    <p class="verdict" id="verdict">No <code>reverse()</code> call yet.</p>
+  </section>
+
+  <section class="lane">
+    <h2>2 · A scroll-driven animation that flips</h2>
+    <p>The bar is driven by this box's scroll position. Flip the sign of its
+    <code>playbackRate</code> and the engine mirrors <code>startTime</code> to the other end,
+    so the progress you already have is kept — measured from the opposite edge.</p>
+    <div class="scroller" id="sc"><div class="tall"><div class="sbar" id="sbar"></div>
+      <p>Scroll me.</p><p>Keep going.</p><p>End of the timeline.</p></div></div>
+    <div class="row">
+      <button data-a="2" data-do="flip">Flip playbackRate sign</button>
+      <div class="read">
+        <span>rate <b id="rate2">1</b></span>
+        <span>startTime <b id="st2">—</b></span>
+        <span>progress <b id="pr2">0%</b></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="lane">
+    <h2>3 · Live retiming, nine at a time</h2>
+    <p>One slider writes <code>playbackRate</code> on nine running animations. Negative values run
+    them backwards from wherever they are; zero parks them mid-flight.</p>
+    <div class="chips" id="chips"></div>
+    <div class="row">
+      <input type="range" id="rate3" min="-2" max="2" step="0.1" value="1" aria-label="playback rate">
+      <button data-a="3" data-do="zero">Set rate 0</button>
+      <button data-a="3" data-do="rev">reverse() all</button>
+      <div class="read"><span>rate <b id="rate3v">1.0</b></span></div>
+    </div>
+  </section>
+</div>
+<footer>Inspired by <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/157" target="_blank" rel="noopener">MDN · Firefox 157 release notes for developers</a> · UI Spotlight Day 137 · Drop #1</footer>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  /* lane 1 ------------------------------------------------------------- */
+  const r1 = $('r1');
+  const span = () => r1.parentElement.clientWidth - r1.offsetWidth;
+  const a1 = r1.animate(
+    [{transform:'translateX(0)'},{transform:'translateX(' + span() + 'px)'}],
+    {duration:2600, iterations:Infinity, direction:'alternate', easing:'cubic-bezier(.4,0,.2,1)'}
+  );
+  addEventListener('resize', () => {
+    a1.effect.setKeyframes([{transform:'translateX(0)'},{transform:'translateX(' + span() + 'px)'}]);
+  });
+
+  /* lane 2 ------------------------------------------------------------- */
+  const sbar = $('sbar');
+  const a2 = sbar.getAnimations()[0] || null;
+
+  /* lane 3 ------------------------------------------------------------- */
+  const chips = $('chips');
+  const a3 = [];
+  ['hover','ripple','magnet','snap','toast','drawer','tabs','chip','sheet'].forEach((t,i) => {
+    const el = document.createElement('div');
+    el.className = 'chip'; el.textContent = t;
+    el.style.animationDelay = (i*0.18) + 's';
+    chips.appendChild(el);
+    el.getAnimations().forEach(a => a3.push(a));
+  });
+
+  /* support probe: does reverse() move an animation parked at rate 0? ---- */
+  (function probe(){
+    const ghost = document.createElement('div');
+    ghost.style.cssText = 'position:absolute;opacity:0;pointer-events:none';
+    document.body.appendChild(ghost);
+    const a = ghost.animate([{opacity:0},{opacity:1}], 1000);
+    a.currentTime = 400;
+    a.playbackRate = 0;
+    let fixed = false;
+    try {
+      const ct = a.currentTime;
+      a.reverse();
+      fixed = String(a.currentTime) !== String(ct);
+    } catch (e) { fixed = false; }
+    a.cancel(); ghost.remove();
+    $('probeDot').className = 'dot ' + (fixed ? 'y' : 'n');
+    $('probeText').innerHTML = fixed
+      ? 'Your engine <b>seeks on reverse() at playbackRate 0</b> — the Firefox 157 behaviour.'
+      : 'Your engine still <b>swallows reverse() at playbackRate 0</b>: the clock below will not budge, which is exactly the bug.';
+    window.__fixed = fixed;
+  })();
+
+  /* controls ------------------------------------------------------------ */
+  document.addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-do]');
+    if (!b) return;
+    const lane = b.dataset.a, act = b.dataset.do;
+    if (lane === '1') {
+      if (act === 'play'){ a1.playbackRate = 1; a1.play(); }
+      if (act === 'freeze'){ a1.playbackRate = 0; }
+      if (act === 'reverse'){
+        const was = {ct:a1.currentTime, st:a1.startTime, rate:a1.playbackRate, ps:a1.playState};
+        a1.reverse();
+        const now = {ct:a1.currentTime, st:a1.startTime, rate:a1.playbackRate, ps:a1.playState};
+        const changed = String(was.ct) !== String(now.ct);
+        const v = $('verdict');
+        v.className = 'verdict ' + (changed ? 'yes' : 'no');
+        v.innerHTML = was.rate === 0
+          ? (changed
+              ? 'At rate 0, <code>reverse()</code> seeked: currentTime <b>' + Math.round(was.ct) +
+                '</b> → <b>' + Math.round(now.ct) + '</b>, playState <b>' + now.ps +
+                '</b>. Resume at −1 and it continues from the mirrored position.'
+              : 'At rate 0, <code>reverse()</code> changed <b>nothing</b> — currentTime is still <b>' +
+                Math.round(now.ct) + '</b>. This is the behaviour Firefox 157 fixed.')
+          : 'Rate was ' + was.rate + ', so reverse() simply flipped it to <b>' + now.rate + '</b>.';
+      }
+      if (act === 'resume'){ a1.playbackRate = -1; a1.play(); }
+    }
+    if (lane === '2' && a2){ a2.playbackRate = -a2.playbackRate; }
+    if (lane === '3'){
+      if (act === 'zero'){ a3.forEach(a => a.playbackRate = 0); $('rate3').value = 0; }
+      if (act === 'rev'){
+        a3.forEach(a => { a.reverse(); if (a.playbackRate === 0) a.playbackRate = -1; });
+        $('rate3').value = a3[0] ? a3[0].playbackRate : -1;
+      }
+      $('rate3v').textContent = (+$('rate3').value).toFixed(1);
+    }
+  });
+  $('rate3').addEventListener('input', e => {
+    const v = +e.target.value;
+    a3.forEach(a => { a.playbackRate = v; if (v !== 0 && a.playState !== 'running') a.play(); });
+    $('rate3v').textContent = v.toFixed(1);
+  });
+
+  /* readouts ------------------------------------------------------------ */
+  const fmt = v => v === null || v === undefined ? '—'
+    : (typeof v === 'number' ? Math.round(v) : (v.value !== undefined ? Math.round(v.value) + '%' : String(v)));
+  (function tick(){
+    $('rate1').textContent = a1.playbackRate;
+    $('ct1').textContent = fmt(a1.currentTime);
+    $('ps1').textContent = a1.playState;
+    if (a2){
+      $('rate2').textContent = a2.playbackRate;
+      $('st2').textContent = fmt(a2.startTime);
+      const t = a2.effect.getComputedTiming();
+      $('pr2').textContent = t.progress === null ? '—' : Math.round(t.progress*100) + '%';
+    } else {
+      $('rate2').textContent = 'n/a';
+      $('pr2').textContent = 'no scroll timeline';
+    }
+    requestAnimationFrame(tick);
+  })();
+})();
+</script>
+</body>
+</html>
