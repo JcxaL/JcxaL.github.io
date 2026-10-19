@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ghost Trails — UI Spotlight</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#06080d;--ink:#e8eef6;--dim:#8495ab;--line:#1d2635;--acc:#38bdf8}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--ink);min-height:340vh;
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-text-size-adjust:100%;overflow-x:hidden;
+}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+.vig{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(70% 55% at 50% 45%,transparent 0%,rgba(6,8,13,.85) 100%)}
+.hint{
+  position:fixed;left:50%;bottom:62px;transform:translateX(-50%);
+  font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.22em;
+  color:var(--dim);transition:opacity .5s;pointer-events:none;text-align:center;
+}
+.hint b{display:block;margin-top:9px;font-size:16px;color:var(--acc);animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+.progress{position:fixed;left:0;top:0;height:2px;background:var(--acc);width:0;z-index:40;
+  box-shadow:0 0 12px var(--acc)}
+
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:50;display:inline-flex;align-items:center;
+  background:rgba(13,19,28,.74);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:999px;padding:9px 15px;
+  color:var(--ink);text-decoration:none;font:600 12px/1 ui-monospace,Menlo,monospace;
+  letter-spacing:.04em;transition:border-color .2s,color .2s;
+}
+.back-link:hover{border-color:var(--acc);color:var(--acc)}
+.panel{
+  position:fixed;top:14px;right:14px;z-index:50;width:214px;
+  background:rgba(13,19,28,.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--line);border-radius:12px;padding:12px 13px;
+}
+.panel h4{font:700 9.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.16em;color:#5b6a7e;margin-bottom:11px}
+.panel .r{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.panel .r label{flex:0 0 66px;font:600 10px/1.2 ui-monospace,Menlo,monospace;color:var(--dim)}
+.panel .r output{flex:0 0 30px;text-align:right;font:700 10px/1 ui-monospace,Menlo,monospace;color:var(--acc)}
+.panel input[type=range]{flex:1;min-width:0;appearance:none;height:18px;background:none;cursor:pointer}
+.panel input[type=range]::-webkit-slider-runnable-track{height:3px;background:#1e2a3a;border-radius:3px}
+.panel input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--ink);border:3px solid #0d131c;box-shadow:0 0 0 1px var(--acc);margin-top:-5px}
+.panel input[type=range]::-moz-range-track{height:3px;background:#1e2a3a;border-radius:3px}
+.panel input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--ink);
+  border:3px solid #0d131c;box-shadow:0 0 0 1px var(--acc)}
+.credit{
+  position:fixed;left:0;right:0;bottom:0;z-index:45;text-align:center;padding:11px 14px;
+  font:500 11px/1.4 ui-monospace,Menlo,monospace;color:#4e5c70;letter-spacing:.03em;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(6,8,13,.9));
+}
+.credit a{color:#6b7c92;pointer-events:auto}
+@media (max-width:780px){.panel{display:none}.credit{font-size:10px}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="vig"></div>
+<div class="progress" id="prog"></div>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h4>TRAIL</h4>
+  <div class="r"><label>ghosts</label><input id="pGhost" type="range" min="0" max="26" step="1" value="16"><output id="oGhost">16</output></div>
+  <div class="r"><label>spacing</label><input id="pGap" type="range" min="1" max="9" step="1" value="3"><output id="oGap">3</output></div>
+  <div class="r"><label>ripple</label><input id="pAmp" type="range" min="0" max="60" step="1" value="26"><output id="oAmp">26</output></div>
+  <div class="r"><label>letter gap</label><input id="pSp" type="range" min="10" max="70" step="1" value="34"><output id="oSp">34</output></div>
+</div>
+
+<div class="hint" id="hint">SCROLL TO DRAW THE TRAIL<b>↓</b></div>
+
+<div class="credit">
+  Inspired by <a href="https://tympanus.net/codrops/?p=123703" target="_blank" rel="noopener">Robert Aperios · “Typography That Leaves a Trace” on Codrops</a>
+  · UI Spotlight Day 138 · Drop #1
+</div>
+
+<script>
+(function(){
+'use strict';
+
+var C = document.getElementById('c'), X = C.getContext('2d');
+var W = 0, H = 0, DPR = 1;
+
+/* Three rows, each riding its own curve across the viewport. */
+var ROWS = [
+  { text:'LEAVES', y:0.30, waves:1.6, bend:0.085, phase:0.0,  speed:1.00, lead:0.00, col:[56,189,248] },
+  { text:'A',      y:0.49, waves:1.1, bend:0.055, phase:1.9,  speed:1.45, lead:0.07, col:[148,210,255] },
+  { text:'TRACE',  y:0.68, waves:2.1, bend:0.070, phase:3.4,  speed:0.78, lead:0.14, col:[96,165,250] }
+];
+
+var opt = { ghosts:16, gap:3, amp:26, spread:34 };
+var scrollP = 0, smoothP = 0, lastScroll = 0;
+
+function size(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  C.width = Math.round(W * DPR); C.height = Math.round(H * DPR);
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  build();
+}
+
+/* Each letter carries its own ring buffer of past placements — the ghosts
+   are literally where this glyph has been, not a static offset copy. */
+function build(){
+  var base = Math.max(26, Math.min(W, H) * 0.085);
+  ROWS.forEach(function(r){
+    r.fs = base;
+    r.letters = r.text.split('').map(function(ch, i){
+      return { ch:ch, i:i, hist:[] };
+    });
+  });
+}
+
+/* The path a row travels: a gentle sine sweep across the viewport. */
+function at(r, s){
+  return {
+    x: (0.10 + s * 0.80) * W,
+    y: r.y * H + Math.sin(s * Math.PI * 2 * r.waves + r.phase) * r.bend * H
+  };
+}
+
+function frame(now){
+  var t = now / 1000;
+  // Ease the raw scroll so the trail keeps moving for a beat after you stop.
+  smoothP += (scrollP - smoothP) * 0.075;
+
+  X.clearRect(0, 0, W, H);
+
+  ROWS.forEach(function(r){
+    var n = r.letters.length;
+    var head = 0.22 + (smoothP + r.lead) * 0.62;
+
+    r.letters.forEach(function(L){
+      var s = head + (L.i - (n - 1) / 2) * (opt.spread / 1000);
+      var p = at(r, s);
+      // Idle ripple so the word breathes even when nothing is scrolling.
+      var idle = (1 - Math.min(1, smoothP * 2.4)) * 0.55 + 0.45;
+      var yy = p.y + Math.sin(t * r.speed + L.i * 0.85) * opt.amp * idle;
+      var rot = Math.sin(t * r.speed * 0.8 + L.i * 0.6) * 0.14 * idle;
+      var sc = 1 + Math.sin(t * r.speed * 1.3 + L.i) * 0.045;
+
+      L.hist.push({ x:p.x, y:yy, r:rot, s:sc });
+      var keep = opt.ghosts * opt.gap + 2;
+      while (L.hist.length > keep) L.hist.shift();
+
+      X.font = '800 ' + r.fs + 'px ui-monospace,SFMono-Regular,Menlo,monospace';
+      X.textAlign = 'center'; X.textBaseline = 'middle';
+
+      // Outlined ghosts, oldest and faintest first.
+      var k, g, a;
+      for (k = opt.ghosts; k >= 1; k--){
+        var idx = L.hist.length - 1 - k * opt.gap;
+        if (idx < 0) continue;
+        g = L.hist[idx];
+        a = (1 - k / (opt.ghosts + 1)) * 0.5;
+        X.save();
+        X.translate(g.x, g.y); X.rotate(g.r); X.scale(g.s, g.s);
+        X.lineWidth = 1.1;
+        X.strokeStyle = 'rgba(' + r.col[0] + ',' + r.col[1] + ',' + r.col[2] + ',' + a.toFixed(3) + ')';
+        X.strokeText(L.ch, 0, 0);
+        X.restore();
+      }
+
+      // The live glyph.
+      g = L.hist[L.hist.length - 1];
+      X.save();
+      X.translate(g.x, g.y); X.rotate(g.r); X.scale(g.s, g.s);
+      X.shadowColor = 'rgba(' + r.col.join(',') + ',.55)'; X.shadowBlur = 24;
+      X.fillStyle = '#eef5ff';
+      X.fillText(L.ch, 0, 0);
+      X.restore();
+    });
+  });
+
+  requestAnimationFrame(frame);
+}
+
+function onScroll(){
+  var max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  scrollP = Math.min(1, Math.max(0, window.scrollY / max));
+  document.getElementById('prog').style.width = (scrollP * 100) + '%';
+  if (scrollP > 0.02) document.getElementById('hint').style.opacity = '0';
+  lastScroll = Date.now();
+}
+
+[['pGhost','oGhost','ghosts'],['pGap','oGap','gap'],['pAmp','oAmp','amp'],['pSp','oSp','spread']]
+.forEach(function(d){
+  var inp = document.getElementById(d[0]), out = document.getElementById(d[1]);
+  inp.addEventListener('input', function(){
+    opt[d[2]] = parseInt(inp.value, 10);
+    out.textContent = inp.value;
+  });
+});
+
+window.addEventListener('resize', size);
+window.addEventListener('scroll', onScroll, { passive:true });
+size(); onScroll();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
