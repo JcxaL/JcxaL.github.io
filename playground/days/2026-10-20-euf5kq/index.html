@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Wayfinder — Metro Map Studio</title>
+<meta name="description" content="Draw octolinear transit maps: snap lines to 45°, auto interchanges, parallel trunk routes, SVG + PNG export.">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#0a0d14; --panel:#111726; --panel2:#161d30; --edge:#232c45;
+    --ink:#e8edf8; --dim:#8a97b4; --acc:#5eead4; --acc2:#60a5fa; --warn:#fb7185;
+    --r:14px;
+  }
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; overscroll-behavior:none;
+    -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
+  }
+  #app{position:fixed;inset:0;display:flex}
+  /* ---------- stage ---------- */
+  #stageWrap{position:relative;flex:1;min-width:0}
+  #stage{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  body.tool-edit #stage{cursor:grab}
+  body.tool-erase #stage{cursor:not-allowed}
+  /* ---------- floating toolbar ---------- */
+  #tools{
+    position:absolute;left:50%;top:14px;transform:translateX(-50%);
+    display:flex;gap:4px;padding:5px;border-radius:999px;
+    background:rgba(17,23,38,.82);backdrop-filter:blur(14px);
+    border:1px solid var(--edge);box-shadow:0 10px 30px rgba(0,0,0,.45);z-index:6
+  }
+  .tbtn{
+    appearance:none;border:0;background:transparent;color:var(--dim);
+    width:42px;height:38px;border-radius:999px;display:grid;place-items:center;
+    cursor:pointer;transition:background .16s,color .16s,transform .16s
+  }
+  .tbtn:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+  .tbtn[aria-pressed="true"]{background:var(--acc);color:#04221d}
+  .tbtn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .tsep{width:1px;margin:6px 3px;background:var(--edge)}
+  /* ---------- hud ---------- */
+  #hud{
+    position:absolute;left:14px;bottom:14px;z-index:5;display:flex;gap:8px;align-items:center;
+    padding:7px 12px;border-radius:999px;background:rgba(17,23,38,.78);
+    backdrop-filter:blur(12px);border:1px solid var(--edge);
+    font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;pointer-events:none
+  }
+  #hud b{color:var(--ink);font-weight:600}
+  #hint{
+    position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:5;
+    padding:8px 16px;border-radius:999px;background:rgba(17,23,38,.78);
+    backdrop-filter:blur(12px);border:1px solid var(--edge);
+    font-size:12.5px;color:var(--dim);pointer-events:none;max-width:72vw;text-align:center
+  }
+  /* ---------- panel ---------- */
+  #panel{
+    width:306px;flex:0 0 306px;background:var(--panel);border-left:1px solid var(--edge);
+    display:flex;flex-direction:column;z-index:8;transition:transform .32s cubic-bezier(.33,1.2,.5,1)
+  }
+  #panel header{padding:16px 16px 10px;border-bottom:1px solid var(--edge)}
+  .brand{display:flex;align-items:center;gap:9px}
+  .dotmark{width:13px;height:13px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 3px rgba(94,234,212,.18)}
+  .brand h1{margin:0;font-size:15px;letter-spacing:.3px;font-weight:650}
+  .brand span{margin-left:auto;font-size:10.5px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
+  #scroll{flex:1;overflow-y:auto;padding:14px 16px 90px;scrollbar-width:thin}
+  .sec{margin-bottom:18px}
+  .sec>h2{
+    margin:0 0 9px;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;
+    color:var(--dim);font-weight:650;display:flex;align-items:center;gap:7px
+  }
+  .sec>h2::after{content:"";flex:1;height:1px;background:var(--edge)}
+  input[type=text]{
+    width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--edge);
+    background:var(--panel2);color:var(--ink);font:inherit;font-size:13px
+  }
+  input[type=text]:focus{outline:none;border-color:var(--acc2)}
+  select{
+    width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--edge);
+    background:var(--panel2);color:var(--ink);font:inherit;font-size:13px
+  }
+  .row{display:flex;gap:8px;align-items:center}
+  .row+.row{margin-top:8px}
+  .lab{font-size:12px;color:var(--dim);flex:0 0 76px}
+  /* line list */
+  .lineRow{
+    display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;
+    border:1px solid transparent;background:var(--panel2);margin-bottom:6px;cursor:pointer;
+    transition:border-color .15s,background .15s
+  }
+  .lineRow:hover{background:#1a2238}
+  .lineRow.on{border-color:var(--acc);background:#16263a}
+  .swatch{width:16px;height:16px;border-radius:5px;flex:0 0 16px;border:1px solid rgba(255,255,255,.2)}
+  .lineRow input{
+    flex:1;min-width:0;background:transparent;border:0;color:var(--ink);font:inherit;font-size:13px;padding:2px 0
+  }
+  .lineRow input:focus{outline:none;border-bottom:1px solid var(--acc2)}
+  .cnt{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .xbtn{
+    appearance:none;border:0;background:transparent;color:var(--dim);cursor:pointer;
+    width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:15px;line-height:1
+  }
+  .xbtn:hover{background:rgba(251,113,133,.16);color:var(--warn)}
+  /* palette */
+  #palette{display:none;grid-template-columns:repeat(6,1fr);gap:6px;margin:4px 0 10px}
+  #palette.show{display:grid}
+  #palette button{
+    aspect-ratio:1;border-radius:7px;border:1px solid rgba(255,255,255,.16);cursor:pointer;
+    transition:transform .14s
+  }
+  #palette button:hover{transform:scale(1.12)}
+  /* buttons */
+  .btn{
+    appearance:none;border:1px solid var(--edge);background:var(--panel2);color:var(--ink);
+    padding:9px 11px;border-radius:10px;font:inherit;font-size:12.5px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:6px;flex:1;
+    transition:background .15s,border-color .15s,transform .12s
+  }
+  .btn:hover{background:#1d2740;border-color:#31405f}
+  .btn:active{transform:scale(.97)}
+  .btn.pri{background:linear-gradient(180deg,#5eead4,#34d2bb);color:#04221d;border-color:transparent;font-weight:620}
+  .btn.pri:hover{filter:brightness(1.07);background:linear-gradient(180deg,#5eead4,#34d2bb)}
+  .btn.danger:hover{border-color:var(--warn);color:var(--warn)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .grid2 .btn{flex:none}
+  /* toggles */
+  .tog{display:flex;align-items:center;gap:9px;cursor:pointer;padding:5px 0;font-size:13px}
+  .tog input{position:absolute;opacity:0;pointer-events:none}
+  .pill{
+    width:38px;height:22px;border-radius:999px;background:#273149;position:relative;
+    transition:background .22s;flex:0 0 38px
+  }
+  .pill::after{
+    content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;
+    background:#8a97b4;transition:transform .26s cubic-bezier(.33,1.3,.5,1),background .22s
+  }
+  .tog input:checked+.pill{background:rgba(94,234,212,.3)}
+  .tog input:checked+.pill::after{transform:translateX(16px);background:var(--acc)}
+  /* inspector */
+  #inspector{display:none}
+  #inspector.show{display:block}
+  #labDirs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:116px;margin-top:6px}
+  #labDirs button{
+    aspect-ratio:1;border-radius:7px;border:1px solid var(--edge);background:var(--panel2);
+    color:var(--dim);cursor:pointer;font-size:12px;display:grid;place-items:center
+  }
+  #labDirs button.on{background:var(--acc);color:#04221d;border-color:transparent}
+  #labDirs button.mid{visibility:hidden}
+  /* panel toggle (mobile) */
+  #panelToggle{
+    display:none;position:absolute;right:14px;top:14px;z-index:9;width:44px;height:44px;
+    border-radius:14px;border:1px solid var(--edge);background:rgba(17,23,38,.86);
+    backdrop-filter:blur(12px);color:var(--ink);cursor:pointer;place-items:center
+  }
+  #panelToggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+  /* toast */
+  #toast{
+    position:fixed;left:50%;top:70px;transform:translate(-50%,-14px);z-index:30;
+    padding:9px 16px;border-radius:999px;background:rgba(94,234,212,.95);color:#04221d;
+    font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  /* back */
+  #back{
+    position:absolute;left:14px;top:14px;z-index:7;display:flex;align-items:center;gap:6px;
+    padding:8px 14px;border-radius:999px;background:rgba(17,23,38,.8);backdrop-filter:blur(12px);
+    border:1px solid var(--edge);color:var(--dim);text-decoration:none;font-size:12.5px;
+    transition:color .15s,border-color .15s
+  }
+  #back:hover{color:var(--ink);border-color:#31405f}
+  @media (max-width:860px){
+    #panel{
+      position:absolute;inset:auto 0 0 0;width:100%;flex:none;height:62vh;
+      border-left:0;border-top:1px solid var(--edge);border-radius:20px 20px 0 0;
+      transform:translateY(calc(100% - 0px));box-shadow:0 -18px 44px rgba(0,0,0,.5)
+    }
+    #panel.open{transform:translateY(0)}
+    #panelToggle{display:grid}
+    #scroll{padding-bottom:40px}
+    #hint{display:none}
+    #hud{bottom:12px;left:12px}
+  }
+</style>
+</head>
+<body class="tool-draw">
+<div id="app">
+  <div id="stageWrap">
+    <canvas id="stage"></canvas>
+    <a id="back" href="../../">← Playground</a>
+    <button id="panelToggle" aria-label="Toggle panel">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <div id="tools">
+      <button class="tbtn" id="tDraw" aria-pressed="true" title="Draw line (1)">
+        <svg viewBox="0 0 24 24"><path d="M4 20 19 5M14 5h5v5"/><circle cx="4" cy="20" r="2"/></svg>
+      </button>
+      <button class="tbtn" id="tEdit" aria-pressed="false" title="Move / select (2)">
+        <svg viewBox="0 0 24 24"><path d="m5 3 14 8-6 1.6L10.2 19z"/></svg>
+      </button>
+      <button class="tbtn" id="tErase" aria-pressed="false" title="Erase station (3)">
+        <svg viewBox="0 0 24 24"><path d="M4 18h16M7.5 15 15 7.5a2.5 2.5 0 0 1 3.5 3.5L11 18.5"/></svg>
+      </button>
+      <div class="tsep"></div>
+      <button class="tbtn" id="btnUndo" title="Undo (Ctrl+Z)">
+        <svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M4 12h10a5 5 0 0 1 0 10h-2"/></svg>
+      </button>
+      <button class="tbtn" id="btnRedo" title="Redo (Ctrl+Shift+Z)">
+        <svg viewBox="0 0 24 24"><path d="m15 7 5 5-5 5M20 12H10a5 5 0 0 0 0 10h2"/></svg>
+      </button>
+      <button class="tbtn" id="btnFit" title="Fit map (F)">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
+    <div id="hud"><b id="sLines">0</b> lines · <b id="sStops">0</b> stops · <b id="sInter">0</b> interchange</div>
+    <div id="hint">Click the canvas to drop stations — segments snap to 45°</div>
+  </div>
+
+  <aside id="panel">
+    <header>
+      <div class="brand">
+        <div class="dotmark"></div>
+        <h1>Wayfinder</h1>
+        <span>Metro Studio</span>
+      </div>
+    </header>
+    <div id="scroll">
+
+      <div class="sec">
+        <h2>Network</h2>
+        <input type="text" id="mapTitle" value="Wayfinder Transit" maxlength="34" aria-label="Map title">
+      </div>
+
+      <div class="sec">
+        <h2>Lines</h2>
+        <div id="lineList"></div>
+        <div id="palette"></div>
+        <button class="btn" id="addLine">+ New line</button>
+      </div>
+
+      <div class="sec" id="inspector">
+        <h2>Station</h2>
+        <input type="text" id="stName" maxlength="28" aria-label="Station name">
+        <div class="row" style="margin-top:9px;align-items:flex-start">
+          <span class="lab" style="padding-top:34px">Label</span>
+          <div id="labDirs"></div>
+        </div>
+        <div class="grid2" style="margin-top:10px">
+          <button class="btn" id="insClose">Done</button>
+          <button class="btn danger" id="delSta">Delete stop</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h2>Drafting</h2>
+        <div class="row">
+          <span class="lab">Bends</span>
+          <select id="bendSel">
+            <option value="diag">Diagonal first</option>
+            <option value="straight">Straight first</option>
+          </select>
+        </div>
+        <div class="row">
+          <span class="lab">Theme</span>
+          <select id="themeSel">
+            <option value="paper">Paper</option>
+            <option value="midnight">Midnight</option>
+            <option value="blueprint">Blueprint</option>
+          </select>
+        </div>
+        <label class="tog"><input type="checkbox" id="gridChk" checked><span class="pill"></span>Show grid</label>
+        <label class="tog"><input type="checkbox" id="snapChk" checked><span class="pill"></span>Snap to grid</label>
+        <label class="tog"><input type="checkbox" id="labChk" checked><span class="pill"></span>Station labels</label>
+        <button class="btn" id="btnAuto" style="margin-top:8px">Auto-place labels</button>
+      </div>
+
+      <div class="sec">
+        <h2>Starters</h2>
+        <div class="grid2">
+          <button class="btn" data-preset="cross">Crossroads</button>
+          <button class="btn" data-preset="loop">Circle &amp; Spokes</button>
+          <button class="btn" data-preset="delta">Riverside Delta</button>
+          <button class="btn danger" id="btnClear">Empty map</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h2>Export</h2>
+        <div class="grid2">
+          <button class="btn pri" id="btnSvg">↓ SVG</button>
+          <button class="btn" id="btnPng">↓ PNG</button>
+          <button class="btn" id="btnShare">Copy link</button>
+          <button class="btn" id="btnJson">↓ JSON</button>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+</div>
+<div id="toast"></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ============================ constants ============================ */
+const PALETTE = ["#e4572e","#2e86ab","#f2b134","#4cb944","#8e5ea2","#00a6a6",
+                 "#d1495b","#3d348b","#ef7b45","#1b998b","#7d8597","#c05299"];
+const THEMES = {
+  paper:     {bg:"#f6f3ec", grid:"#ded8c9", ink:"#1d2430", sub:"#5a6577", halo:"#ffffff"},
+  midnight:  {bg:"#0e1322", grid:"#1d2742", ink:"#eef3ff", sub:"#93a2c4", halo:"#0e1322"},
+  blueprint: {bg:"#0d3b66", grid:"#1b4e80", ink:"#f4f9ff", sub:"#b9d4ef", halo:"#0d3b66"}
+};
+const NAME_A = ["King's","Market","River","North","Ash","Granary","Old","Bell","Harbour","Pine",
+                "Cross","Spindle","Vale","Mill","Fern","Quay","Copper","Lantern","Saffron","Beacon",
+                "Hollow","Amber","Stone","West","Clover","Tanner's","Gull","Birch","Union","Low"];
+const NAME_B = ["Cross","Gate","Park","Yard","Bridge","Street","Square","Halt","Wharf","Hill",
+                "Fields","Row","End","Junction","Green","Mews","Rise","Bank","Lock","Common"];
+const LW = 7.2;        // line stroke width (world units)
+const TRUNK = 8.6;     // parallel spacing between lines sharing a segment
+const SNAP_PX = 15;    // hit radius in screen px
+const LS_KEY = "wayfinder.v1";
+
+/* ============================ state ============================ */
+let S = {
+  title: "Wayfinder Transit",
+  theme: "paper",
+  bend: "diag",
+  grid: 40,
+  showGrid: true,
+  snap: true,
+  labels: true,
+  stations: [],          // {id,x,y,name,lab}
+  lines: [],             // {id,name,color,stops:[stationId]}
+  active: null           // active line id
+};
+let view = {x: 0, y: 0, k: 1};
+let tool = "draw";
+let selected = null;     // station id
+let drag = null;
+let hoverPt = null;
+let seq = 1;
+const undoStack = [], redoStack = [];
+
+/* ============================ dom ============================ */
+const $ = (id) => document.getElementById(id);
+const cv = $("stage"), ctx = cv.getContext("2d");
+const panel = $("panel");
+
+/* ============================ helpers ============================ */
+const uid = () => "n" + (seq++).toString(36) + Math.random().toString(36).slice(2, 5);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 1700);
+}
+function stationName(){
+  for (let i = 0; i < 60; i++){
+    const n = NAME_A[(Math.random()*NAME_A.length)|0] + " " + NAME_B[(Math.random()*NAME_B.length)|0];
+    if (!S.stations.some(s => s.name === n)) return n;
+  }
+  return "Station " + (S.stations.length + 1);
+}
+const byId = (id) => S.stations.find(s => s.id === id) || null;
+
+/* ============================ geometry ============================ */
+// Octolinear route between two points: at most one 45° bend.
+function routePts(a, b, mode){
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  if (ax < .5 || ay < .5 || Math.abs(ax - ay) < .5) return [{x:a.x,y:a.y},{x:b.x,y:b.y}];
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  let m;
+  if (mode === "straight"){
+    m = ax > ay ? {x: b.x - ay * sx, y: a.y} : {x: a.x, y: b.y - ax * sy};
+  } else {
+    m = ax > ay ? {x: a.x + ay * sx, y: b.y} : {x: b.x, y: a.y + ax * sy};
+  }
+  return [{x:a.x,y:a.y}, m, {x:b.x,y:b.y}];
+}
+function segKey(i, j){ return i < j ? i + "|" + j : j + "|" + i; }
+function lineIntersect(p1, p2, p3, p4){
+  const d = (p2.x-p1.x)*(p4.y-p3.y) - (p2.y-p1.y)*(p4.x-p3.x);
+  if (Math.abs(d) < 1e-9) return null;
+  const t = ((p3.x-p1.x)*(p4.y-p3.y) - (p3.y-p1.y)*(p4.x-p3.x)) / d;
+  return {x: p1.x + t*(p2.x-p1.x), y: p1.y + t*(p2.y-p1.y)};
+}
+// Offset a polyline sideways by d (miter joins).
+function offsetPoly(pts, d){
+  if (!d) return pts;
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++){
+    const p = pts[i], q = pts[i+1];
+    const vx = q.x - p.x, vy = q.y - p.y, L = Math.hypot(vx, vy);
+    if (L < 1e-6) continue;
+    const nx = -vy / L * d, ny = vx / L * d;
+    segs.push([{x:p.x+nx,y:p.y+ny},{x:q.x+nx,y:q.y+ny}]);
+  }
+  if (!segs.length) return pts;
+  const out = [segs[0][0]];
+  for (let i = 0; i < segs.length - 1; i++){
+    const it = lineIntersect(segs[i][0], segs[i][1], segs[i+1][0], segs[i+1][1]);
+    out.push(it || segs[i][1]);
+  }
+  out.push(segs[segs.length-1][1]);
+  return out;
+}
+// Build every drawable polyline, with parallel offsets for shared trunks.
+function buildRoutes(){
+  const groups = new Map();
+  S.lines.forEach((ln, li) => {
+    for (let i = 0; i < ln.stops.length - 1; i++){
+      const a = ln.stops[i], b = ln.stops[i+1];
+      if (a === b) continue;
+      const k = segKey(a, b);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push({li, a, b});
+    }
+  });
+  const routes = [];
+  groups.forEach((members, k) => {
+    members.sort((p, q) => p.li - q.li);
+    const n = members.length;
+    const [ca, cb] = k.split("|");
+    const A = byId(ca), B = byId(cb);
+    if (!A || !B) return;
+    const base = routePts(A, B, S.bend);
+    members.forEach((m, idx) => {
+      const d = (idx - (n - 1) / 2) * TRUNK;
+      let pts = offsetPoly(base, d);
+      if (m.a !== ca) pts = pts.slice().reverse();
+      routes.push({pts, color: S.lines[m.li].color, li: m.li});
+    });
+  });
+  return routes;
+}
+function lineCountFor(id){
+  let n = 0;
+  for (const ln of S.lines) if (ln.stops.includes(id)) n++;
+  return n;
+}
+function colorFor(id){
+  for (const ln of S.lines) if (ln.stops.includes(id)) return ln.color;
+  return "#888";
+}
+function usedStations(){
+  const set = new Set();
+  S.lines.forEach(l => l.stops.forEach(s => set.add(s)));
+  return set;
+}
+
+/* ============================ drawing ============================ */
+// Shared renderer: works for screen canvas and export canvas.
+function drawMap(g, opt){
+  const th = THEMES[S.theme] || THEMES.paper;
+  const {k, ox, oy, w, h, showGrid, titleAt} = opt;
+  g.save();
+  g.fillStyle = th.bg; g.fillRect(0, 0, w, h);
+  g.translate(ox, oy); g.scale(k, k);
+
+  if (showGrid && S.showGrid && S.grid * k > 7){
+    const step = S.grid;
+    const x0 = Math.floor((-ox / k) / step) * step, x1 = (-ox + w) / k;
+    const y0 = Math.floor((-oy / k) / step) * step, y1 = (-oy + h) / k;
+    g.fillStyle = th.grid;
+    const r = Math.max(.6, 1 / k);
+    for (let x = x0; x < x1; x += step)
+      for (let y = y0; y < y1; y += step){
+        g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
+      }
+  }
+
+  const routes = buildRoutes();
+  // casing pass keeps crossings readable
+  g.lineCap = "round"; g.lineJoin = "round";
+  g.strokeStyle = th.bg; g.lineWidth = LW + 4.6;
+  routes.forEach(r => strokePts(g, r.pts));
+  routes.forEach(r => { g.strokeStyle = r.color; g.lineWidth = LW; strokePts(g, r.pts); });
+
+  // in-progress rubber band
+  if (hoverPt && tool === "draw" && S.active){
+    const ln = S.lines.find(l => l.id === S.active);
+    if (ln && ln.stops.length){
+      const last = byId(ln.stops[ln.stops.length - 1]);
+      if (last){
+        g.save();
+        g.setLineDash([7, 7]); g.lineWidth = 2.2; g.globalAlpha = .75; g.strokeStyle = ln.color;
+        strokePts(g, routePts(last, hoverPt, S.bend));
+        g.restore();
+      }
+    }
+  }
+
+  // stations
+  const used = usedStations();
+  S.stations.forEach(s => {
+    if (!used.has(s.id)) return;
+    const n = lineCountFor(s.id);
+    if (n > 1){
+      g.beginPath(); g.arc(s.x, s.y, 8.4, 0, 6.2832);
+      g.fillStyle = th.halo; g.fill();
+      g.lineWidth = 3; g.strokeStyle = th.ink; g.stroke();
+    } else {
+      g.beginPath(); g.arc(s.x, s.y, 4.9, 0, 6.2832);
+      g.fillStyle = th.halo; g.fill();
+      g.lineWidth = 2.7; g.strokeStyle = colorFor(s.id); g.stroke();
+    }
+  });
+
+  // selection ring
+  if (selected){
+    const s = byId(selected);
+    if (s){
+      g.beginPath(); g.arc(s.x, s.y, 14, 0, 6.2832);
+      g.strokeStyle = "#5eead4"; g.lineWidth = 2.4; g.setLineDash([4, 4]); g.stroke(); g.setLineDash([]);
+    }
+  }
+
+  // labels
+  if (S.labels){
+    g.font = "600 12.5px system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+    g.textBaseline = "middle";
+    S.stations.forEach(s => {
+      if (!used.has(s.id)) return;
+      const n = lineCountFor(s.id), rad = (n > 1 ? 12 : 9);
+      const ang = (s.lab || 0) * Math.PI / 4;
+      const dx = Math.cos(ang) * rad, dy = Math.sin(ang) * rad;
+      g.textAlign = dx > 1 ? "left" : dx < -1 ? "right" : "center";
+      const tx = s.x + dx, ty = s.y + dy + (Math.abs(dx) < 1 ? (dy > 0 ? 4 : -4) : 0);
+      g.lineWidth = 3.4; g.strokeStyle = th.bg; g.lineJoin = "round";
+      g.strokeText(s.name, tx, ty);
+      g.fillStyle = th.ink; g.fillText(s.name, tx, ty);
+    });
+  }
+
+  g.restore();
+
+  if (titleAt){
+    g.save();
+    g.font = "700 26px system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+    g.textAlign = "left"; g.textBaseline = "alphabetic";
+    g.fillStyle = th.ink; g.fillText(S.title, titleAt.x, titleAt.y);
+    g.font = "500 12px system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+    g.fillStyle = th.sub;
+    g.fillText(S.lines.length + " lines · " + usedStations().size + " stations", titleAt.x, titleAt.y + 18);
+    g.restore();
+  }
+}
+function strokePts(g, pts){
+  if (pts.length < 2) return;
+  g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+  g.stroke();
+}
+
+/* ============================ canvas plumbing ============================ */
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.max(1, Math.round(r.width)); H = Math.max(1, Math.round(r.height));
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  render();
+}
+function render(){
+  ctx.save();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawMap(ctx, {k: view.k, ox: view.x, oy: view.y, w: W, h: H, showGrid: true, titleAt: null});
+  ctx.restore();
+  $("sLines").textContent = S.lines.length;
+  $("sStops").textContent = usedStations().size;
+  $("sInter").textContent = S.stations.filter(s => lineCountFor(s.id) > 1).length;
+}
+const toWorld = (sx, sy) => ({x: (sx - view.x) / view.k, y: (sy - view.y) / view.k});
+function snapPt(p){
+  if (!S.snap) return p;
+  const g = S.grid;
+  return {x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g};
+}
+function hitStation(world){
+  const r = SNAP_PX / view.k;
+  let best = null, bd = r;
+  for (const s of S.stations){
+    const d = Math.hypot(s.x - world.x, s.y - world.y);
+    if (d < bd){ bd = d; best = s; }
+  }
+  return best;
+}
+function fitView(animate){
+  const used = usedStations();
+  const pts = S.stations.filter(s => used.has(s.id));
+  if (!pts.length){ view = {x: W/2, y: H/2, k: 1}; render(); return; }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  pts.forEach(s => { minX=Math.min(minX,s.x); minY=Math.min(minY,s.y); maxX=Math.max(maxX,s.x); maxY=Math.max(maxY,s.y); });
+  const pad = 90;
+  const k = clamp(Math.min((W - pad*2) / Math.max(40, maxX-minX), (H - pad*2) / Math.max(40, maxY-minY)), .25, 2.4);
+  view.k = k;
+  view.x = W/2 - (minX + maxX)/2 * k;
+  view.y = H/2 - (minY + maxY)/2 * k;
+  render();
+}
+
+/* ============================ history ============================ */
+function serialize(){
+  return {
+    title: S.title, theme: S.theme, bend: S.bend, showGrid: S.showGrid,
+    snap: S.snap, labels: S.labels, active: S.active,
+    stations: S.stations.map(s => ({id:s.id, x:s.x, y:s.y, name:s.name, lab:s.lab})),
+    lines: S.lines.map(l => ({id:l.id, name:l.name, color:l.color, stops:l.stops.slice()}))
+  };
+}
+function restore(d){
+  if (!d) return;
+  S.title = d.title || "Untitled network";
+  S.theme = THEMES[d.theme] ? d.theme : "paper";
+  S.bend = d.bend === "straight" ? "straight" : "diag";
+  S.showGrid = d.showGrid !== false;
+  S.snap = d.snap !== false;
+  S.labels = d.labels !== false;
+  S.stations = (d.stations || []).map(s => ({id:s.id, x:+s.x, y:+s.y, name:s.name || "Stop", lab:(+s.lab)||0}));
+  S.lines = (d.lines || []).map(l => ({id:l.id, name:l.name || "Line", color:l.color || PALETTE[0], stops:(l.stops||[]).slice()}));
+  S.active = S.lines.some(l => l.id === d.active) ? d.active : (S.lines[0] ? S.lines[0].id : null);
+  selected = null;
+  syncControls();
+  renderLineList();
+  render();
+}
+function push(){
+  undoStack.push(JSON.stringify(serialize()));
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+  save();
+}
+function undo(){
+  if (!undoStack.length) return toast("Nothing to undo");
+  redoStack.push(JSON.stringify(serialize()));
+  restore(JSON.parse(undoStack.pop()));
+  save();
+}
+function redo(){
+  if (!redoStack.length) return toast("Nothing to redo");
+  undoStack.push(JSON.stringify(serialize()));
+  restore(JSON.parse(redoStack.pop()));
+  save();
+}
+function save(){
+  try { localStorage.setItem(LS_KEY, JSON.stringify(serialize())); } catch(e){}
+}
+
+/* ============================ share links ============================ */
+function encodeState(){
+  const idx = new Map();
+  S.stations.forEach((s, i) => idx.set(s.id, i));
+  const payload = {
+    t: S.title, h: S.theme, b: S.bend,
+    s: S.stations.map(s => [Math.round(s.x), Math.round(s.y), s.name, s.lab|0]),
+    l: S.lines.map(l => [l.name, l.color, l.stops.map(id => idx.get(id)).filter(v => v !== undefined)])
+  };
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  const b64 = btoa(bin);
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function decodeState(str){
+  const b64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64 + "=".repeat((4 - b64.length % 4) % 4));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  const p = JSON.parse(new TextDecoder().decode(bytes));
+  const stations = (p.s || []).map(a => ({id: uid(), x: +a[0], y: +a[1], name: a[2] || "Stop", lab: a[3]|0}));
+  const lines = (p.l || []).map(a => ({
+    id: uid(), name: a[0] || "Line", color: a[1] || PALETTE[0],
+    stops: (a[2] || []).map(i => stations[i] && stations[i].id).filter(Boolean)
+  }));
+  return {title: p.t || "Shared network", theme: p.h, bend: p.b, stations, lines,
+          active: lines[0] ? lines[0].id : null, showGrid: true, snap: true, labels: true};
+}
+
+/* ============================ export ============================ */
+function bounds(){
+  const used = usedStations();
+  const pts = S.stations.filter(s => used.has(s.id));
+  if (!pts.length) return {minX:0, minY:0, maxX:400, maxY:300};
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  pts.forEach(s => { minX=Math.min(minX,s.x); minY=Math.min(minY,s.y); maxX=Math.max(maxX,s.x); maxY=Math.max(maxY,s.y); });
+  return {minX, minY, maxX, maxY};
+}
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function exportPNG(){
+  if (!usedStations().size) return toast("Draw a line first");
+  const b = bounds(), pad = 90, head = 70;
+  const w = Math.ceil(b.maxX - b.minX + pad*2), h = Math.ceil(b.maxY - b.minY + pad*2 + head);
+  const scale = 2;
+  const c = document.createElement("canvas");
+  c.width = w * scale; c.height = h * scale;
+  const g = c.getContext("2d");
+  g.setTransform(scale, 0, 0, scale, 0, 0);
+  const keepSel = selected, keepHover = hoverPt;
+  selected = null; hoverPt = null;
+  drawMap(g, {k: 1, ox: pad - b.minX, oy: pad + head - b.minY, w, h, showGrid: false,
+              titleAt: {x: 38, y: head - 18}});
+  selected = keepSel; hoverPt = keepHover;
+  c.toBlob(blob => {
+    if (!blob || !blob.size) return toast("Export failed");
+    download(blob, slug() + ".png");
+    toast("PNG saved · " + Math.round(blob.size/1024) + " KB");
+  }, "image/png");
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function exportSVG(){
+  if (!usedStations().size) return toast("Draw a line first");
+  const th = THEMES[S.theme] || THEMES.paper;
+  const b = bounds(), pad = 90, head = 70;
+  const w = Math.ceil(b.maxX - b.minX + pad*2), h = Math.ceil(b.maxY - b.minY + pad*2 + head);
+  const ox = pad - b.minX, oy = pad + head - b.minY;
+  const P = (pts) => pts.map((p, i) => (i ? "L" : "M") + p.x.toFixed(1) + " " + p.y.toFixed(1)).join(" ");
+  const o = [];
+  o.push('<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'">');
+  o.push('<rect width="'+w+'" height="'+h+'" fill="'+th.bg+'"/>');
+  o.push('<text x="38" y="'+(head-18)+'" font-family="system-ui,sans-serif" font-size="26" font-weight="700" fill="'+th.ink+'">'+esc(S.title)+'</text>');
+  o.push('<text x="38" y="'+(head)+'" font-family="system-ui,sans-serif" font-size="12" fill="'+th.sub+'">'+S.lines.length+' lines · '+usedStations().size+' stations</text>');
+  o.push('<g transform="translate('+ox+' '+oy+')" fill="none" stroke-linecap="round" stroke-linejoin="round">');
+  const routes = buildRoutes();
+  routes.forEach(r => o.push('<path d="'+P(r.pts)+'" stroke="'+th.bg+'" stroke-width="'+(LW+4.6)+'"/>'));
+  routes.forEach(r => o.push('<path d="'+P(r.pts)+'" stroke="'+r.color+'" stroke-width="'+LW+'"/>'));
+  const used = usedStations();
+  S.stations.forEach(s => {
+    if (!used.has(s.id)) return;
+    const n = lineCountFor(s.id);
+    if (n > 1) o.push('<circle cx="'+s.x.toFixed(1)+'" cy="'+s.y.toFixed(1)+'" r="8.4" fill="'+th.halo+'" stroke="'+th.ink+'" stroke-width="3"/>');
+    else o.push('<circle cx="'+s.x.toFixed(1)+'" cy="'+s.y.toFixed(1)+'" r="4.9" fill="'+th.halo+'" stroke="'+colorFor(s.id)+'" stroke-width="2.7"/>');
+  });
+  if (S.labels) S.stations.forEach(s => {
+    if (!used.has(s.id)) return;
+    const n = lineCountFor(s.id), rad = (n > 1 ? 12 : 9);
+    const ang = (s.lab || 0) * Math.PI / 4;
+    const dx = Math.cos(ang) * rad, dy = Math.sin(ang) * rad;
+    const anchor = dx > 1 ? "start" : dx < -1 ? "end" : "middle";
+    const ty = s.y + dy + (Math.abs(dx) < 1 ? (dy > 0 ? 4 : -4) : 0);
+    o.push('<text x="'+(s.x+dx).toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="'+anchor+'" dominant-baseline="middle" '+
+           'font-family="system-ui,sans-serif" font-size="12.5" font-weight="600" fill="'+th.ink+'" '+
+           'stroke="'+th.bg+'" stroke-width="3.4" paint-order="stroke">'+esc(s.name)+'</text>');
+  });
+  o.push('</g></svg>');
+  const blob = new Blob([o.join("\n")], {type: "image/svg+xml"});
+  download(blob, slug() + ".svg");
+  toast("SVG saved · " + Math.round(blob.size/1024) + " KB");
+}
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(serialize(), null, 2)], {type: "application/json"});
+  download(blob, slug() + ".json");
+  toast("JSON saved");
+}
+function slug(){
+  return (S.title || "network").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "network";
+}
+
+/* ============================ label auto-placement ============================ */
+// Pick, for each stop, the compass slot furthest away from its own tracks and
+// from any close neighbour — the thing a human draughtsman does by eye.
+function autoLabels(){
+  const used = usedStations();
+  const nb = new Map();
+  const add = (id, a) => { if (!nb.has(id)) nb.set(id, []); nb.get(id).push(a); };
+  S.lines.forEach(l => {
+    for (let i = 0; i < l.stops.length; i++){
+      const cur = byId(l.stops[i]); if (!cur) continue;
+      [l.stops[i-1], l.stops[i+1]].forEach(oid => {
+        if (!oid || oid === cur.id) return;
+        const o = byId(oid); if (!o) return;
+        add(cur.id, Math.atan2(o.y - cur.y, o.x - cur.x));
+      });
+    }
+  });
+  S.stations.forEach(s => {
+    if (!used.has(s.id)) return;
+    const angles = (nb.get(s.id) || []).slice();
+    S.stations.forEach(o => {
+      if (o.id === s.id || !used.has(o.id)) return;
+      const d = Math.hypot(o.x - s.x, o.y - s.y);
+      if (d < 84) angles.push(Math.atan2(o.y - s.y, o.x - s.x));
+    });
+    let best = 0, score = -1;
+    for (let k = 0; k < 8; k++){
+      const a = k * Math.PI / 4;
+      let m = Math.PI;
+      angles.forEach(b => {
+        const d = Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (d < m) m = d;
+      });
+      const bias = k === 0 ? .07 : k === 4 ? .05 : k === 6 ? .03 : 0;  // prefer side, then above
+      if (m + bias > score){ score = m + bias; best = k; }
+    }
+    s.lab = best;
+  });
+}
+
+/* ============================ presets ============================ */
+function mkStation(x, y, name, lab){
+  const s = {id: uid(), x, y, name: name || stationName(), lab: lab === undefined ? 0 : lab};
+  S.stations.push(s);
+  return s.id;
+}
+function presetCross(){
+  reset();
+  const G = 60, cx = 0, cy = 0;
+  const hub = mkStation(cx, cy, "Union Exchange", 5);
+  const red = [], blue = [], gold = [];
+  for (let i = -4; i <= 4; i++){
+    if (i === 0) continue;
+    red.push(mkStation(cx + i*G, cy, undefined, i < 0 ? 6 : 6));
+  }
+  red.splice(4, 0, hub);
+  for (let i = -3; i <= 3; i++){
+    if (i === 0) continue;
+    blue.push(mkStation(cx, cy + i*G, undefined, 0));
+  }
+  blue.splice(3, 0, hub);
+  for (let i = -3; i <= 3; i++){
+    if (i === 0) continue;
+    gold.push(mkStation(cx + i*G, cy + i*G, undefined, 2));
+  }
+  gold.splice(3, 0, hub);
+  S.lines = [
+    {id: uid(), name: "Ember", color: PALETTE[0], stops: red},
+    {id: uid(), name: "Tide",  color: PALETTE[1], stops: blue},
+    {id: uid(), name: "Sable", color: PALETTE[2], stops: gold}
+  ];
+  S.active = S.lines[0].id;
+  S.title = "Crossroads Transit";
+  autoLabels();
+}
+function presetLoop(){
+  reset();
+  const R = 170, N = 12, ring = [];
+  for (let i = 0; i < N; i++){
+    const a = i * Math.PI * 2 / N - Math.PI / 2;
+    const x = Math.round(Math.cos(a) * R / 20) * 20;
+    const y = Math.round(Math.sin(a) * R / 20) * 20;
+    ring.push(mkStation(x, y, undefined, (Math.round(((a + Math.PI*2) % (Math.PI*2)) / (Math.PI/4)) % 8)));
+  }
+  ring.push(ring[0]);
+  const spokeA = [ring[0], mkStation(0, -R - 80, undefined, 6), mkStation(0, -R - 160, undefined, 6)];
+  const spokeB = [ring[6], mkStation(0, R + 80, undefined, 2), mkStation(0, R + 160, undefined, 2)];
+  const spokeC = [ring[3], mkStation(R + 80, 0, undefined, 0), mkStation(R + 160, 0, undefined, 0)];
+  S.lines = [
+    {id: uid(), name: "Circle", color: PALETTE[5], stops: ring},
+    {id: uid(), name: "North",  color: PALETTE[3], stops: spokeA},
+    {id: uid(), name: "South",  color: PALETTE[7], stops: spokeB},
+    {id: uid(), name: "East",   color: PALETTE[8], stops: spokeC}
+  ];
+  S.active = S.lines[0].id;
+  S.title = "Circle & Spokes";
+  autoLabels();
+}
+function presetDelta(){
+  reset();
+  const a = [], b = [], c = [];
+  for (let i = 0; i < 7; i++) a.push(mkStation(-240 + i*80, -120 + (i % 2 ? 0 : -40), undefined, 6));
+  for (let i = 0; i < 6; i++) b.push(mkStation(-200 + i*80, 60 + i*40, undefined, 2));
+  const shared = a[3];
+  c.push(mkStation(-80, -300, undefined, 6), shared, mkStation(40, 60, undefined, 0), mkStation(40, 180, undefined, 0), b[4]);
+  S.lines = [
+    {id: uid(), name: "Quayside", color: PALETTE[1], stops: a},
+    {id: uid(), name: "Delta",    color: PALETTE[9], stops: b},
+    {id: uid(), name: "Crosstown",color: PALETTE[4], stops: c}
+  ];
+  S.active = S.lines[0].id;
+  S.title = "Riverside Delta";
+  autoLabels();
+}
+function reset(){
+  S.stations = []; S.lines = []; S.active = null; selected = null;
+}
+function applyPreset(fn){
+  push();
+  fn();
+  syncControls(); renderLineList(); fitView(); save();
+}
+
+/* ============================ line list UI ============================ */
+let paletteFor = null;
+function renderLineList(){
+  const host = $("lineList");
+  host.textContent = "";
+  if (!S.lines.length){
+    const p = document.createElement("div");
+    p.className = "cnt"; p.style.padding = "4px 2px 8px";
+    p.textContent = "No lines yet — add one to start drawing.";
+    host.appendChild(p);
+  }
+  S.lines.forEach(ln => {
+    const row = document.createElement("div");
+    row.className = "lineRow" + (ln.id === S.active ? " on" : "");
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.tagName === "INPUT") return;
+      S.active = ln.id; renderLineList(); save(); render();
+    });
+
+    const sw = document.createElement("button");
+    sw.className = "swatch"; sw.style.background = ln.color; sw.title = "Change colour";
+    sw.addEventListener("click", (e) => { e.stopPropagation(); openPalette(ln.id); });
+    row.appendChild(sw);
+
+    const nm = document.createElement("input");
+    nm.type = "text"; nm.value = ln.name; nm.maxLength = 22; nm.setAttribute("aria-label", "Line name");
+    nm.addEventListener("input", () => { ln.name = nm.value; save(); });
+    nm.addEventListener("keydown", (e) => { if (e.key === "Enter") nm.blur(); });
+    row.appendChild(nm);
+
+    const c = document.createElement("span");
+    c.className = "cnt"; c.textContent = ln.stops.length;
+    row.appendChild(c);
+
+    const del = document.createElement("button");
+    del.className = "xbtn"; del.textContent = "×"; del.title = "Delete line";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation(); push();
+      S.lines = S.lines.filter(l => l.id !== ln.id);
+      if (S.active === ln.id) S.active = S.lines[0] ? S.lines[0].id : null;
+      pruneStations(); renderLineList(); render(); save();
+    });
+    row.appendChild(del);
+    host.appendChild(row);
+  });
+}
+function openPalette(lineId){
+  const pal = $("palette");
+  if (paletteFor === lineId && pal.classList.contains("show")){
+    pal.classList.remove("show"); paletteFor = null; return;
+  }
+  paletteFor = lineId;
+  pal.textContent = "";
+  PALETTE.forEach(col => {
+    const b = document.createElement("button");
+    b.style.background = col; b.title = col;
+    b.addEventListener("click", () => {
+      const ln = S.lines.find(l => l.id === paletteFor);
+      if (ln){ push(); ln.color = col; renderLineList(); render(); save(); }
+      pal.classList.remove("show"); paletteFor = null;
+    });
+    pal.appendChild(b);
+  });
+  pal.classList.add("show");
+}
+function pruneStations(){
+  const used = usedStations();
+  S.stations = S.stations.filter(s => used.has(s.id));
+  if (selected && !used.has(selected)) closeInspector();
+}
+
+/* ============================ inspector ============================ */
+function buildLabDirs(){
+  const host = $("labDirs");
+  host.textContent = "";
+  // grid order: NW N NE / W · E / SW S SE  → dir indices (0=E, CCW is negative Y in canvas)
+  const map = [5, 6, 7, 4, -1, 0, 3, 2, 1];
+  const glyph = ["↖","↑","↗","←","","→","↙","↓","↘"];
+  map.forEach((d, i) => {
+    const b = document.createElement("button");
+    b.textContent = glyph[i];
+    if (d < 0){ b.className = "mid"; b.disabled = true; }
+    else b.dataset.dir = d;
+    b.addEventListener("click", () => {
+      const s = byId(selected); if (!s) return;
+      push(); s.lab = d; syncLabDirs(); render(); save();
+    });
+    host.appendChild(b);
+  });
+}
+function syncLabDirs(){
+  const s = byId(selected); if (!s) return;
+  $("labDirs").querySelectorAll("button[data-dir]").forEach(b => {
+    b.classList.toggle("on", +b.dataset.dir === (s.lab | 0));
+  });
+}
+function openInspector(id){
+  selected = id;
+  const s = byId(id); if (!s) return;
+  $("inspector").classList.add("show");
+  $("stName").value = s.name;
+  syncLabDirs();
+  if (window.matchMedia("(max-width:860px)").matches) panel.classList.add("open");
+  render();
+}
+function closeInspector(){
+  selected = null;
+  $("inspector").classList.remove("show");
+  render();
+}
+
+/* ============================ interaction ============================ */
+const pointers = new Map();
+let pinch = null, panning = null;
+
+cv.addEventListener("pointerdown", (e) => {
+  cv.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  if (pointers.size === 2){
+    const [a, b] = [...pointers.values()];
+    pinch = {d: Math.hypot(a.x-b.x, a.y-b.y), k: view.k,
+             cx: (a.x+b.x)/2, cy: (a.y+b.y)/2, vx: view.x, vy: view.y};
+    drag = null; panning = null;
+    return;
+  }
+  const rect = cv.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const world = toWorld(sx, sy);
+  const hit = hitStation(world);
+
+  if (e.button === 1 || e.shiftKey || (tool === "edit" && !hit)){
+    panning = {sx, sy, vx: view.x, vy: view.y};
+    return;
+  }
+  if (tool === "draw"){
+    if (!S.active) addLine();
+    const ln = S.lines.find(l => l.id === S.active);
+    if (!ln) return;
+    push();
+    let id;
+    if (hit){
+      id = hit.id;
+      if (ln.stops[ln.stops.length-1] === id){ undoStack.pop(); return; }
+    } else {
+      const p = snapPt(world);
+      id = mkStation(p.x, p.y);
+    }
+    ln.stops.push(id);
+    renderLineList(); render(); save();
+    return;
+  }
+  if (tool === "edit"){
+    if (hit){
+      drag = {id: hit.id, dx: hit.x - world.x, dy: hit.y - world.y, moved: false};
+      openInspector(hit.id);
+    }
+    return;
+  }
+  if (tool === "erase"){
+    if (hit){
+      push();
+      S.lines.forEach(l => { l.stops = l.stops.filter(x => x !== hit.id); });
+      S.stations = S.stations.filter(s => s.id !== hit.id);
+      if (selected === hit.id) closeInspector();
+      renderLineList(); render(); save();
+    }
+  }
+});
+
+cv.addEventListener("pointermove", (e) => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  const rect = cv.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+
+  if (pinch && pointers.size === 2){
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y);
+    const k = clamp(pinch.k * (d / Math.max(1, pinch.d)), .2, 4);
+    const mx = pinch.cx - rect.left, my = pinch.cy - rect.top;
+    view.x = mx - (mx - pinch.vx) * (k / pinch.k);
+    view.y = my - (my - pinch.vy) * (k / pinch.k);
+    view.k = k;
+    render();
+    return;
+  }
+  if (panning){
+    view.x = panning.vx + (sx - panning.sx);
+    view.y = panning.vy + (sy - panning.sy);
+    render();
+    return;
+  }
+  if (drag){
+    const w = toWorld(sx, sy);
+    const s = byId(drag.id);
+    if (s){
+      const p = snapPt({x: w.x + drag.dx, y: w.y + drag.dy});
+      if (p.x !== s.x || p.y !== s.y){
+        if (!drag.moved){ push(); drag.moved = true; }
+        s.x = p.x; s.y = p.y; render();
+      }
+    }
+    return;
+  }
+  if (tool === "draw" && e.pointerType !== "touch"){
+    hoverPt = snapPt(toWorld(sx, sy));
+    render();
+  }
+});
+
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
+  if (drag && drag.moved) save();
+  drag = null; panning = null;
+}
+cv.addEventListener("pointerup", endPointer);
+cv.addEventListener("pointercancel", endPointer);
+cv.addEventListener("pointerleave", () => { hoverPt = null; render(); });
+
+cv.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = cv.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const k = clamp(view.k * (e.deltaY < 0 ? 1.12 : 1/1.12), .2, 4);
+  view.x = mx - (mx - view.x) * (k / view.k);
+  view.y = my - (my - view.y) * (k / view.k);
+  view.k = k;
+  render();
+}, {passive: false});
+
+cv.addEventListener("dblclick", (e) => {
+  const rect = cv.getBoundingClientRect();
+  const hit = hitStation(toWorld(e.clientX - rect.left, e.clientY - rect.top));
+  if (hit){ setTool("edit"); openInspector(hit.id); $("stName").focus(); $("stName").select(); }
+});
+
+/* ============================ tools & controls ============================ */
+function setTool(t){
+  tool = t;
+  document.body.className = "tool-" + t;
+  $("tDraw").setAttribute("aria-pressed", String(t === "draw"));
+  $("tEdit").setAttribute("aria-pressed", String(t === "edit"));
+  $("tErase").setAttribute("aria-pressed", String(t === "erase"));
+  const hints = {
+    draw: "Click to drop stations — click an existing stop to make an interchange",
+    edit: "Drag stops to move · click to rename · drag empty space to pan",
+    erase: "Click a stop to remove it from every line"
+  };
+  $("hint").textContent = hints[t];
+  if (t !== "draw"){ hoverPt = null; }
+  render();
+}
+function addLine(){
+  push();
+  const col = PALETTE[S.lines.length % PALETTE.length];
+  const ln = {id: uid(), name: "Line " + (S.lines.length + 1), color: col, stops: []};
+  S.lines.push(ln);
+  S.active = ln.id;
+  renderLineList(); render(); save();
+  return ln;
+}
+function syncControls(){
+  $("mapTitle").value = S.title;
+  $("bendSel").value = S.bend;
+  $("themeSel").value = S.theme;
+  $("gridChk").checked = S.showGrid;
+  $("snapChk").checked = S.snap;
+  $("labChk").checked = S.labels;
+}
+
+$("tDraw").addEventListener("click", () => setTool("draw"));
+$("tEdit").addEventListener("click", () => setTool("edit"));
+$("tErase").addEventListener("click", () => setTool("erase"));
+$("btnUndo").addEventListener("click", undo);
+$("btnRedo").addEventListener("click", redo);
+$("btnFit").addEventListener("click", () => fitView());
+$("addLine").addEventListener("click", () => { addLine(); setTool("draw"); });
+$("mapTitle").addEventListener("input", (e) => { S.title = e.target.value; save(); });
+$("bendSel").addEventListener("change", (e) => { push(); S.bend = e.target.value; render(); save(); });
+$("themeSel").addEventListener("change", (e) => { S.theme = e.target.value; render(); save(); });
+$("gridChk").addEventListener("change", (e) => { S.showGrid = e.target.checked; render(); save(); });
+$("snapChk").addEventListener("change", (e) => { S.snap = e.target.checked; save(); });
+$("labChk").addEventListener("change", (e) => { S.labels = e.target.checked; render(); save(); });
+$("stName").addEventListener("input", (e) => {
+  const s = byId(selected); if (!s) return;
+  s.name = e.target.value; render(); save();
+});
+$("btnAuto").addEventListener("click", () => {
+  if (!usedStations().size) return toast("Draw a line first");
+  push(); autoLabels(); syncLabDirs(); render(); save();
+  toast("Labels re-placed");
+});
+$("insClose").addEventListener("click", closeInspector);
+$("delSta").addEventListener("click", () => {
+  const s = byId(selected); if (!s) return;
+  push();
+  S.lines.forEach(l => { l.stops = l.stops.filter(x => x !== s.id); });
+  S.stations = S.stations.filter(x => x.id !== s.id);
+  closeInspector(); renderLineList(); render(); save();
+});
+$("btnClear").addEventListener("click", () => {
+  push(); reset(); S.title = "Untitled network";
+  closeInspector(); syncControls(); renderLineList(); render(); save();
+  toast("Cleared");
+});
+document.querySelectorAll("[data-preset]").forEach(b => {
+  b.addEventListener("click", () => {
+    const fn = {cross: presetCross, loop: presetLoop, delta: presetDelta}[b.dataset.preset];
+    if (fn) applyPreset(fn);
+  });
+});
+$("btnSvg").addEventListener("click", exportSVG);
+$("btnPng").addEventListener("click", exportPNG);
+$("btnJson").addEventListener("click", exportJSON);
+$("btnShare").addEventListener("click", async () => {
+  const url = location.origin + location.pathname + "#m=" + encodeState();
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Share link copied");
+  } catch (err){
+    location.hash = "m=" + encodeState();
+    toast("Link is in the address bar");
+  }
+});
+$("panelToggle").addEventListener("click", () => panel.classList.toggle("open"));
+
+window.addEventListener("keydown", (e) => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  const k = e.key.toLowerCase();
+  if ((e.metaKey || e.ctrlKey) && k === "z"){ e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (k === "1") setTool("draw");
+  else if (k === "2") setTool("edit");
+  else if (k === "3") setTool("erase");
+  else if (k === "f") fitView();
+  else if (k === "n") addLine();
+  else if (k === "l"){ if (usedStations().size){ push(); autoLabels(); syncLabDirs(); render(); save(); toast("Labels re-placed"); } }
+  else if (k === "escape") closeInspector();
+  else if (k === "g"){ S.showGrid = !S.showGrid; $("gridChk").checked = S.showGrid; render(); save(); }
+});
+
+/* ============================ boot ============================ */
+buildLabDirs();
+let booted = false;
+if (location.hash.startsWith("#m=")){
+  try { restore(decodeState(location.hash.slice(3))); booted = true; toast("Loaded shared map"); }
+  catch (err){ /* fall through to saved / preset */ }
+}
+if (!booted){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw){ restore(JSON.parse(raw)); booted = S.lines.length > 0; }
+  } catch (err){ booted = false; }
+}
+if (!booted) presetCross();
+
+syncControls();
+renderLineList();
+setTool("draw");
+
+if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(cv);
+window.addEventListener("resize", resize);
+resize();
+fitView();
+
+// expose a tiny surface for automated smoke tests
+window.__wayfinder = {
+  state: () => S, render, exportSVG, encodeState, decodeState, autoLabels,
+  routes: buildRoutes, setTool, fit: fitView
+};
+})();
+</script>
+</body>
+</html>
