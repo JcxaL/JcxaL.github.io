@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>One Property, Five Reactions — UI Spotlight Day 140</title>
+<meta name="description" content="Container style queries: flip one custom property on a parent and every descendant restyles itself, with no classes and no JavaScript.">
+<style>
+  :root{
+    --bg:#140f04; --panel:#241a07cc; --line:#4a3a16; --ink:#fff7e6; --dim:#d2bb8c; --acc:#fbbf24;
+    --speed:420ms;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:radial-gradient(900px 520px at 80% -10%,#3a2c0a 0%,transparent 58%),var(--bg);
+    color:var(--ink);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  .back-link{
+    position:fixed;top:16px;left:16px;z-index:30;text-decoration:none;color:var(--ink);
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 15px;
+    font-size:13px;backdrop-filter:blur(10px);transition:.16s;
+  }
+  .back-link:hover{border-color:var(--acc);transform:translateX(-2px)}
+  .panel{
+    position:fixed;top:16px;right:16px;z-index:30;width:242px;background:var(--panel);
+    border:1px solid var(--line);border-radius:14px;padding:14px;backdrop-filter:blur(10px);
+    box-shadow:0 18px 40px rgba(0,0,0,.5);font-size:12.5px;
+  }
+  .panel h3{margin:0 0 8px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .panel label{display:block;margin:9px 0 3px;color:var(--dim)}
+  .panel input[type=range]{width:100%;accent-color:var(--acc)}
+  .badge{display:inline-block;border-radius:999px;padding:3px 9px;font-size:11px;border:1px solid var(--line)}
+  .badge.yes{color:#86efac;border-color:#2c6b4a;background:#10251c}
+  .badge.no{color:#fda4af;border-color:#6b2c3a;background:#25101a}
+  .states{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .states button{
+    border:1px solid var(--line);background:#1d1506;color:var(--dim);border-radius:8px;padding:6px 4px;
+    font:inherit;font-size:12px;cursor:pointer;transition:.15s;
+  }
+  .states button[aria-pressed="true"]{background:#33260a;border-color:var(--acc);color:var(--acc)}
+  .panel code{color:var(--acc);font-size:11.5px}
+
+  header{padding:84px 24px 4px;max-width:760px;margin:0 auto;text-align:center}
+  header h1{margin:0 0 10px;font-size:clamp(23px,4vw,35px);letter-spacing:-.02em}
+  header p{margin:0;color:var(--dim)}
+  main{max-width:1040px;margin:0 auto;padding:24px 24px 10px;display:grid;gap:30px}
+  .sectionLabel{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin:0 0 12px}
+
+  /* ---- the pattern: one custom property on the container ---- */
+  @property --state{syntax:"*";inherits:true;initial-value:idle}
+
+  .cell{
+    --state:idle;
+    --tone:#8a7c5a; --glow:0 0 0 rgba(0,0,0,0); --lift:0px; --bar:18%;
+    border:1px solid var(--line);border-radius:16px;padding:18px;background:#1b1406;
+    display:grid;gap:12px;cursor:pointer;position:relative;overflow:hidden;
+    transition:transform var(--speed) cubic-bezier(.2,.9,.2,1),border-color var(--speed),background var(--speed),box-shadow var(--speed);
+    transform:translateY(var(--lift));box-shadow:var(--glow);
+  }
+  .cell:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+
+  .cell:hover{--state:warm;--lift:-3px;border-color:#6b5520}
+  .cell:active{--state:hot;--lift:0px}
+  .cell.locked{--state:done;border-color:#2c6b4a;background:#0e2119}
+  .cell.locked:hover{--state:done}
+
+  .head{display:flex;align-items:center;gap:10px}
+  .dot{width:10px;height:10px;border-radius:50%;background:#6b7280;transition:all var(--speed)}
+  .label{font-weight:600;letter-spacing:-.01em;transition:color var(--speed)}
+  .glyph{
+    margin-left:auto;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;
+    background:#241a07;border:1px solid var(--line);font-size:17px;
+    transition:transform var(--speed) cubic-bezier(.2,.9,.2,1),color var(--speed);
+  }
+  .barwrap{height:7px;border-radius:999px;background:#2a1f09;overflow:hidden}
+  .bar{--w:18%;height:100%;width:var(--w);border-radius:999px;transition:width var(--speed) cubic-bezier(.2,.9,.2,1),background var(--speed)}
+  .note{color:var(--dim);font-size:13px;transition:opacity var(--speed),transform var(--speed)}
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+
+  /* every rule below reacts to the PARENT's --state, not to a class */
+  @container style(--state: hot){
+    .dot{background:#fb7185;box-shadow:0 0 14px #fb7185}
+    .label{color:#ffe4e6}
+    .label::after{content:" · live"}
+    .bar{--w:88%;background:linear-gradient(90deg,#fb7185,#fbbf24)}
+    .glyph{transform:rotate(0deg) scale(1.12);color:#fb7185}
+    .note{opacity:1;transform:none}
+  }
+  @container style(--state: warm){
+    .dot{background:#fbbf24;box-shadow:0 0 12px #fbbf24}
+    .label{color:#fff3cd}
+    .label::after{content:" · warming"}
+    .bar{--w:54%;background:linear-gradient(90deg,#fbbf24,#a3e635)}
+    .glyph{transform:rotate(-8deg) scale(1.05);color:#fbbf24}
+    .note{opacity:.85;transform:none}
+  }
+  @container style(--state: idle){
+    .dot{background:#6b7280}
+    .label{color:#d2bb8c}
+    .bar{--w:18%;background:#4a3a16}
+    .glyph{transform:rotate(-16deg) scale(.96);color:#8a7c5a}
+    .note{opacity:0;transform:translateY(6px)}
+  }
+  @container style(--state: done){
+    .dot{background:#34d399;box-shadow:0 0 12px #34d399}
+    .label{color:#d1fae5}
+    .label::after{content:" · settled"}
+    .bar{--w:100%;background:linear-gradient(90deg,#34d399,#38bdf8)}
+    .glyph{transform:rotate(0deg) scale(1);color:#34d399}
+    .note{opacity:.9;transform:none}
+  }
+
+
+  /* instance 2: a toolbar whose children all answer to one property */
+  .bar2{
+    --state:idle;display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:14px;border-radius:14px;
+    border:1px solid var(--line);background:#1b1406;transition:background var(--speed),border-color var(--speed);
+  }
+  .bar2 .chip{
+    border:1px solid var(--line);border-radius:999px;padding:7px 14px;background:#241a07;color:var(--dim);
+    font-size:13px;transition:all var(--speed);
+  }
+  @container style(--state: hot){ .bar2 .chip{border-color:#fb7185;color:#ffe4e6;transform:translateY(-2px)} .bar2{background:#2a0f14} }
+  @container style(--state: warm){ .bar2 .chip{border-color:#fbbf24;color:#fff3cd} }
+  @container style(--state: done){ .bar2 .chip{border-color:#34d399;color:#d1fae5} .bar2{background:#0e2119} }
+  .bar2:hover{--state:warm}
+  .bar2:active{--state:hot}
+
+  /* instance 3: nested containers — the nearest matching ancestor wins */
+  .outer{--state:done;border:1px dashed #3d3011;border-radius:16px;padding:16px;display:grid;gap:14px}
+  .inner{--state:idle}
+  .inner:hover{--state:hot}
+  .mini{display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;background:#1b1406;border:1px solid var(--line)}
+
+  .fallback{
+    border-left:2px solid #fb7185;padding:8px 12px;background:#2a0f14;border-radius:0 10px 10px 0;color:#ffe4e6;font-size:13px;
+  }
+  footer{padding:30px 24px 36px;text-align:center;color:var(--dim);font-size:12.5px}
+  footer a{color:var(--acc)}
+  @media (min-width:1000px){ body{padding-right:278px} }
+  @media (max-width:820px){
+    .panel{position:static;width:auto;margin:14px 16px 0}
+    .back-link{position:absolute}
+    header{padding-top:66px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Style queries</h3>
+  <div id="support" class="badge">checking…</div>
+  <div class="states">
+    <button data-s="idle" aria-pressed="true">idle</button>
+    <button data-s="warm" aria-pressed="false">warm</button>
+    <button data-s="hot" aria-pressed="false">hot</button>
+    <button data-s="done" aria-pressed="false">done</button>
+  </div>
+  <label for="speed">transition <span id="speedV">420ms</span></label>
+  <input type="range" id="speed" min="80" max="900" step="10" value="420">
+  <p style="margin:10px 0 0;color:var(--dim)">
+    Every card below sets exactly one property: <code>--state</code>. Hover and press change it; the buttons pin it.
+    Descendants match with <code>@container style(--state: …)</code>.
+  </p>
+</div>
+
+<header>
+  <h1>One property, five reactions</h1>
+  <p>A style query matches on a custom property of an ancestor. Set <code>--state</code> once on a card and its dot, label, icon, progress bar and footnote all restyle themselves — no class toggling, no inline styles on the children.</p>
+</header>
+
+<main>
+  <section>
+    <p class="sectionLabel">Instance 1 — four cards, one property each</p>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section>
+    <p class="sectionLabel">Instance 2 — a toolbar where the whole row answers at once</p>
+    <div class="bar2" id="bar2">
+      <span class="chip">Summarise</span><span class="chip">Translate</span><span class="chip">Rewrite</span>
+      <span class="chip">Explain</span><span class="chip">Cite</span>
+    </div>
+  </section>
+
+  <section>
+    <p class="sectionLabel">Instance 3 — nested containers, nearest ancestor wins</p>
+    <div class="outer">
+      <div class="mini"><span class="dot"></span><span class="label">Outer container says done</span><span class="glyph">✦</span></div>
+      <div class="inner">
+        <div class="mini"><span class="dot"></span><span class="label">Inner container overrides it</span><span class="glyph">✦</span></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="fallback" id="fallback" hidden>
+    This browser has not shipped container style queries, so the cards keep their idle styling. Chrome and Edge 111+, Safari 18+ and Firefox 151+ support them.
+  </p>
+</main>
+
+<footer>
+  Pattern explained in <a href="https://blog.openreplay.com/use-css-if-vs-container-style-queries/" target="_blank" rel="noopener">OpenReplay · if() vs container style queries</a> · UI Spotlight Day 140 · Drop #4
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var supported = CSS.supports("container-type", "normal") &&
+    (function () {
+      try { return CSS.supports("(--x: y)") || typeof CSSContainerRule !== "undefined"; } catch (e) { return false; }
+    })();
+  /* a real probe: build a rule and see whether it applies */
+  var probe = document.createElement("div");
+  probe.innerHTML = '<div class="probe-outer" style="--probe:on"><i class="probe-in"></i></div>';
+  var style = document.createElement("style");
+  style.textContent = "@container style(--probe: on){ .probe-in{ --matched: 1; } }";
+  document.head.appendChild(style);
+  probe.style.cssText = "position:absolute;left:-9999px;top:0";
+  document.body.appendChild(probe);
+  var matched = getComputedStyle(probe.querySelector(".probe-in")).getPropertyValue("--matched").trim() === "1";
+  probe.remove();
+  style.remove();
+  supported = supported && matched;
+
+  var badge = document.getElementById("support");
+  badge.textContent = supported ? "@container style(): native" : "style queries unsupported here";
+  badge.className = "badge " + (supported ? "yes" : "no");
+  document.getElementById("fallback").hidden = supported;
+
+  var CARDS = [
+    { label: "Build pipeline", glyph: "⚙", note: "Hover to warm it, press to drive it hot." },
+    { label: "Edge cache", glyph: "◈", note: "Five descendants, zero class changes." },
+    { label: "Search index", glyph: "⌘", note: "The parent owns the state; children only query it." },
+    { label: "Mail queue", glyph: "✉", note: "Click to lock the card into its settled state." }
+  ];
+  var grid = document.getElementById("grid");
+  CARDS.forEach(function (c) {
+    var el = document.createElement("div");
+    el.className = "cell";
+    el.tabIndex = 0;
+    el.innerHTML =
+      '<div class="head"><span class="dot"></span><span class="label">' + c.label +
+      '</span><span class="glyph">' + c.glyph + '</span></div>' +
+      '<div class="barwrap"><div class="bar"></div></div>' +
+      '<p class="note">' + c.note + '</p>';
+    el.addEventListener("click", function () { el.classList.toggle("locked"); });
+    el.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.classList.toggle("locked"); }
+    });
+    grid.appendChild(el);
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".states button"), function (b) {
+    b.addEventListener("click", function () {
+      var s = b.dataset.s;
+      Array.prototype.forEach.call(document.querySelectorAll(".states button"), function (o) {
+        o.setAttribute("aria-pressed", String(o === b));
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".cell"), function (c) {
+        c.classList.remove("locked");
+        c.style.setProperty("--state", s);
+      });
+      document.getElementById("bar2").style.setProperty("--state", s);
+    });
+  });
+
+  document.getElementById("speed").addEventListener("input", function () {
+    document.documentElement.style.setProperty("--speed", this.value + "ms");
+    document.getElementById("speedV").textContent = this.value + "ms";
+  });
+  window.__drop = { supported: supported };
+})();
+</script>
+</body>
+</html>
