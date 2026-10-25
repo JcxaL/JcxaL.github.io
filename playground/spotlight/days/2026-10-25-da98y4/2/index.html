@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Layout That Folds — UI Spotlight Day 141</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --accent:#34d399; --bg:#060b0a; --ink:#e7f5ef; --dim:#7fa396; --line:#1a2c27;
+    --hinge:34px;      /* the gap the hinge takes out of the viewport */
+    --split:50%;       /* where the fold sits down the device */
+    --fold:1;          /* 0 = continuous, 1 = folded */
+  }
+  body{
+    margin:0;background:
+      radial-gradient(900px 520px at 80% -8%,#0f3029 0%,transparent 58%),
+      radial-gradient(700px 420px at 0% 104%,#0d2a26 0%,transparent 60%),var(--bg);
+    color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100svh
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:60;text-decoration:none;color:var(--ink);
+    font-size:12.5px;font-weight:650;padding:8px 13px;border-radius:999px;
+    background:rgba(8,18,16,.74);border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(12px);transition:background .16s,border-color .16s
+  }
+  .back-link:hover{background:rgba(16,34,30,.9);border-color:var(--accent)}
+
+  header{max-width:900px;margin:0 auto;padding:78px 22px 22px;text-align:center}
+  .tag{
+    display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);border:1px solid rgba(52,211,153,.32);background:rgba(52,211,153,.09);
+    padding:5px 11px;border-radius:999px;margin-bottom:12px
+  }
+  h1{margin:0 0 10px;font-size:clamp(26px,5.6vw,44px);line-height:1.06;letter-spacing:-.03em;font-weight:800}
+  h1 em{font-style:normal;color:var(--accent)}
+  .sub{margin:0 auto;max-width:620px;color:var(--dim);font-size:clamp(13.5px,2.2vw,16px)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;color:#9fe8cd}
+
+  .stage{
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;
+    max-width:1100px;margin:30px auto 0;padding:0 22px 26px;align-items:start
+  }
+  .unit{display:flex;flex-direction:column;gap:10px;align-items:center}
+  .unit > b{font-size:12px;letter-spacing:.01em}
+  .unit > span{font-size:11px;color:var(--dim);text-align:center;min-height:30px}
+
+  /* the device: a column whose two segments are pushed apart by the hinge */
+  .device{
+    width:min(270px,78vw);aspect-ratio:9/17;border-radius:26px;padding:9px;
+    background:linear-gradient(160deg,#1b2a27,#0c1715);
+    border:1px solid #27403a;box-shadow:0 22px 48px rgba(0,0,0,.5);
+    position:relative
+  }
+  .screen{
+    height:100%;border-radius:19px;overflow:hidden;background:#07100e;
+    display:grid;
+    /* the two viewport segments, with the hinge removed from the middle */
+    grid-template-rows:
+      calc(var(--split) - (var(--hinge) * var(--fold)) / 2)
+      calc(var(--hinge) * var(--fold))
+      1fr;
+    transition:grid-template-rows .42s cubic-bezier(.3,.9,.3,1)
+  }
+  .seg{overflow:hidden;position:relative;display:flex;flex-direction:column}
+  .gap{
+    background:repeating-linear-gradient(90deg,#0a1412 0 5px,#0e1a18 5px 10px);
+    border-block:1px solid #16241f
+  }
+
+  /* ---- app 1: player — media in the top segment, controls in the bottom ---- */
+  .player .stageview{
+    flex:1;background:
+      radial-gradient(120% 90% at 30% 20%,#1d4f45 0%,#0a1a17 70%),
+      linear-gradient(120deg,#123,#061211);
+    display:grid;place-items:center;position:relative
+  }
+  .player .stageview::after{
+    content:"";width:0;height:0;border-left:17px solid rgba(231,245,239,.85);
+    border-block:11px solid transparent;margin-left:4px
+  }
+  .player .ctrls{padding:11px 12px;display:flex;flex-direction:column;gap:9px;background:#0a1512}
+  .player .ctrls .scrub{height:4px;border-radius:3px;background:#1a2f29}
+  .player .ctrls .scrub i{display:block;height:100%;width:42%;border-radius:3px;background:var(--accent)}
+  .player .ctrls .btns{display:flex;gap:7px;align-items:center}
+  .player .ctrls .btns b{width:28px;height:28px;border-radius:9px;background:#15241f;display:grid;place-items:center;font-size:11px;color:var(--dim)}
+  .player .ctrls .btns b.pri{background:var(--accent);color:#06231a}
+
+  /* ---- app 2: map above, result list below ---- */
+  .map .canvas{
+    flex:1;background:
+      linear-gradient(0deg,rgba(52,211,153,.07) 1px,transparent 1px) 0 0/100% 17px,
+      linear-gradient(90deg,rgba(52,211,153,.07) 1px,transparent 1px) 0 0/17px 100%,
+      radial-gradient(90% 70% at 60% 40%,#143229 0%,#081714 70%);
+    position:relative
+  }
+  .map .canvas::after{
+    content:"";position:absolute;left:46%;top:42%;width:11px;height:11px;border-radius:50%;
+    background:var(--accent);box-shadow:0 0 0 6px rgba(52,211,153,.2)
+  }
+  .map .list{background:#0a1512;padding:8px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+  .map .list div{display:flex;gap:7px;align-items:center;font-size:10.5px;color:var(--dim)}
+  .map .list div i{width:22px;height:22px;border-radius:7px;background:#16261f;flex:none}
+  .map .list div s{text-decoration:none;flex:1;height:5px;border-radius:3px;background:#162620}
+
+  /* ---- app 3: reading pane above, notes below ---- */
+  .read .body{flex:1;padding:12px;display:flex;flex-direction:column;gap:6px;background:#081411}
+  .read .body u{text-decoration:none;display:block;height:6px;border-radius:3px;background:#17302a}
+  .read .body u:nth-child(1){width:72%;height:9px;background:#23463d}
+  .read .body u:nth-child(5){width:84%}
+  .read .body u:nth-child(7){width:58%}
+  .read .notes{background:#0b1613;border-top:1px solid #14241f;padding:10px;display:flex;flex-direction:column;gap:6px}
+  .read .notes b{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--accent)}
+  .read .notes u{text-decoration:none;display:block;height:5px;border-radius:3px;background:#17302a;width:90%}
+
+  /* when the device is flat, each app collapses back to one continuous column */
+  .device[data-posture="continuous"] .player .ctrls,
+  .device[data-posture="continuous"] .map .list,
+  .device[data-posture="continuous"] .read .notes{opacity:.55}
+
+  /* ---------- controls ---------- */
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:60;width:232px;
+    background:rgba(8,18,16,.8);border:1px solid rgba(255,255,255,.13);border-radius:14px;
+    padding:12px;backdrop-filter:blur(14px);box-shadow:0 14px 36px rgba(0,0,0,.45)
+  }
+  .panel h2{margin:0 0 9px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .seg2{display:flex;gap:5px;margin-bottom:11px}
+  .seg2 button{
+    flex:1;min-height:32px;border-radius:9px;border:1px solid var(--line);background:#0c1a17;
+    color:var(--dim);font:600 11.5px/1 system-ui,sans-serif;cursor:pointer;transition:all .15s
+  }
+  .seg2 button[aria-pressed="true"]{background:rgba(52,211,153,.16);border-color:#1f6b55;color:var(--accent)}
+  label.r{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin-bottom:4px}
+  label.r output{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:20px;background:transparent;margin:0 0 9px}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:#1a3029}
+  input[type=range]::-moz-range-track{height:4px;border-radius:3px;background:#1a3029}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;margin-top:-5.5px;border-radius:50%;background:var(--accent);border:2px solid #04120f}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);border:2px solid #04120f}
+  .live{
+    font-size:10.5px;line-height:1.5;border:1px solid var(--line);background:#0a1512;
+    border-radius:9px;padding:7px 8px;color:var(--dim)
+  }
+  .live b{color:var(--ink);font-weight:650}
+  .live .y{color:var(--accent)}
+
+  pre{
+    max-width:720px;margin:4px auto 0;padding:14px 16px;overflow-x:auto;
+    background:#08120f;border:1px solid var(--line);border-radius:13px;
+    font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#b6d9cc
+  }
+  pre .c{color:#5f8176}
+  pre .p{color:var(--accent)}
+  .note{max-width:720px;margin:16px auto 0;padding:0 22px;color:var(--dim);font-size:12.5px;text-align:center}
+
+  footer{padding:24px 20px 34px;text-align:center;color:#587a6e;font-size:11.5px}
+  footer a{color:#7fae9e}
+
+  @media (max-width:900px){
+    .stage{grid-template-columns:1fr;gap:28px}
+    .panel{position:static;width:min(420px,92vw);margin:14px auto 0}
+  }
+  @media (prefers-reduced-motion:reduce){ .screen{transition:none} }
+
+  @media (min-width:901px){ body{padding-right:248px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h2>Device posture</h2>
+  <div class="seg2">
+    <button id="bFlat"  aria-pressed="false">continuous</button>
+    <button id="bFold"  aria-pressed="true">folded</button>
+  </div>
+  <label class="r" for="split"><span>hinge position</span><output id="splitOut">50%</output></label>
+  <input type="range" id="split" min="28" max="72" step="1" value="50">
+  <label class="r" for="hinge"><span>hinge thickness</span><output id="hingeOut">34px</output></label>
+  <input type="range" id="hinge" min="0" max="64" step="1" value="34">
+  <div class="live" id="live">reading this device…</div>
+</div>
+
+<header>
+  <span class="tag">Layout · Drop 2</span>
+  <h1>A hinge is a <em>layout constraint</em>, not a bug</h1>
+  <p class="sub">Safari 27.1 on the iPhone Duo exposes the Device Posture and Viewport Segments APIs,
+     so a page can finally ask where the fold is and keep content out of it. These three apps are driven
+     by the same two numbers those APIs hand you — segment height and hinge thickness.</p>
+</header>
+
+<section class="stage" id="stage"></section>
+
+<p class="note">The frames above are a simulation so you can see the behaviour on any screen.
+   On real hardware the numbers come from <code>env()</code> instead — the panel reports what
+   <em>your</em> device actually says.</p>
+
+<pre><span class="c">/* real foldable, no simulation */</span>
+@media (<span class="p">vertical-viewport-segments</span>: 2) {
+  .screen {
+    display: grid;
+    grid-template-rows:
+      <span class="p">env(viewport-segment-bottom 0 0)</span>                                  <span class="c">/* top segment */</span>
+      calc(<span class="p">env(viewport-segment-top 0 1)</span> - <span class="p">env(viewport-segment-bottom 0 0)</span>) <span class="c">/* hinge */</span>
+      1fr;                                                      <span class="c">/* bottom segment */</span>
+  }
+}
+<span class="c">/* and in JS */</span>
+navigator.<span class="p">devicePosture</span>.type        <span class="c">// "folded" | "continuous"</span>
+window.viewport.<span class="p">segments</span>            <span class="c">// [DOMRect, DOMRect]</span></pre>
+
+<footer>
+  Inspired by Darius Cepulis — “What the iPhone Duo means for web development” ·
+  <a href="https://videojs.org/blog/iphone-duo-web-development" target="_blank" rel="noopener">videojs.org</a>
+  · UI Spotlight Day 141 · Drop #2
+</footer>
+
+<script>
+"use strict";
+const APPS=[
+  {cls:"player",title:"Player",note:"Video keeps the top segment; the scrub bar and buttons move below the hinge.",
+   html:"<div class='seg stageview'></div>"+
+        "<div class='ctrls'><div class='scrub'><i></i></div>"+
+        "<div class='btns'><b>⏮</b><b class='pri'>▶</b><b>⏭</b><b style='margin-left:auto'>⤢</b></div></div>"},
+  {cls:"map",title:"Map + results",note:"The map owns the upper segment so the hinge never crosses the pin.",
+   html:"<div class='seg canvas'></div>"+
+        "<div class='list'>"+Array.from({length:4},()=>"<div><i></i><s></s></div>").join("")+"</div>"},
+  {cls:"read",title:"Reader + notes",note:"Body copy above, annotations below — no line of text ever lands in the gap.",
+   html:"<div class='seg body'>"+Array.from({length:8},()=>"<u></u>").join("")+"</div>"+
+        "<div class='notes'><b>notes</b><u></u><u></u></div>"}
+];
+const stage=document.getElementById("stage");
+APPS.forEach(a=>{
+  const unit=document.createElement("div");
+  unit.className="unit";
+  const parts=a.html.split("</div>");
+  unit.innerHTML=
+    "<b>"+a.title+"</b><span>"+a.note+"</span>"+
+    "<div class='device "+a.cls+"' data-posture='folded'><div class='screen'>"+
+      a.html.replace("<div class='ctrls'","<div class='gap'></div><div class='seg ctrls'")
+            .replace("<div class='list'","<div class='gap'></div><div class='seg list'")
+            .replace("<div class='notes'","<div class='gap'></div><div class='seg notes'")+
+    "</div></div>";
+  void parts;
+  stage.appendChild(unit);
+});
+
+const root=document.documentElement;
+const bFlat=document.getElementById("bFlat"), bFold=document.getElementById("bFold");
+const split=document.getElementById("split"), hinge=document.getElementById("hinge");
+const splitOut=document.getElementById("splitOut"), hingeOut=document.getElementById("hingeOut");
+let folded=true;
+
+function setPosture(f){
+  folded=f;
+  root.style.setProperty("--fold",f?"1":"0");
+  bFold.setAttribute("aria-pressed",String(f));
+  bFlat.setAttribute("aria-pressed",String(!f));
+  document.querySelectorAll(".device").forEach(d=>d.dataset.posture=f?"folded":"continuous");
+}
+bFold.addEventListener("click",()=>setPosture(true));
+bFlat.addEventListener("click",()=>setPosture(false));
+split.addEventListener("input",()=>{
+  root.style.setProperty("--split",split.value+"%");
+  splitOut.textContent=split.value+"%";
+});
+hinge.addEventListener("input",()=>{
+  root.style.setProperty("--hinge",hinge.value+"px");
+  hingeOut.textContent=hinge.value+"px";
+});
+setPosture(true);
+
+/* report what this browser genuinely knows about its own posture */
+const live=document.getElementById("live");
+function readDevice(){
+  const dp=navigator.devicePosture;
+  const vs=window.viewport&&window.viewport.segments;
+  const mqV=matchMedia("(vertical-viewport-segments: 2)").matches;
+  const mqH=matchMedia("(horizontal-viewport-segments: 2)").matches;
+  const yes='<span class="y">yes</span>', no="no";
+  live.innerHTML=
+    "<b>devicePosture</b>: "+(dp?'<span class="y">'+dp.type+"</span>":"not exposed")+"<br>"+
+    "<b>viewport.segments</b>: "+(vs?'<span class="y">'+vs.length+"</span>":"not exposed")+"<br>"+
+    "<b>2 segments?</b> vertical "+(mqV?yes:no)+" · horizontal "+(mqH?yes:no);
+}
+readDevice();
+if(navigator.devicePosture&&navigator.devicePosture.addEventListener)
+  navigator.devicePosture.addEventListener("change",readDevice);
+matchMedia("(vertical-viewport-segments: 2)").addEventListener("change",readDevice);
+window.addEventListener("resize",readDevice);
+</script>
+</body>
+</html>
