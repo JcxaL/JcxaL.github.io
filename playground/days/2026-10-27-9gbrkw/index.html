@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pigment — Color System Studio</title>
+<meta name="description" content="Build a real colour system in OKLCH: tonal ramps, harmony schemes, a WCAG + APCA contrast matrix, a live UI preview, and exports to CSS, tokens, SVG and PNG.">
+<meta name="theme-color" content="#0a0b12">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0b12;--bg2:#10121c;--ink:#eef1f8;--dim:#949cb4;--faint:#646c86;
+    --glass:rgba(20,23,34,.76);--line:rgba(150,165,205,.16);--line2:rgba(150,165,205,.28);
+    /* live-themed from the palette the user is building */
+    --brand:#7c9cff;--brand-soft:rgba(124,156,255,.16);--brand-ink:#0a0b12;
+    --ok:#34d399;--warn:#fbbf24;--bad:#f87171;
+    --r:14px;--sh:0 18px 46px rgba(0,0,0,.46);
+  }
+  html,body{height:100%}
+  body{background:
+      radial-gradient(1200px 760px at 6% -10%,color-mix(in oklab,var(--brand) 16%,transparent),transparent 60%),
+      radial-gradient(900px 640px at 104% 4%,rgba(167,139,250,.12),transparent 58%),
+      radial-gradient(900px 700px at 50% 118%,rgba(52,211,153,.08),transparent 60%),var(--bg);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;
+    display:flex;flex-direction:column;min-height:100%}
+  button,input,select,textarea{font-family:inherit;color:inherit}
+  button{cursor:pointer;background:none;border:0}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  /* ---------- top bar ---------- */
+  header{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:12px 16px;background:linear-gradient(180deg,rgba(10,11,18,.94),rgba(10,11,18,.72) 70%,transparent);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .brandmark{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
+  .dot{width:26px;height:26px;border-radius:9px;flex:0 0 auto;position:relative;
+    background:conic-gradient(from 210deg,#f87171,#fbbf24,#34d399,#38bdf8,#a78bfa,#f87171);
+    box-shadow:0 0 0 1px rgba(255,255,255,.14),0 6px 18px rgba(0,0,0,.5)}
+  .dot::after{content:"";position:absolute;inset:7px;border-radius:4px;background:var(--bg);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .brandmark h1{font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+  .brandmark h1 b{color:var(--brand)}
+  .brandmark p{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tabs{display:flex;gap:4px;padding:4px;border-radius:999px;background:rgba(255,255,255,.05);
+    border:1px solid var(--line);overflow-x:auto;scrollbar-width:none;max-width:100%;
+    min-width:0;flex:1 1 auto;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{padding:8px 14px;border-radius:999px;font:600 12.5px/1 system-ui,sans-serif;color:var(--dim);
+    white-space:nowrap;transition:background .2s,color .2s}
+  .tabs button[aria-selected="true"]{background:var(--brand);color:var(--brand-ink);
+    box-shadow:0 6px 18px color-mix(in oklab,var(--brand) 40%,transparent)}
+  .tabs button:hover:not([aria-selected="true"]){color:var(--ink);background:rgba(255,255,255,.06)}
+  .hbtns{display:flex;gap:7px;flex-wrap:wrap;flex:0 0 auto}
+  .ghost{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;
+    border:1px solid var(--line);background:var(--glass);font:600 12px/1 system-ui,sans-serif;color:var(--ink);
+    transition:border-color .2s,transform .12s}
+  .ghost:hover{border-color:var(--brand)}
+  .ghost:active{transform:scale(.96)}
+  .ghost.primary{background:var(--brand);color:var(--brand-ink);border-color:transparent;font-weight:700}
+
+  /* ---------- layout ---------- */
+  main{flex:1;width:min(1180px,100%);margin:0 auto;padding:6px 16px 120px}
+  .panel{background:var(--glass);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+  .pad{padding:16px}
+  h2.sec{font:700 10.5px/1 system-ui,sans-serif;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+  .view{display:none;flex-direction:column;gap:14px}
+  .view.on{display:flex;animation:fade .32s cubic-bezier(.22,1,.36,1)}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .split{display:grid;gap:14px;grid-template-columns:300px 1fr;align-items:start}
+  .split>*{min-width:0}
+  @media (max-width:860px){.split{grid-template-columns:1fr}}
+
+  /* ---------- controls ---------- */
+  .ctl{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .ctl:last-child{margin-bottom:0}
+  .ctl label{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+    font:600 11.5px/1 system-ui,sans-serif;color:var(--dim)}
+  .ctl label span{font:600 11px/1 ui-monospace,monospace;color:var(--brand)}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none}
+  input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:99px;
+    background:linear-gradient(90deg,var(--brand),rgba(255,255,255,.14))}
+  input[type=range]::-moz-range-track{height:5px;border-radius:99px;background:rgba(255,255,255,.16)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;
+    border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.25)}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff}
+  input[type=text],input[type=number],select{width:100%;padding:9px 11px;border-radius:10px;
+    background:rgba(255,255,255,.05);border:1px solid var(--line);font:600 12.5px/1 system-ui,sans-serif}
+  input[type=text]:focus,select:focus{outline:2px solid var(--brand);outline-offset:1px}
+  .seg{display:flex;flex-wrap:wrap;gap:5px}
+  .seg button{padding:7px 10px;border-radius:9px;border:1px solid var(--line);
+    font:600 11.5px/1 system-ui,sans-serif;color:var(--dim);transition:.18s}
+  .seg button[aria-pressed="true"]{background:var(--brand-soft);border-color:var(--brand);color:var(--ink)}
+  .seg button:hover{color:var(--ink)}
+  .hint{font:500 11.5px/1.55 system-ui,sans-serif;color:var(--faint)}
+
+  /* ---------- ramps ---------- */
+  .rampnav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin;min-width:0}
+  .rampnav button{display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;
+    border:1px solid var(--line);font:600 12px/1 system-ui,sans-serif;color:var(--dim);white-space:nowrap}
+  .rampnav button i{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.2)}
+  .rampnav button[aria-pressed="true"]{color:var(--ink);border-color:var(--line2);background:rgba(255,255,255,.07)}
+  .ramprow{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
+  .ramprow:last-child{margin-bottom:0}
+  .ramphead{display:flex;align-items:center;gap:9px}
+  .ramphead b{font:700 12.5px/1 system-ui,sans-serif;letter-spacing:.01em}
+  .ramphead em{font:500 11px/1 ui-monospace,monospace;color:var(--faint);font-style:normal}
+  .ramphead .pick{margin-left:auto;font:600 11px/1 system-ui,sans-serif;color:var(--faint)}
+  .swatches{display:grid;grid-template-columns:repeat(12,1fr);gap:4px}
+  @media (max-width:700px){.swatches{grid-template-columns:repeat(6,1fr)}}
+  .sw{position:relative;aspect-ratio:1/1.35;border-radius:9px;border:1px solid rgba(255,255,255,.08);
+    display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;cursor:pointer;
+    transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s;overflow:hidden}
+  .sw:hover{transform:translateY(-3px) scale(1.04);box-shadow:0 12px 26px rgba(0,0,0,.5);z-index:2}
+  .sw[data-oog="1"]::after{content:"";position:absolute;top:4px;right:4px;width:6px;height:6px;
+    border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.45)}
+  .sw u{font:700 9.5px/1 ui-monospace,monospace;text-decoration:none;opacity:.86}
+  .inspect{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:9px;margin-top:4px}
+  .ic{padding:10px 11px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+  .ic b{display:block;font:700 9.5px/1 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:5px}
+  .ic span{font:700 13px/1.25 ui-monospace,monospace;word-break:break-all}
+
+  /* ---------- harmony ---------- */
+  .wheelwrap{display:flex;justify-content:center;padding:4px}
+  canvas#wheel{width:min(300px,76vw);height:min(300px,76vw);border-radius:50%;cursor:crosshair;touch-action:none;
+    box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.1)}
+  .scheme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .scard{padding:12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);
+    display:flex;flex-direction:column;gap:9px;transition:border-color .2s,transform .18s}
+  .scard:hover{border-color:var(--brand);transform:translateY(-2px)}
+  .scard b{font:700 12px/1 system-ui,sans-serif}
+  .scard .bars{display:flex;gap:3px;height:28px}
+  .scard .bars i{flex:1;border-radius:5px}
+  .scard small{font:500 11px/1.4 system-ui,sans-serif;color:var(--faint)}
+
+  /* ---------- contrast ---------- */
+  .matrix-wrap{overflow:auto;border-radius:12px;border:1px solid var(--line)}
+  table{border-collapse:collapse;width:100%;font:600 11px/1 ui-monospace,monospace}
+  th,td{padding:0;text-align:center}
+  thead th{position:sticky;top:0;background:#0d0f18;padding:8px 4px;color:var(--faint);
+    font:700 10px/1 ui-monospace,monospace;z-index:2;border-bottom:1px solid var(--line)}
+  tbody th{position:sticky;left:0;background:#0d0f18;padding:6px 9px;text-align:right;color:var(--dim);
+    font:700 10px/1 ui-monospace,monospace;z-index:1;border-right:1px solid var(--line);white-space:nowrap}
+  td div{height:40px;min-width:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;cursor:default;transition:outline-color .15s;outline:2px solid transparent;outline-offset:-2px}
+  td div:hover{outline-color:#fff}
+  td div u{text-decoration:none;font:700 11.5px/1 ui-monospace,monospace}
+  td div s{text-decoration:none;font:600 9px/1 ui-monospace,monospace;opacity:.78}
+  .legend{display:flex;flex-wrap:wrap;gap:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;
+    border:1px solid var(--line);font:600 11px/1 system-ui,sans-serif;color:var(--dim)}
+  .legend i{width:8px;height:8px;border-radius:2px}
+  .pairs{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .pair{border-radius:12px;padding:13px;border:1px solid rgba(255,255,255,.1);display:flex;
+    flex-direction:column;gap:6px}
+  .pair b{font:700 14px/1.2 system-ui,sans-serif}
+  .pair small{font:600 10.5px/1 ui-monospace,monospace;opacity:.8}
+
+  /* ---------- preview ---------- */
+  .pv{border-radius:16px;overflow:hidden;border:1px solid var(--line);display:grid;
+    grid-template-columns:186px 1fr;min-height:430px;background:var(--pv-bg,#fff);color:var(--pv-ink,#111)}
+  @media (max-width:760px){.pv{grid-template-columns:1fr}.pv aside{display:none}}
+  .pv aside{background:var(--pv-surf,#f4f4f6);border-right:1px solid var(--pv-line,rgba(0,0,0,.08));
+    padding:16px 12px;display:flex;flex-direction:column;gap:5px}
+  .pv aside .logo{display:flex;align-items:center;gap:9px;margin-bottom:12px;padding:0 6px}
+  .pv aside .logo i{width:24px;height:24px;border-radius:8px;background:var(--pv-brand,#444)}
+  .pv aside .logo b{font:800 13px/1 system-ui,sans-serif}
+  .pv aside a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;
+    font:600 12.5px/1 system-ui,sans-serif;color:var(--pv-dim,#555);text-decoration:none}
+  .pv aside a i{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.5}
+  .pv aside a.on{background:var(--pv-brand-soft,rgba(0,0,0,.07));color:var(--pv-brand-ink2,#111)}
+  .pv main{padding:18px;display:flex;flex-direction:column;gap:14px;background:var(--pv-bg,#fff)}
+  .pv .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .pv h3{font:800 19px/1.15 system-ui,sans-serif;letter-spacing:-.02em;margin-right:auto}
+  .pv .btn{padding:9px 15px;border-radius:10px;font:700 12.5px/1 system-ui,sans-serif;
+    background:var(--pv-brand,#333);color:var(--pv-on-brand,#fff)}
+  .pv .btn.sec{background:var(--pv-brand-soft,rgba(0,0,0,.07));color:var(--pv-brand-ink2,#111)}
+  .pv .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:11px}
+  .pv .card{padding:13px;border-radius:12px;background:var(--pv-surf,#f7f7f9);
+    border:1px solid var(--pv-line,rgba(0,0,0,.07))}
+  .pv .card em{display:block;font:600 10.5px/1 system-ui,sans-serif;font-style:normal;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--pv-dim,#666);margin-bottom:7px}
+  .pv .card b{font:800 22px/1 system-ui,sans-serif;letter-spacing:-.03em}
+  .pv .card u{display:inline-block;margin-top:7px;text-decoration:none;padding:3px 7px;border-radius:6px;
+    font:700 10px/1 ui-monospace,monospace}
+  .pv .chart{height:120px;display:flex;align-items:flex-end;gap:6px;padding:12px;border-radius:12px;
+    background:var(--pv-surf,#f7f7f9);border:1px solid var(--pv-line,rgba(0,0,0,.07))}
+  .pv .chart i{flex:1;border-radius:5px 5px 2px 2px;background:var(--pv-brand,#333);
+    transition:height .5s cubic-bezier(.22,1,.36,1)}
+  .pv .list{border-radius:12px;border:1px solid var(--pv-line,rgba(0,0,0,.07));overflow:hidden}
+  .pv .list div{display:flex;align-items:center;gap:10px;padding:10px 13px;
+    border-bottom:1px solid var(--pv-line,rgba(0,0,0,.06));font:600 12.5px/1 system-ui,sans-serif}
+  .pv .list div:last-child{border-bottom:0}
+  .pv .list div s{text-decoration:none;margin-left:auto;padding:3px 8px;border-radius:999px;
+    font:700 10px/1 ui-monospace,monospace}
+  .pv .list div i{width:8px;height:8px;border-radius:50%}
+
+  /* ---------- export ---------- */
+  .exgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}
+  pre{max-height:390px;overflow:auto;padding:14px;border-radius:12px;background:#07080e;
+    border:1px solid var(--line);font:500 11.5px/1.65 ui-monospace,monospace;color:#cfd6e8;white-space:pre}
+  pre .k{color:#7dd3fc}pre .v{color:#fca5a5}pre .c{color:#5d6782}
+  .presets{display:flex;flex-direction:column;gap:7px;max-height:220px;overflow:auto}
+  .preset{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;
+    border:1px solid var(--line);background:rgba(255,255,255,.04)}
+  .preset .chips{display:flex;gap:3px;flex:0 0 auto}
+  .preset .chips i{width:12px;height:12px;border-radius:3px}
+  .preset b{font:600 12px/1 system-ui,sans-serif;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .preset button{padding:5px 9px;border-radius:7px;border:1px solid var(--line);
+    font:600 10.5px/1 system-ui,sans-serif;color:var(--dim)}
+  .preset button:hover{color:var(--ink);border-color:var(--brand)}
+
+  /* ---------- toast ---------- */
+  #toast{position:fixed;left:50%;bottom:44px;transform:translate(-50%,24px);z-index:60;opacity:0;
+    padding:11px 18px;border-radius:999px;background:var(--brand);color:var(--brand-ink);
+    font:700 12.5px/1 system-ui,sans-serif;box-shadow:0 14px 40px rgba(0,0,0,.55);pointer-events:none;
+    transition:opacity .25s,transform .35s cubic-bezier(.22,1,.36,1)}
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+  footer.credit{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:9px 16px;text-align:center;
+    font:500 11px/1.5 system-ui,sans-serif;color:var(--faint);
+    background:linear-gradient(0deg,rgba(10,11,18,.95),transparent);pointer-events:none}
+  footer.credit b{color:var(--dim)}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brandmark">
+    <span class="dot"></span>
+    <div>
+      <h1>Pigment <b>·</b> Color System Studio</h1>
+      <p id="sub">OKLCH ramps · harmony · contrast · tokens</p>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist" id="tabs">
+    <button role="tab" aria-selected="true"  data-v="ramps">Ramps</button>
+    <button role="tab" aria-selected="false" data-v="harmony">Harmony</button>
+    <button role="tab" aria-selected="false" data-v="contrast">Contrast</button>
+    <button role="tab" aria-selected="false" data-v="preview">Preview</button>
+    <button role="tab" aria-selected="false" data-v="export">Export</button>
+  </nav>
+  <div class="hbtns">
+    <button class="ghost" id="btnRandom" title="Shuffle a new system (R)">⟳ Shuffle</button>
+    <button class="ghost primary" id="btnShare" title="Copy a share link (L)">Share link</button>
+  </div>
+</header>
+
+<main>
+  <!-- ================= RAMPS ================= -->
+  <section class="view on" id="v-ramps">
+    <div class="split">
+      <div class="panel pad">
+        <h2 class="sec" style="margin-bottom:12px">Ramp engine</h2>
+        <div class="ctl">
+          <label>Editing ramp</label>
+          <div class="rampnav" id="rampnav"></div>
+        </div>
+        <div class="ctl">
+          <label for="cHue">Base hue <span id="vHue">250°</span></label>
+          <input type="range" id="cHue" min="0" max="360" step="1" value="250">
+        </div>
+        <div class="ctl">
+          <label for="cChroma">Peak chroma <span id="vChroma">0.16</span></label>
+          <input type="range" id="cChroma" min="0" max="0.37" step="0.005" value="0.16">
+        </div>
+        <div class="ctl">
+          <label for="cPeak">Chroma peak at <span id="vPeak">55%</span></label>
+          <input type="range" id="cPeak" min="10" max="90" step="1" value="55">
+        </div>
+        <div class="ctl">
+          <label for="cSpread">Chroma spread <span id="vSpread">0.42</span></label>
+          <input type="range" id="cSpread" min="0.14" max="0.9" step="0.01" value="0.42">
+        </div>
+        <div class="ctl">
+          <label for="cTorsion">Hue torsion <span id="vTorsion">0°</span></label>
+          <input type="range" id="cTorsion" min="-60" max="60" step="1" value="0">
+        </div>
+        <div class="ctl">
+          <label for="cBend">Lightness bend <span id="vBend">0.00</span></label>
+          <input type="range" id="cBend" min="-0.6" max="0.6" step="0.02" value="0">
+        </div>
+        <div class="ctl">
+          <label for="cTop">Lightest stop <span id="vTop">0.975</span></label>
+          <input type="range" id="cTop" min="0.9" max="0.995" step="0.005" value="0.975">
+        </div>
+        <div class="ctl">
+          <label for="cBot">Darkest stop <span id="vBot">0.180</span></label>
+          <input type="range" id="cBot" min="0.06" max="0.4" step="0.005" value="0.18">
+        </div>
+        <div class="ctl">
+          <label>Gamut</label>
+          <div class="seg" id="segGamut">
+            <button data-g="srgb" aria-pressed="true">sRGB clamp</button>
+            <button data-g="p3" aria-pressed="false">Display&nbsp;P3</button>
+          </div>
+          <p class="hint">Out-of-gamut stops get a white dot and are chroma-reduced until they fit.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="panel pad">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:13px">
+            <h2 class="sec">The system</h2>
+            <span class="hint" style="margin-left:auto">click any stop to inspect · ⌥click to copy hex</span>
+          </div>
+          <div id="ramps"></div>
+        </div>
+        <div class="panel pad">
+          <h2 class="sec" style="margin-bottom:11px">Inspector</h2>
+          <div class="inspect" id="inspect"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HARMONY ================= -->
+  <section class="view" id="v-harmony">
+    <div class="split">
+      <div class="panel pad">
+        <h2 class="sec" style="margin-bottom:12px">Hue wheel</h2>
+        <div class="wheelwrap"><canvas id="wheel" width="600" height="600"></canvas></div>
+        <p class="hint" style="margin-top:10px">Drag the wheel to set the brand hue. The scheme below decides
+          where the accent and support hues land relative to it.</p>
+        <div class="ctl" style="margin-top:14px">
+          <label for="cNeutral">Neutral tint <span id="vNeutral">0.012</span></label>
+          <input type="range" id="cNeutral" min="0" max="0.045" step="0.001" value="0.012">
+          <p class="hint">How much brand hue bleeds into the greys. 0 is a pure neutral.</p>
+        </div>
+        <div class="ctl">
+          <label for="cName">System name</label>
+          <input type="text" id="cName" value="pigment" maxlength="24" spellcheck="false">
+        </div>
+      </div>
+      <div class="panel pad">
+        <h2 class="sec" style="margin-bottom:12px">Harmony scheme</h2>
+        <div class="scheme-grid" id="schemes"></div>
+        <h2 class="sec" style="margin:18px 0 10px">Semantic hues</h2>
+        <div class="scheme-grid" id="semantics"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CONTRAST ================= -->
+  <section class="view" id="v-contrast">
+    <div class="panel pad">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <h2 class="sec">Contrast matrix</h2>
+        <div class="seg" id="segMetric" style="margin-left:auto">
+          <button data-m="wcag" aria-pressed="true">WCAG 2.2 ratio</button>
+          <button data-m="apca" aria-pressed="false">APCA Lc</button>
+        </div>
+        <div class="seg" id="segRampPick"></div>
+      </div>
+      <div class="matrix-wrap"><table id="matrix"></table></div>
+      <div class="legend" style="margin-top:12px" id="mLegend"></div>
+    </div>
+    <div class="panel pad">
+      <h2 class="sec" style="margin-bottom:12px">Auto-picked text colours</h2>
+      <div class="pairs" id="pairs"></div>
+      <p class="hint" style="margin-top:11px">Each card takes the palette stop as a background and asks the
+        engine for the highest-contrast ink from the same system — the same thing
+        <code>contrast-color()</code> will do natively.</p>
+    </div>
+  </section>
+
+  <!-- ================= PREVIEW ================= -->
+  <section class="view" id="v-preview">
+    <div class="panel pad">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px">
+        <h2 class="sec">Live UI preview</h2>
+        <div class="seg" id="segTheme" style="margin-left:auto">
+          <button data-t="light" aria-pressed="true">Light</button>
+          <button data-t="dark" aria-pressed="false">Dark</button>
+        </div>
+        <button class="ghost" id="btnApplyChrome">Theme this app with it</button>
+      </div>
+      <div class="pv" id="pv">
+        <aside>
+          <div class="logo"><i></i><b id="pvName">pigment</b></div>
+          <a class="on"><i></i>Overview</a>
+          <a><i></i>Palette</a>
+          <a><i></i>Tokens</a>
+          <a><i></i>Contrast</a>
+          <a><i></i>Settings</a>
+        </aside>
+        <main>
+          <div class="bar">
+            <h3>Overview</h3>
+            <span class="btn sec">Export</span>
+            <span class="btn">New ramp</span>
+          </div>
+          <div class="cards" id="pvCards"></div>
+          <div class="chart" id="pvChart"></div>
+          <div class="list" id="pvList"></div>
+        </main>
+      </div>
+      <p class="hint" style="margin-top:11px">Every surface, border, ink and accent above is wired to a stop in
+        your system — nothing here is hard-coded, so a bad ramp looks bad immediately.</p>
+    </div>
+  </section>
+
+  <!-- ================= EXPORT ================= -->
+  <section class="view" id="v-export">
+    <div class="split">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="panel pad">
+          <h2 class="sec" style="margin-bottom:11px">Format</h2>
+          <div class="seg" id="segFmt" style="margin-bottom:12px">
+            <button data-f="css" aria-pressed="true">CSS vars</button>
+            <button data-f="oklch" aria-pressed="false">CSS (oklch)</button>
+            <button data-f="tw" aria-pressed="false">Tailwind</button>
+            <button data-f="dtcg" aria-pressed="false">Tokens</button>
+            <button data-f="svg" aria-pressed="false">SVG sheet</button>
+          </div>
+          <div class="exgrid">
+            <button class="ghost primary" id="btnCopy">Copy to clipboard</button>
+            <button class="ghost" id="btnDownload">Download file</button>
+            <button class="ghost" id="btnPng">Swatch sheet .png</button>
+            <button class="ghost" id="btnSvg">Swatch sheet .svg</button>
+          </div>
+          <p class="hint" style="margin-top:11px" id="exNote"></p>
+        </div>
+        <div class="panel pad">
+          <h2 class="sec" style="margin-bottom:11px">Saved systems</h2>
+          <div class="exgrid" style="margin-bottom:11px">
+            <button class="ghost" id="btnSave">Save this system</button>
+            <button class="ghost" id="btnReset">Reset to default</button>
+          </div>
+          <div class="presets" id="presets"></div>
+        </div>
+      </div>
+      <div class="panel pad">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
+          <h2 class="sec">Output</h2>
+          <span class="hint" style="margin-left:auto" id="exSize"></span>
+        </div>
+        <pre id="out"></pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<footer class="credit">Pigment · Day 144 of the daily playground · <b>keys</b> 1–5 views · R shuffle · L share link · S save</footer>
+
+<script>
+/* ============================================================
+   Pigment — Color System Studio
+   OKLab/OKLCH colour maths, ramp engine, contrast engine, exports.
+   Everything runs locally; no network, no dependencies.
+   ============================================================ */
+(() => {
+'use strict';
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const round = (v, n) => Math.round(v * 10 ** n) / 10 ** n;
+
+/* ---------- transfer functions ---------- */
+const toLin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+const toGam = c => c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055;
+
+/* ---------- OKLab <-> linear sRGB ---------- */
+function oklabToLinSrgb(L, a, b) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+  ];
+}
+function linSrgbToOklab(r, g, b) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+  ];
+}
+/* linear sRGB -> linear Display P3 (via XYZ D65) */
+function linSrgbToLinP3(r, g, b) {
+  const X = 0.4123907993 * r + 0.3575843394 * g + 0.1804807884 * b;
+  const Y = 0.2126390059 * r + 0.7151686788 * g + 0.0721923154 * b;
+  const Z = 0.0193308187 * r + 0.1191947798 * g + 0.9505321522 * b;
+  return [
+    2.4934969119 * X - 0.9313836179 * Y - 0.4027107845 * Z,
+    -0.8294889696 * X + 1.7626640603 * Y + 0.0236246858 * Z,
+    0.0358458302 * X - 0.0761723893 * Y + 0.9568845240 * Z
+  ];
+}
+const inUnit = v => v.every(c => c >= -0.0004 && c <= 1.0004);
+
+function oklchToLinSrgb(L, C, H) {
+  const h = H * Math.PI / 180;
+  return oklabToLinSrgb(L, Math.cos(h) * C, Math.sin(h) * C);
+}
+const hex2 = v => clamp(Math.round(v * 255), 0, 255).toString(16).padStart(2, '0');
+const linToHex = v => '#' + v.map(c => hex2(toGam(clamp(c, 0, 1)))).join('');
+
+/* Gamut map by chroma reduction (binary search), keeping L and H. */
+function fit(L, C, H, gamut) {
+  const test = c => {
+    const lin = oklchToLinSrgb(L, c, H);
+    return gamut === 'p3' ? inUnit(linSrgbToLinP3(...lin)) : inUnit(lin);
+  };
+  if (test(C)) return { C, oog: false };
+  let lo = 0, hi = C;
+  for (let i = 0; i < 22; i++) {
+    const mid = (lo + hi) / 2;
+    if (test(mid)) lo = mid; else hi = mid;
+  }
+  return { C: lo, oog: true };
+}
+
+/* One resolved colour: sRGB hex + optional P3 string + metrics. */
+function makeColor(L, C, H, gamut) {
+  const f = fit(L, C, H, gamut);
+  const lin = oklchToLinSrgb(L, f.C, H);
+  const hex = linToHex(lin.map(c => clamp(c, 0, 1)));
+  let p3 = null;
+  if (gamut === 'p3') {
+    const pl = linSrgbToLinP3(...lin).map(c => round(toGam(clamp(c, 0, 1)), 4));
+    p3 = 'color(display-p3 ' + pl.join(' ') + ')';
+  }
+  const srgbLin = oklchToLinSrgb(L, Math.min(f.C, fit(L, C, H, 'srgb').C), H).map(c => clamp(c, 0, 1));
+  return {
+    L: round(L, 4), C: round(f.C, 4), H: round((H % 360 + 360) % 360, 2),
+    hex, p3, oog: f.oog,
+    oklch: 'oklch(' + round(L * 100, 2) + '% ' + round(f.C, 4) + ' ' + round((H % 360 + 360) % 360, 2) + ')',
+    lum: 0.2126 * srgbLin[0] + 0.7152 * srgbLin[1] + 0.0722 * srgbLin[2],
+    rgb: srgbLin.map(c => Math.round(toGam(c) * 255))
+  };
+}
+const css = c => (c.p3 && SUPPORTS_P3) ? c.p3 : c.hex;
+const SUPPORTS_P3 = (() => {
+  try { return CSS.supports('color', 'color(display-p3 1 0 0)'); } catch (e) { return false; }
+})();
+
+/* ---------- contrast engines ---------- */
+const wcag = (a, b) => {
+  const hi = Math.max(a.lum, b.lum), lo = Math.min(a.lum, b.lum);
+  return (hi + 0.05) / (lo + 0.05);
+};
+function apcaY(c) {
+  return 0.2126729 * (c.rgb[0] / 255) ** 2.4 + 0.7151522 * (c.rgb[1] / 255) ** 2.4 + 0.0721750 * (c.rgb[2] / 255) ** 2.4;
+}
+function apca(txt, bg) {
+  let t = apcaY(txt), b = apcaY(bg);
+  const TH = 0.022, CL = 1.414;
+  t = t > TH ? t : t + (TH - t) ** CL;
+  b = b > TH ? b : b + (TH - b) ** CL;
+  if (Math.abs(b - t) < 0.0005) return 0;
+  let S, Lc;
+  if (b > t) { S = (b ** 0.56 - t ** 0.57) * 1.14; Lc = S < 0.1 ? 0 : (S - 0.027) * 100; }
+  else { S = (b ** 0.65 - t ** 0.62) * 1.14; Lc = S > -0.1 ? 0 : (S + 0.027) * 100; }
+  return Lc;
+}
+function grade(metric, bg, fg) {
+  if (metric === 'apca') {
+    const lc = Math.abs(apca(fg, bg));
+    return { n: Math.round(lc), label: Math.round(lc), tier: lc >= 75 ? 3 : lc >= 60 ? 2 : lc >= 45 ? 1 : 0 };
+  }
+  const r = wcag(bg, fg);
+  return { n: r, label: round(r, 2).toFixed(2), tier: r >= 7 ? 3 : r >= 4.5 ? 2 : r >= 3 ? 1 : 0 };
+}
+const TIER_NAME = ['fail', 'large text only', 'AA', 'AAA'];
+
+/* ---------- ramp engine ---------- */
+const STOPS = [25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+const SCHEMES = {
+  mono:      { label: 'Monochrome', offs: [0, 0, 0],       note: 'one hue, chroma does the work' },
+  analogous: { label: 'Analogous',  offs: [0, 34, -30],    note: 'neighbours on the wheel' },
+  complement:{ label: 'Complement', offs: [0, 180, 205],   note: 'opposite, plus a near-opposite' },
+  split:     { label: 'Split comp', offs: [0, 152, -152],  note: 'two sides of the opposite' },
+  triad:     { label: 'Triad',      offs: [0, 120, -120],  note: 'evenly spaced thirds' },
+  tetrad:    { label: 'Tetrad',     offs: [0, 90, 200],    note: 'a rectangle of four' }
+};
+const SEMANTIC = { success: 148, warning: 83, danger: 27, info: 232 };
+
+function rampOf(hue, chroma, over) {
+  return Object.assign({
+    hue, chroma, peak: 0.55, spread: 0.42, torsion: 0, bend: 0, top: 0.975, bot: 0.18
+  }, over || {});
+}
+function defaultState() {
+  const base = 252;
+  return {
+    name: 'pigment', scheme: 'triad', baseHue: base, neutralTint: 0.012, gamut: 'srgb',
+    theme: 'light', metric: 'wcag', fmt: 'css', mRamp: 'brand', active: 'brand',
+    ramps: {
+      brand:   rampOf(base, 0.17),
+      accent:  rampOf(base + 120, 0.15),
+      support: rampOf(base - 120, 0.13),
+      neutral: rampOf(base, 0.012, { spread: 0.9, peak: 0.5 }),
+      success: rampOf(SEMANTIC.success, 0.14),
+      warning: rampOf(SEMANTIC.warning, 0.15),
+      danger:  rampOf(SEMANTIC.danger, 0.16)
+    }
+  };
+}
+const RAMP_ORDER = ['brand', 'accent', 'support', 'neutral', 'success', 'warning', 'danger'];
+
+let S = defaultState();
+let palette = {};           /* name -> [colour, ...] */
+let picked = { ramp: 'brand', i: 6 };
+
+function lightness(t, r) {
+  const b = r.bend;
+  const tt = b === 0 ? t : (b > 0 ? t ** (1 + b * 1.7) : 1 - (1 - t) ** (1 + -b * 1.7));
+  return r.top + (r.bot - r.top) * tt;
+}
+function buildRamp(r) {
+  const n = STOPS.length - 1;
+  return STOPS.map((_, i) => {
+    const t = i / n;
+    const L = lightness(t, r);
+    const g = Math.exp(-(((t - r.peak) / r.spread) ** 2));
+    /* lightness envelope: near-white and near-black can't hold chroma anyway,
+       so taper towards both ends and the ramp stays inside the gamut by design */
+    const env = Math.sin(Math.PI * clamp((L - 0.04) / 0.96, 0, 1)) ** 0.85;
+    const C = r.chroma * (0.18 + 0.82 * g) * env;
+    const H = r.hue + r.torsion * (t - r.peak) * 2;
+    return makeColor(L, C, H, S.gamut);
+  });
+}
+function buildPalette() {
+  palette = {};
+  for (const k of RAMP_ORDER) palette[k] = buildRamp(S.ramps[k]);
+}
+const stopAt = (ramp, stop) => palette[ramp][STOPS.indexOf(stop)];
+
+/* Best ink from the system for a given background. Neutral wins ties — a UI
+   reads better when body text stays neutral unless the brand ramp is clearly
+   stronger — which is roughly the call contrast-color() makes for you. */
+function bestInk(bg) {
+  let best = null;
+  for (const k of ['neutral', 'brand']) {
+    for (const c of palette[k]) {
+      const r = wcag(bg, c);
+      const score = k === 'neutral' ? r * 1.06 : r;
+      if (!best || score > best.score) best = { r, score, c, name: k };
+    }
+  }
+  return best;
+}
+
+/* ============================================================
+   rendering
+   ============================================================ */
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('on'), 1700);
+}
+
+function renderChromeAccent() {
+  const b = stopAt('brand', 400), ink = bestInk(b);
+  const root = document.documentElement.style;
+  root.setProperty('--brand', css(b));
+  root.setProperty('--brand-soft', 'color-mix(in oklab,' + b.hex + ' 18%,transparent)');
+  root.setProperty('--brand-ink', ink.c.hex);
+  $('sub').textContent = S.name + ' · ' + SCHEMES[S.scheme].label.toLowerCase() + ' · hue ' +
+    Math.round(S.baseHue) + '° · ' + (S.gamut === 'p3' ? 'Display P3' : 'sRGB');
+}
+
+function renderRamps() {
+  const host = $('ramps');
+  host.innerHTML = RAMP_ORDER.map(k => {
+    const r = S.ramps[k], cols = palette[k];
+    const oog = cols.filter(c => c.oog).length;
+    return '<div class="ramprow">' +
+      '<div class="ramphead"><b>' + k + '</b><em>h ' + Math.round(r.hue % 360) + '° · c ' + round(r.chroma, 3) +
+      '</em>' + (oog ? '<span class="pick">' + oog + ' clipped</span>' : '') + '</div>' +
+      '<div class="swatches">' + cols.map((c, i) =>
+        '<button class="sw" data-r="' + k + '" data-i="' + i + '" data-oog="' + (c.oog ? 1 : 0) + '" ' +
+        'style="background:' + css(c) + ';color:' + (c.L > 0.62 ? '#10121c' : '#fff') + '" ' +
+        'title="' + k + '-' + STOPS[i] + ' ' + c.hex + '"><u>' + STOPS[i] + '</u></button>').join('') +
+      '</div></div>';
+  }).join('');
+  host.querySelectorAll('.sw').forEach(b => {
+    b.onclick = e => {
+      picked = { ramp: b.dataset.r, i: +b.dataset.i };
+      if (e.altKey) {
+        copy(palette[picked.ramp][picked.i].hex);
+        toast('copied ' + palette[picked.ramp][picked.i].hex);
+      }
+      if (S.active !== picked.ramp) { S.active = picked.ramp; syncControls(); renderRampNav(); }
+      renderInspect();
+    };
+  });
+}
+
+function renderRampNav() {
+  $('rampnav').innerHTML = RAMP_ORDER.map(k =>
+    '<button data-r="' + k + '" aria-pressed="' + (S.active === k) + '">' +
+    '<i style="background:' + css(stopAt(k, 500)) + '"></i>' + k + '</button>').join('');
+  $('rampnav').querySelectorAll('button').forEach(b => {
+    b.onclick = () => { S.active = b.dataset.r; picked = { ramp: b.dataset.r, i: 6 }; syncControls(); renderRampNav(); renderInspect(); };
+  });
+}
+
+function renderInspect() {
+  const c = palette[picked.ramp][picked.i];
+  const onWhite = grade('wcag', { lum: 1 }, c), onBlack = grade('wcag', { lum: 0 }, c);
+  const ink = bestInk(c);
+  const rows = [
+    ['token', '--' + S.name + '-' + picked.ramp + '-' + STOPS[picked.i]],
+    ['hex', c.hex],
+    ['oklch', c.oklch],
+    ['rgb', c.rgb.join(', ')],
+    ['on white', onWhite.label + ' : 1'],
+    ['on black', onBlack.label + ' : 1'],
+    ['best ink', ink.c.hex + ' (' + round(ink.r, 1) + ':1)'],
+    ['gamut', c.oog ? 'chroma clipped to fit' : 'inside ' + (S.gamut === 'p3' ? 'P3' : 'sRGB')]
+  ];
+  $('inspect').innerHTML =
+    '<div class="ic" style="background:' + css(c) + ';border-color:transparent;grid-column:span 1">' +
+    '<b style="color:' + ink.c.hex + ';opacity:.7">swatch</b><span style="color:' + ink.c.hex + '">' +
+    picked.ramp + '-' + STOPS[picked.i] + '</span></div>' +
+    rows.map(([k, v]) => '<div class="ic"><b>' + k + '</b><span>' + v + '</span></div>').join('');
+}
+
+/* ---------- harmony: wheel + schemes ---------- */
+const wheel = $('wheel'), wctx = wheel.getContext('2d');
+function drawWheel() {
+  const W = wheel.width, R = W / 2, cx = R, cy = R;
+  wctx.clearRect(0, 0, W, W);
+  /* hue ring, sampled in OKLCH so it matches the engine */
+  const steps = 180, inner = R * 0.56, outer = R * 0.95;
+  for (let i = 0; i < steps; i++) {
+    const a0 = (i / steps) * Math.PI * 2 - Math.PI / 2, a1 = ((i + 1.4) / steps) * Math.PI * 2 - Math.PI / 2;
+    const c = makeColor(0.72, 0.15, (i / steps) * 360, S.gamut);
+    wctx.beginPath();
+    wctx.arc(cx, cy, outer, a0, a1);
+    wctx.arc(cx, cy, inner, a1, a0, true);
+    wctx.closePath();
+    wctx.fillStyle = c.hex;
+    wctx.fill();
+  }
+  /* markers for the four hue-bearing ramps */
+  const marks = [['brand', 1], ['accent', .82], ['support', .82], ['neutral', .6]];
+  for (const [k, scale] of marks) {
+    const h = ((S.ramps[k].hue % 360) + 360) % 360;
+    const a = h / 360 * Math.PI * 2 - Math.PI / 2;
+    const rr = (inner + outer) / 2;
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    wctx.beginPath();
+    wctx.arc(x, y, 20 * scale, 0, Math.PI * 2);
+    wctx.fillStyle = stopAt(k, 500).hex;
+    wctx.fill();
+    wctx.lineWidth = 5; wctx.strokeStyle = '#0a0b12'; wctx.stroke();
+    wctx.lineWidth = 2; wctx.strokeStyle = 'rgba(255,255,255,.85)'; wctx.stroke();
+  }
+  /* centre plate shows the brand ramp */
+  const cols = palette.brand;
+  for (let i = 0; i < cols.length; i++) {
+    const a0 = (i / cols.length) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((i + 1) / cols.length) * Math.PI * 2 - Math.PI / 2;
+    wctx.beginPath(); wctx.moveTo(cx, cy);
+    wctx.arc(cx, cy, inner * 0.84, a0, a1); wctx.closePath();
+    wctx.fillStyle = cols[i].hex; wctx.fill();
+  }
+  wctx.beginPath(); wctx.arc(cx, cy, inner * 0.38, 0, Math.PI * 2);
+  wctx.fillStyle = '#0a0b12'; wctx.fill();
+  wctx.fillStyle = stopAt('brand', 400).hex;
+  wctx.font = '700 52px ui-monospace, monospace';
+  wctx.textAlign = 'center'; wctx.textBaseline = 'middle';
+  wctx.fillText(Math.round(S.baseHue) + '°', cx, cy);
+}
+function wheelPoint(e) {
+  const r = wheel.getBoundingClientRect();
+  const x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2;
+  const a = Math.atan2(y, x) + Math.PI / 2;
+  S.baseHue = ((a * 180 / Math.PI) % 360 + 360) % 360;
+  applyScheme();
+  commit();
+}
+let dragging = false;
+wheel.addEventListener('pointerdown', e => { dragging = true; wheel.setPointerCapture(e.pointerId); wheelPoint(e); });
+wheel.addEventListener('pointermove', e => { if (dragging) wheelPoint(e); });
+wheel.addEventListener('pointerup', () => { dragging = false; });
+wheel.addEventListener('pointercancel', () => { dragging = false; });
+
+function applyScheme() {
+  const offs = SCHEMES[S.scheme].offs;
+  const keys = ['brand', 'accent', 'support'];
+  keys.forEach((k, i) => { S.ramps[k].hue = (S.baseHue + offs[i] + 360) % 360; });
+  if (S.scheme === 'mono') {
+    S.ramps.accent.chroma = Math.max(0.05, S.ramps.brand.chroma * 0.55);
+    S.ramps.support.chroma = Math.max(0.03, S.ramps.brand.chroma * 0.3);
+  }
+  S.ramps.neutral.hue = S.baseHue;
+  S.ramps.neutral.chroma = S.neutralTint;
+}
+function renderSchemes() {
+  $('schemes').innerHTML = Object.entries(SCHEMES).map(([k, v]) => {
+    const hues = v.offs.map(o => makeColor(0.68, 0.15, S.baseHue + o, S.gamut).hex);
+    return '<button class="scard" data-s="' + k + '" style="' +
+      (S.scheme === k ? 'border-color:' + stopAt('brand', 400).hex + ';background:rgba(255,255,255,.07)' : '') + '">' +
+      '<div class="bars">' + hues.map(h => '<i style="background:' + h + '"></i>').join('') + '</div>' +
+      '<b>' + v.label + (S.scheme === k ? ' ·' : '') + '</b><small>' + v.note + '</small></button>';
+  }).join('');
+  $('schemes').querySelectorAll('button').forEach(b => {
+    b.onclick = () => { S.scheme = b.dataset.s; applyScheme(); commit(); };
+  });
+  $('semantics').innerHTML = ['success', 'warning', 'danger'].map(k => {
+    const cols = [200, 400, 600, 800].map(s => stopAt(k, s).hex);
+    return '<div class="scard"><div class="bars">' + cols.map(h => '<i style="background:' + h + '"></i>').join('') +
+      '</div><b>' + k + '</b><small>hue ' + Math.round(S.ramps[k].hue) + '° · fixed so meaning survives a rebrand</small></div>';
+  }).join('');
+}
+
+/* ---------- contrast ---------- */
+function renderContrast() {
+  $('segRampPick').innerHTML = RAMP_ORDER.map(k =>
+    '<button data-r="' + k + '" aria-pressed="' + (S.mRamp === k) + '">' + k + '</button>').join('');
+  $('segRampPick').querySelectorAll('button').forEach(b => {
+    b.onclick = () => { S.mRamp = b.dataset.r; renderContrast(); save(); };
+  });
+
+  const cols = palette[S.mRamp];
+  let html = '<thead><tr><th>bg \\ ink</th>' + STOPS.map(s => '<th>' + s + '</th>').join('') + '</tr></thead><tbody>';
+  cols.forEach((bg, i) => {
+    html += '<tr><th>' + STOPS[i] + '</th>';
+    cols.forEach(fg => {
+      const g = grade(S.metric, bg, fg);
+      html += '<td><div style="background:' + css(bg) + '" title="' + TIER_NAME[g.tier] + '">' +
+        '<u style="color:' + fg.hex + '">Aa</u>' +
+        '<s style="color:' + fg.hex + '">' + g.label + '</s></div></td>';
+    });
+    html += '</tr>';
+  });
+  $('matrix').innerHTML = html + '</tbody>';
+
+  const names = S.metric === 'apca' ? ['Lc &lt; 45 — decorative', 'Lc 45+ — large only', 'Lc 60+ — body text', 'Lc 75+ — fine text']
+    : ['under 3:1 — fail', '3:1 — large text', '4.5:1 — AA body', '7:1 — AAA'];
+  $('mLegend').innerHTML = names.map((n, i) =>
+    '<span><i style="background:' + ['#f87171', '#fbbf24', '#34d399', '#22d3ee'][i] + '"></i>' + n + '</span>').join('') +
+    '<span><i style="background:' + stopAt(S.mRamp, 500).hex + '"></i>' + S.mRamp + ' ramp, 12 × 12 pairs</span>';
+
+  $('pairs').innerHTML = RAMP_ORDER.map(k => {
+    const bg = stopAt(k, 500), ink = bestInk(bg);
+    const g = grade(S.metric, bg, ink.c);
+    return '<div class="pair" style="background:' + css(bg) + ';color:' + ink.c.hex + '">' +
+      '<b>' + k + '-500</b>' +
+      '<small>bg ' + bg.hex + '</small>' +
+      '<small>ink ' + ink.c.hex + ' · ' + ink.name + '</small>' +
+      '<small style="font-weight:800">' + (S.metric === 'apca' ? 'Lc ' + g.label : g.label + ' : 1') +
+      ' · ' + TIER_NAME[g.tier] + '</small></div>';
+  }).join('');
+}
+
+/* ---------- preview ---------- */
+function themeVars() {
+  const d = S.theme === 'dark';
+  const n = s => stopAt('neutral', s), b = s => stopAt('brand', s);
+  const bg = d ? n(950) : n(25), surf = d ? n(900) : n(50), ink = d ? n(50) : n(900);
+  const brand = d ? b(400) : b(600);
+  return {
+    '--pv-bg': css(bg), '--pv-surf': css(surf), '--pv-ink': css(ink),
+    '--pv-dim': css(d ? n(400) : n(600)),
+    '--pv-line': css(d ? n(800) : n(200)),
+    '--pv-brand': css(brand), '--pv-on-brand': bestInk(brand).c.hex,
+    '--pv-brand-soft': css(d ? b(900) : b(100)),
+    '--pv-brand-ink2': css(d ? b(200) : b(700))
+  };
+}
+function renderPreview() {
+  const pv = $('pv'), vars = themeVars();
+  for (const [k, v] of Object.entries(vars)) pv.style.setProperty(k, v);
+  $('pvName').textContent = S.name;
+  const d = S.theme === 'dark';
+  const stat = [['Revenue', '$48.2k', 'success', '+12.4%'], ['Churn', '1.8%', 'warning', '+0.3%'],
+    ['Errors', '34', 'danger', '-8.1%'], ['Sessions', '9,412', 'brand', '+4.0%']];
+  $('pvCards').innerHTML = stat.map(([t, v, k, delta]) => {
+    const chip = stopAt(k, d ? 900 : 100), chipInk = stopAt(k, d ? 200 : 700);
+    return '<div class="card"><em>' + t + '</em><b>' + v + '</b>' +
+      '<u style="background:' + css(chip) + ';color:' + css(chipInk) + '">' + delta + '</u></div>';
+  }).join('');
+  const hs = [42, 68, 51, 86, 60, 94, 73, 58, 80, 46, 90, 66];
+  /* bars stay in the stops that actually hold up against the surface they sit on */
+  const barStops = d ? [300, 400, 500, 400] : [500, 600, 700, 600];
+  $('pvChart').innerHTML = hs.map((h, i) =>
+    '<i style="height:' + h + '%;background:' + css(stopAt('brand', barStops[i % 4])) + '"></i>').join('');
+  const rows = [['Design tokens published', 'success', 'done'], ['Contrast audit', 'warning', 'review'],
+    ['Legacy hex sweep', 'danger', 'blocked'], ['Dark theme pass', 'brand', 'in progress']];
+  $('pvList').innerHTML = rows.map(([t, k, s]) =>
+    '<div><i style="background:' + css(stopAt(k, 500)) + '"></i>' + t +
+    '<s style="background:' + css(stopAt(k, d ? 900 : 100)) + ';color:' + css(stopAt(k, d ? 200 : 700)) + '">' +
+    s + '</s></div>').join('');
+}
+let chromed = false;
+function setChrome(on) {
+  const r = document.documentElement.style;
+  if (!on) {
+    ['--bg', '--bg2', '--ink', '--dim', '--faint', '--glass', '--line', '--line2'].forEach(k => r.removeProperty(k));
+    chromed = false; $('btnApplyChrome').textContent = 'Theme this app with it';
+    return;
+  }
+  const n = s => stopAt('neutral', s);
+  r.setProperty('--bg', css(n(950)));
+  r.setProperty('--bg2', css(n(900)));
+  r.setProperty('--ink', css(n(50)));
+  r.setProperty('--dim', css(n(300)));
+  r.setProperty('--faint', css(n(400)));
+  r.setProperty('--glass', 'color-mix(in oklab,' + n(900).hex + ' 82%,transparent)');
+  r.setProperty('--line', 'color-mix(in oklab,' + n(700).hex + ' 70%,transparent)');
+  r.setProperty('--line2', n(600).hex);
+  chromed = true; $('btnApplyChrome').textContent = 'Restore studio chrome';
+}
+function toggleChrome() {
+  const on = !chromed;
+  setChrome(on);
+  toast(on ? 'this studio is now running on your palette' : 'studio chrome restored');
+}
+
+/* ---------- exports ---------- */
+const tok = (ramp, i) => '--' + S.name + '-' + ramp + '-' + STOPS[i];
+const ALIASES = light => {
+  const n = s => 'var(--' + S.name + '-neutral-' + s + ')', b = s => 'var(--' + S.name + '-brand-' + s + ')';
+  return [
+    ['surface', light ? n(25) : n(950)],
+    ['surface-raised', light ? n(50) : n(900)],
+    ['border', light ? n(200) : n(800)],
+    ['text', light ? n(900) : n(50)],
+    ['text-muted', light ? n(600) : n(400)],
+    ['accent', light ? b(600) : b(400)],
+    ['accent-soft', light ? b(100) : b(900)],
+    ['accent-text', light ? b(700) : b(200)]
+  ];
+};
+function cssExport(mode) {
+  const val = c => mode === 'oklch' ? c.oklch : c.hex;
+  const lines = ['/* ' + S.name + ' — ' + RAMP_ORDER.length + ' ramps × ' + STOPS.length +
+    ' stops, generated in OKLCH by Pigment */', ':root{'];
+  for (const k of RAMP_ORDER) {
+    lines.push('  /* ' + k + ' — hue ' + Math.round(S.ramps[k].hue) + '°, peak chroma ' + round(S.ramps[k].chroma, 3) + ' */');
+    palette[k].forEach((c, i) => lines.push('  ' + tok(k, i) + ': ' + val(c) + ';'));
+  }
+  lines.push('', '  /* semantic aliases — light */');
+  ALIASES(true).forEach(([a, v]) => lines.push('  --' + a + ': ' + v + ';'));
+  lines.push('}');
+  lines.push('', '@media (prefers-color-scheme: dark){', '  :root{');
+  ALIASES(false).forEach(([a, v]) => lines.push('    --' + a + ': ' + v + ';'));
+  lines.push('  }', '}');
+  if (S.gamut === 'p3') {
+    lines.push('', '@supports (color: color(display-p3 1 1 1)){', '  :root{');
+    for (const k of RAMP_ORDER) palette[k].forEach((c, i) => c.p3 && lines.push('    ' + tok(k, i) + ': ' + c.p3 + ';'));
+    lines.push('  }', '}');
+  }
+  return lines.join('\n');
+}
+function twExport() {
+  const o = {};
+  for (const k of RAMP_ORDER) { o[k] = {}; palette[k].forEach((c, i) => o[k][STOPS[i]] = c.hex); }
+  return '// tailwind.config.js — theme.extend.colors\n' + JSON.stringify(o, null, 2);
+}
+function dtcgExport() {
+  const g = {};
+  for (const k of RAMP_ORDER) {
+    g[k] = { $type: 'color', $description: 'hue ' + Math.round(S.ramps[k].hue) + '°, OKLCH ramp' };
+    palette[k].forEach((c, i) => g[k][STOPS[i]] = { $value: c.hex, $extensions: { 'me.jccl.pigment': { oklch: c.oklch, clipped: c.oog } } });
+  }
+  return JSON.stringify({ $description: S.name + ' colour system (W3C design tokens draft format)', color: g }, null, 2);
+}
+function svgExport() {
+  const cw = 92, ch = 64, pad = 26, lab = 108;
+  const W = lab + STOPS.length * cw + pad, H = pad * 2 + 34 + RAMP_ORDER.length * ch;
+  let s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" font-family="system-ui,sans-serif">';
+  s += '<rect width="' + W + '" height="' + H + '" fill="#0a0b12"/>';
+  s += '<text x="' + pad + '" y="' + (pad + 10) + '" fill="#eef1f8" font-size="15" font-weight="700">' + S.name +
+    ' — OKLCH colour system</text>';
+  s += '<text x="' + pad + '" y="' + (pad + 26) + '" fill="#646c86" font-size="10">' + SCHEMES[S.scheme].label +
+    ' · base hue ' + Math.round(S.baseHue) + '° · ' + (S.gamut === 'p3' ? 'Display P3' : 'sRGB') + '</text>';
+  STOPS.forEach((st, i) => {
+    s += '<text x="' + (lab + i * cw + cw / 2) + '" y="' + (pad + 44) + '" fill="#646c86" font-size="9" text-anchor="middle">' + st + '</text>';
+  });
+  RAMP_ORDER.forEach((k, ri) => {
+    const y = pad + 52 + ri * ch;
+    s += '<text x="' + pad + '" y="' + (y + ch / 2) + '" fill="#949cb4" font-size="11" font-weight="600">' + k + '</text>';
+    palette[k].forEach((c, i) => {
+      const x = lab + i * cw;
+      s += '<rect x="' + x + '" y="' + y + '" width="' + (cw - 5) + '" height="' + (ch - 8) + '" rx="7" fill="' + c.hex + '"/>';
+      s += '<text x="' + (x + 8) + '" y="' + (y + ch - 18) + '" font-size="9" font-family="monospace" fill="' +
+        (c.L > 0.62 ? '#10121c' : '#ffffff') + '">' + c.hex.slice(1) + '</text>';
+    });
+  });
+  return s + '</svg>';
+}
+function sheetPNG() {
+  const cw = 92, ch = 64, pad = 26, lab = 108, dpr = 2;
+  const W = lab + STOPS.length * cw + pad, H = pad * 2 + 34 + RAMP_ORDER.length * ch;
+  const cv = document.createElement('canvas');
+  cv.width = W * dpr; cv.height = H * dpr;
+  const x = cv.getContext('2d');
+  x.scale(dpr, dpr);
+  x.fillStyle = '#0a0b12'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#eef1f8'; x.font = '700 15px system-ui, sans-serif';
+  x.fillText(S.name + ' — OKLCH colour system', pad, pad + 10);
+  x.fillStyle = '#646c86'; x.font = '10px system-ui, sans-serif';
+  x.fillText(SCHEMES[S.scheme].label + ' · base hue ' + Math.round(S.baseHue) + '° · ' +
+    (S.gamut === 'p3' ? 'Display P3' : 'sRGB'), pad, pad + 26);
+  x.textAlign = 'center';
+  STOPS.forEach((st, i) => x.fillText(String(st), lab + i * cw + cw / 2, pad + 44));
+  x.textAlign = 'left';
+  RAMP_ORDER.forEach((k, ri) => {
+    const y = pad + 52 + ri * ch;
+    x.fillStyle = '#949cb4'; x.font = '600 11px system-ui, sans-serif';
+    x.fillText(k, pad, y + ch / 2);
+    palette[k].forEach((c, i) => {
+      const px = lab + i * cw;
+      x.fillStyle = c.hex;
+      if (x.roundRect) { x.beginPath(); x.roundRect(px, y, cw - 5, ch - 8, 7); x.fill(); }
+      else x.fillRect(px, y, cw - 5, ch - 8);
+      x.fillStyle = c.L > 0.62 ? '#10121c' : '#ffffff';
+      x.font = '9px ui-monospace, monospace';
+      x.fillText(c.hex.slice(1), px + 8, y + ch - 18);
+    });
+  });
+  return cv;
+}
+const FMT = {
+  css:   { f: () => cssExport('hex'),  ext: 'css',  mime: 'text/css', note: 'Hex custom properties plus semantic aliases and a prefers-color-scheme block.' },
+  oklch: { f: () => cssExport('oklch'), ext: 'css', mime: 'text/css', note: 'Same tokens in oklch() — keeps your intent (and chroma) readable in the stylesheet.' },
+  tw:    { f: twExport,  ext: 'json', mime: 'application/json', note: 'Drop into theme.extend.colors; stop keys match the usual 25–950 scale.' },
+  dtcg:  { f: dtcgExport, ext: 'json', mime: 'application/json', note: 'W3C design-token draft shape — each stop carries its OKLCH source and a clipped flag.' },
+  svg:   { f: svgExport, ext: 'svg',  mime: 'image/svg+xml', note: 'Vector swatch sheet, ready to drop in a spec or a PR description.' }
+};
+function highlight(t) {
+  return t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+    .replace(/(\/\*[^]*?\*\/|\/\/.*)/g, '<span class="c">$1</span>')
+    .replace(/(--[\w-]+|"[\w$-]+"(?=\s*:))/g, '<span class="k">$1</span>')
+    .replace(/(#[0-9a-fA-F]{6}|oklch\([^)]*\)|color\(display-p3[^)]*\))/g, '<span class="v">$1</span>');
+}
+function renderExport() {
+  const f = FMT[S.fmt], text = f.f();
+  $('out').innerHTML = highlight(text);
+  $('exNote').textContent = f.note;
+  $('exSize').textContent = text.split('\n').length + ' lines · ' + (new Blob([text]).size / 1024).toFixed(1) + ' KB';
+  $('segFmt').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === S.fmt));
+  return text;
+}
+function copy(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  return fallbackCopy(text);
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+}
+function download(name, data, mime) {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return blob.size;
+}
+
+/* ---------- persistence + sharing ---------- */
+const LS_STATE = 'pigment_v1_state', LS_PRESETS = 'pigment_v1_presets';
+const compact = () => ({
+  n: S.name, s: S.scheme, h: round(S.baseHue, 1), t: S.neutralTint, g: S.gamut,
+  r: RAMP_ORDER.map(k => {
+    const r = S.ramps[k];
+    return [round(r.hue, 1), r.chroma, r.peak, r.spread, r.torsion, r.bend, r.top, r.bot];
+  })
+});
+function expand(o) {
+  const st = defaultState();
+  if (!o) return st;
+  st.name = (o.n || 'pigment').slice(0, 24); st.scheme = SCHEMES[o.s] ? o.s : 'triad';
+  st.baseHue = +o.h || 0; st.neutralTint = +o.t || 0; st.gamut = o.g === 'p3' ? 'p3' : 'srgb';
+  if (Array.isArray(o.r)) o.r.forEach((a, i) => {
+    const k = RAMP_ORDER[i]; if (!k || !Array.isArray(a)) return;
+    const [hue, chroma, peak, spread, torsion, bend, top, bot] = a;
+    st.ramps[k] = { hue: +hue, chroma: +chroma, peak: +peak, spread: +spread, torsion: +torsion, bend: +bend, top: +top, bot: +bot };
+  });
+  return st;
+}
+const b64 = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64 = s => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
+function save() { try { localStorage.setItem(LS_STATE, JSON.stringify(compact())); } catch (e) {} }
+function loadPresets() { try { return JSON.parse(localStorage.getItem(LS_PRESETS) || '[]'); } catch (e) { return []; } }
+function renderPresets() {
+  const list = loadPresets();
+  $('presets').innerHTML = list.length ? list.map((p, i) =>
+    '<div class="preset"><div class="chips">' + p.chips.map(c => '<i style="background:' + c + '"></i>').join('') +
+    '</div><b>' + p.name.replace(/[<>&]/g, '') + '</b>' +
+    '<button data-load="' + i + '">load</button><button data-del="' + i + '">×</button></div>').join('')
+    : '<p class="hint">No saved systems yet. Build one and hit <b>Save this system</b> — it stays in this browser.</p>';
+  $('presets').querySelectorAll('[data-load]').forEach(b => b.onclick = () => {
+    S = expand(loadPresets()[+b.dataset.load].state);
+    picked = { ramp: 'brand', i: 6 }; syncControls(); commit(); toast('loaded');
+  });
+  $('presets').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    const l = loadPresets(); l.splice(+b.dataset.del, 1);
+    try { localStorage.setItem(LS_PRESETS, JSON.stringify(l)); } catch (e) {}
+    renderPresets();
+  });
+}
+function savePreset() {
+  const l = loadPresets();
+  l.unshift({
+    name: S.name + ' · ' + SCHEMES[S.scheme].label.toLowerCase() + ' ' + Math.round(S.baseHue) + '°',
+    chips: ['brand', 'accent', 'support', 'success', 'danger'].map(k => stopAt(k, 500).hex),
+    state: compact()
+  });
+  try { localStorage.setItem(LS_PRESETS, JSON.stringify(l.slice(0, 24))); } catch (e) {}
+  renderPresets(); toast('system saved to this browser');
+}
+
+/* ---------- control wiring ---------- */
+const SLIDERS = [
+  ['cHue', 'hue', 'vHue', v => Math.round(v) + '°', 1],
+  ['cChroma', 'chroma', 'vChroma', v => round(v, 3).toFixed(3), 1],
+  ['cPeak', 'peak', 'vPeak', v => Math.round(v * 100) + '%', 100],
+  ['cSpread', 'spread', 'vSpread', v => round(v, 2).toFixed(2), 1],
+  ['cTorsion', 'torsion', 'vTorsion', v => Math.round(v) + '°', 1],
+  ['cBend', 'bend', 'vBend', v => round(v, 2).toFixed(2), 1],
+  ['cTop', 'top', 'vTop', v => round(v, 3).toFixed(3), 1],
+  ['cBot', 'bot', 'vBot', v => round(v, 3).toFixed(3), 1]
+];
+function syncControls() {
+  const r = S.ramps[S.active];
+  for (const [el, key, out, fmt, scale] of SLIDERS) {
+    const v = key === 'peak' ? r.peak : r[key];
+    $(el).value = key === 'peak' ? r.peak * 100 : r[key];
+    $(out).textContent = fmt(v);
+  }
+  $('cNeutral').value = S.neutralTint;
+  $('vNeutral').textContent = round(S.neutralTint, 3).toFixed(3);
+  $('cName').value = S.name;
+  $('segGamut').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.g === S.gamut));
+  $('segMetric').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === S.metric));
+  $('segTheme').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === S.theme));
+}
+for (const [el, key, out, fmt, scale] of SLIDERS) {
+  $(el).addEventListener('input', e => {
+    const raw = +e.target.value;
+    const v = key === 'peak' ? raw / 100 : raw;
+    S.ramps[S.active][key] = v;
+    $(out).textContent = fmt(v);
+    if (S.active === 'brand' && key === 'hue') { S.baseHue = v; }
+    if (S.active === 'neutral' && key === 'chroma') { S.neutralTint = v; $('cNeutral').value = v; $('vNeutral').textContent = round(v, 3).toFixed(3); }
+    commit();
+  });
+}
+$('cNeutral').addEventListener('input', e => {
+  S.neutralTint = +e.target.value;
+  S.ramps.neutral.chroma = S.neutralTint;
+  $('vNeutral').textContent = round(S.neutralTint, 3).toFixed(3);
+  if (S.active === 'neutral') syncControls();
+  commit();
+});
+$('cName').addEventListener('input', e => {
+  S.name = (e.target.value || 'pigment').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 24);
+  commit();
+});
+$('segGamut').querySelectorAll('button').forEach(b => b.onclick = () => {
+  S.gamut = b.dataset.g; syncControls(); commit();
+  toast(S.gamut === 'p3' ? (SUPPORTS_P3 ? 'Display P3 — wider chroma, rendered natively' : 'P3 values generated; this browser previews the sRGB fallback') : 'clamped to sRGB');
+});
+$('segMetric').querySelectorAll('button').forEach(b => b.onclick = () => { S.metric = b.dataset.m; syncControls(); renderContrast(); save(); });
+$('segTheme').querySelectorAll('button').forEach(b => b.onclick = () => { S.theme = b.dataset.t; syncControls(); renderPreview(); save(); });
+$('segFmt').querySelectorAll('button').forEach(b => b.onclick = () => { S.fmt = b.dataset.f; renderExport(); save(); });
+$('btnApplyChrome').onclick = toggleChrome;
+
+$('btnCopy').onclick = () => { copy(renderExport()); toast(S.fmt.toUpperCase() + ' copied to clipboard'); };
+$('btnDownload').onclick = () => {
+  const f = FMT[S.fmt], text = f.f();
+  const size = download(S.name + '-palette.' + f.ext, text, f.mime);
+  toast('downloaded ' + (size / 1024).toFixed(1) + ' KB');
+};
+$('btnSvg').onclick = () => {
+  const size = download(S.name + '-swatches.svg', svgExport(), 'image/svg+xml');
+  toast('swatch sheet · ' + (size / 1024).toFixed(1) + ' KB SVG');
+};
+$('btnPng').onclick = () => {
+  sheetPNG().toBlob(blob => {
+    if (!blob) { toast('PNG export unavailable here'); return; }
+    download(S.name + '-swatches.png', blob, 'image/png');
+    toast('swatch sheet · ' + (blob.size / 1024).toFixed(1) + ' KB PNG');
+  }, 'image/png');
+};
+$('btnSave').onclick = savePreset;
+$('btnReset').onclick = () => {
+  S = defaultState(); picked = { ramp: 'brand', i: 6 };
+  if (chromed) setChrome(false);
+  syncControls(); commit(); toast('back to the default system');
+};
+$('btnShare').onclick = () => {
+  const url = location.origin + location.pathname + '#p=' + b64(JSON.stringify(compact()));
+  history.replaceState(null, '', '#p=' + b64(JSON.stringify(compact())));
+  copy(url); toast('share link copied — the whole system travels in the URL');
+};
+$('btnRandom').onclick = shuffle;
+
+function shuffle() {
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  S.baseHue = Math.random() * 360;
+  S.scheme = pick(Object.keys(SCHEMES));
+  S.neutralTint = Math.random() * 0.03;
+  const chroma = 0.1 + Math.random() * 0.16;
+  for (const k of ['brand', 'accent', 'support']) {
+    const r = S.ramps[k];
+    r.chroma = chroma * (0.8 + Math.random() * 0.45);
+    r.peak = 0.42 + Math.random() * 0.26;
+    r.spread = 0.3 + Math.random() * 0.35;
+    r.torsion = (Math.random() * 2 - 1) * 26;
+    r.bend = (Math.random() * 2 - 1) * 0.3;
+    r.top = 0.955 + Math.random() * 0.035;
+    r.bot = 0.13 + Math.random() * 0.12;
+  }
+  applyScheme(); syncControls(); commit();
+  toast(SCHEMES[S.scheme].label + ' · hue ' + Math.round(S.baseHue) + '°');
+}
+
+/* ---------- views ---------- */
+const VIEWS = ['ramps', 'harmony', 'contrast', 'preview', 'export'];
+let view = 'ramps';
+function setView(v) {
+  if (!VIEWS.includes(v)) return;
+  view = v;
+  VIEWS.forEach(n => $('v-' + n).classList.toggle('on', n === v));
+  $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.dataset.v === v));
+  renderView();
+}
+$('tabs').querySelectorAll('button').forEach(b => b.onclick = () => setView(b.dataset.v));
+
+function renderView() {
+  if (view === 'ramps') { renderRampNav(); renderRamps(); renderInspect(); }
+  else if (view === 'harmony') { drawWheel(); renderSchemes(); }
+  else if (view === 'contrast') renderContrast();
+  else if (view === 'preview') renderPreview();
+  else if (view === 'export') { renderExport(); renderPresets(); }
+}
+function commit() {
+  buildPalette();
+  renderChromeAccent();
+  renderView();
+  if (chromed) setChrome(true);
+  save();
+}
+
+/* keyboard */
+addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea,select')) return;
+  const n = +e.key;
+  if (n >= 1 && n <= 5) { setView(VIEWS[n - 1]); return; }
+  const k = e.key.toLowerCase();
+  if (k === 'r') shuffle();
+  else if (k === 'l') $('btnShare').click();
+  else if (k === 's') { e.preventDefault(); savePreset(); }
+  else if (k === 'c') { copy(renderExport()); toast(S.fmt.toUpperCase() + ' copied'); }
+});
+
+/* ---------- boot ---------- */
+(function init() {
+  let loaded = null;
+  const m = location.hash.match(/p=([A-Za-z0-9\-_]+)/);
+  if (m) { try { loaded = JSON.parse(unb64(m[1])); } catch (e) { loaded = null; } }
+  if (!loaded) { try { loaded = JSON.parse(localStorage.getItem(LS_STATE) || 'null'); } catch (e) { loaded = null; } }
+  if (loaded) S = expand(loaded);
+  buildPalette();
+  syncControls();
+  renderChromeAccent();
+  renderRampNav(); renderRamps(); renderInspect();
+  renderPresets();
+  if (!loaded) toast('Drag a slider — or hit Shuffle');
+})();
+})();
+</script>
+</body>
+</html>
