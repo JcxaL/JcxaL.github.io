@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A Dropzone Around the Real Input — UI Spotlight Day 144</title>
+<meta name="description" content="Keep the native file input, style ::file-selector-button, and wrap it in drag, paste and preview — an upload control that never hides the accessible control.">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  :root{--bg:#0a0714;--ink:#f1ecff;--dim:#9b8fc0;--c:#a78bfa;
+    --glass:rgba(22,16,38,.78);--line:rgba(167,139,250,.22)}
+  html{accent-color:var(--c)}
+  body{min-height:100vh;background:
+      radial-gradient(900px 620px at 10% -10%,rgba(167,139,250,.16),transparent 60%),
+      radial-gradient(700px 520px at 100% 2%,rgba(56,189,248,.1),transparent 58%),var(--bg);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:72px 20px 90px;display:flex;flex-direction:column;align-items:center;gap:24px}
+  .back-link{position:fixed;top:14px;left:14px;z-index:60;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--ink);text-decoration:none;
+    font:600 13px/1 system-ui,sans-serif}
+  .back-link:hover{border-color:var(--c)}
+  header{max-width:660px;text-align:center}
+  header h1{font-size:clamp(25px,5vw,38px);letter-spacing:-.025em;line-height:1.1}
+  header p{margin-top:10px;color:var(--dim);font-size:14.5px;line-height:1.65}
+  header code{font:600 13px/1 ui-monospace,monospace;color:var(--c)}
+
+  .stack{width:min(920px,100%);display:flex;flex-direction:column;gap:16px}
+  figure{border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.03);overflow:hidden}
+  figcaption{padding:10px 14px;border-bottom:1px solid var(--line);font:700 11px/1 system-ui,sans-serif;
+    letter-spacing:.04em;color:var(--dim)}
+  figcaption b{color:var(--ink)}
+  .pad{padding:18px}
+
+  /* the native control stays in the page — only its button is restyled */
+  input[type=file]{font:600 13px/1 system-ui,sans-serif;color:var(--dim);max-width:100%}
+  input[type=file]::file-selector-button{font:700 12.5px/1 system-ui,sans-serif;color:#f6f1ff;
+    background:linear-gradient(100deg,rgba(167,139,250,.35),rgba(56,189,248,.25));
+    border:1px solid rgba(167,139,250,.55);border-radius:999px;padding:9px 15px;margin-right:12px;
+    cursor:pointer;transition:transform .16s cubic-bezier(.3,1.3,.4,1),box-shadow .2s,filter .2s}
+  input[type=file]::file-selector-button:hover{transform:translateY(-1px);filter:brightness(1.12);
+    box-shadow:0 8px 20px rgba(167,139,250,.3)}
+  input[type=file]::file-selector-button:active{transform:translateY(1px) scale(.98)}
+  input[type=file]:focus-visible::file-selector-button{outline:2px solid var(--c);outline-offset:3px}
+
+  .zone{position:relative;border:1.5px dashed rgba(167,139,250,.4);border-radius:16px;padding:22px 18px;
+    display:flex;flex-direction:column;gap:14px;transition:border-color .2s,background .2s,transform .2s;
+    background:rgba(255,255,255,.015)}
+  .zone.over{border-color:var(--c);background:rgba(167,139,250,.12);transform:scale(1.006)}
+  .zone .lead{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .zone .lead p{color:var(--dim);font:500 12.5px/1.5 system-ui,sans-serif;flex:1 1 180px;min-width:0}
+  .zone .lead kbd{font:700 11px/1 ui-monospace,monospace;background:rgba(255,255,255,.08);
+    border:1px solid var(--line);border-radius:6px;padding:3px 6px;color:var(--ink)}
+
+  .files{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(168px,1fr))}
+  .f{position:relative;border:1px solid var(--line);border-radius:13px;overflow:hidden;
+    background:rgba(255,255,255,.04);display:flex;flex-direction:column}
+  .f .shot{height:92px;background:repeating-conic-gradient(rgba(255,255,255,.05) 0% 25%,transparent 0% 50%)
+      50%/14px 14px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .f .shot img{width:100%;height:100%;object-fit:cover;display:block}
+  .f .shot span{font:800 20px/1 ui-monospace,monospace;color:var(--c);letter-spacing:.04em}
+  .f .info{padding:9px 10px;display:flex;flex-direction:column;gap:4px;min-width:0}
+  .f .nm{font:700 11.5px/1.35 system-ui,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .f .sz{font:600 10px/1 ui-monospace,monospace;color:var(--dim)}
+  .f .bar{height:3px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden}
+  .f .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--c),#38bdf8);
+    transition:width .12s linear}
+  .f .x{position:absolute;top:7px;right:7px;width:22px;height:22px;border-radius:50%;cursor:pointer;
+    border:1px solid var(--line);background:rgba(10,7,20,.8);color:var(--ink);
+    font:700 12px/1 system-ui,sans-serif;display:flex;align-items:center;justify-content:center}
+  .f .x:hover{border-color:#ff9d9d;color:#ff9d9d}
+  .empty{color:var(--dim);font:500 12.5px/1.6 system-ui,sans-serif;text-align:center;padding:10px 0}
+
+  .avatar{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .avatar .ring{width:72px;height:72px;border-radius:50%;flex:0 0 auto;overflow:hidden;
+    border:2px solid rgba(167,139,250,.5);background:
+      conic-gradient(from 30deg,#a78bfa,#38bdf8,#fbbf24,#a78bfa);display:flex;align-items:center;
+    justify-content:center;transition:transform .2s}
+  .avatar .ring img{width:100%;height:100%;object-fit:cover}
+  .avatar.over .ring{transform:scale(1.06)}
+  .avatar .txt{flex:1 1 180px;color:var(--dim);font:500 12.5px/1.55 system-ui,sans-serif}
+
+  .panel{position:fixed;top:14px;right:14px;z-index:60;width:238px;padding:14px;border-radius:16px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);display:flex;flex-direction:column;gap:11px;
+    box-shadow:0 18px 46px rgba(0,0,0,.45)}
+  .panel h3{font:700 9.5px/1 system-ui,sans-serif;letter-spacing:.17em;text-transform:uppercase;color:var(--dim)}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font:700 10.5px/1 system-ui,sans-serif;padding:6px 10px;border-radius:8px;cursor:pointer;
+    border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--dim)}
+  .chip.on{background:rgba(167,139,250,.22);border-color:rgba(167,139,250,.6);color:#e4dbff}
+  .sup{font:500 11px/1.5 system-ui,sans-serif;color:var(--dim);border-top:1px solid var(--line);padding-top:9px}
+  .sup b{color:var(--c)}
+  footer{color:var(--dim);font:500 11.5px/1.6 system-ui,sans-serif;text-align:center;max-width:640px}
+  footer a{color:var(--c)}
+  @media (max-width:760px){.panel{position:static;width:min(380px,100%)}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>A Dropzone Around the Real Input</h1>
+  <p>Most upload components throw the native control away — <code>opacity: 0</code>, a label pretending to
+     be a button, and keyboard users left holding the bag. <code>::file-selector-button</code> restyles the
+     browser's own button instead, so drag, paste and preview can be wrapped around a control that still
+     focuses, still announces, still works. Everything here stays on your machine.</p>
+</header>
+
+<aside class="panel">
+  <h3>Accept</h3>
+  <div class="chips" id="acc">
+    <button class="chip on" data-a="">anything</button>
+    <button class="chip" data-a="image/*">images</button>
+    <button class="chip" data-a=".json,.txt,.csv">text</button>
+  </div>
+  <h3>Hash preview</h3>
+  <div class="chips" id="hashm">
+    <button class="chip on" data-h="1">on</button>
+    <button class="chip" data-h="0">off</button>
+  </div>
+  <p class="sup" id="sup"></p>
+</aside>
+
+<main class="stack">
+  <figure>
+    <figcaption><b>1.</b> Zone · drag, paste or choose</figcaption>
+    <div class="pad">
+      <div class="zone" id="zone">
+        <div class="lead">
+          <input type="file" id="pick" multiple>
+          <p>Drop files anywhere in this box, or press <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> to paste
+             one from the clipboard.</p>
+        </div>
+        <div class="files" id="files"></div>
+        <p class="empty" id="empty">Nothing queued yet — the previews below are generated locally with
+          <code>URL.createObjectURL</code>, and the bar is a real read of the bytes.</p>
+      </div>
+    </div>
+  </figure>
+
+  <figure>
+    <figcaption><b>2.</b> Avatar · one file, cropped round</figcaption>
+    <div class="pad">
+      <div class="avatar" id="av">
+        <span class="ring" id="avring"></span>
+        <div class="txt">
+          <input type="file" id="avpick" accept="image/*"><br><br>
+          Same control, half the chrome: drop an image on the ring or use the button. The native input is
+          still the thing the browser focuses and reads out.
+        </div>
+      </div>
+    </div>
+  </figure>
+
+  <figure>
+    <figcaption><b>3.</b> Bare · nothing but the pseudo-element</figcaption>
+    <div class="pad">
+      <input type="file" id="bare">
+      <p class="empty" style="text-align:left;padding-top:12px">No wrapper, no JavaScript — one
+        <code>input[type=file]</code> with <code>::file-selector-button</code> given a radius, a gradient
+        and a press state. Tab to it: the focus ring lands on the real control.</p>
+    </div>
+  </figure>
+</main>
+
+<footer>Inspired by CSS-Tricks · the <code>::file-selector-button</code> almanac entry ·
+  UI Spotlight Day 144 · Drop #5<br>
+  <a href="https://css-tricks.com/almanac/pseudo-selectors/f/file-selector-button/" target="_blank" rel="noopener">css-tricks.com → ::file-selector-button</a></footer>
+
+<script>
+(function(){
+  var zone=document.getElementById('zone'), pick=document.getElementById('pick'),
+      files=document.getElementById('files'), empty=document.getElementById('empty'),
+      acc=document.getElementById('acc'), hashm=document.getElementById('hashm'),
+      sup=document.getElementById('sup'), av=document.getElementById('av'),
+      avring=document.getElementById('avring'), avpick=document.getElementById('avpick');
+  var urls=[], doHash=true, count=0, bytes=0;
+
+  var okPseudo=window.CSS&&CSS.supports&&CSS.supports('selector(::file-selector-button)');
+  function status(){
+    sup.innerHTML='::file-selector-button <b>'+(okPseudo?'styled':'not supported')+'</b><br>'+
+      count+' file'+(count===1?'':'s')+' · '+fmt(bytes)+' · <b>0 requests</b>';
+  }
+  function fmt(n){
+    if(n<1024) return n+' B';
+    if(n<1048576) return (n/1024).toFixed(1)+' KB';
+    return (n/1048576).toFixed(2)+' MB';
+  }
+
+  /* FNV-1a over the first 512 KB — real work on the real bytes, entirely local */
+  function hashFile(file,bar,done){
+    var slice=file.slice(0,Math.min(file.size,524288));
+    var fr=new FileReader();
+    fr.onprogress=function(e){ if(e.lengthComputable) bar.style.width=(e.loaded/e.total*100)+'%'; };
+    fr.onerror=function(){ bar.style.width='100%'; done(null); };
+    fr.onload=function(){
+      bar.style.width='100%';
+      var v=new Uint8Array(fr.result), h=2166136261;
+      for(var i=0;i<v.length;i++){ h^=v[i]; h=(h+((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)))>>>0; }
+      done(('00000000'+h.toString(16)).slice(-8));
+    };
+    fr.readAsArrayBuffer(slice);
+  }
+
+  function card(file){
+    var el=document.createElement('div'); el.className='f';
+    var shot=document.createElement('div'); shot.className='shot';
+    if(/^image\//.test(file.type)){
+      var u=URL.createObjectURL(file); urls.push(u);
+      var im=new Image(); im.alt=''; im.src=u; shot.appendChild(im);
+    }else{
+      var ext=(file.name.split('.').pop()||'?').slice(0,4).toUpperCase();
+      var s=document.createElement('span'); s.textContent=ext; shot.appendChild(s);
+    }
+    var info=document.createElement('div'); info.className='info';
+    var nm=document.createElement('div'); nm.className='nm'; nm.textContent=file.name; nm.title=file.name;
+    var sz=document.createElement('div'); sz.className='sz'; sz.textContent=fmt(file.size);
+    var bar=document.createElement('div'); bar.className='bar';
+    var fill=document.createElement('i'); bar.appendChild(fill);
+    info.appendChild(nm); info.appendChild(sz); info.appendChild(bar);
+    var x=document.createElement('button'); x.className='x'; x.type='button';
+    x.setAttribute('aria-label','Remove '+file.name); x.textContent='×';
+    x.addEventListener('click',function(){
+      el.remove(); count--; bytes-=file.size; status();
+      if(!files.children.length) empty.style.display='';
+    });
+    el.appendChild(shot); el.appendChild(info); el.appendChild(x);
+    files.appendChild(el);
+    if(doHash) hashFile(file,fill,function(h){ if(h) sz.textContent=fmt(file.size)+' · '+h; });
+    else fill.style.width='100%';
+  }
+
+  function add(list){
+    if(!list||!list.length) return;
+    empty.style.display='none';
+    Array.prototype.forEach.call(list,function(f){ count++; bytes+=f.size; card(f); });
+    status();
+  }
+
+  pick.addEventListener('change',function(){ add(pick.files); pick.value=''; });
+
+  ['dragenter','dragover'].forEach(function(t){
+    zone.addEventListener(t,function(e){ e.preventDefault(); zone.classList.add('over'); });
+  });
+  ['dragleave','drop'].forEach(function(t){
+    zone.addEventListener(t,function(e){
+      e.preventDefault();
+      if(t==='drop'||!zone.contains(e.relatedTarget)) zone.classList.remove('over');
+    });
+  });
+  zone.addEventListener('drop',function(e){ add(e.dataTransfer&&e.dataTransfer.files); });
+  window.addEventListener('paste',function(e){
+    if(e.clipboardData&&e.clipboardData.files&&e.clipboardData.files.length) add(e.clipboardData.files);
+  });
+
+  /* ---- avatar variant ---- */
+  function setAvatar(f){
+    if(!f||!/^image\//.test(f.type)) return;
+    var u=URL.createObjectURL(f); urls.push(u);
+    avring.innerHTML='';
+    var im=new Image(); im.alt=''; im.src=u; avring.appendChild(im);
+  }
+  avpick.addEventListener('change',function(){ setAvatar(avpick.files[0]); });
+  ['dragenter','dragover'].forEach(function(t){
+    av.addEventListener(t,function(e){ e.preventDefault(); av.classList.add('over'); });
+  });
+  ['dragleave','drop'].forEach(function(t){
+    av.addEventListener(t,function(e){ e.preventDefault(); av.classList.remove('over'); });
+  });
+  av.addEventListener('drop',function(e){
+    var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    setAvatar(f);
+  });
+
+  acc.addEventListener('click',function(e){
+    var b=e.target.closest('.chip'); if(!b) return;
+    Array.prototype.forEach.call(acc.children,function(c){ c.classList.toggle('on',c===b); });
+    pick.accept=b.getAttribute('data-a');
+  });
+  hashm.addEventListener('click',function(e){
+    var b=e.target.closest('.chip'); if(!b) return;
+    Array.prototype.forEach.call(hashm.children,function(c){ c.classList.toggle('on',c===b); });
+    doHash=b.getAttribute('data-h')==='1';
+  });
+  window.addEventListener('pagehide',function(){
+    urls.forEach(function(u){ URL.revokeObjectURL(u); });
+  });
+  status();
+})();
+</script>
+</body>
+</html>

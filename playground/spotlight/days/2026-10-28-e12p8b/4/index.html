@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Two Hands, Two Buttons — UI Spotlight Day 144</title>
+<meta name="description" content="any-hover and any-pointer let one button ship two interactions: a magnetic hover preview for mice, press-and-hold confirmation for thumbs.">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  :root{--bg:#120d03;--ink:#fff6e6;--dim:#c0a473;--c:#fbbf24;
+    --glass:rgba(32,24,8,.78);--line:rgba(251,191,36,.22);--hold:700ms}
+  html{accent-color:var(--c)}
+  body{min-height:100vh;background:
+      radial-gradient(900px 620px at 10% -10%,rgba(251,191,36,.14),transparent 60%),
+      radial-gradient(700px 520px at 100% 2%,rgba(248,113,113,.1),transparent 58%),var(--bg);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:72px 20px 90px;display:flex;flex-direction:column;align-items:center;gap:26px}
+  .back-link{position:fixed;top:14px;left:14px;z-index:60;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--ink);text-decoration:none;
+    font:600 13px/1 system-ui,sans-serif}
+  .back-link:hover{border-color:var(--c)}
+  header{max-width:660px;text-align:center}
+  header h1{font-size:clamp(25px,5vw,38px);letter-spacing:-.025em;line-height:1.1}
+  header p{margin-top:10px;color:var(--dim);font-size:14.5px;line-height:1.65}
+  header code{font:600 13px/1 ui-monospace,monospace;color:var(--c)}
+
+  .board{width:min(900px,100%);display:grid;gap:14px;grid-template-columns:repeat(2,1fr)}
+  @media (max-width:640px){.board{grid-template-columns:1fr}}
+  .act{position:relative;isolation:isolate;overflow:hidden;cursor:pointer;border-radius:16px;
+    border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink);
+    padding:20px 18px;text-align:left;display:flex;flex-direction:column;gap:5px;
+    font:700 16px/1.2 system-ui,sans-serif;transition:border-color .2s,background .2s,transform .14s}
+  .act small{font:500 12px/1.45 system-ui,sans-serif;color:var(--dim)}
+  .act .fill{position:absolute;inset:0;z-index:-1;transform-origin:left center;transform:scaleX(var(--p,0));
+    background:linear-gradient(90deg,rgba(251,191,36,.3),rgba(248,113,113,.3))}
+  .act .sheen{position:absolute;inset:0;z-index:-1;opacity:0;pointer-events:none;
+    background:radial-gradient(180px 120px at var(--mx,50%) var(--my,50%),rgba(251,191,36,.35),transparent 70%);
+    transition:opacity .25s}
+  .act .hintline{position:absolute;right:14px;bottom:12px;font:700 10px/1 ui-monospace,monospace;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .act.done{border-color:rgba(52,211,153,.6);background:rgba(52,211,153,.12)}
+  .act.done .hintline{color:#8ff0c4}
+  .ripple{position:absolute;z-index:-1;border-radius:50%;background:rgba(255,255,255,.3);
+    transform:translate(-50%,-50%) scale(0);animation:rip .55s ease-out forwards;pointer-events:none}
+  @keyframes rip{to{transform:translate(-50%,-50%) scale(1);opacity:0}}
+
+  /* --- mouse-and-trackpad branch: hover can preview, so it does --- */
+  html.m-fine .act:hover{border-color:var(--c);transform:translateY(-2px)}
+  html.m-fine .act:hover .sheen{opacity:1}
+  html.m-fine .act .hintline::after{content:"click"}
+  /* --- touch branch: nothing can be previewed, so commitment is deliberate --- */
+  html.m-coarse .act{padding:24px 18px}
+  html.m-coarse .act .hintline::after{content:"press and hold"}
+  html.m-coarse .act:active{background:rgba(255,255,255,.09)}
+
+  .readout{width:min(900px,100%);display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .q{padding:11px 13px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);
+    display:flex;flex-direction:column;gap:5px}
+  .q b{font:700 12px/1 ui-monospace,monospace;color:var(--ink)}
+  .q i{font-style:normal;font:600 9.5px/1.2 system-ui,sans-serif;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim)}
+  .q.yes b{color:#8ff0c4}
+  .q.no b{color:#ff9d9d}
+
+  .panel{position:fixed;top:14px;right:14px;z-index:60;width:238px;padding:14px;border-radius:16px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);display:flex;flex-direction:column;gap:11px;
+    box-shadow:0 18px 46px rgba(0,0,0,.45)}
+  .panel h3{font:700 9.5px/1 system-ui,sans-serif;letter-spacing:.17em;text-transform:uppercase;color:var(--dim)}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font:700 10.5px/1 system-ui,sans-serif;padding:6px 10px;border-radius:8px;cursor:pointer;
+    border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--dim)}
+  .chip.on{background:rgba(251,191,36,.2);border-color:rgba(251,191,36,.55);color:#ffe6ac}
+  .rg{display:flex;flex-direction:column;gap:5px;font:600 11.5px/1 system-ui,sans-serif;color:var(--dim)}
+  .rg input{width:100%}
+  .sup{font:500 11px/1.5 system-ui,sans-serif;color:var(--dim);border-top:1px solid var(--line);padding-top:9px}
+  .sup b{color:var(--c)}
+  footer{color:var(--dim);font:500 11.5px/1.6 system-ui,sans-serif;text-align:center;max-width:620px}
+  footer a{color:var(--c)}
+  @media (max-width:760px){.panel{position:static;width:min(380px,100%)}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Two Hands, Two Buttons</h1>
+  <p>A mouse can hover, so it can be shown what a control will do before committing. A thumb cannot, so it
+     needs the commitment itself to be deliberate. <code>any-hover</code> and <code>any-pointer</code> let
+     one component ship both: a magnetic sheen and a single click for pointers, a press-and-hold with a
+     visible fill for touch. Force the other branch in the panel.</p>
+</header>
+
+<aside class="panel">
+  <h3>Input branch</h3>
+  <div class="chips" id="mode">
+    <button class="chip on" data-m="auto">auto</button>
+    <button class="chip" data-m="fine">pointer</button>
+    <button class="chip" data-m="coarse">touch</button>
+  </div>
+  <label class="rg">Hold to confirm <span id="hv">700ms</span>
+    <input type="range" id="hold" min="250" max="1600" step="50" value="700"></label>
+  <p class="sup" id="sup">last input · —</p>
+</aside>
+
+<main class="board" id="board">
+  <button class="act" data-label="Publish"><span class="fill"></span><span class="sheen"></span>
+    Publish release<small>Goes out to everyone on the list.</small><span class="hintline"></span></button>
+  <button class="act" data-label="Archive"><span class="fill"></span><span class="sheen"></span>
+    Archive thread<small>Hidden from the inbox, kept forever.</small><span class="hintline"></span></button>
+  <button class="act" data-label="Delete"><span class="fill"></span><span class="sheen"></span>
+    Delete draft<small>No undo, no second confirmation dialog.</small><span class="hintline"></span></button>
+  <button class="act" data-label="Transfer"><span class="fill"></span><span class="sheen"></span>
+    Transfer ownership<small>Hands the project to another account.</small><span class="hintline"></span></button>
+</main>
+
+<section class="readout" id="readout"></section>
+
+<footer>Inspired by MDN · the <code>any-hover</code> / <code>any-pointer</code> media features ·
+  UI Spotlight Day 144 · Drop #4<br>
+  <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/@media/any-hover" target="_blank" rel="noopener">developer.mozilla.org → any-hover</a></footer>
+
+<script>
+(function(){
+  var root=document.documentElement, board=document.getElementById('board'),
+      mode=document.getElementById('mode'), hold=document.getElementById('hold'),
+      hv=document.getElementById('hv'), sup=document.getElementById('sup'),
+      readout=document.getElementById('readout');
+  var forced='auto', holdMs=700, lastType='—';
+
+  var QUERIES=[
+    ['hover','(hover: hover)'],['any-hover','(any-hover: hover)'],
+    ['pointer: fine','(pointer: fine)'],['any-pointer: fine','(any-pointer: fine)'],
+    ['pointer: coarse','(pointer: coarse)']
+  ];
+  var mqs=QUERIES.map(function(q){ return window.matchMedia(q[1]); });
+
+  function branch(){
+    if(forced!=='auto') return forced;
+    /* auto: if nothing attached can hover, build for thumbs */
+    return window.matchMedia('(any-hover: none)').matches ? 'coarse' : 'fine';
+  }
+  function apply(){
+    var b=branch();
+    root.classList.toggle('m-fine',b==='fine');
+    root.classList.toggle('m-coarse',b==='coarse');
+    paint();
+  }
+  function paint(){
+    readout.innerHTML='';
+    QUERIES.forEach(function(q,i){
+      var on=mqs[i].matches;
+      var d=document.createElement('div');
+      d.className='q '+(on?'yes':'no');
+      d.innerHTML='<i>'+q[0]+'</i><b>'+(on?'matches':'no match')+'</b>';
+      readout.appendChild(d);
+    });
+    var d=document.createElement('div');
+    d.className='q';
+    d.innerHTML='<i>branch in use</i><b>'+branch()+(forced==='auto'?' (auto)':' (forced)')+'</b>';
+    readout.appendChild(d);
+  }
+  mqs.forEach(function(m){
+    var h=function(){ apply(); };
+    if(m.addEventListener) m.addEventListener('change',h); else if(m.addListener) m.addListener(h);
+  });
+
+  mode.addEventListener('click',function(e){
+    var b=e.target.closest('.chip'); if(!b) return;
+    Array.prototype.forEach.call(mode.children,function(c){ c.classList.toggle('on',c===b); });
+    forced=b.getAttribute('data-m'); apply();
+  });
+  hold.addEventListener('input',function(){ holdMs=+hold.value; hv.textContent=holdMs+'ms'; });
+
+  /* ---------- pointer branch: magnetic sheen follows the cursor ---------- */
+  board.addEventListener('pointermove',function(e){
+    if(branch()!=='fine') return;
+    var a=e.target.closest('.act'); if(!a) return;
+    var r=a.getBoundingClientRect();
+    a.style.setProperty('--mx',((e.clientX-r.left)/r.width*100).toFixed(1)+'%');
+    a.style.setProperty('--my',((e.clientY-r.top)/r.height*100).toFixed(1)+'%');
+    var mx=(e.clientX-r.left-r.width/2)/r.width, my=(e.clientY-r.top-r.height/2)/r.height;
+    a.style.transform='translate('+(mx*7).toFixed(1)+'px,'+(my*5-2).toFixed(1)+'px)';
+  });
+  board.addEventListener('pointerleave',function(e){
+    var a=e.target.closest('.act'); if(a) a.style.transform='';
+  },true);
+
+  /* ---------- shared press handling ---------- */
+  var timer=null, raf=0;
+  function ripple(a,e){
+    var r=a.getBoundingClientRect(), s=Math.max(r.width,r.height)*1.4;
+    var el=document.createElement('span');
+    el.className='ripple';
+    el.style.cssText='width:'+s+'px;height:'+s+'px;left:'+(e.clientX-r.left)+'px;top:'+(e.clientY-r.top)+'px';
+    a.appendChild(el);
+    setTimeout(function(){ el.remove(); },600);
+  }
+  function finish(a){
+    a.classList.add('done');
+    a.style.setProperty('--p',1);
+    setTimeout(function(){ a.classList.remove('done'); a.style.setProperty('--p',0); },1500);
+  }
+  board.addEventListener('pointerdown',function(e){
+    var a=e.target.closest('.act'); if(!a) return;
+    lastType=e.pointerType||'mouse';
+    sup.innerHTML='last input · <b>'+lastType+'</b>';
+    ripple(a,e);
+    if(branch()==='fine') return;              /* touch branch only: hold to commit */
+    a.setPointerCapture&&a.setPointerCapture(e.pointerId);
+    var t0=performance.now();
+    cancelAnimationFrame(raf);
+    (function step(){
+      var p=Math.min(1,(performance.now()-t0)/holdMs);
+      a.style.setProperty('--p',p.toFixed(3));
+      if(p<1) raf=requestAnimationFrame(step); else finish(a);
+    })();
+    timer=a;
+  });
+  function release(e){
+    var a=timer; if(!a) return;
+    timer=null; cancelAnimationFrame(raf);
+    if(!a.classList.contains('done')) a.style.setProperty('--p',0);
+  }
+  board.addEventListener('pointerup',release);
+  board.addEventListener('pointercancel',release);
+  board.addEventListener('pointerleave',release,true);
+  board.addEventListener('click',function(e){
+    var a=e.target.closest('.act'); if(!a) return;
+    if(branch()==='fine') finish(a);
+  });
+
+  hv.textContent=holdMs+'ms';
+  apply();
+})();
+</script>
+</body>
+</html>

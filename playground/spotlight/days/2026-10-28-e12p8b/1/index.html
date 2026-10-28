@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Groups That Keep Their Clip — UI Spotlight Day 144</title>
+<meta name="description" content="view-transition-group: contain nests a card's children inside its own transition group, so ::view-transition-group-children() can clip them to the card while it morphs.">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#060910;--ink:#e9f1ff;--dim:#8ba0c2;--c:#38bdf8;
+    --glass:rgba(14,20,33,.74);--line:rgba(130,170,220,.2);--vt:620ms}
+  html{accent-color:var(--c)}
+  body{min-height:100vh;background:
+      radial-gradient(900px 620px at 10% -10%,rgba(56,189,248,.16),transparent 60%),
+      radial-gradient(760px 520px at 100% 0%,rgba(167,139,250,.12),transparent 58%),var(--bg);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:72px 20px 90px;display:flex;flex-direction:column;align-items:center;gap:26px}
+  .back-link{position:fixed;top:14px;left:14px;z-index:60;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--ink);text-decoration:none;
+    font:600 13px/1 system-ui,sans-serif}
+  .back-link:hover{border-color:var(--c)}
+  header{max-width:640px;text-align:center}
+  header h1{font-size:clamp(25px,5vw,38px);letter-spacing:-.025em;line-height:1.1}
+  header p{margin-top:10px;color:var(--dim);font-size:14.5px;line-height:1.65}
+  header code{font:600 13px/1 ui-monospace,monospace;color:var(--c)}
+
+  .grid{width:min(980px,100%);display:grid;gap:16px;grid-template-columns:repeat(3,1fr)}
+  @media (max-width:760px){.grid{grid-template-columns:1fr}}
+  .card{position:relative;border-radius:22px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.04);
+    border:1px solid var(--line);display:flex;flex-direction:column;
+    view-transition-group:contain}
+  .card .thumb{height:118px;flex:0 0 auto;background:
+      conic-gradient(from var(--a,20deg) at 30% 30%,#38bdf8,#a78bfa,#fbbf24,#38bdf8);
+    view-transition-group:nearest}
+  .card:nth-child(2) .thumb{--a:140deg}
+  .card:nth-child(3) .thumb{--a:260deg}
+  .card .meta{padding:14px 16px 18px;display:flex;flex-direction:column;gap:7px}
+  .card h2{font-size:17px;letter-spacing:-.01em;view-transition-group:nearest}
+  .card .body{color:var(--dim);font-size:13px;line-height:1.6;max-height:0;overflow:hidden;
+    transition:max-height .2s}
+  .card.open{grid-column:1/-1}
+  .card.open .thumb{height:230px}
+  .card.open h2{font-size:26px}
+  .card.open .body{max-height:220px}
+  .grid.has-open .card:not(.open){opacity:.55}
+  .card:nth-child(1){view-transition-name:vtcard1}
+  .card:nth-child(2){view-transition-name:vtcard2}
+  .card:nth-child(3){view-transition-name:vtcard3}
+  .card:nth-child(1) .thumb{view-transition-name:vtthumb1}
+  .card:nth-child(2) .thumb{view-transition-name:vtthumb2}
+  .card:nth-child(3) .thumb{view-transition-name:vtthumb3}
+  .card:nth-child(1) h2{view-transition-name:vttitle1}
+  .card:nth-child(2) h2{view-transition-name:vttitle2}
+  .card:nth-child(3) h2{view-transition-name:vttitle3}
+
+  /* the whole point: the nested children ride inside the card's group, so a clip
+     on that wrapper holds them to the rounded box for the length of the morph */
+  ::view-transition-group-children(vtcard1),
+  ::view-transition-group-children(vtcard2),
+  ::view-transition-group-children(vtcard3){overflow:clip;border-radius:22px}
+  ::view-transition-group(*){animation-duration:var(--vt)}
+  ::view-transition-old(*),::view-transition-new(*){animation-duration:var(--vt)}
+
+  /* flat mode: children opt out of the ancestor group and escape the clip */
+  html.flat .card>*{view-transition-group:none}
+
+  .panel{position:fixed;top:14px;right:14px;z-index:60;width:234px;padding:14px;border-radius:16px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);display:flex;flex-direction:column;gap:11px;
+    box-shadow:0 18px 46px rgba(0,0,0,.45)}
+  .panel h3{font:700 9.5px/1 system-ui,sans-serif;letter-spacing:.17em;text-transform:uppercase;color:var(--dim)}
+  .sw{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font:600 12px/1.3 system-ui,sans-serif}
+  .sw input{appearance:none;-webkit-appearance:none;width:40px;height:23px;border-radius:999px;
+    background:rgba(255,255,255,.14);position:relative;cursor:pointer;transition:background .2s;flex:0 0 auto}
+  .sw input::after{content:"";position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;
+    background:#fff;transition:transform .24s cubic-bezier(.3,1.4,.4,1)}
+  .sw input:checked{background:var(--c)}
+  .sw input:checked::after{transform:translateX(17px)}
+  .rg{display:flex;flex-direction:column;gap:5px;font:600 11.5px/1 system-ui,sans-serif;color:var(--dim)}
+  .rg input{width:100%}
+  .sup{font:500 11px/1.5 system-ui,sans-serif;color:var(--dim);border-top:1px solid var(--line);padding-top:9px}
+  .sup b{color:var(--c)}
+  footer{color:var(--dim);font:500 11.5px/1.6 system-ui,sans-serif;text-align:center;max-width:620px}
+  footer a{color:var(--c)}
+  @media (max-width:720px){.panel{position:static;width:min(380px,100%)}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<header>
+  <h1>Groups That Keep Their Clip</h1>
+  <p>A card that morphs open normally lets its own contents fly outside its rounded box, because every
+     named element animates in a flat sibling list. <code>view-transition-group: contain</code> nests them
+     back inside the card's group — and <code>::view-transition-group-children()</code> is the wrapper you
+     can finally put <code>overflow: clip</code> on. Open a card, then flip the switch and open it again.</p>
+</header>
+
+<aside class="panel">
+  <h3>Controls</h3>
+  <label class="sw">Nested groups<input type="checkbox" id="nest" checked></label>
+  <label class="rg">Duration <span id="durv">620ms</span>
+    <input type="range" id="dur" min="200" max="1600" step="20" value="620"></label>
+  <p class="sup" id="sup"></p>
+</aside>
+
+<main class="grid" id="grid">
+  <article class="card">
+    <div class="thumb"></div>
+    <div class="meta">
+      <h2>Containment</h2>
+      <p class="body">With <b>contain</b> on the card, the thumbnail and heading become children of the
+        card's group instead of siblings of it, so the clip travels with the morph.</p>
+    </div>
+  </article>
+  <article class="card">
+    <div class="thumb"></div>
+    <div class="meta">
+      <h2>Nearest</h2>
+      <p class="body"><b>nearest</b> on a child says "nest me under whichever ancestor group is closest",
+        which keeps the markup honest when cards get re-ordered or re-used.</p>
+    </div>
+  </article>
+  <article class="card">
+    <div class="thumb"></div>
+    <div class="meta">
+      <h2>Escape hatch</h2>
+      <p class="body"><b>none</b> pulls a child back out of the ancestor group — the flat behaviour, for the
+        one element that genuinely needs to fly past the edge.</p>
+    </div>
+  </article>
+</main>
+
+<footer>Inspired by Chrome for Developers · nested view transition groups · UI Spotlight Day 144 · Drop #1<br>
+  <a href="https://developer.chrome.com/docs/css-ui/view-transitions/nested-view-transition-groups" target="_blank" rel="noopener">developer.chrome.com → nested view transition groups</a></footer>
+
+<script>
+(function(){
+  var grid=document.getElementById('grid');
+  var cards=Array.prototype.slice.call(grid.querySelectorAll('.card'));
+  var nest=document.getElementById('nest'), dur=document.getElementById('dur');
+  var durv=document.getElementById('durv'), sup=document.getElementById('sup');
+
+  var hasVT=typeof document.startViewTransition==='function';
+  var hasNested=window.CSS&&CSS.supports&&CSS.supports('view-transition-group','contain');
+  sup.innerHTML=hasNested
+    ? 'This engine supports nested groups — <b>flip the switch</b> to watch the thumbnail spill past the corner radius without them.'
+    : (hasVT
+      ? 'This engine runs view transitions but not nested groups yet (<b>Chrome / Edge 140+</b>), so both switch positions look the same here.'
+      : 'No view transitions in this engine — the cards still open, just without the morph.');
+
+  function toggle(card){
+    var willOpen=!card.classList.contains('open');
+    var run=function(){
+      cards.forEach(function(c){ c.classList.remove('open'); });
+      if(willOpen) card.classList.add('open');
+      grid.classList.toggle('has-open',willOpen);
+    };
+    if(hasVT) document.startViewTransition(run); else run();
+  }
+  cards.forEach(function(c){
+    c.addEventListener('click',function(){ toggle(c); });
+  });
+  nest.addEventListener('change',function(){
+    document.documentElement.classList.toggle('flat',!nest.checked);
+  });
+  dur.addEventListener('input',function(){
+    durv.textContent=dur.value+'ms';
+    document.documentElement.style.setProperty('--vt',dur.value+'ms');
+  });
+})();
+</script>
+</body>
+</html>
