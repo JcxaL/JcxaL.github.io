@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shader Layer Over Live HTML · Drop 1</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#eaf0ff;--dim:#8d9ab5;--line:#243049;--glass:rgba(14,19,30,.72)}
+body{
+  min-height:100dvh;background:
+    radial-gradient(900px 600px at 12% -10%,#1b2a4d 0,transparent 60%),
+    radial-gradient(700px 500px at 100% 10%,#3a1d3c 0,transparent 55%),#05070c;
+  color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:72px 20px 92px;display:flex;flex-direction:column;align-items:center;gap:30px
+}
+.back-link,.panel{position:fixed;z-index:9;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(12px)}
+.back-link{left:16px;top:16px;padding:8px 14px;border-radius:999px;color:var(--ink);text-decoration:none;font-size:13px}
+.back-link:hover{border-color:#3d5a85}
+.panel{right:16px;top:16px;border-radius:14px;padding:12px 14px;width:216px;font-size:12px}
+.panel h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+.panel label{display:flex;align-items:center;gap:8px;margin:7px 0;color:var(--dim)}
+.panel label span{flex:0 0 58px}
+.panel input[type=range]{flex:1;accent-color:#38bdf8;min-width:0}
+.panel output{flex:0 0 32px;text-align:right;color:#38bdf8;font-variant-numeric:tabular-nums}
+.panel button{width:100%;margin-top:8px;font:inherit;font-size:12px;color:var(--ink);background:#1a2336;border:1px solid var(--line);border-radius:9px;padding:7px;cursor:pointer}
+.panel button:hover{border-color:#3d5a85}
+h1{font-size:clamp(20px,4vw,30px);font-weight:650;letter-spacing:-.02em;text-align:center}
+.lead{max-width:600px;text-align:center;color:var(--dim);font-size:13.5px}
+.wrap{display:grid;gap:26px;width:min(1080px,100%);grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.unit{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#080b13;isolation:isolate}
+.unit canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:0;transition:opacity .25s}
+.unit[data-on="1"] canvas{opacity:1}
+.unit[data-on="1"] .card{opacity:0}
+.card{padding:22px;display:grid;gap:12px;transition:opacity .25s;background:
+  linear-gradient(145deg,rgba(56,189,248,.16),rgba(167,139,250,.1) 45%,rgba(8,11,19,.2));min-height:258px}
+.card .tag{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#7dd3fc}
+.card h3{font-size:21px;letter-spacing:-.01em}
+.card p{font-size:13px;color:#b7c3dd}
+.card .rowy{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.card .pill{font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid rgba(125,211,252,.35);color:#cfe6ff}
+.card .bars{display:flex;gap:4px;align-items:flex-end;height:46px;margin-top:6px}
+.card .bars i{flex:1;border-radius:3px 3px 0 0;background:linear-gradient(180deg,#7dd3fc,#2b5f8a)}
+.unit .tagbar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;
+  padding:8px 12px;font-size:11px;color:var(--dim);background:rgba(5,7,12,.72);border-top:1px solid var(--line);z-index:3}
+.unit .tagbar b{color:#eaf0ff;font-weight:600}
+.unit .tagbar button{font:inherit;font-size:11px;color:var(--ink);background:#16203200;border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer}
+footer{position:fixed;left:0;right:0;bottom:0;padding:9px 16px;text-align:center;font-size:11.5px;color:#5f6d8c;background:linear-gradient(transparent,#05070c 60%)}
+footer a{color:#7e8eae}
+@media (max-width:760px){.panel{display:none}body{padding:66px 14px 86px}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="panel">
+  <h2>Shader layer</h2>
+  <label><span>Amount</span><input id="amp" type="range" min="0" max="100" value="46"><output id="ampO">46</output></label>
+  <label><span>Scale</span><input id="freq" type="range" min="1" max="30" value="11"><output id="freqO">11</output></label>
+  <label><span>Speed</span><input id="spd" type="range" min="0" max="100" value="38"><output id="spdO">38</output></label>
+  <button id="toggleAll">Toggle all layers</button>
+  <button id="resnap">Re-snapshot the DOM</button>
+</div>
+
+<h1>A shader on top of the real interface</h1>
+<p class="lead">Each card below is ordinary HTML. It gets captured as a texture, pushed to the GPU and
+re-drawn through a fragment shader — while the live markup stays underneath, selectable and clickable.
+Point at a card to push the fluid around.</p>
+
+<div class="wrap" id="wrap"></div>
+
+<footer>Inspired by <a href="https://github.com/DavidHDev/canvas-ui" target="_blank" rel="noopener">DavidHDev/canvas-ui</a> · UI Spotlight Day 145 · Drop #1</footer>
+
+<script>
+const EFFECTS = [
+  { k: 'ripple', t: 'Ripple', d: 'pointer-driven wave displacement' },
+  { k: 'lens',   t: 'Glass lens', d: 'radial refraction + chromatic edge' },
+  { k: 'dither', t: 'Retro dither', d: '4×4 Bayer quantise over the texture' }
+];
+const CARD = (i) => `
+  <div class="card">
+    <span class="tag">Live DOM · panel ${i + 1}</span>
+    <h3>Still real HTML</h3>
+    <p>Text you can select, a link you can click, a layout the browser laid out. The shader only
+    re-photographs it every frame.</p>
+    <div class="rowy"><span class="pill">texImage2D</span><span class="pill">GLSL</span><span class="pill">no DOM clone in flight</span></div>
+    <div class="bars">${Array.from({length:12},(_,j)=>`<i style="height:${18+((j*37)%78)}%"></i>`).join('')}</div>
+  </div>`;
+
+const wrap = document.getElementById('wrap');
+wrap.innerHTML = EFFECTS.map((e, i) => `
+  <div class="unit" data-on="1" data-fx="${e.k}">
+    ${CARD(i)}
+    <canvas></canvas>
+    <div class="tagbar"><span><b>${e.t}</b> — ${e.d}</span><button>live HTML</button></div>
+  </div>`).join('');
+
+const VS = `attribute vec2 p;varying vec2 uv;void main(){uv=vec2(p.x*.5+.5,.5-p.y*.5);gl_Position=vec4(p,0.,1.);}`;
+const FS = `
+precision mediump float;
+varying vec2 uv;
+uniform sampler2D tex;uniform vec2 mouse;uniform float t,amp,freq,mode,hover;
+/* 4x4 ordered dither without an array: GLSL ES 1.0 cannot index one dynamically */
+float bayer2(vec2 a){a=floor(a);return fract(a.x*.5+a.y*a.y*.75);}
+float bayer(vec2 a){return (bayer2(a*.5)*.25+bayer2(a))/0.9375;}
+void main(){
+  vec2 d=uv-mouse;
+  float r=length(d);
+  vec2 off=vec2(0.);
+  if(mode<0.5){
+    float w=sin(r*freq*6.2831-t*3.0)*exp(-r*3.2);
+    off=normalize(d+1e-5)*w*amp*0.06*(0.35+hover);
+  }else if(mode<1.5){
+    float k=smoothstep(0.42,0.0,r);
+    off=-d*k*amp*0.55*(0.35+hover);
+  }
+  vec3 col=texture2D(tex,uv+off).rgb;
+  if(mode>0.5&&mode<1.5){
+    col.r=texture2D(tex,uv+off*1.06).r;
+    col.b=texture2D(tex,uv+off*0.94).b;
+    col+=smoothstep(0.42,0.0,r)*0.07;
+  }
+  if(mode>1.5){
+    float px=freq*2.0+4.0;
+    vec2 g=floor(gl_FragCoord.xy/ (40.0/px));
+    float th=bayer(g)-0.5;
+    float lift=0.5+amp*0.5;
+    col=floor(col*lift*5.0+th)/5.0/lift;
+    col=mix(col,col.ggg*vec3(0.82,1.0,0.95),0.25);
+  }
+  gl_FragColor=vec4(col,1.);
+}`;
+
+const CSS_FOR_SVG = `
+  .card{padding:22px;display:grid;gap:12px;min-height:258px;font-family:system-ui,sans-serif;color:#eaf0ff;
+    background:linear-gradient(145deg,rgba(56,189,248,.16),rgba(167,139,250,.1) 45%,rgba(8,11,19,.2))}
+  .tag{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#7dd3fc}
+  h3{font-size:21px;margin:0}p{font-size:13px;color:#b7c3dd;margin:0}
+  .rowy{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .pill{font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid rgba(125,211,252,.35);color:#cfe6ff}
+  .bars{display:flex;gap:4px;align-items:flex-end;height:46px;margin-top:6px}
+  .bars i{flex:1;border-radius:3px 3px 0 0;background:linear-gradient(180deg,#7dd3fc,#2b5f8a)}`;
+
+const P = { amp: .46, freq: 11, spd: .38 };
+const units = [];
+
+function compile(gl, src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader');
+  return s;
+}
+function setup(unit, idx) {
+  const cv = unit.querySelector('canvas');
+  const gl = cv.getContext('webgl', { antialias: false, premultipliedAlpha: false });
+  if (!gl) { unit.dataset.on = '0'; unit.querySelector('.tagbar span').innerHTML = '<b>No WebGL</b> — the live DOM is all you get'; return null; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl, VS, gl.VERTEX_SHADER));
+  gl.attachShader(prog, compile(gl, FS, gl.FRAGMENT_SHADER));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([10, 14, 22, 255]));
+  const U = n => gl.getUniformLocation(prog, n);
+  const u = { tex: U('tex'), mouse: U('mouse'), t: U('t'), amp: U('amp'), freq: U('freq'), mode: U('mode'), hover: U('hover') };
+  const o = { unit, cv, gl, u, tex, prog, mouse: [.5, .5], hover: 0, idx, mode: EFFECTS.findIndex(e => e.k === unit.dataset.fx), ready: false };
+  snapshot(o);
+  unit.addEventListener('pointermove', ev => {
+    const r = unit.getBoundingClientRect();
+    o.mouse = [(ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height];
+    o.hover = 1;
+  });
+  unit.addEventListener('pointerleave', () => { o.hover = 0; });
+  unit.querySelector('.tagbar button').addEventListener('click', ev => {
+    const on = unit.dataset.on === '1';
+    unit.dataset.on = on ? '0' : '1';
+    ev.target.textContent = on ? 'shader layer' : 'live HTML';
+  });
+  return o;
+}
+
+/* Capture the live subtree as a texture. Chrome's HTML-in-canvas `drawElement()` does it
+   natively; everywhere else an <svg><foreignObject> snapshot of the same markup stands in. */
+function snapshot(o) {
+  const card = o.unit.querySelector('.card');
+  const w = Math.max(2, Math.round(card.offsetWidth)), h = Math.max(2, Math.round(card.offsetHeight));
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  o.cv.width = Math.round(w * dpr); o.cv.height = Math.round(h * dpr);
+  o.gl.viewport(0, 0, o.cv.width, o.cv.height);
+
+  const scratch = document.createElement('canvas');
+  scratch.width = o.cv.width; scratch.height = o.cv.height;
+  const c2 = scratch.getContext('2d');
+  c2.scale(dpr, dpr);
+  if (typeof c2.drawElement === 'function') {
+    try { c2.drawElement(card, 0, 0); upload(o, scratch); return; } catch (e) { /* fall through */ }
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+    <foreignObject width="100%" height="100%">
+      <div xmlns="http://www.w3.org/1999/xhtml"><style>${CSS_FOR_SVG}</style>${card.outerHTML}</div>
+    </foreignObject></svg>`;
+  const img = new Image();
+  img.onload = () => { c2.drawImage(img, 0, 0, w, h); upload(o, scratch); };
+  img.onerror = () => { o.unit.dataset.on = '0'; };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+function upload(o, src) {
+  const gl = o.gl;
+  gl.bindTexture(gl.TEXTURE_2D, o.tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  o.ready = true;
+}
+
+document.querySelectorAll('.unit').forEach((u, i) => {
+  try {
+    const o = setup(u, i);
+    if (o) units.push(o);
+  } catch (err) {
+    u.dataset.on = '0';
+    u.querySelector('.tagbar span').innerHTML = '<b>Shader unavailable</b> — showing the live DOM';
+    console.warn('shader layer skipped:', err && err.message);
+  }
+});
+
+const bind = (id, outId, k, scale) => {
+  const el = document.getElementById(id), out = document.getElementById(outId);
+  el.addEventListener('input', () => { P[k] = +el.value * scale; out.textContent = el.value; });
+};
+bind('amp', 'ampO', 'amp', .01); bind('freq', 'freqO', 'freq', 1); bind('spd', 'spdO', 'spd', .01);
+document.getElementById('toggleAll').addEventListener('click', () => {
+  const anyOn = [...document.querySelectorAll('.unit')].some(u => u.dataset.on === '1');
+  document.querySelectorAll('.unit').forEach(u => {
+    u.dataset.on = anyOn ? '0' : '1';
+    u.querySelector('.tagbar button').textContent = anyOn ? 'shader layer' : 'live HTML';
+  });
+});
+document.getElementById('resnap').addEventListener('click', () => units.forEach(snapshot));
+addEventListener('resize', () => { clearTimeout(window.__rt); window.__rt = setTimeout(() => units.forEach(snapshot), 150); });
+
+let t = 0, last = performance.now();
+(function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  t += dt * (.3 + P.spd * 2.2);
+  for (const o of units) {
+    if (!o.ready) continue;
+    const gl = o.gl;
+    gl.useProgram(o.prog);
+    gl.uniform1i(o.u.tex, 0);
+    gl.uniform2f(o.u.mouse, o.mouse[0], o.mouse[1]);
+    gl.uniform1f(o.u.t, t);
+    gl.uniform1f(o.u.amp, P.amp);
+    gl.uniform1f(o.u.freq, P.freq);
+    gl.uniform1f(o.u.mode, o.mode);
+    gl.uniform1f(o.u.hover, o.hover);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  requestAnimationFrame(frame);
+})(performance.now());
+</script>
+</body>
+</html>

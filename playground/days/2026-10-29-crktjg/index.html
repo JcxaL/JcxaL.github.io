@@ -1,0 +1,1669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Chamber — Room Acoustics Studio</title>
+<meta name="description" content="Draw a room, give every surface a material, trace sound rays through it, then listen to the impulse response and export it as a WAV.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#06080d; --bg2:#0b0f18; --panel:#0e1420; --line:#1d2636; --line2:#2a3650;
+  --ink:#e8eefc; --dim:#8b9ab5; --dim2:#5d6b86;
+  --hot:#fbbf24; --cold:#7dd3fc; --mid:#f472b6; --ok:#34d399; --warn:#fb7185;
+  --r:12px;
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(900px 600px at 15% -10%, #15203a 0%, transparent 60%),
+    radial-gradient(700px 500px at 100% 0%, #251a2c 0%, transparent 55%),
+    var(--bg);
+  color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-text-size-adjust:100%;
+  overflow:hidden;
+  touch-action:manipulation;
+}
+#app{display:grid;grid-template-rows:auto 1fr;height:100dvh}
+
+/* ---------- top bar ---------- */
+header{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;
+  border-bottom:1px solid var(--line);background:rgba(8,11,18,.72);backdrop-filter:blur(12px);
+}
+.logo{display:flex;align-items:baseline;gap:8px;min-width:0}
+.logo b{font-size:16px;letter-spacing:.02em}
+.logo span{color:var(--dim2);font-size:11px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+header .spacer{flex:1}
+button,select{font:inherit;color:var(--ink);background:#141b29;border:1px solid var(--line2);border-radius:9px;padding:7px 11px;cursor:pointer}
+button:hover,select:hover{border-color:#3b4a6b;background:#18202f}
+button:active{transform:translateY(1px)}
+button.pri{background:linear-gradient(180deg,#27405f,#192b43);border-color:#3d5a85;color:#dff0ff;font-weight:600}
+button.pri:hover{background:linear-gradient(180deg,#2e4a6e,#1d3150)}
+button.go{background:linear-gradient(180deg,#b97f0f,#8a5c07);border-color:#d9a21f;color:#fff8e6;font-weight:700}
+button.go:hover{background:linear-gradient(180deg,#cd8d12,#9a6708)}
+button[disabled]{opacity:.45;cursor:not-allowed}
+button.sm{padding:5px 8px;font-size:12px}
+.ghost{background:transparent;border-color:var(--line)}
+
+/* ---------- layout ---------- */
+main{display:grid;grid-template-columns:1fr 352px;min-height:0}
+#stage{position:relative;min-width:0;min-height:0;background:
+  linear-gradient(180deg,#070a11,#05070c)}
+#plan{display:block;width:100%;height:100%;touch-action:none}
+#tools{
+  position:absolute;left:12px;top:12px;display:flex;flex-direction:column;gap:6px;
+  padding:6px;border-radius:14px;background:rgba(12,17,27,.78);border:1px solid var(--line2);
+  backdrop-filter:blur(10px);
+}
+#tools button{width:38px;height:34px;display:grid;place-items:center;padding:0;font-size:15px;border-color:transparent;background:transparent}
+#tools button[aria-pressed="true"]{background:#22314a;border-color:#3d5a85;color:#dff0ff}
+#hud{
+  position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;
+  padding:8px 10px;border-radius:12px;background:rgba(12,17,27,.76);border:1px solid var(--line2);
+  backdrop-filter:blur(10px);font-variant-numeric:tabular-nums;pointer-events:none;
+}
+#hud .k{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2)}
+#hud .v{font-size:13px;color:var(--cold)}
+#hud .v b{color:var(--ink)}
+#legend{
+  position:absolute;left:12px;bottom:12px;padding:8px 10px;border-radius:12px;
+  background:rgba(12,17,27,.76);border:1px solid var(--line2);backdrop-filter:blur(10px);
+  font-size:11px;color:var(--dim);display:flex;gap:12px;flex-wrap:wrap;max-width:min(92%,520px);pointer-events:none
+}
+#legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+/* ---------- side panel ---------- */
+aside{border-left:1px solid var(--line);background:var(--panel);display:grid;grid-template-rows:auto 1fr;min-height:0}
+#tabs{display:flex;border-bottom:1px solid var(--line)}
+#tabs button{flex:1;border:0;border-radius:0;background:transparent;color:var(--dim);padding:10px 4px;font-size:12px;letter-spacing:.04em}
+#tabs button[aria-selected="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--cold);background:#101827}
+.pane{display:none;overflow-y:auto;padding:14px;scrollbar-width:thin}
+.pane.on{display:block}
+h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);margin:0 0 8px}
+h3+.note{margin-top:-4px}
+.note{font-size:11.5px;color:var(--dim2);line-height:1.5;margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grid2 button{text-align:left;font-size:12px;padding:8px 9px;line-height:1.3}
+.grid2 button small{display:block;color:var(--dim2);font-size:10.5px}
+.row{display:flex;align-items:center;gap:8px;margin:9px 0}
+.row label{flex:0 0 86px;font-size:11.5px;color:var(--dim)}
+.row output{flex:0 0 58px;text-align:right;font-size:12px;color:var(--cold);font-variant-numeric:tabular-nums}
+input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:22px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:#22304a}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;margin-top:-6px;border-radius:50%;background:var(--cold);border:2px solid #0b1220;box-shadow:0 1px 6px #0008}
+input[type=range]::-moz-range-track{height:4px;border-radius:3px;background:#22304a}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:2px solid #0b1220;border-radius:50%;background:var(--cold)}
+select{width:100%;padding:6px 8px;font-size:12px}
+hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.surf{border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:7px;background:#0b1220}
+.surf.sel{border-color:#3d5a85;background:#101a2b}
+.surf .hd{display:flex;align-items:center;gap:7px;margin-bottom:6px;font-size:12px}
+.surf .hd b{font-weight:600}
+.surf .hd .sw{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.surf .hd .len{margin-left:auto;color:var(--dim2);font-size:11px;font-variant-numeric:tabular-nums}
+.alpha{display:flex;gap:6px;margin-top:6px}
+.alpha div{flex:1;text-align:center;border:1px solid var(--line);border-radius:7px;padding:4px 2px;font-size:10.5px;color:var(--dim2)}
+.alpha div b{display:block;color:var(--ink);font-size:12px;font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:4px;background:#1a2336;overflow:hidden;margin-top:9px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cold),var(--ok));transition:width .12s linear}
+table.m{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.m th,table.m td{padding:5px 4px;font-size:12px;text-align:right;border-bottom:1px solid var(--line)}
+table.m th{color:var(--dim2);font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:500}
+table.m td:first-child,table.m th:first-child{text-align:left;color:var(--dim)}
+table.m td b{color:var(--ink)}
+canvas.plot{width:100%;height:132px;display:block;border:1px solid var(--line);border-radius:10px;background:#080c14;margin-bottom:4px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font-size:11.5px;padding:6px 9px}
+.chips button[aria-pressed="true"]{border-color:#d9a21f;background:#2a2112;color:#ffe9b8}
+.saved{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:6px 8px;margin-bottom:6px;font-size:12px}
+.saved span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flex{display:flex;gap:6px;flex-wrap:wrap}
+.flex button{flex:1 1 auto}
+#toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,24px);opacity:0;pointer-events:none;
+  background:#101827;border:1px solid var(--line2);border-radius:999px;padding:9px 16px;font-size:13px;
+  box-shadow:0 12px 40px #000a;transition:.22s;z-index:40;max-width:90vw;text-align:center
+}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+kbd{font:inherit;font-size:11px;background:#18202f;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:1px 5px;color:var(--dim)}
+
+@media (max-width:900px){
+  main{grid-template-columns:1fr;grid-template-rows:minmax(42dvh,1fr) auto}
+  aside{border-left:0;border-top:1px solid var(--line);max-height:48dvh}
+  #legend{display:none}
+  .logo span{display:none}
+  header{padding:8px 10px;gap:6px}
+  header button{padding:6px 9px;font-size:12.5px}
+}
+@media (pointer:coarse){
+  #tools button{width:42px;height:40px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="logo"><b>Chamber</b><span>Room Acoustics Studio</span></div>
+  <div class="spacer"></div>
+  <button class="go" id="runBtn" title="Trace rays (R)">▶ Trace</button>
+  <button class="pri" id="playBtn" title="Audition (Space)">♪ Audition</button>
+  <button class="ghost sm" id="helpBtn" title="How it works">?</button>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="plan"></canvas>
+    <div id="tools">
+      <button data-tool="move" aria-pressed="true" title="Move points (1)">✥</button>
+      <button data-tool="add" aria-pressed="false" title="Add corner on a wall (2)">＋</button>
+      <button data-tool="del" aria-pressed="false" title="Remove a corner (3)">－</button>
+      <button data-tool="wall" aria-pressed="false" title="Pick a wall to edit its material (4)">▦</button>
+      <button id="rayToggle" aria-pressed="true" title="Show traced rays">〰</button>
+    </div>
+    <div id="hud">
+      <div class="k">volume</div><div class="v"><b id="hVol">—</b> m³</div>
+      <div class="k">RT60 mid</div><div class="v"><b id="hRt">—</b> s</div>
+      <div class="k">source → ear</div><div class="v"><b id="hDist">—</b> m</div>
+    </div>
+    <div id="legend">
+      <span><i style="background:#fbbf24"></i>source</span>
+      <span><i style="background:#7dd3fc"></i>listener (drag the nose to turn)</span>
+      <span><i style="background:#34d399"></i>absorbent wall</span>
+      <span><i style="background:#94a3b8"></i>reflective wall</span>
+      <span>drag corners · <kbd>R</kbd> trace · <kbd>Space</kbd> audition</span>
+    </div>
+  </div>
+  <aside>
+    <div id="tabs">
+      <button data-tab="room" aria-selected="true">Room</button>
+      <button data-tab="surf" aria-selected="false">Surfaces</button>
+      <button data-tab="analyse" aria-selected="false">Analyse</button>
+      <button data-tab="aud" aria-selected="false">Audition</button>
+    </div>
+
+    <section class="pane on" id="pane-room">
+      <h3>Presets</h3>
+      <div class="grid2" id="presets"></div>
+      <hr>
+      <h3>Shape</h3>
+      <div class="row"><label>Ceiling</label><input type="range" id="hRange" min="2" max="24" step="0.1" value="2.8"><output id="hOut">2.8 m</output></div>
+      <div class="row"><label>Scale</label><input type="range" id="scRange" min="50" max="220" step="1" value="100"><output id="scOut">100 %</output></div>
+      <div class="note">Drag the corners in the plan to reshape the room. The <b>＋</b> tool inserts a corner on the wall you click, <b>－</b> removes one. Concave rooms (L-shapes, alcoves) are traced correctly.</div>
+      <h3>Listener</h3>
+      <div class="row"><label>Ear height</label><input type="range" id="lzRange" min="0.3" max="6" step="0.05" value="1.2"><output id="lzOut">1.20 m</output></div>
+      <div class="row"><label>Source height</label><input type="range" id="szRange" min="0.3" max="6" step="0.05" value="1.5"><output id="szOut">1.50 m</output></div>
+      <div class="row"><label>Head turn</label><input type="range" id="rotRange" min="-180" max="180" step="1" value="0"><output id="rotOut">0°</output></div>
+      <hr>
+      <h3>Room file</h3>
+      <div class="flex">
+        <button class="sm" id="saveBtn">Save room</button>
+        <button class="sm" id="shareBtn">Copy link</button>
+        <button class="sm" id="jsonBtn">Export .json</button>
+      </div>
+      <div id="savedWrap" style="margin-top:10px"></div>
+    </section>
+
+    <section class="pane" id="pane-surf">
+      <h3>Surfaces</h3>
+      <div class="note">Absorption coefficient α per band — 0 reflects everything, 1 swallows it. Scattering decides how much of each bounce is diffuse rather than mirror-like.</div>
+      <div id="surfList"></div>
+      <hr>
+      <h3>Apply to every wall</h3>
+      <select id="allMat"><option value="">— pick a material —</option></select>
+    </section>
+
+    <section class="pane" id="pane-analyse">
+      <h3>Trace</h3>
+      <div class="row"><label>Rays</label><input type="range" id="rayRange" min="500" max="24000" step="500" value="6000"><output id="rayOut">6000</output></div>
+      <div class="row"><label>Max bounces</label><input type="range" id="ordRange" min="4" max="120" step="1" value="48"><output id="ordOut">48</output></div>
+      <div class="row"><label>Air loss</label><input type="range" id="airRange" min="0" max="2" step="0.05" value="1"><output id="airOut">1.00×</output></div>
+      <div class="flex"><button class="go" id="runBtn2">▶ Trace rays</button></div>
+      <div class="bar"><i id="progBar"></i></div>
+      <div class="note" id="traceNote">Not traced yet.</div>
+      <hr>
+      <h3>Energy decay</h3>
+      <canvas class="plot" id="decayCv"></canvas>
+      <div class="note" style="margin-bottom:12px">Schroeder curves, 0 → −60 dB. <span style="color:#7dd3fc">low</span> · <span style="color:#34d399">mid</span> · <span style="color:#fb7185">high</span></div>
+      <h3>Metrics</h3>
+      <table class="m" id="metrics"></table>
+      <hr>
+      <h3>Impulse response</h3>
+      <canvas class="plot" id="irCv"></canvas>
+      <div class="note" id="irNote">Trace the room to build an impulse response.</div>
+    </section>
+
+    <section class="pane" id="pane-aud">
+      <h3>Test signal</h3>
+      <div class="chips" id="srcChips"></div>
+      <div class="row" style="margin-top:12px"><label>Reverb</label><input type="range" id="wetRange" min="0" max="100" step="1" value="60"><output id="wetOut">60 %</output></div>
+      <div class="row"><label>Level</label><input type="range" id="volRange" min="0" max="100" step="1" value="80"><output id="volOut">80 %</output></div>
+      <div class="flex">
+        <button class="pri" id="playBtn2">♪ Play</button>
+        <button class="sm" id="loopBtn" aria-pressed="false">Loop</button>
+        <button class="sm" id="stopBtn">Stop</button>
+      </div>
+      <div class="note" style="margin-top:10px">Everything you hear is synthesised in the page and convolved with the impulse response your trace produced — no samples, no network.</div>
+      <hr>
+      <h3>Export</h3>
+      <div class="flex">
+        <button class="sm" id="irWav">IR .wav</button>
+        <button class="sm" id="mixWav">Rendered .wav</button>
+      </div>
+      <div class="note" style="margin-top:10px">The IR is a true stereo file (ears 17 cm apart, so it carries the arrival-time difference) — drop it into any convolution reverb.</div>
+    </section>
+  </aside>
+</main>
+</div>
+<div id="toast"></div>
+<script>
+'use strict';
+/* ============================ Chamber — Room Acoustics Studio ============================
+   Geometry: a polygon floorplan extruded to a ceiling height. Rays are traced in 3D
+   (vertical walls + floor + ceiling), energy is collected in a 3-band / 2-ear histogram
+   with the "diffuse rain" receiver, and the histogram is turned into a stereo impulse
+   response by shaping filtered noise with its own decay envelope.
+   ======================================================================================= */
+
+const C_AIR = 343;                 // m/s
+const BANDS = ['low', 'mid', 'high'];
+const BAND_LABEL = ['125 Hz', '1 kHz', '4 kHz'];
+const BAND_COLOR = ['#7dd3fc', '#34d399', '#fb7185'];
+const AIR_M = [0.0004, 0.0019, 0.0092];   // 1/m, air attenuation per band
+const EAR_SEP = 0.085;             // half the distance between the ears
+const RECV_AREA = 0.012;           // m², equivalent receiver area
+const BIN_MS = 1;                  // histogram resolution
+
+const MATS = [
+  { n: 'Painted concrete', a: [0.02, 0.03, 0.04], s: 0.05, c: '#9aa6b8' },
+  { n: 'Brick, bare',      a: [0.03, 0.04, 0.07], s: 0.18, c: '#b08476' },
+  { n: 'Plaster',          a: [0.02, 0.05, 0.06], s: 0.08, c: '#c3c8d2' },
+  { n: 'Glazed tile',      a: [0.01, 0.02, 0.02], s: 0.03, c: '#8fd4e8' },
+  { n: 'Glass',            a: [0.10, 0.04, 0.02], s: 0.04, c: '#a7d8ff' },
+  { n: 'Wood panel',       a: [0.15, 0.10, 0.08], s: 0.22, c: '#c79a5a' },
+  { n: 'Parquet floor',    a: [0.04, 0.07, 0.06], s: 0.12, c: '#d6a765' },
+  { n: 'Heavy carpet',     a: [0.08, 0.30, 0.60], s: 0.30, c: '#7f9c6a' },
+  { n: 'Curtain, pleated', a: [0.10, 0.45, 0.65], s: 0.45, c: '#6fae8d' },
+  { n: 'Acoustic panel',   a: [0.25, 0.75, 0.85], s: 0.55, c: '#35d39b' },
+  { n: 'Bass trap',        a: [0.70, 0.45, 0.30], s: 0.40, c: '#49b7d3' },
+  { n: 'Audience seating', a: [0.40, 0.70, 0.80], s: 0.65, c: '#8a7fd1' },
+  { n: 'Diffuser array',   a: [0.12, 0.14, 0.16], s: 0.90, c: '#d1b06a' },
+  { n: 'Open to the sky',  a: [1.00, 1.00, 1.00], s: 0.00, c: '#3a4661' }
+];
+
+const PRESETS = [
+  { k: 'studio',    t: 'Project studio',  d: '5.4 × 4.2 × 2.7 m', v: [[0,0],[5.4,0],[5.4,4.2],[0,4.2]], h: 2.7, w: 2, f: 7, c: 9,
+    src: [1.4, 3.2], lis: [3.9, 1.3], rot: 140, lz: 1.2, sz: 1.3 },
+  { k: 'bath',      t: 'Tiled bathroom',  d: '2.2 × 1.8 × 2.4 m', v: [[0,0],[2.2,0],[2.2,1.8],[0,1.8]], h: 2.4, w: 3, f: 3, c: 3,
+    src: [0.5, 1.3], lis: [1.7, 0.6], rot: 150, lz: 1.6, sz: 1.6 },
+  { k: 'hall',      t: 'Concert hall',    d: 'fan, 32 m, 14 m high', v: [[0,0],[18,0],[26,9],[26,30],[-8,30],[-8,9]], h: 14, w: 0, f: 11, c: 0,
+    src: [9, 2.5], lis: [9, 19], rot: 180, lz: 1.2, sz: 1.6 },
+  { k: 'nave',      t: 'Stone nave',      d: '14 × 56 × 19 m',    v: [[0,0],[14,0],[14,56],[0,56]], h: 19, w: 1, f: 2, c: 2,
+    src: [7, 6], lis: [7, 34], rot: 180, lz: 1.2, sz: 1.6 },
+  { k: 'club',      t: 'Jazz club',       d: 'splayed, 3.4 m high', v: [[0,0],[11,0],[12.5,4],[11,9.5],[2.5,9.5],[0,5]], h: 3.4, w: 5, f: 7, c: 8,
+    src: [2.4, 1.6], lis: [6.5, 6.4], rot: 205, lz: 1.1, sz: 1.3 },
+  { k: 'loft',      t: 'L-shaped loft',   d: 'concave, 3.1 m high', v: [[0,0],[9,0],[9,5],[5,5],[5,10],[0,10]], h: 3.1, w: 2, f: 7, c: 2,
+    src: [7.4, 1.4], lis: [1.6, 8.2], rot: 240, lz: 1.2, sz: 1.3 },
+  { k: 'tunnel',    t: 'Service tunnel',  d: '3.2 × 44 × 3.2 m',  v: [[0,0],[3.2,0],[3.2,44],[0,44]], h: 3.2, w: 0, f: 0, c: 0,
+    src: [1.6, 3], lis: [1.6, 15], rot: 180, lz: 1.5, sz: 1.5 },
+  { k: 'anechoic',  t: 'Anechoic room',   d: 'everything absorbs', v: [[0,0],[6,0],[6,6],[0,6]], h: 3.2, w: 9, f: 9, c: 9,
+    src: [1.6, 4.4], lis: [4.3, 1.8], rot: 140, lz: 1.3, sz: 1.3 }
+];
+
+/* ------------------------------- state ------------------------------- */
+const S = {
+  preset: 'studio',
+  verts: [], h: 2.7,
+  wm: [], fm: 7, cm: 9,
+  src: { x: 1.4, y: 3.2, z: 1.3 },
+  lis: { x: 3.9, y: 1.3, z: 1.2, rot: 140 },
+  rays: 6000, order: 48, air: 1,
+  sel: 0, tool: 'move', showRays: true,
+  signal: 'snare', wet: 0.6, vol: 0.8, loop: false
+};
+let RES = null;      // { hist, sr, direct, rt60, metrics, paths, irLen, maxMs }
+let IR = null;       // { L:Float32Array, R:Float32Array, sr }
+let busy = false;
+
+/* ------------------------------- helpers ------------------------------- */
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const fmt = (v, n = 2) => (Math.round(v * 10 ** n) / 10 ** n).toFixed(n);
+let toastT = 0;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2100);
+}
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ------------------------------- geometry ------------------------------- */
+function signedArea(v) {
+  let s = 0;
+  for (let i = 0; i < v.length; i++) { const a = v[i], b = v[(i + 1) % v.length]; s += a.x * b.y - b.x * a.y; }
+  return s / 2;
+}
+function makeCCW() {
+  if (signedArea(S.verts) < 0) { S.verts.reverse(); S.wm.reverse(); }
+}
+function walls() {
+  const out = [], v = S.verts, n = v.length;
+  for (let i = 0; i < n; i++) {
+    const a = v[i], b = v[(i + 1) % n];
+    const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1e-9;
+    out.push({ i, a, b, nx: -dy / L, ny: dx / L, len: L, mat: S.wm[i] | 0 });
+  }
+  return out;
+}
+function floorArea() { return Math.abs(signedArea(S.verts)); }
+function volume() { return floorArea() * S.h; }
+function inside(x, y) {
+  const v = S.verts; let c = false;
+  for (let i = 0, j = v.length - 1; i < v.length; j = i++) {
+    if ((v[i].y > y) !== (v[j].y > y) &&
+        x < (v[j].x - v[i].x) * (y - v[i].y) / (v[j].y - v[i].y) + v[i].x) c = !c;
+  }
+  return c;
+}
+function bbox() {
+  const v = S.verts;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of v) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+}
+// nearest wall along a 2D ray (direction need not be unit; t is in units of |dir|)
+function hitWall(W, px, py, dx, dy) {
+  let best = Infinity, hit = null;
+  for (const e of W) {
+    const ex = e.b.x - e.a.x, ey = e.b.y - e.a.y;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((e.a.x - px) * ey - (e.a.y - py) * ex) / den;
+    if (t <= 1e-7 || t >= best) continue;
+    const u = (dx * (e.a.y - py) - dy * (e.a.x - px)) / den;
+    if (u < -1e-9 || u > 1 + 1e-9) continue;
+    best = t; hit = e;
+  }
+  return { t: best, e: hit };
+}
+function visible(W, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  for (const e of W) {
+    const ex = e.b.x - e.a.x, ey = e.b.y - e.a.y;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((e.a.x - ax) * ey - (e.a.y - ay) * ex) / den;
+    if (t <= 1e-5 || t >= 1 - 1e-5) continue;
+    const u = (dx * (e.a.y - ay) - dy * (e.a.x - ax)) / den;
+    if (u > 1e-7 && u < 1 - 1e-7) return false;
+  }
+  return true;
+}
+function ears() {
+  const r = S.lis.rot * Math.PI / 180;
+  // facing vector, ears at ±90°
+  const fx = Math.sin(r), fy = Math.cos(r);
+  const ex = fy, ey = -fx;            // right-hand perpendicular
+  return [
+    { x: S.lis.x - ex * EAR_SEP, y: S.lis.y - ey * EAR_SEP, z: S.lis.z, ox: -ex, oy: -ey },
+    { x: S.lis.x + ex * EAR_SEP, y: S.lis.y + ey * EAR_SEP, z: S.lis.z, ox: ex, oy: ey }
+  ];
+}
+function sabineRT() {
+  const W = walls(), A = floorArea(), V = volume();
+  const out = [0, 0, 0];
+  for (let b = 0; b < 3; b++) {
+    let sa = 0;
+    for (const e of W) sa += e.len * S.h * MATS[e.mat].a[b];
+    sa += A * MATS[S.fm].a[b] + A * MATS[S.cm].a[b];
+    const m = AIR_M[b] * S.air;
+    out[b] = sa > 0 ? 0.161 * V / (sa + 4 * m * V) : 20;
+  }
+  return out;
+}
+
+/* ------------------------------- presets / state io ------------------------------- */
+function loadPreset(k) {
+  const p = PRESETS.find(x => x.k === k) || PRESETS[0];
+  S.preset = p.k;
+  S.verts = p.v.map(([x, y]) => ({ x, y }));
+  S.h = p.h; S.wm = p.v.map(() => p.w); S.fm = p.f; S.cm = p.c;
+  S.src = { x: p.src[0], y: p.src[1], z: p.sz };
+  S.lis = { x: p.lis[0], y: p.lis[1], z: p.lz, rot: p.rot };
+  S.sel = 0; makeCCW(); RES = null; IR = null;
+}
+function snapshot() {
+  return {
+    v: S.verts.map(p => [+fmt(p.x, 3), +fmt(p.y, 3)]), h: +fmt(S.h, 2),
+    wm: S.wm.slice(), fm: S.fm, cm: S.cm,
+    s: [+fmt(S.src.x, 2), +fmt(S.src.y, 2), +fmt(S.src.z, 2)],
+    l: [+fmt(S.lis.x, 2), +fmt(S.lis.y, 2), +fmt(S.lis.z, 2), S.lis.rot],
+    r: S.rays, o: S.order, a: +fmt(S.air, 2), p: S.preset
+  };
+}
+function restore(o) {
+  if (!o || !Array.isArray(o.v) || o.v.length < 3) return false;
+  S.verts = o.v.map(a => ({ x: +a[0], y: +a[1] }));
+  S.h = clamp(+o.h || 2.8, 2, 24);
+  S.wm = (o.wm || []).map(m => clamp(m | 0, 0, MATS.length - 1));
+  while (S.wm.length < S.verts.length) S.wm.push(0);
+  S.wm.length = S.verts.length;
+  S.fm = clamp((o.fm | 0), 0, MATS.length - 1);
+  S.cm = clamp((o.cm | 0), 0, MATS.length - 1);
+  if (o.s) S.src = { x: +o.s[0], y: +o.s[1], z: clamp(+o.s[2] || 1.4, .3, 6) };
+  if (o.l) S.lis = { x: +o.l[0], y: +o.l[1], z: clamp(+o.l[2] || 1.2, .3, 6), rot: +o.l[3] || 0 };
+  S.rays = clamp(o.r | 0 || 6000, 500, 24000);
+  S.order = clamp(o.o | 0 || 48, 4, 120);
+  S.air = clamp(+o.a, 0, 2); if (!isFinite(S.air)) S.air = 1;
+  S.preset = o.p || 'custom';
+  S.sel = 0; makeCCW(); RES = null; IR = null;
+  return true;
+}
+const LS_ROOMS = 'chamber_rooms_v1', LS_LAST = 'chamber_last_v1';
+function lsGet(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } }
+
+/* ------------------------------- plan view ------------------------------- */
+const cv = $('plan'), ctx = cv.getContext('2d');
+let VIEW = { k: 40, ox: 0, oy: 0, cw: 0, ch: 0, zoom: 1 };
+let anim = { on: false, t: 0, dur: 1 };
+let pulse = 0;
+
+function fitView() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect();
+  VIEW.cw = Math.max(80, r.width); VIEW.ch = Math.max(80, r.height);
+  cv.width = Math.round(VIEW.cw * dpr); cv.height = Math.round(VIEW.ch * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const b = bbox(), pad = 52;
+  const k = Math.min((VIEW.cw - pad * 2) / Math.max(b.w, .5), (VIEW.ch - pad * 2) / Math.max(b.h, .5));
+  VIEW.k = k * VIEW.zoom;
+  VIEW.ox = VIEW.cw / 2 - (b.x0 + b.w / 2) * VIEW.k;
+  VIEW.oy = VIEW.ch / 2 + (b.y0 + b.h / 2) * VIEW.k;
+}
+const toSX = x => VIEW.ox + x * VIEW.k;
+const toSY = y => VIEW.oy - y * VIEW.k;
+const toMX = sx => (sx - VIEW.ox) / VIEW.k;
+const toMY = sy => (VIEW.oy - sy) / VIEW.k;
+
+function draw() {
+  const W = walls(), b = bbox();
+  ctx.clearRect(0, 0, VIEW.cw, VIEW.ch);
+
+  // grid
+  let step = 1;
+  while (step * VIEW.k < 26) step *= step === 1 ? 2 : (step === 2 ? 2.5 : 2);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(125,211,252,.07)';
+  ctx.beginPath();
+  for (let x = Math.floor(b.x0 / step) * step; x <= b.x1 + step; x += step) {
+    const sx = toSX(x); ctx.moveTo(sx, 0); ctx.lineTo(sx, VIEW.ch);
+  }
+  for (let y = Math.floor(b.y0 / step) * step; y <= b.y1 + step; y += step) {
+    const sy = toSY(y); ctx.moveTo(0, sy); ctx.lineTo(VIEW.cw, sy);
+  }
+  ctx.stroke();
+
+  // floor
+  ctx.beginPath();
+  S.verts.forEach((p, i) => i ? ctx.lineTo(toSX(p.x), toSY(p.y)) : ctx.moveTo(toSX(p.x), toSY(p.y)));
+  ctx.closePath();
+  const g = ctx.createLinearGradient(0, 0, 0, VIEW.ch);
+  g.addColorStop(0, 'rgba(23,34,54,.92)'); g.addColorStop(1, 'rgba(13,19,31,.92)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = 'rgba(125,211,252,.05)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = Math.floor(b.x0 / step) * step; x <= b.x1 + step; x += step / 2) {
+    const sx = toSX(x); ctx.moveTo(sx, 0); ctx.lineTo(sx, VIEW.ch);
+  }
+  ctx.stroke(); ctx.restore();
+
+  // rays
+  if (S.showRays && RES && RES.paths.length) drawRays();
+
+  // walls
+  for (const e of W) {
+    const m = MATS[e.mat];
+    const sel = e.i === S.sel;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = m.c;
+    ctx.globalAlpha = sel ? 1 : .85;
+    ctx.lineWidth = sel ? 7 : 4.5;
+    ctx.beginPath(); ctx.moveTo(toSX(e.a.x), toSY(e.a.y)); ctx.lineTo(toSX(e.b.x), toSY(e.b.y)); ctx.stroke();
+    ctx.globalAlpha = 1;
+    // absorbency ticks pointing inward
+    const nTick = Math.max(2, Math.round(e.len * VIEW.k / 16));
+    const al = m.a[1];
+    if (al > 0.12) {
+      ctx.strokeStyle = m.c; ctx.globalAlpha = .4; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (let i = 0; i < nTick; i++) {
+        const u = (i + .5) / nTick;
+        const x = e.a.x + (e.b.x - e.a.x) * u, y = e.a.y + (e.b.y - e.a.y) * u;
+        const L = 4 + al * 12;
+        ctx.moveTo(toSX(x), toSY(y));
+        ctx.lineTo(toSX(x) + e.nx * L, toSY(y) - e.ny * L);
+      }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    if (e.len * VIEW.k > 46) {
+      const mx = (e.a.x + e.b.x) / 2, my = (e.a.y + e.b.y) / 2;
+      ctx.fillStyle = sel ? '#dff0ff' : 'rgba(180,196,222,.6)';
+      ctx.font = '600 10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('W' + (e.i + 1), toSX(mx) + e.nx * -13, toSY(my) + e.ny * 13);
+    }
+  }
+
+  // corners
+  if (S.tool !== 'wall') {
+    for (const p of S.verts) {
+      const sx = toSX(p.x), sy = toSY(p.y);
+      ctx.beginPath(); ctx.arc(sx, sy, 5.5, 0, 7);
+      ctx.fillStyle = '#0b1220'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#64748b'; ctx.stroke();
+    }
+  }
+
+  drawListener(); drawSource();
+
+  // scale bar
+  const barM = step, px = barM * VIEW.k;
+  ctx.strokeStyle = 'rgba(200,214,235,.5)'; ctx.lineWidth = 1.5;
+  const bx = VIEW.cw - 20 - px, by = VIEW.ch - 22;
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + px, by);
+  ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by + 4);
+  ctx.moveTo(bx + px, by - 4); ctx.lineTo(bx + px, by + 4); ctx.stroke();
+  ctx.fillStyle = 'rgba(200,214,235,.6)'; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText(barM + ' m', bx + px / 2, by - 8);
+}
+
+function drawRays() {
+  const paths = RES.paths;
+  const tMax = anim.on ? anim.t : Infinity;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < paths.length; i++) {
+    const p = paths[i];
+    const hue = 38 + (i % 7) * 6;
+    for (let j = 1; j < p.length; j++) {
+      const a = p[j - 1], c = p[j];
+      if (a.t > tMax) break;
+      let x = c.x, y = c.y, e = c.e;
+      if (c.t > tMax) {
+        const u = (tMax - a.t) / Math.max(1e-6, c.t - a.t);
+        x = a.x + (c.x - a.x) * u; y = a.y + (c.y - a.y) * u; e = a.e + (c.e - a.e) * u;
+      }
+      const al = clamp(0.1 + e * 1.6, 0.02, 0.5);
+      ctx.strokeStyle = `hsla(${hue},92%,${58 + e * 18}%,${al})`;
+      ctx.beginPath(); ctx.moveTo(toSX(a.x), toSY(a.y)); ctx.lineTo(toSX(x), toSY(y)); ctx.stroke();
+      if (c.t > tMax) {
+        ctx.fillStyle = `hsla(${hue},95%,72%,.85)`;
+        ctx.beginPath(); ctx.arc(toSX(x), toSY(y), 1.8, 0, 7); ctx.fill();
+        break;
+      }
+    }
+  }
+}
+
+function drawSource() {
+  const sx = toSX(S.src.x), sy = toSY(S.src.y);
+  if (pulse > 0) {
+    for (let i = 0; i < 3; i++) {
+      const ph = (pulse + i / 3) % 1;
+      ctx.beginPath(); ctx.arc(sx, sy, 9 + ph * 46, 0, 7);
+      ctx.strokeStyle = `rgba(251,191,36,${(1 - ph) * .35})`; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+  ctx.beginPath(); ctx.arc(sx, sy, 9, 0, 7);
+  const g = ctx.createRadialGradient(sx - 2, sy - 3, 1, sx, sy, 11);
+  g.addColorStop(0, '#fff3cd'); g.addColorStop(1, '#f59e0b');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = '#0b1220'; ctx.stroke();
+  ctx.fillStyle = 'rgba(251,191,36,.85)'; ctx.font = '600 10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('S ' + fmt(S.src.z, 1) + 'm', sx, sy - 15);
+}
+
+function drawListener() {
+  const sx = toSX(S.lis.x), sy = toSY(S.lis.y);
+  const r = S.lis.rot * Math.PI / 180;
+  const fx = Math.sin(r), fy = Math.cos(r);
+  const E = ears();
+  // line of sight to source
+  ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(125,211,252,.35)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(toSX(S.src.x), toSY(S.src.y)); ctx.stroke();
+  ctx.setLineDash([]);
+  // head
+  ctx.beginPath(); ctx.arc(sx, sy, 10, 0, 7);
+  ctx.fillStyle = '#0d1a2b'; ctx.fill();
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#7dd3fc'; ctx.stroke();
+  // nose handle
+  const nx = sx + fx * 22, ny = sy - fy * 22;
+  ctx.beginPath(); ctx.moveTo(sx + fx * 10, sy - fy * 10); ctx.lineTo(nx, ny);
+  ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(nx, ny, 4.5, 0, 7); ctx.fillStyle = '#7dd3fc'; ctx.fill();
+  // ears
+  for (const e of E) {
+    ctx.beginPath(); ctx.arc(toSX(e.x), toSY(e.y), 3, 0, 7);
+    ctx.fillStyle = '#bae6fd'; ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(125,211,252,.85)'; ctx.font = '600 10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('L ' + fmt(S.lis.z, 1) + 'm', sx, sy + 22);
+}
+
+let rafId = 0;
+function loop(ts) {
+  rafId = 0;
+  let again = false;
+  if (anim.on) {
+    anim.t += 0.022;
+    if (anim.t > anim.dur) { anim.on = false; anim.t = anim.dur; }
+    again = anim.on;
+  }
+  if (pulse > 0) { pulse = (pulse + 0.012) % 1; again = true; }
+  draw();
+  if (again) rafId = requestAnimationFrame(loop);
+}
+function kick() { if (!rafId) rafId = requestAnimationFrame(loop); }
+
+/* ------------------------------- pointer interaction ------------------------------- */
+let drag = null;
+function pointOf(ev) {
+  const r = cv.getBoundingClientRect();
+  return { sx: ev.clientX - r.left, sy: ev.clientY - r.top };
+}
+cv.addEventListener('pointerdown', ev => {
+  const { sx, sy } = pointOf(ev);
+  const mx = toMX(sx), my = toMY(sy);
+  cv.setPointerCapture(ev.pointerId);
+  const near = (x, y, px = 16) => Math.hypot(toSX(x) - sx, toSY(y) - sy) < px;
+
+  if (S.tool === 'wall') { pickWall(mx, my); return; }
+  if (S.tool === 'del') {
+    if (S.verts.length > 3) {
+      for (let i = 0; i < S.verts.length; i++) if (near(S.verts[i].x, S.verts[i].y, 18)) {
+        S.verts.splice(i, 1); S.wm.splice(i, 1); S.sel = 0; invalidate(); return;
+      }
+    } else toast('A room needs at least three corners.');
+    return;
+  }
+  if (S.tool === 'add') {
+    const W = walls(); let best = null, bd = 1e9;
+    for (const e of W) {
+      const d = segDist(mx, my, e);
+      if (d.d < bd) { bd = d.d; best = { e, p: d.p }; }
+    }
+    if (best && bd * VIEW.k < 40) {
+      S.verts.splice(best.e.i + 1, 0, { x: best.p.x, y: best.p.y });
+      S.wm.splice(best.e.i + 1, 0, best.e.mat);
+      invalidate();
+    } else toast('Click nearer a wall to add a corner.');
+    return;
+  }
+  // move tool
+  const r = S.lis.rot * Math.PI / 180;
+  const nx = S.lis.x + Math.sin(r) * 22 / VIEW.k, ny = S.lis.y + Math.cos(r) * 22 / VIEW.k;
+  if (near(nx, ny, 18)) { drag = { k: 'rot' }; return; }
+  if (near(S.src.x, S.src.y, 18)) { drag = { k: 'src' }; return; }
+  if (near(S.lis.x, S.lis.y, 18)) { drag = { k: 'lis' }; return; }
+  for (let i = 0; i < S.verts.length; i++) if (near(S.verts[i].x, S.verts[i].y, 18)) { drag = { k: 'v', i }; return; }
+  pickWall(mx, my);
+});
+cv.addEventListener('pointermove', ev => {
+  if (!drag) return;
+  const { sx, sy } = pointOf(ev);
+  const mx = toMX(sx), my = toMY(sy);
+  if (drag.k === 'rot') {
+    const rot = Math.round(Math.atan2(mx - S.lis.x, my - S.lis.y) * 180 / Math.PI);
+    if (rot === S.lis.rot) return;
+    S.lis.rot = rot; drag.moved = true;
+    $('rotRange').value = S.lis.rot; $('rotOut').textContent = S.lis.rot + '°';
+    RES = null; IR = null; draw(); return;
+  }
+  if (drag.k === 'src' || drag.k === 'lis') {
+    if (!inside(mx, my)) return;
+    const o = drag.k === 'src' ? S.src : S.lis;
+    if (Math.hypot(o.x - mx, o.y - my) * VIEW.k < 1.5) return;
+    o.x = mx; o.y = my; drag.moved = true; softInvalidate(); return;
+  }
+  if (drag.k === 'v') {
+    const old = { ...S.verts[drag.i] };
+    S.verts[drag.i].x = Math.round(mx * 20) / 20; S.verts[drag.i].y = Math.round(my * 20) / 20;
+    if (Math.abs(signedArea(S.verts)) < 0.4 || !inside(S.src.x, S.src.y) || !inside(S.lis.x, S.lis.y)) {
+      S.verts[drag.i] = old; return;
+    }
+    if (old.x === S.verts[drag.i].x && old.y === S.verts[drag.i].y) return;
+    drag.moved = true; fitView(); softInvalidate();
+  }
+});
+function endDrag() {
+  if (!drag) return;
+  const moved = drag.moved;
+  drag = null;
+  if (moved) invalidate(); else draw();
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  VIEW.zoom = clamp(VIEW.zoom * (ev.deltaY < 0 ? 1.1 : 1 / 1.1), 0.6, 4);
+  $('scRange').value = Math.round(VIEW.zoom * 100); $('scOut').textContent = Math.round(VIEW.zoom * 100) + ' %';
+  fitView(); draw();
+}, { passive: false });
+
+function segDist(x, y, e) {
+  const ex = e.b.x - e.a.x, ey = e.b.y - e.a.y;
+  const L2 = ex * ex + ey * ey || 1e-9;
+  let u = ((x - e.a.x) * ex + (y - e.a.y) * ey) / L2;
+  u = clamp(u, 0, 1);
+  const p = { x: e.a.x + ex * u, y: e.a.y + ey * u };
+  return { d: Math.hypot(x - p.x, y - p.y), p, u };
+}
+function pickWall(mx, my) {
+  const W = walls(); let bi = -1, bd = 1e9;
+  for (const e of W) { const d = segDist(mx, my, e).d; if (d < bd) { bd = d; bi = e.i; } }
+  if (bi >= 0 && bd * VIEW.k < 44) {
+    S.sel = bi; renderSurfaces(); draw();
+    const el = document.querySelector('.surf[data-w="' + bi + '"]');
+    if (el && $('pane-surf').classList.contains('on')) el.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+/* ------------------------------- ray tracing ------------------------------- */
+function traceRoom(done) {
+  if (busy) return;
+  busy = true;
+  const W = walls(), E = ears();
+  const sab = sabineRT();
+  const maxMs = Math.round(clamp(Math.max(sab[0], sab[1], sab[2]) * 1500, 280, 6200));
+  const nb = Math.ceil(maxMs / BIN_MS) + 2;
+  const hist = [0, 1, 2].map(() => [new Float32Array(nb), new Float32Array(nb)]);
+  const direct = [null, null];
+  const paths = [];
+  const N = S.rays, maxO = S.order;
+  const rnd = mulberry(20261029);
+  const air = AIR_M.map(m => m * S.air);
+  const fA = MATS[S.fm].a, fS = MATS[S.fm].s, cA = MATS[S.cm].a, cS = MATS[S.cm].s;
+  const shade = (c, b) => b === 0 ? 1 : (b === 1 ? 0.84 + 0.16 * c : 0.58 + 0.42 * c);
+
+  // direct sound
+  for (let ear = 0; ear < 2; ear++) {
+    const q = E[ear];
+    if (!visible(W, S.src.x, S.src.y, q.x, q.y)) continue;
+    const dx = q.x - S.src.x, dy = q.y - S.src.y, dz = q.z - S.src.z;
+    const d = Math.hypot(dx, dy, dz) || 0.05;
+    const c = -(dx / d * q.ox + dy / d * q.oy);
+    const e = [0, 0, 0];
+    for (let b = 0; b < 3; b++) e[b] = RECV_AREA / (4 * Math.PI * d * d) * Math.exp(-air[b] * d) * shade(c, b);
+    direct[ear] = { t: d / C_AIR, e };
+  }
+
+  let ray = 0;
+  const E0 = 1 / N;
+  const chunk = Math.max(120, Math.round(N / 40));
+
+  function step() {
+    const until = Math.min(N, ray + chunk);
+    for (; ray < until; ray++) {
+      // random direction on the sphere
+      const u = rnd() * 2 - 1, th = rnd() * Math.PI * 2, sr2 = Math.sqrt(1 - u * u);
+      let dx = sr2 * Math.cos(th), dy = sr2 * Math.sin(th), dz = u;
+      let px = S.src.x, py = S.src.y, pz = S.src.z;
+      let e0 = E0, e1 = E0, e2 = E0, len = 0;
+      const rec = paths.length < 56 && ray % Math.max(1, Math.floor(N / 56)) === 0;
+      const path = rec ? [{ x: px, y: py, t: 0, e: 1 }] : null;
+
+      for (let o = 0; o < maxO; o++) {
+        // nearest surface
+        const hw = hitWall(W, px, py, dx, dy);
+        let s = hw.t, kind = 0, wall = hw.e;
+        if (dz < -1e-9) { const sf = -pz / dz; if (sf > 1e-7 && sf < s) { s = sf; kind = 1; } }
+        if (dz > 1e-9) { const sc = (S.h - pz) / dz; if (sc > 1e-7 && sc < s) { s = sc; kind = 2; } }
+        if (!isFinite(s) || s > 1e5) break;
+
+        px += dx * s; py += dy * s; pz += dz * s; len += s;
+        const tNow = len / C_AIR;
+        if (tNow * 1000 > maxMs) { if (path) path.push({ x: px, y: py, t: tNow, e: 0 }); break; }
+
+        let nx, ny, nz, alpha, scat;
+        if (kind === 0) { nx = wall.nx; ny = wall.ny; nz = 0; alpha = MATS[wall.mat].a; scat = MATS[wall.mat].s; }
+        else if (kind === 1) { nx = 0; ny = 0; nz = 1; alpha = fA; scat = fS; pz = 0; }
+        else { nx = 0; ny = 0; nz = -1; alpha = cA; scat = cS; pz = S.h; }
+
+        // absorb
+        e0 *= (1 - alpha[0]); e1 *= (1 - alpha[1]); e2 *= (1 - alpha[2]);
+        const ea = [e0 * Math.exp(-air[0] * len), e1 * Math.exp(-air[1] * len), e2 * Math.exp(-air[2] * len)];
+        if (path) path.push({ x: px, y: py, t: tNow, e: clamp(ea[1] / E0, 0, 1) });
+        if (ea[0] + ea[1] + ea[2] < 1e-9 * E0) break;
+
+        // diffuse rain to both ears
+        for (let ear = 0; ear < 2; ear++) {
+          const q = E[ear];
+          const rx = q.x - px, ry = q.y - py, rz = q.z - pz;
+          const d2 = rx * rx + ry * ry + rz * rz;
+          const d = Math.sqrt(d2) || 0.05;
+          const cosS = (rx * nx + ry * ny + rz * nz) / d;
+          if (cosS <= 0.001) continue;
+          if (!visible(W, px + nx * 1e-3, py + ny * 1e-3, q.x, q.y)) continue;
+          const cosE = -(rx / d * q.ox + ry / d * q.oy);
+          const bin = ((len + d) / C_AIR * 1000 / BIN_MS) | 0;
+          if (bin >= nb) continue;
+          const geo = cosS * RECV_AREA / (Math.PI * d2);
+          for (let b = 0; b < 3; b++) {
+            hist[b][ear][bin] += ea[b] * geo * Math.exp(-air[b] * d) * shade(cosE, b);
+          }
+        }
+
+        // next direction: mirror or diffuse
+        if (rnd() < scat) {
+          // cosine-weighted hemisphere about n
+          const r1 = rnd(), r2 = rnd() * Math.PI * 2;
+          const sq = Math.sqrt(r1), cz = Math.sqrt(1 - r1);
+          let ux, uy, uz;
+          if (Math.abs(nz) < 0.9) { ux = -ny; uy = nx; uz = 0; } else { ux = 1; uy = 0; uz = 0; }
+          const ul = Math.hypot(ux, uy, uz); ux /= ul; uy /= ul; uz /= ul;
+          const vx = ny * uz - nz * uy, vy = nz * ux - nx * uz, vz = nx * uy - ny * ux;
+          const a = sq * Math.cos(r2), b2 = sq * Math.sin(r2);
+          dx = a * ux + b2 * vx + cz * nx;
+          dy = a * uy + b2 * vy + cz * ny;
+          dz = a * uz + b2 * vz + cz * nz;
+        } else {
+          const dot = dx * nx + dy * ny + dz * nz;
+          dx -= 2 * dot * nx; dy -= 2 * dot * ny; dz -= 2 * dot * nz;
+        }
+        const dl = Math.hypot(dx, dy, dz) || 1;
+        dx /= dl; dy /= dl; dz /= dl;
+        px += nx * 1e-4; py += ny * 1e-4; pz += nz * 1e-4;
+      }
+      if (path && path.length > 1) paths.push(path);
+    }
+    $('progBar').style.width = Math.round(ray / N * 100) + '%';
+    if (ray < N) { setTimeout(step, 0); return; }
+
+    RES = { hist, direct, nb, maxMs, paths, rays: N, order: maxO };
+    RES.metrics = computeMetrics();
+    IR = null;
+    busy = false;
+    $('progBar').style.width = '100%';
+    setTimeout(() => { $('progBar').style.width = '0%'; }, 700);
+    if (done) done();
+  }
+  $('progBar').style.width = '2%';
+  setTimeout(step, 16);
+}
+
+/* ------------------------------- metrics ------------------------------- */
+function schroeder(h, nb) {
+  const out = new Float32Array(nb);
+  let s = 0;
+  for (let i = nb - 1; i >= 0; i--) { s += h[i]; out[i] = s; }
+  const ref = out[0] || 1e-30;
+  for (let i = 0; i < nb; i++) out[i] = 10 * Math.log10(Math.max(out[i] / ref, 1e-13));
+  return out;
+}
+function fitRT(db, hiDb, loDb) {
+  let sx = 0, sy = 0, sxx = 0, sxy = 0, n = 0;
+  for (let i = 0; i < db.length; i++) {
+    const v = db[i];
+    if (v > hiDb || v < loDb || v < -119) continue;
+    const t = i * BIN_MS / 1000;
+    sx += t; sy += v; sxx += t * t; sxy += t * v; n++;
+  }
+  if (n < 6) return NaN;
+  const den = n * sxx - sx * sx;
+  if (Math.abs(den) < 1e-12) return NaN;
+  const slope = (n * sxy - sx * sy) / den;
+  if (slope >= -1e-6) return NaN;
+  return -60 / slope;
+}
+function computeMetrics() {
+  const nb = RES.nb;
+  const sum = [0, 1, 2].map(b => {
+    const h = new Float32Array(nb);
+    for (let i = 0; i < nb; i++) h[i] = RES.hist[b][0][i] + RES.hist[b][1][i];
+    for (let ear = 0; ear < 2; ear++) {
+      const d = RES.direct[ear];
+      if (d) { const bin = (d.t * 1000 / BIN_MS) | 0; if (bin < nb) h[bin] += d.e[b]; }
+    }
+    return h;
+  });
+  const broad = new Float32Array(nb);
+  for (let i = 0; i < nb; i++) broad[i] = sum[0][i] + sum[1][i] + sum[2][i];
+
+  const curves = sum.map(h => schroeder(h, nb));
+  const bb = schroeder(broad, nb);
+  const t0 = (() => {
+    const d = RES.direct[0] || RES.direct[1];
+    return d ? (d.t * 1000 / BIN_MS) | 0 : 0;
+  })();
+  const early = (h) => { let a = 0, b = 0; const cut = t0 + 50 / BIN_MS; for (let i = 0; i < nb; i++) (i <= cut ? a += h[i] : b += h[i]); return { a, b }; };
+  const eb = early(broad);
+  const rt = curves.map(c => fitRT(c, -5, -35));
+  const edt = curves.map(c => fitRT(c, 0, -10));
+  const sab = sabineRT();
+  return {
+    curves, bb, rt, edt,
+    rtBroad: fitRT(bb, -5, -35), edtBroad: fitRT(bb, 0, -10),
+    c50: 10 * Math.log10(Math.max(eb.a, 1e-30) / Math.max(eb.b, 1e-30)),
+    d50: 100 * eb.a / Math.max(eb.a + eb.b, 1e-30),
+    sab, t0
+  };
+}
+
+/* ------------------------------- IR synthesis ------------------------------- */
+function bqLP(f0, sr) {
+  const w = 2 * Math.PI * clamp(f0, 20, sr * .45) / sr, a = Math.sin(w) / (2 * Math.SQRT1_2), c = Math.cos(w);
+  const a0 = 1 + a;
+  return { b0: (1 - c) / 2 / a0, b1: (1 - c) / a0, b2: (1 - c) / 2 / a0, a1: -2 * c / a0, a2: (1 - a) / a0 };
+}
+function bqHP(f0, sr) {
+  const w = 2 * Math.PI * clamp(f0, 20, sr * .45) / sr, a = Math.sin(w) / (2 * Math.SQRT1_2), c = Math.cos(w);
+  const a0 = 1 + a;
+  return { b0: (1 + c) / 2 / a0, b1: -(1 + c) / a0, b2: (1 + c) / 2 / a0, a1: -2 * c / a0, a2: (1 - a) / a0 };
+}
+function runBq(buf, co) {
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const x = buf[i];
+    const y = co.b0 * x + co.b1 * x1 + co.b2 * x2 - co.a1 * y1 - co.a2 * y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = y; buf[i] = y;
+  }
+}
+function bandFilter(buf, b, sr) {
+  if (b === 0) { runBq(buf, bqLP(250, sr)); runBq(buf, bqLP(250, sr)); }
+  else if (b === 1) { runBq(buf, bqHP(250, sr)); runBq(buf, bqHP(250, sr)); runBq(buf, bqLP(2000, sr)); runBq(buf, bqLP(2000, sr)); }
+  else { runBq(buf, bqHP(2000, sr)); runBq(buf, bqHP(2000, sr)); }
+}
+let GAIN_CACHE = { sr: 0, g: null };
+function bandGains(sr) {
+  if (GAIN_CACHE.sr === sr) return GAIN_CACHE.g;
+  const rnd = mulberry(4242), n = 8192, g = [];
+  for (let b = 0; b < 3; b++) {
+    const t = new Float32Array(n);
+    for (let i = 0; i < n; i++) t[i] = rnd() * 2 - 1;
+    bandFilter(t, b, sr);
+    let s = 0; for (let i = 256; i < n; i++) s += t[i] * t[i];
+    const rms = Math.sqrt(s / (n - 256));
+    g.push(rms > 1e-6 ? 1 / rms : 1);
+  }
+  GAIN_CACHE = { sr, g };
+  return g;
+}
+function buildIR(sr) {
+  if (!RES) return null;
+  const nb = RES.nb, spb = sr * BIN_MS / 1000;
+  const len = Math.ceil(RES.maxMs / 1000 * sr) + 128;
+  const out = [new Float32Array(len), new Float32Array(len)];
+  const g = bandGains(sr);
+  const rnd = mulberry(99991);
+  const noise = [new Float32Array(len), new Float32Array(len)];
+  for (let i = 0; i < len; i++) { noise[0][i] = rnd() * 2 - 1; noise[1][i] = rnd() * 2 - 1; }
+  const tmp = new Float32Array(len);
+
+  for (let b = 0; b < 3; b++) {
+    for (let ear = 0; ear < 2; ear++) {
+      const h = RES.hist[b][ear];
+      // low frequencies stay correlated between the ears, highs decorrelate
+      const nA = noise[b === 0 ? 0 : ear];
+      for (let i = 0; i < len; i++) {
+        const x = i / spb, i0 = x | 0, f = x - i0;
+        const e0 = i0 < nb ? h[i0] : 0, e1 = i0 + 1 < nb ? h[i0 + 1] : 0;
+        const en = (e0 + (e1 - e0) * f) / spb;
+        tmp[i] = en > 0 ? nA[i] * Math.sqrt(en) * g[b] : 0;
+      }
+      bandFilter(tmp, b, sr);
+      const o = out[ear];
+      for (let i = 0; i < len; i++) o[i] += tmp[i];
+    }
+  }
+  // direct sound: a band-filtered impulse per band
+  for (let ear = 0; ear < 2; ear++) {
+    const d = RES.direct[ear];
+    if (!d) continue;
+    const n0 = Math.round(d.t * sr);
+    for (let b = 0; b < 3; b++) {
+      const amp = Math.sqrt(Math.max(d.e[b], 0)) * g[b];
+      if (!(amp > 0)) continue;
+      const k = new Float32Array(96); k[16] = amp;
+      bandFilter(k, b, sr);
+      for (let i = 0; i < 96; i++) {
+        const j = n0 + i - 16;
+        if (j >= 0 && j < len) out[ear][j] += k[i];
+      }
+    }
+  }
+  let peak = 1e-9;
+  for (let ear = 0; ear < 2; ear++) for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(out[ear][i]));
+  const sc = 0.97 / peak;
+  for (let ear = 0; ear < 2; ear++) for (let i = 0; i < len; i++) out[ear][i] *= sc;
+  IR = { L: out[0], R: out[1], sr, len };
+  return IR;
+}
+
+/* ------------------------------- test signals ------------------------------- */
+const SIGNALS = [
+  { k: 'impulse', t: 'Click' }, { k: 'snare', t: 'Snare' }, { k: 'pluck', t: 'Pluck' },
+  { k: 'chord', t: 'Pad chord' }, { k: 'voice', t: 'Voice' }, { k: 'loop', t: 'Drum loop' }
+];
+const sigCache = new Map();
+function makeSignal(kind, sr) {
+  const key = kind + '@' + sr;
+  if (sigCache.has(key)) return sigCache.get(key);
+  const rnd = mulberry(13131);
+  const dur = { impulse: .25, snare: .4, pluck: 1.4, chord: 2.6, voice: 1.0, loop: 3.6 }[kind] || 1;
+  const n = Math.ceil(dur * sr), x = new Float32Array(n);
+  const env = (t, a, d) => Math.min(1, t / a) * Math.exp(-t / d);
+
+  if (kind === 'impulse') {
+    for (let i = 0; i < n; i++) { const t = i / sr; x[i] = (rnd() * 2 - 1) * Math.exp(-t * 900); }
+    runBq(x, bqLP(9000, sr));
+  } else if (kind === 'snare') {
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      x[i] = (rnd() * 2 - 1) * env(t, .001, .075) * .8
+        + Math.sin(2 * Math.PI * 186 * t) * env(t, .001, .05) * .35
+        + Math.sin(2 * Math.PI * 330 * t) * env(t, .001, .03) * .2;
+    }
+    runBq(x, bqHP(170, sr));
+  } else if (kind === 'pluck') {
+    const f = 196, M = Math.round(sr / f), buf = new Float32Array(M);
+    for (let i = 0; i < M; i++) buf[i] = rnd() * 2 - 1;
+    let p = 0, last = 0;
+    for (let i = 0; i < n; i++) {
+      const v = (buf[p] + last) * 0.4985;
+      last = buf[p]; buf[p] = v; p = (p + 1) % M;
+      x[i] = v * Math.exp(-i / sr * 0.7);
+    }
+  } else if (kind === 'chord') {
+    const f = [146.8, 220, 261.6, 329.6];
+    for (let i = 0; i < n; i++) {
+      const t = i / sr; let s = 0;
+      for (let v = 0; v < f.length; v++) {
+        const ph = 2 * Math.PI * f[v] * t;
+        s += (Math.sin(ph) + .34 * Math.sin(ph * 2 + .4) + .16 * Math.sin(ph * 3)) * (1 + .04 * Math.sin(2 * Math.PI * (4.7 + v) * t));
+      }
+      const a = Math.min(1, t / .35) * Math.min(1, (dur - t) / .9);
+      x[i] = s / f.length * .55 * Math.max(0, a);
+    }
+  } else if (kind === 'voice') {
+    const F = [[620, 70], [1180, 90], [2600, 140]], G = [1, .5, .22];
+    for (let b = 0; b < F.length; b++) {
+      const t2 = new Float32Array(n);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        const f0 = 128 * (1 + .06 * Math.sin(2 * Math.PI * 4.5 * t)) * (1 - .18 * t);
+        ph += f0 / sr; if (ph >= 1) ph -= 1;
+        const glot = Math.max(0, Math.sin(Math.PI * ph) - .35);
+        t2[i] = glot * Math.min(1, t / .08) * Math.min(1, (dur - t) / .18);
+      }
+      const w = 2 * Math.PI * F[b][0] / sr, r = Math.exp(-Math.PI * F[b][1] / sr);
+      let y1 = 0, y2 = 0;
+      for (let i = 0; i < n; i++) {
+        const y = t2[i] * (1 - r) + 2 * r * Math.cos(w) * y1 - r * r * y2;
+        y2 = y1; y1 = y; x[i] += y * G[b];
+      }
+    }
+    let pk = 1e-6; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(x[i]));
+    for (let i = 0; i < n; i++) x[i] *= .8 / pk;
+  } else { // loop
+    const bpm = 96, beat = 60 / bpm;
+    const hit = (t0, kind2) => {
+      const i0 = Math.round(t0 * sr);
+      const L = Math.round((kind2 === 'k' ? .34 : kind2 === 's' ? .26 : .09) * sr);
+      for (let i = 0; i < L && i0 + i < n; i++) {
+        const t = i / sr; let v = 0;
+        if (kind2 === 'k') v = Math.sin(2 * Math.PI * (58 + 70 * Math.exp(-t * 36)) * t) * Math.exp(-t * 11) * .95;
+        else if (kind2 === 's') v = ((rnd() * 2 - 1) * .75 + Math.sin(2 * Math.PI * 196 * t) * .3) * env(t, .001, .055);
+        else v = (rnd() * 2 - 1) * env(t, .0005, .016) * .42;
+        x[i0 + i] += v;
+      }
+    };
+    for (let bar = 0; bar < 2; bar++) {
+      const t0 = bar * 4 * beat;
+      hit(t0, 'k'); hit(t0 + beat * 1.5, 'k'); hit(t0 + beat * 2.5, 'k');
+      hit(t0 + beat, 's'); hit(t0 + beat * 3, 's');
+      if (bar === 1) hit(t0 + beat * 3.75, 's');
+      for (let i = 0; i < 8; i++) hit(t0 + i * beat * .5, 'h');
+    }
+    const hp = new Float32Array(n); hp.set(x); runBq(hp, bqHP(30, sr));
+    x.set(hp);
+  }
+  let pk = 1e-6;
+  for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(x[i]));
+  if (pk > 0.9) { const g2 = 0.9 / pk; for (let i = 0; i < n; i++) x[i] *= g2; }
+  sigCache.set(key, x);
+  return x;
+}
+
+/* ------------------------------- audio graph ------------------------------- */
+let AC = null, G = null, playing = false, player = null;
+function ensureAudio() {
+  if (AC) return AC;
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) { toast('This browser has no Web Audio.'); return null; }
+  AC = new Ctor();
+  const inG = AC.createGain(), dry = AC.createGain(), wet = AC.createGain(),
+        conv = AC.createConvolver(), master = AC.createGain();
+  conv.normalize = false;
+  inG.connect(dry); dry.connect(master);
+  inG.connect(conv); conv.connect(wet); wet.connect(master);
+  master.connect(AC.destination);
+  G = { inG, dry, wet, conv, master };
+  applyMix();
+  return AC;
+}
+function applyMix() {
+  if (!G) return;
+  const w = S.wet;
+  G.dry.gain.value = Math.cos(w * Math.PI / 2);
+  G.wet.gain.value = Math.sin(w * Math.PI / 2) * 1.35;
+  G.master.gain.value = S.vol * 0.9;
+}
+function convBuffer(ctx, ir) {
+  // energy-normalise: a long tail must not be louder than a short one
+  let e = 0;
+  for (let i = 0; i < ir.len; i++) e += ir.L[i] * ir.L[i] + ir.R[i] * ir.R[i];
+  const g = 0.7 / Math.sqrt(Math.max(e, 1e-9));
+  const buf = ctx.createBuffer(2, ir.len, ctx.sampleRate);
+  const l = new Float32Array(ir.len), r = new Float32Array(ir.len);
+  for (let i = 0; i < ir.len; i++) { l[i] = ir.L[i] * g; r[i] = ir.R[i] * g; }
+  buf.copyToChannel(l, 0); buf.copyToChannel(r, 1);
+  return buf;
+}
+function loadConvolver() {
+  if (!AC || !RES) return false;
+  const ir = (IR && IR.sr === AC.sampleRate) ? IR : buildIR(AC.sampleRate);
+  if (!ir) return false;
+  G.conv.buffer = convBuffer(AC, ir);
+  return true;
+}
+function play() {
+  if (!RES) { toast('Trace the room first.'); return; }
+  const ac = ensureAudio();
+  if (!ac) return;
+  if (ac.state === 'suspended') ac.resume();
+  loadConvolver();
+  stop(true);
+  const sig = makeSignal(S.signal, ac.sampleRate);
+  const buf = ac.createBuffer(1, sig.length, ac.sampleRate);
+  buf.copyToChannel(sig, 0);
+  player = ac.createBufferSource();
+  player.buffer = buf; player.loop = S.loop;
+  if (S.loop) { player.loopStart = 0; player.loopEnd = buf.duration; }
+  player.connect(G.inG);
+  player.onended = () => { if (!S.loop) { playing = false; pulse = 0; draw(); } };
+  player.start();
+  playing = true; pulse = 0.001; kick();
+}
+function stop(silent) {
+  if (player) { try { player.onended = null; player.stop(); } catch (e) {} player.disconnect(); player = null; }
+  playing = false;
+  if (!silent) { pulse = 0; draw(); }
+}
+
+/* ------------------------------- WAV / export ------------------------------- */
+function encodeWav(chans, sr) {
+  const nch = chans.length, len = chans[0].length;
+  const bytes = 44 + len * nch * 2;
+  const ab = new ArrayBuffer(bytes), v = new DataView(ab);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, bytes - 8, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, nch, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * nch * 2, true); v.setUint16(32, nch * 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, len * nch * 2, true);
+  let o = 44;
+  for (let i = 0; i < len; i++) {
+    for (let c = 0; c < nch; c++) {
+      let s = clamp(chans[c][i], -1, 1);
+      v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2;
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+function download(blob, name) {
+  if (!blob || blob.size === 0) { toast('Nothing to export.'); return; }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast('Saved ' + name + ' (' + (blob.size / 1024 | 0) + ' kB)');
+}
+function exportIR() {
+  if (!RES) { toast('Trace the room first.'); return; }
+  const sr = AC ? AC.sampleRate : 44100;
+  const ir = (IR && IR.sr === sr) ? IR : buildIR(sr);
+  download(encodeWav([ir.L, ir.R], sr), 'chamber-ir-' + (S.preset || 'room') + '.wav');
+}
+function exportMix() {
+  if (!RES) { toast('Trace the room first.'); return; }
+  const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!Off) { toast('No OfflineAudioContext here.'); return; }
+  const sr = AC ? AC.sampleRate : 44100;
+  const ir = (IR && IR.sr === sr) ? IR : buildIR(sr);
+  const sig = makeSignal(S.signal, sr);
+  const total = sig.length + ir.len + Math.round(sr * .1);
+  const oc = new Off(2, total, sr);
+  const inG = oc.createGain(), dry = oc.createGain(), wet = oc.createGain(),
+        conv = oc.createConvolver(), master = oc.createGain();
+  conv.normalize = false;
+  conv.buffer = convBuffer(oc, ir);
+  dry.gain.value = Math.cos(S.wet * Math.PI / 2);
+  wet.gain.value = Math.sin(S.wet * Math.PI / 2) * 1.35;
+  master.gain.value = 0.9;
+  inG.connect(dry); dry.connect(master);
+  inG.connect(conv); conv.connect(wet); wet.connect(master);
+  master.connect(oc.destination);
+  const sb = oc.createBuffer(1, sig.length, sr);
+  sb.copyToChannel(sig, 0);
+  const sn = oc.createBufferSource(); sn.buffer = sb; sn.connect(inG); sn.start();
+  toast('Rendering…');
+  oc.startRendering().then(rb => {
+    const L = rb.getChannelData(0), R = rb.numberOfChannels > 1 ? rb.getChannelData(1) : L;
+    let pk = 1e-6; for (let i = 0; i < L.length; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
+    const sc = Math.min(1, 0.95 / pk);
+    const l2 = new Float32Array(L.length), r2 = new Float32Array(L.length);
+    for (let i = 0; i < L.length; i++) { l2[i] = L[i] * sc; r2[i] = R[i] * sc; }
+    download(encodeWav([l2, r2], sr), 'chamber-' + S.signal + '-' + (S.preset || 'room') + '.wav');
+  }).catch(() => toast('Render failed.'));
+}
+function exportJSON() {
+  const data = { app: 'Chamber', version: 1, room: snapshot(), materials: MATS.map(m => m.n) };
+  if (RES && RES.metrics) {
+    const m = RES.metrics;
+    data.acoustics = {
+      volume_m3: +fmt(volume(), 1), floor_m2: +fmt(floorArea(), 1),
+      rt60_bands_s: m.rt.map(v => isFinite(v) ? +fmt(v, 2) : null),
+      rt60_broadband_s: isFinite(m.rtBroad) ? +fmt(m.rtBroad, 2) : null,
+      edt_s: m.edt.map(v => isFinite(v) ? +fmt(v, 2) : null),
+      c50_db: +fmt(m.c50, 1), d50_pct: +fmt(m.d50, 1),
+      sabine_s: m.sab.map(v => +fmt(v, 2)), rays: RES.rays, bounces: RES.order
+    };
+  }
+  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    'chamber-' + (S.preset || 'room') + '.json');
+}
+function shareLink() {
+  const h = btoa(unescape(encodeURIComponent(JSON.stringify(snapshot())))).replace(/=+$/, '');
+  const url = location.origin + location.pathname + '#r=' + h;
+  history.replaceState(null, '', '#r=' + h);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => toast('Link copied — the room travels in the URL.'),
+      () => toast('Link is in the address bar.'));
+  } else toast('Link is in the address bar.');
+}
+
+/* ------------------------------- plots ------------------------------- */
+function sizePlot(c) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), r = c.getBoundingClientRect();
+  c.width = Math.max(40, Math.round(r.width * dpr));
+  c.height = Math.max(40, Math.round(r.height * dpr));
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+function drawDecay() {
+  const { g, w, h } = sizePlot($('decayCv'));
+  g.clearRect(0, 0, w, h);
+  if (!RES || !RES.metrics) {
+    g.fillStyle = '#44506b'; g.font = '11px system-ui'; g.textAlign = 'center';
+    g.fillText('no trace yet', w / 2, h / 2); return;
+  }
+  const m = RES.metrics;
+  const rtm = [m.rtBroad, ...m.rt].filter(isFinite);
+  const span = clamp((rtm.length ? Math.max(...rtm) : 1) * 1.25, .25, RES.maxMs / 1000);
+  const pad = { l: 26, r: 6, t: 6, b: 14 };
+  const X = t => pad.l + (t / span) * (w - pad.l - pad.r);
+  const Y = db => pad.t + (-db / 60) * (h - pad.t - pad.b);
+  g.strokeStyle = 'rgba(125,211,252,.12)'; g.lineWidth = 1; g.font = '9px system-ui';
+  g.fillStyle = '#51607d'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let db = 0; db >= -60; db -= 20) {
+    g.beginPath(); g.moveTo(pad.l, Y(db)); g.lineTo(w - pad.r, Y(db)); g.stroke();
+    g.fillText(db + '', pad.l - 4, Y(db));
+  }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  const tStep = span > 3 ? 1 : span > 1.2 ? .5 : span > .6 ? .2 : .1;
+  for (let t = 0; t <= span + 1e-6; t += tStep) {
+    g.strokeStyle = 'rgba(125,211,252,.08)';
+    g.beginPath(); g.moveTo(X(t), pad.t); g.lineTo(X(t), h - pad.b); g.stroke();
+    g.fillText(fmt(t, t < 1 ? 1 : 1) + 's', X(t), h - pad.b + 2);
+  }
+  for (let b = 0; b < 3; b++) {
+    const c = m.curves[b];
+    g.strokeStyle = BAND_COLOR[b]; g.lineWidth = 1.6; g.beginPath();
+    let started = false;
+    for (let i = 0; i < c.length; i++) {
+      const t = i * BIN_MS / 1000;
+      if (t > span) break;
+      const db = clamp(c[i], -62, 2);
+      if (!started) { g.moveTo(X(t), Y(db)); started = true; } else g.lineTo(X(t), Y(db));
+    }
+    g.stroke();
+  }
+  // T30 fit region marker
+  g.strokeStyle = 'rgba(232,238,252,.18)'; g.setLineDash([3, 3]);
+  g.beginPath(); g.moveTo(pad.l, Y(-5)); g.lineTo(w - pad.r, Y(-5));
+  g.moveTo(pad.l, Y(-35)); g.lineTo(w - pad.r, Y(-35)); g.stroke(); g.setLineDash([]);
+}
+function drawIR() {
+  const { g, w, h } = sizePlot($('irCv'));
+  g.clearRect(0, 0, w, h);
+  if (!RES) { g.fillStyle = '#44506b'; g.font = '11px system-ui'; g.textAlign = 'center'; g.fillText('no impulse response yet', w / 2, h / 2); return; }
+  const ir = (IR && IR.sr) ? IR : buildIR(AC ? AC.sampleRate : 44100);
+  const mid = h / 2;
+  g.strokeStyle = 'rgba(125,211,252,.14)'; g.beginPath(); g.moveTo(0, mid); g.lineTo(w, mid); g.stroke();
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ch ? ir.R : ir.L;
+    g.strokeStyle = ch ? 'rgba(244,114,182,.85)' : 'rgba(251,191,36,.85)';
+    g.lineWidth = 1;
+    g.beginPath();
+    const per = d.length / w;
+    for (let x = 0; x < w; x++) {
+      const i0 = Math.floor(x * per), i1 = Math.min(d.length, Math.floor((x + 1) * per));
+      let mx = 0;
+      for (let i = i0; i < i1; i++) { const a = Math.abs(d[i]); if (a > mx) mx = a; }
+      const amp = Math.pow(mx, .62) * (mid - 3);
+      g.moveTo(x + .5, mid - (ch ? -1 : 1) * amp * .98);
+      g.lineTo(x + .5, mid);
+    }
+    g.stroke();
+  }
+  g.fillStyle = '#51607d'; g.font = '9px system-ui'; g.textAlign = 'left';
+  g.fillText('L', 4, 10); g.fillText('R', 4, h - 4);
+  g.textAlign = 'right';
+  g.fillText(fmt(ir.len / ir.sr, 2) + ' s · ' + (ir.sr / 1000) + ' kHz stereo', w - 4, 10);
+}
+
+/* ------------------------------- panel rendering ------------------------------- */
+function matOptions(sel) {
+  return MATS.map((m, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${m.n} · α${fmt(m.a[1], 2)}</option>`).join('');
+}
+function renderPresets() {
+  $('presets').innerHTML = PRESETS.map(p =>
+    `<button data-preset="${p.k}"${p.k === S.preset ? ' style="border-color:#3d5a85;background:#17243a"' : ''}>${p.t}<small>${p.d}</small></button>`).join('');
+}
+function surfCard(key, label, mat, extra) {
+  const m = MATS[mat];
+  return `<div class="surf${key === 'w' + S.sel ? ' sel' : ''}" data-w="${key.startsWith('w') ? key.slice(1) : ''}" data-key="${key}">
+    <div class="hd"><span class="sw" style="background:${m.c}"></span><b>${label}</b><span class="len">${extra}</span></div>
+    <select data-mat="${key}">${matOptions(mat)}</select>
+    <div class="alpha">
+      ${m.a.map((v, i) => `<div>${BAND_LABEL[i]}<b>${fmt(v, 2)}</b></div>`).join('')}
+      <div>scatter<b>${fmt(m.s, 2)}</b></div>
+    </div></div>`;
+}
+function renderSurfaces() {
+  const W = walls(), A = floorArea();
+  let html = surfCard('c', 'Ceiling', S.cm, fmt(A, 1) + ' m²') + surfCard('f', 'Floor', S.fm, fmt(A, 1) + ' m²');
+  for (const e of W) html += surfCard('w' + e.i, 'Wall ' + (e.i + 1), e.mat, fmt(e.len, 2) + ' × ' + fmt(S.h, 1) + ' m');
+  $('surfList').innerHTML = html;
+}
+function renderSaved() {
+  const rooms = lsGet(LS_ROOMS, []);
+  $('savedWrap').innerHTML = rooms.length
+    ? rooms.map((r, i) => `<div class="saved"><span>${r.n}</span><button class="sm" data-load="${i}">Load</button><button class="sm ghost" data-del="${i}">✕</button></div>`).join('')
+    : '<div class="note" style="margin:0">No saved rooms yet. “Save room” keeps one in this browser.</div>';
+}
+function renderMetrics() {
+  const t = $('metrics');
+  if (!RES || !RES.metrics) { t.innerHTML = '<tr><td>—</td><td>trace the room</td></tr>'; return; }
+  const m = RES.metrics;
+  const cell = v => isFinite(v) ? '<b>' + fmt(v, 2) + '</b> s' : '—';
+  t.innerHTML = `
+    <tr><th>Quantity</th><th>125 Hz</th><th>1 kHz</th><th>4 kHz</th></tr>
+    <tr><td>RT60 (T30)</td><td>${cell(m.rt[0])}</td><td>${cell(m.rt[1])}</td><td>${cell(m.rt[2])}</td></tr>
+    <tr><td>EDT</td><td>${cell(m.edt[0])}</td><td>${cell(m.edt[1])}</td><td>${cell(m.edt[2])}</td></tr>
+    <tr><td>Sabine est.</td><td>${cell(m.sab[0])}</td><td>${cell(m.sab[1])}</td><td>${cell(m.sab[2])}</td></tr>
+    <tr><td>Broadband RT60</td><td colspan="3">${cell(m.rtBroad)}</td></tr>
+    <tr><td>Clarity C50</td><td colspan="3"><b>${fmt(m.c50, 1)}</b> dB · D50 <b>${fmt(m.d50, 0)}</b> %</td></tr>
+    <tr><td>Volume</td><td colspan="3"><b>${fmt(volume(), 1)}</b> m³ · floor <b>${fmt(floorArea(), 1)}</b> m²</td></tr>`;
+}
+function renderSignals() {
+  $('srcChips').innerHTML = SIGNALS.map(s =>
+    `<button data-sig="${s.k}" aria-pressed="${s.k === S.signal}">${s.t}</button>`).join('');
+}
+function updateHUD() {
+  $('hVol').textContent = fmt(volume(), volume() > 200 ? 0 : 1);
+  const rt = RES && RES.metrics && isFinite(RES.metrics.rt[1]) ? RES.metrics.rt[1] : sabineRT()[1];
+  $('hRt').textContent = fmt(rt, 2) + (RES ? '' : '*');
+  const E = ears();
+  const d = Math.hypot(E[0].x - S.src.x, E[0].y - S.src.y, E[0].z - S.src.z);
+  $('hDist').textContent = fmt(d, 2);
+}
+function invalidate() {
+  RES = null; IR = null;
+  if (AC && G) G.conv.buffer = null;
+  stop(true);
+  makeCCW();
+  fitView();
+  renderSurfaces(); renderMetrics(); renderPresets();
+  $('traceNote').textContent = 'Room changed — trace again for fresh numbers.';
+  $('irNote').textContent = 'Trace the room to build an impulse response.';
+  drawDecay(); drawIR();
+  updateHUD(); draw(); saveLast();
+}
+function softInvalidate() {
+  RES = null; IR = null;
+  $('traceNote').textContent = 'Room changed — trace again for fresh numbers.';
+  updateHUD(); draw();
+}
+let saveT = 0;
+function saveLast() { clearTimeout(saveT); saveT = setTimeout(() => lsSet(LS_LAST, snapshot()), 400); }
+
+function afterTrace() {
+  const m = RES.metrics;
+  anim = { on: S.showRays, t: 0, dur: Math.min(RES.maxMs / 1000, 1.4) };
+  $('traceNote').innerHTML = `${RES.rays.toLocaleString()} rays · up to ${RES.order} bounces · tail ${fmt(RES.maxMs / 1000, 2)} s`;
+  renderMetrics(); drawDecay(); drawIR(); updateHUD();
+  const irNow = IR || buildIR(AC ? AC.sampleRate : 44100);
+  $('irNote').textContent = 'Stereo IR, ' + fmt(irNow.len / irNow.sr, 2) + ' s at ' + (irNow.sr / 1000) +
+    ' kHz — the Audition tab convolves your test signal with exactly this.';
+  if (AC && G) loadConvolver();
+  kick(); draw();
+  const rt = m.rt[1];
+  if (isFinite(rt)) {
+    const verdict = rt < .35 ? 'very dry' : rt < .7 ? 'controlled' : rt < 1.4 ? 'lively' : rt < 2.6 ? 'reverberant' : 'cavernous';
+    toast(`RT60 ${fmt(rt, 2)} s at 1 kHz — ${verdict}.`);
+  } else toast('Traced. This room barely rings — try harder surfaces.');
+  saveLast();
+}
+function runTrace() {
+  if (busy) { toast('Already tracing…'); return; }
+  $('traceNote').textContent = 'Tracing…';
+  traceRoom(afterTrace);
+}
+
+/* ------------------------------- wiring ------------------------------- */
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#tabs button').forEach(o => o.setAttribute('aria-selected', String(o === b)));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + b.dataset.tab));
+  if (b.dataset.tab === 'analyse') { drawDecay(); drawIR(); }
+}));
+document.querySelectorAll('#tools button[data-tool]').forEach(b => b.addEventListener('click', () => {
+  S.tool = b.dataset.tool;
+  document.querySelectorAll('#tools button[data-tool]').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
+  draw();
+}));
+$('rayToggle').addEventListener('click', () => {
+  S.showRays = !S.showRays;
+  $('rayToggle').setAttribute('aria-pressed', String(S.showRays));
+  anim.on = false; draw();
+});
+$('presets').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-preset]');
+  if (!b) return;
+  loadPreset(b.dataset.preset);
+  VIEW.zoom = 1; $('scRange').value = 100; $('scOut').textContent = '100 %';
+  syncInputs(); invalidate(); runTrace();
+});
+function bindRange(id, outId, fmtFn, apply) {
+  const el = $(id), out = $(outId);
+  const run = () => { apply(parseFloat(el.value)); out.textContent = fmtFn(parseFloat(el.value)); };
+  el.addEventListener('input', run);
+  return run;
+}
+bindRange('hRange', 'hOut', v => fmt(v, 1) + ' m', v => { S.h = v; S.lis.z = Math.min(S.lis.z, v - .1); S.src.z = Math.min(S.src.z, v - .1); syncHeights(); softInvalidate(); });
+bindRange('scRange', 'scOut', v => Math.round(v) + ' %', v => { VIEW.zoom = v / 100; fitView(); draw(); });
+bindRange('lzRange', 'lzOut', v => fmt(v, 2) + ' m', v => { S.lis.z = clamp(v, .3, S.h - .05); softInvalidate(); });
+bindRange('szRange', 'szOut', v => fmt(v, 2) + ' m', v => { S.src.z = clamp(v, .3, S.h - .05); softInvalidate(); });
+bindRange('rotRange', 'rotOut', v => Math.round(v) + '°', v => { S.lis.rot = v; softInvalidate(); });
+bindRange('rayRange', 'rayOut', v => Math.round(v).toLocaleString(), v => { S.rays = v | 0; });
+bindRange('ordRange', 'ordOut', v => Math.round(v) + '', v => { S.order = v | 0; });
+bindRange('airRange', 'airOut', v => fmt(v, 2) + '×', v => { S.air = v; });
+bindRange('wetRange', 'wetOut', v => Math.round(v) + ' %', v => { S.wet = v / 100; applyMix(); });
+bindRange('volRange', 'volOut', v => Math.round(v) + ' %', v => { S.vol = v / 100; applyMix(); });
+['hRange', 'lzRange', 'szRange', 'rotRange'].forEach(id => $(id).addEventListener('change', () => invalidate()));
+
+$('surfList').addEventListener('change', ev => {
+  const sel = ev.target.closest('select[data-mat]');
+  if (!sel) return;
+  const k = sel.dataset.mat, v = parseInt(sel.value, 10);
+  if (k === 'f') S.fm = v; else if (k === 'c') S.cm = v; else S.wm[parseInt(k.slice(1), 10)] = v;
+  S.preset = 'custom'; invalidate();
+});
+$('surfList').addEventListener('click', ev => {
+  const card = ev.target.closest('.surf');
+  if (!card || !card.dataset.key.startsWith('w')) return;
+  S.sel = parseInt(card.dataset.key.slice(1), 10);
+  renderSurfaces(); draw();
+});
+$('allMat').innerHTML = '<option value="">— apply a material to every wall —</option>' +
+  MATS.map((m, i) => `<option value="${i}">${m.n}</option>`).join('');
+$('allMat').addEventListener('change', ev => {
+  const v = parseInt(ev.target.value, 10);
+  if (isNaN(v)) return;
+  S.wm = S.wm.map(() => v); S.preset = 'custom';
+  ev.target.value = ''; invalidate(); toast('Every wall is now ' + MATS[v].n.toLowerCase() + '.');
+});
+$('saveBtn').addEventListener('click', () => {
+  const rooms = lsGet(LS_ROOMS, []);
+  const name = (prompt('Name this room', (PRESETS.find(p => p.k === S.preset) || {}).t || 'My room') || '').trim();
+  if (!name) return;
+  rooms.unshift({ n: name.slice(0, 40), r: snapshot() });
+  lsSet(LS_ROOMS, rooms.slice(0, 12)); renderSaved(); toast('Saved to this browser.');
+});
+$('savedWrap').addEventListener('click', ev => {
+  const l = ev.target.closest('[data-load]'), d = ev.target.closest('[data-del]');
+  const rooms = lsGet(LS_ROOMS, []);
+  if (l) {
+    const r = rooms[+l.dataset.load];
+    if (r && restore(r.r)) { syncInputs(); invalidate(); runTrace(); toast('Loaded “' + r.n + '”.'); }
+  } else if (d) {
+    rooms.splice(+d.dataset.del, 1); lsSet(LS_ROOMS, rooms); renderSaved();
+  }
+});
+$('shareBtn').addEventListener('click', shareLink);
+$('jsonBtn').addEventListener('click', exportJSON);
+$('irWav').addEventListener('click', exportIR);
+$('mixWav').addEventListener('click', exportMix);
+$('srcChips').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-sig]');
+  if (!b) return;
+  S.signal = b.dataset.sig;
+  document.querySelectorAll('#srcChips button').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
+  if (playing) play();
+});
+$('loopBtn').addEventListener('click', () => {
+  S.loop = !S.loop;
+  $('loopBtn').setAttribute('aria-pressed', String(S.loop));
+  if (playing) play();
+});
+$('playBtn').addEventListener('click', () => playing ? stop() : play());
+$('playBtn2').addEventListener('click', () => playing ? stop() : play());
+$('stopBtn').addEventListener('click', () => stop());
+$('runBtn').addEventListener('click', runTrace);
+$('runBtn2').addEventListener('click', runTrace);
+
+function syncHeights() {
+  $('lzRange').max = String(Math.max(0.4, S.h - .05));
+  $('szRange').max = String(Math.max(0.4, S.h - .05));
+  $('lzRange').value = S.lis.z; $('lzOut').textContent = fmt(S.lis.z, 2) + ' m';
+  $('szRange').value = S.src.z; $('szOut').textContent = fmt(S.src.z, 2) + ' m';
+}
+function syncInputs() {
+  $('hRange').value = S.h; $('hOut').textContent = fmt(S.h, 1) + ' m';
+  $('rotRange').value = S.lis.rot; $('rotOut').textContent = Math.round(S.lis.rot) + '°';
+  $('rayRange').value = S.rays; $('rayOut').textContent = S.rays.toLocaleString();
+  $('ordRange').value = S.order; $('ordOut').textContent = String(S.order);
+  $('airRange').value = S.air; $('airOut').textContent = fmt(S.air, 2) + '×';
+  syncHeights(); renderPresets(); renderSurfaces(); renderSaved(); renderSignals();
+}
+
+/* help */
+$('helpBtn').addEventListener('click', () => {
+  let el = $('helpOv');
+  if (el) { el.remove(); return; }
+  el = document.createElement('div');
+  el.id = 'helpOv';
+  el.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(4,6,11,.72);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px';
+  el.innerHTML = `<div style="max-width:520px;background:#0e1420;border:1px solid #2a3650;border-radius:16px;padding:20px 22px;box-shadow:0 30px 80px #000b;max-height:84dvh;overflow:auto">
+    <h2 style="font-size:17px;margin-bottom:10px">How Chamber works</h2>
+    <p style="color:#8b9ab5;font-size:13px;line-height:1.6">
+    Your floorplan is extruded to the ceiling height, then <b style="color:#e8eefc">${'thousands of sound rays'}</b> leave the amber
+    source in random directions. Each ray loses energy to the material it strikes (three frequency bands, plus air loss),
+    and after every bounce it reports whatever reaches the two ears of the blue listener — the “diffuse rain” method.</p>
+    <p style="color:#8b9ab5;font-size:13px;line-height:1.6;margin-top:10px">
+    Those arrivals build a per-ear, per-band energy histogram. Shaping filtered noise with its own decay envelope turns
+    the histogram into a true stereo <b style="color:#e8eefc">impulse response</b>: that is what the audition convolves your
+    test signal with, and what the <b style="color:#e8eefc">IR .wav</b> button hands you for any convolution reverb.</p>
+    <ul style="color:#8b9ab5;font-size:13px;line-height:1.7;margin:12px 0 0 18px">
+      <li>Drag corners, the source, the listener, or the listener's nose to turn the head.</li>
+      <li><b style="color:#e8eefc">＋ / －</b> insert and remove corners — concave rooms are fine.</li>
+      <li><b style="color:#e8eefc">▦</b> picks a wall; the Surfaces tab sets its material.</li>
+      <li>RT60 is read from the Schroeder curve between −5 and −35 dB (T30), with a Sabine estimate alongside.</li>
+      <li><kbd>R</kbd> trace · <kbd>Space</kbd> audition · <kbd>1–4</kbd> tools</li>
+    </ul>
+    <div style="text-align:right;margin-top:16px"><button class="pri" id="helpClose">Got it</button></div></div>`;
+  document.body.appendChild(el);
+  el.addEventListener('click', ev => { if (ev.target === el || ev.target.id === 'helpClose') el.remove(); });
+});
+
+document.addEventListener('keydown', ev => {
+  if (ev.target.matches('input,select,textarea')) return;
+  const k = ev.key.toLowerCase();
+  if (k === 'r') { ev.preventDefault(); runTrace(); }
+  else if (k === ' ') { ev.preventDefault(); playing ? stop() : play(); }
+  else if (k >= '1' && k <= '4') {
+    const b = document.querySelectorAll('#tools button[data-tool]')[+k - 1];
+    if (b) b.click();
+  } else if (k === 'escape') { const h = $('helpOv'); if (h) h.remove(); }
+});
+
+let roT = 0;
+const ro = new ResizeObserver(() => {
+  clearTimeout(roT);
+  roT = setTimeout(() => { fitView(); draw(); drawDecay(); drawIR(); }, 60);
+});
+ro.observe($('stage'));
+addEventListener('resize', () => { fitView(); draw(); });
+
+/* ------------------------------- boot ------------------------------- */
+(function boot() {
+  let loaded = false;
+  const m = /[#&]r=([A-Za-z0-9+/_=-]+)/.exec(location.hash || '');
+  if (m) {
+    try { loaded = restore(JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))))); }
+    catch (e) { loaded = false; }
+  }
+  if (!loaded) {
+    const last = lsGet(LS_LAST, null);
+    if (last) loaded = restore(last);
+  }
+  if (!loaded) loadPreset('studio');
+  syncInputs();
+  $('wetOut').textContent = Math.round(S.wet * 100) + ' %';
+  $('volOut').textContent = Math.round(S.vol * 100) + ' %';
+  fitView(); updateHUD(); draw(); renderMetrics();
+  requestAnimationFrame(() => { fitView(); draw(); drawDecay(); drawIR(); runTrace(); });
+})();
+
+</script>
+</body>
+</html>

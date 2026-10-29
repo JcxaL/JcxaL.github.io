@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Type, by the Cluster · Drop 3</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#fdeef0;--dim:#a98d93;--line:#3a2328;--glass:rgba(24,13,16,.76);--hot:#f87171}
+body{
+  min-height:100dvh;background:
+    radial-gradient(900px 600px at 10% -10%,#3b1b22 0,transparent 60%),
+    radial-gradient(800px 600px at 95% 15%,#2a1430 0,transparent 55%),#0b0608;
+  color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:70px 18px 88px;display:flex;flex-direction:column;align-items:center;gap:20px
+}
+.back-link,.panel{position:fixed;z-index:9;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(12px)}
+.back-link{left:16px;top:16px;padding:8px 14px;border-radius:999px;color:var(--ink);text-decoration:none;font-size:13px}
+.panel{right:16px;top:16px;border-radius:14px;padding:12px 14px;width:214px;font-size:12px}
+.panel h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+.panel label{display:flex;align-items:center;gap:8px;margin:7px 0;color:var(--dim)}
+.panel label span{flex:0 0 56px}
+.panel input[type=range]{flex:1;accent-color:var(--hot);min-width:0}
+.panel output{flex:0 0 30px;text-align:right;color:var(--hot);font-variant-numeric:tabular-nums}
+.panel button{width:100%;margin-top:7px;font:inherit;font-size:12px;color:var(--ink);background:#241217;border:1px solid var(--line);border-radius:9px;padding:7px;cursor:pointer}
+h1{font-size:clamp(20px,4vw,30px);font-weight:650;letter-spacing:-.025em;text-align:center}
+.lead{max-width:640px;text-align:center;color:var(--dim);font-size:13.5px}
+.stage{position:relative;width:min(1040px,100%);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  background:linear-gradient(180deg,rgba(28,14,18,.7),rgba(11,6,8,.7))}
+canvas{display:block;width:100%;height:clamp(300px,46dvh,440px);touch-action:none}
+.badge{position:absolute;left:12px;top:12px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:4px 10px;background:rgba(11,6,8,.6)}
+.read{position:absolute;left:12px;bottom:12px;right:12px;display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;
+  font-size:12px;color:var(--dim);background:rgba(11,6,8,.66);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+.read b{color:var(--ink);font-variant-numeric:tabular-nums}
+.read code{font:12px ui-monospace,Menlo,monospace;color:#fbbf24}
+.counts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--dim)}
+.counts span{border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.counts b{color:var(--ink)}
+footer{position:fixed;left:0;right:0;bottom:0;padding:9px 16px;text-align:center;font-size:11.5px;color:#7a5f66;
+  background:linear-gradient(transparent,#0b0608 60%)}
+footer a{color:#b08b93}
+@media (max-width:780px){.panel{display:none}.read{position:static;margin:10px}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="panel">
+  <h2>Cluster motion</h2>
+  <label><span>Amplitude</span><input id="amp" type="range" min="0" max="60" value="26"><output id="ampO">26</output></label>
+  <label><span>Speed</span><input id="spd" type="range" min="0" max="100" value="42"><output id="spdO">42</output></label>
+  <label><span>Size</span><input id="sz" type="range" min="28" max="86" value="52"><output id="szO">52</output></label>
+  <label><span>Push</span><input id="push" type="range" min="0" max="100" value="55"><output id="pushO">55</output></label>
+  <button id="boxes">Hide cluster boxes</button>
+  <button id="mode">Cycle motion</button>
+</div>
+
+<h1>A glyph cluster is the smallest movable piece</h1>
+<p class="lead">Not a character, not a code point — a <i>grapheme cluster</i>. Canvas text is segmented into
+clusters, each one measured and animated on its own. Move the pointer through a line to shove them aside;
+hover one to see its selection rectangle and the code points hiding inside it.</p>
+
+<div class="counts" id="counts"></div>
+
+<div class="stage">
+  <canvas id="cv"></canvas>
+  <span class="badge" id="badge">measuring…</span>
+  <div class="read" id="read"><span>Hover a cluster.</span></div>
+</div>
+
+<footer>Inspired by <a href="https://chromestatus.com/release-notes/159" target="_blank" rel="noopener">Enhanced Canvas TextMetrics, Chrome 159</a> · UI Spotlight Day 145 · Drop #3</footer>
+
+<script>
+const LINES = [
+  { text: 'Ophelia 👩‍🚀 flies 🇮🇸', mode: 0 },
+  { text: 'क्षि · ö̲ · é͑ · ñ', mode: 1 },
+  { text: 'one cluster at a time', mode: 2 }
+];
+const MODES = ['wave', 'scatter', 'cascade'];
+const P = { amp: 26, spd: .42, sz: 52, push: .55, boxes: true, mode: 0 };
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const el = id => document.getElementById(id);
+const seg = typeof Intl !== 'undefined' && Intl.Segmenter
+  ? new Intl.Segmenter('en', { granularity: 'grapheme' }) : null;
+let NATIVE = false;              // does this engine expose cluster metrics?
+let lines = [], mouse = { x: -1e4, y: -1e4, on: false }, hoverInfo = null, t = 0;
+
+function clustersOf(s) {
+  if (seg) return [...seg.segment(s)].map(g => g.segment);
+  return [...s];                  // code points, the old approximation
+}
+function layout() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect();
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const size = P.sz * Math.min(1, r.width / 760);
+  ctx.font = `650 ${size}px system-ui, "Segoe UI Emoji", sans-serif`;
+  ctx.textBaseline = 'alphabetic';
+  NATIVE = typeof ctx.measureText('a').getSelectionRects === 'function';
+  el('badge').textContent = NATIVE
+    ? 'native TextMetrics cluster rects'
+    : (seg ? 'Intl.Segmenter + measureText' : 'code-point fallback');
+
+  lines = LINES.map((L, li) => {
+    const cl = clustersOf(L.text);
+    const m0 = ctx.measureText(L.text);
+    const total = m0.width;
+    const asc = m0.actualBoundingBoxAscent || size * .72;
+    const desc = m0.actualBoundingBoxDescent || size * .22;
+    let x = (r.width - total) / 2;
+    const items = cl.map((c, i) => {
+      const w = ctx.measureText(c).width;
+      const o = { c, x, w, i, cp: [...c].map(ch => 'U+' + ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')) };
+      x += w;
+      return o;
+    });
+    const y = (r.height / (LINES.length + 1)) * (li + 1) + asc * .34;
+    return { ...L, items, y, asc, desc, size, mode: (L.mode + P.mode) % MODES.length };
+  });
+}
+
+function pickCluster() {
+  if (!mouse.on) return null;
+  for (const L of lines) {
+    if (Math.abs(mouse.y - (L.y - L.asc * .35)) > L.asc * .95) continue;
+    for (const it of L.items) {
+      if (mouse.x >= it.x && mouse.x <= it.x + it.w) return { it, L };
+    }
+  }
+  return null;
+}
+function draw() {
+  const r = cv.getBoundingClientRect();
+  ctx.clearRect(0, 0, r.width, r.height);
+  hoverInfo = pickCluster();
+
+  for (const L of lines) {
+    const mode = MODES[L.mode];
+    for (const it of L.items) {
+      const ph = it.i * .42;
+      let dx = 0, dy = 0, rot = 0, a = 1, sc = 1;
+      if (mode === 'wave') {
+        dy = Math.sin(t * 2.4 + ph) * P.amp;
+        rot = Math.cos(t * 2.4 + ph) * .1 * (P.amp / 30);
+      } else if (mode === 'scatter') {
+        dx = Math.sin(t * 1.7 + ph * 2.1) * P.amp * .5;
+        dy = Math.cos(t * 1.3 + ph * 1.7) * P.amp * .7;
+        rot = Math.sin(t * .9 + ph) * .22;
+      } else {
+        const k = (t * .55 + 1 - it.i / Math.max(1, L.items.length)) % 1;
+        const e = Math.min(1, Math.max(0, 1 - Math.abs(k - .5) * 3.4));
+        dy = (1 - e) * P.amp * .9;
+        a = .25 + e * .75; sc = .88 + e * .12;
+      }
+      // pointer push
+      const cx = it.x + it.w / 2;
+      const d = Math.hypot(mouse.x - cx, mouse.y - L.y);
+      const near = Math.max(0, 1 - d / 150);
+      if (mouse.on && near > 0) {
+        const ang = Math.atan2(L.y - mouse.y, cx - mouse.x);
+        dx += Math.cos(ang) * near * near * 70 * P.push;
+        dy += Math.sin(ang) * near * near * 50 * P.push;
+        sc *= 1 + near * .18 * P.push;
+      }
+      const hot = !!hoverInfo && hoverInfo.it === it;
+
+      ctx.save();
+      ctx.translate(it.x + it.w / 2 + dx, L.y + dy);
+      ctx.rotate(rot); ctx.scale(sc, sc);
+      if (P.boxes) {
+        ctx.strokeStyle = hot ? 'rgba(248,113,113,.95)' : 'rgba(253,238,240,.17)';
+        ctx.lineWidth = hot ? 1.6 : 1;
+        ctx.strokeRect(-it.w / 2, -L.asc, it.w, L.asc + L.desc);
+      }
+      if (hot) {
+        ctx.fillStyle = 'rgba(248,113,113,.22)';
+        ctx.fillRect(-it.w / 2, -L.asc, it.w, L.asc + L.desc);
+      }
+      ctx.globalAlpha = a;
+      ctx.fillStyle = hot ? '#fff' : '#fdeef0';
+      ctx.textAlign = 'center';
+      ctx.fillText(it.c, 0, 0);
+      ctx.restore();
+    }
+    // baseline
+    ctx.strokeStyle = 'rgba(253,238,240,.08)';
+    ctx.beginPath(); ctx.moveTo(10, L.y + .5); ctx.lineTo(r.width - 10, L.y + .5); ctx.stroke();
+    ctx.fillStyle = 'rgba(169,141,147,.75)';
+    ctx.font = '10px ui-monospace,monospace'; ctx.textAlign = 'left';
+    ctx.fillText(MODES[L.mode].toUpperCase() + ' · ' + L.items.length + ' clusters', 12, L.y + 14);
+    ctx.font = `650 ${L.size}px system-ui, "Segoe UI Emoji", sans-serif`;
+  }
+
+  const rd = el('read');
+  const key = hoverInfo ? hoverInfo.L.text + '#' + hoverInfo.it.i : '';
+  if (key === rd.dataset.key) return;
+  rd.dataset.key = key;
+  if (hoverInfo) {
+    const { it } = hoverInfo;
+    rd.innerHTML = `<span>cluster <b>“${it.c.replace(/</g, '&lt;')}”</b></span>
+      <span>index <b>${it.i}</b></span>
+      <span>advance <b>${it.w.toFixed(1)}px</b></span>
+      <span>code points <code>${it.cp.join(' ')}</code></span>
+      <span>${it.cp.length > 1 ? 'one cluster, ' + it.cp.length + ' code points' : 'single code point'}</span>`;
+  } else {
+    rd.innerHTML = '<span>Hover a cluster to inspect it.</span>';
+  }
+}
+
+let raf = 0, last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  t += dt * (.2 + P.spd * 2);
+  draw();
+  raf = requestAnimationFrame(frame);
+}
+
+function counts() {
+  const all = LINES.map(l => l.text).join('');
+  el('counts').innerHTML = `
+    <span>UTF-16 units <b>${all.length}</b></span>
+    <span>code points <b>${[...all].length}</b></span>
+    <span>grapheme clusters <b>${LINES.reduce((n, l) => n + clustersOf(l.text).length, 0)}</b></span>
+    <span>${seg ? 'Intl.Segmenter available' : 'no Intl.Segmenter — approximating'}</span>`;
+}
+
+cv.addEventListener('pointermove', ev => {
+  const r = cv.getBoundingClientRect();
+  mouse = { x: ev.clientX - r.left, y: ev.clientY - r.top, on: true };
+});
+cv.addEventListener('pointerleave', () => { mouse.on = false; mouse.x = mouse.y = -1e4; });
+const bind = (id, outId, key, scale) => {
+  const r = el(id), o = el(outId);
+  r.addEventListener('input', () => {
+    P[key] = +r.value * scale; o.textContent = r.value;
+    if (key === 'sz') layout();
+  });
+};
+bind('amp', 'ampO', 'amp', 1); bind('spd', 'spdO', 'spd', .01);
+bind('sz', 'szO', 'sz', 1); bind('push', 'pushO', 'push', .01);
+el('boxes').addEventListener('click', () => {
+  P.boxes = !P.boxes;
+  el('boxes').textContent = P.boxes ? 'Hide cluster boxes' : 'Show cluster boxes';
+});
+el('mode').addEventListener('click', () => { P.mode = (P.mode + 1) % MODES.length; layout(); });
+addEventListener('resize', () => { clearTimeout(window.__t); window.__t = setTimeout(layout, 120); });
+
+counts(); layout(); frame(performance.now());
+</script>
+</body>
+</html>
