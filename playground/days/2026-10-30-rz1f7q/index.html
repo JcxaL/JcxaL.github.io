@@ -1,0 +1,1291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rotorworks — Cipher Workbench</title>
+<meta name="description" content="A three-rotor Enigma with a live signal path, five classical ciphers, and a cryptanalysis bench that breaks Caesar and Vigenère — then exports the transcript.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07070a; --bg2:#0c0d12; --panel:#101219; --panel2:#141722; --line:#20242f; --line2:#2d3342;
+  --ink:#ece7dc; --dim:#9a9484; --dim2:#6b6757;
+  --brass:#e0a94f; --brass2:#8a6520; --lamp:#ffd27a; --sig:#5fd3c4; --ret:#f08a5d; --ok:#7bd88f; --warn:#ef6f6c;
+  --r:11px;
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(900px 620px at 12% -12%, #1b1710 0%, transparent 62%),
+    radial-gradient(760px 520px at 102% 2%, #121a22 0%, transparent 58%),
+    var(--bg);
+  color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-text-size-adjust:100%;
+  overflow:hidden;
+  touch-action:manipulation;
+}
+#app{display:grid;grid-template-rows:auto 1fr;height:100dvh}
+
+/* ---------- top bar ---------- */
+header{
+  display:flex;align-items:center;gap:10px;padding:9px 13px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line);background:rgba(8,8,11,.78);backdrop-filter:blur(12px);
+}
+.logo{display:flex;align-items:baseline;gap:8px;min-width:0}
+.logo b{font-size:16px;letter-spacing:.03em}
+.logo span{color:var(--dim2);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+header .spacer{flex:1}
+button,select,input,textarea{font:inherit;color:var(--ink)}
+button,select{background:#161922;border:1px solid var(--line2);border-radius:9px;padding:7px 11px;cursor:pointer}
+button:hover,select:hover{border-color:#3e4759;background:#1b1f2b}
+button:disabled{opacity:.4;cursor:default}
+button.go{background:linear-gradient(180deg,#b5832a,#7e5a16);border-color:#d8a846;color:#fff6e2;font-weight:700}
+button.go:hover{background:linear-gradient(180deg,#c9922f,#8e661a)}
+button.ghost{background:transparent;border-color:var(--line)}
+.tabs{display:flex;gap:4px;padding:3px;background:#0e1017;border:1px solid var(--line);border-radius:12px}
+.tabs button{border:0;background:transparent;padding:6px 13px;border-radius:9px;color:var(--dim);font-weight:600;font-size:13px}
+.tabs button[aria-selected="true"]{background:linear-gradient(180deg,#242836,#191c26);color:var(--ink);box-shadow:0 1px 0 rgba(255,255,255,.05) inset}
+
+@media (max-width:640px){
+  header{padding:7px 10px;gap:6px}
+  .logo span{display:none}
+  header button{padding:6px 9px;font-size:12px;border-radius:8px}
+  .tabs{order:3;flex-basis:100%;justify-content:space-between}
+  .tabs button{flex:1;padding:6px 4px;font-size:12.5px}
+  #btnPreset{display:none}
+  .card{padding:10px}
+  .slot .tag{font-size:8.5px;letter-spacing:.1em}
+  .slot{padding:8px 6px}
+  .slot .mini{grid-template-columns:1fr;gap:2px;justify-items:stretch}
+  .slot .mini span{font-size:9px}
+  .slot select{font-size:12px;padding:4px 5px}
+  #rail{max-height:42dvh}
+}
+
+/* ---------- layout ---------- */
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0;overflow:hidden}
+#work{overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+#rail{border-left:1px solid var(--line);background:linear-gradient(180deg,rgba(16,18,25,.9),rgba(10,11,15,.9));
+  overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+@media (max-width:900px){
+  main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
+  #rail{border-left:0;border-top:1px solid var(--line);max-height:46dvh}
+}
+.card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.card>h3{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim2);margin-bottom:10px;font-weight:700}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lbl{font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+.hint{font-size:11.5px;color:var(--dim2);line-height:1.5}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.pill{font:600 10px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;
+  padding:5px 9px;border-radius:999px;border:1px solid var(--line2);color:var(--dim)}
+
+/* ---------- rotor deck ---------- */
+#deck{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:10px;align-items:stretch}
+@media (max-width:620px){#deck{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.slot{background:linear-gradient(180deg,#191b24,#0f1118);border:1px solid var(--line2);border-radius:var(--r);
+  padding:10px;display:flex;flex-direction:column;gap:8px;align-items:center}
+.slot .tag{font:700 9.5px/1 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2)}
+.drum{position:relative;width:62px;height:84px;border-radius:9px;overflow:hidden;
+  background:linear-gradient(90deg,#0a0a0d,#2a2317 18%,#5a4a26 50%,#2a2317 82%,#0a0a0d);
+  border:1px solid #4a3c1c;box-shadow:inset 0 0 18px rgba(0,0,0,.7)}
+.drum .strip{position:absolute;left:0;right:0;top:0;display:flex;flex-direction:column;align-items:center;
+  transition:transform .18s cubic-bezier(.22,1,.36,1)}
+.drum .strip i{height:28px;line-height:28px;font:700 17px/28px ui-monospace,Menlo,monospace;color:#f2dca8;
+  text-shadow:0 1px 2px rgba(0,0,0,.8);opacity:.42;font-style:normal}
+.drum .strip i.cur{opacity:1;color:#fff3d4}
+.drum::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(0,0,0,.72),transparent 32%,transparent 68%,rgba(0,0,0,.72))}
+.drum .win{position:absolute;left:4px;right:4px;top:28px;height:28px;border-top:1px solid rgba(255,220,150,.3);
+  border-bottom:1px solid rgba(255,220,150,.3);pointer-events:none}
+.nudge{display:flex;gap:5px}
+.nudge button{padding:4px 9px;font-size:12px;border-radius:7px}
+.slot select{width:100%;padding:5px 7px;font-size:12.5px;border-radius:7px}
+.slot .mini{display:grid;grid-template-columns:auto 1fr;gap:4px 6px;align-items:center;width:100%}
+.slot .mini span{font-size:10px;color:var(--dim2);letter-spacing:.1em}
+
+/* ---------- plugboard ---------- */
+#plugs{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:5px}
+@media (max-width:620px){#plugs{grid-template-columns:repeat(7,minmax(0,1fr))}}
+.plug{position:relative;aspect-ratio:1;border-radius:8px;border:1px solid var(--line2);background:#13161f;
+  font:700 12px/1 ui-monospace,Menlo,monospace;color:var(--dim);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.plug:hover{border-color:#4a5468;color:var(--ink)}
+.plug[data-on="1"]{background:linear-gradient(180deg,#3a2a0e,#241a08);border-color:var(--brass);color:#ffdfa0}
+.plug[data-sel="1"]{box-shadow:0 0 0 2px var(--sig);color:#eafffb}
+.plug small{position:absolute;bottom:2px;right:3px;font-size:8px;opacity:.75;font-weight:700}
+
+/* ---------- lamps + keys ---------- */
+.kbd{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:5px}
+@media (max-width:620px){.kbd{grid-template-columns:repeat(7,minmax(0,1fr))}}
+.lamp{aspect-ratio:1;border-radius:50%;border:1px solid #2a2a33;background:#15161c;
+  font:700 11px/1 ui-monospace,Menlo,monospace;color:#4e4a40;display:flex;align-items:center;justify-content:center;
+  transition:background .12s,color .12s,box-shadow .12s}
+.lamp[data-lit="1"]{background:radial-gradient(circle at 50% 40%,#fff0c2,#e0a94f 62%,#7a5410);color:#3a2a06;
+  box-shadow:0 0 16px rgba(224,169,79,.75),0 0 38px rgba(224,169,79,.35)}
+.key{aspect-ratio:1;border-radius:9px;border:1px solid #30333f;
+  background:linear-gradient(180deg,#22252f,#13151c);color:#cfc9bb;
+  font:700 12px/1 ui-monospace,Menlo,monospace;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.key:active{transform:translateY(1px);background:linear-gradient(180deg,#2e3240,#1a1d26)}
+
+/* ---------- canvases ---------- */
+.canvwrap{position:relative;border-radius:var(--r);overflow:hidden;border:1px solid var(--line);
+  background:linear-gradient(180deg,#0a0b10,#07080c)}
+canvas{display:block;width:100%}
+.legend{position:absolute;right:9px;bottom:8px;display:flex;flex-direction:column;gap:4px;
+  padding:7px 9px;border-radius:9px;background:rgba(10,11,16,.72);border:1px solid var(--line);
+  backdrop-filter:blur(8px);font:600 10px/1.3 system-ui,sans-serif;color:var(--dim)}
+.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:6px;border-radius:2px}
+
+/* ---------- rail ---------- */
+textarea{width:100%;background:#0b0c11;border:1px solid var(--line2);border-radius:10px;padding:10px;
+  color:var(--ink);resize:vertical;min-height:92px;line-height:1.55;letter-spacing:.06em}
+textarea:focus{outline:0;border-color:var(--brass2)}
+#out{background:#0a0d0c;color:#dff6f1}
+.stat{display:grid;grid-template-columns:1fr auto;gap:3px 8px;font-size:12px}
+.stat b{font-weight:700;color:var(--ink);font-family:ui-monospace,Menlo,monospace}
+.stat span{color:var(--dim)}
+.seg{display:flex;gap:3px;padding:3px;background:#0e1017;border:1px solid var(--line);border-radius:10px}
+.seg button{flex:1;border:0;background:transparent;padding:6px 8px;border-radius:7px;color:var(--dim);font-size:12px;font-weight:600}
+.seg button[aria-pressed="true"]{background:#232734;color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--brass)}
+input[type=text]{width:100%;background:#0b0c11;border:1px solid var(--line2);border-radius:9px;padding:7px 9px;letter-spacing:.1em}
+input[type=text]:focus{outline:0;border-color:var(--brass2)}
+
+/* ---------- analysis ---------- */
+.cracks{display:flex;flex-direction:column;gap:6px}
+.crack{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;
+  background:#11131b;border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer;text-align:left;width:100%}
+.crack:hover{border-color:var(--brass2)}
+.crack .k{font:700 12px/1 ui-monospace,Menlo,monospace;color:var(--brass)}
+.crack .p{font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crack .s{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--dim2)}
+.bar{height:7px;border-radius:4px;background:#191c25;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--brass2),var(--brass))}
+.klen{display:grid;grid-template-columns:28px 1fr 46px;gap:7px;align-items:center;font-size:11px;color:var(--dim)}
+.klen.best{color:var(--ink)}
+.klen.best .bar i{background:linear-gradient(90deg,#2f7d64,var(--sig))}
+.hidden{display:none!important}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(10px);opacity:0;
+  padding:9px 15px;border-radius:999px;background:rgba(20,22,30,.95);border:1px solid var(--line2);
+  font-size:12.5px;pointer-events:none;transition:opacity .22s,transform .22s;z-index:50;max-width:88vw;text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#242833;border-radius:9px}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo"><b>Rotorworks</b><span>Cipher Workbench</span></div>
+    <div class="tabs" id="tabs" role="tablist">
+      <button role="tab" id="tab-enigma" aria-selected="true">Enigma</button>
+      <button role="tab" id="tab-classic" aria-selected="false">Classical</button>
+      <button role="tab" id="tab-analysis" aria-selected="false">Analysis</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="ghost" id="btnPreset" title="Save or load a machine preset">Presets</button>
+    <button class="ghost" id="btnLink" title="Copy a link that restores this machine">Link</button>
+    <button class="ghost" id="btnJson" title="Download the machine state as JSON">.json</button>
+    <button class="go" id="btnTxt" title="Download the full transcript">Transcript</button>
+  </header>
+
+  <main>
+    <div id="work">
+
+      <!-- ============ ENIGMA ============ -->
+      <section id="panel-enigma">
+        <div class="card">
+          <h3>Rotor deck · left slow → right fast</h3>
+          <div id="deck">
+            <div class="slot" data-slot="0">
+              <div class="tag">Slot I · slow</div>
+              <div class="drum"><div class="strip" id="strip0"></div><div class="win"></div></div>
+              <div class="nudge"><button data-pos="0" data-d="-1">▲</button><button data-pos="0" data-d="1">▼</button></div>
+              <div class="mini">
+                <span>WHEEL</span><select id="rot0"></select>
+                <span>RING</span><select id="ring0"></select>
+              </div>
+            </div>
+            <div class="slot" data-slot="1">
+              <div class="tag">Slot II · mid</div>
+              <div class="drum"><div class="strip" id="strip1"></div><div class="win"></div></div>
+              <div class="nudge"><button data-pos="1" data-d="-1">▲</button><button data-pos="1" data-d="1">▼</button></div>
+              <div class="mini">
+                <span>WHEEL</span><select id="rot1"></select>
+                <span>RING</span><select id="ring1"></select>
+              </div>
+            </div>
+            <div class="slot" data-slot="2">
+              <div class="tag">Slot III · fast</div>
+              <div class="drum"><div class="strip" id="strip2"></div><div class="win"></div></div>
+              <div class="nudge"><button data-pos="2" data-d="-1">▲</button><button data-pos="2" data-d="1">▼</button></div>
+              <div class="mini">
+                <span>WHEEL</span><select id="rot2"></select>
+                <span>RING</span><select id="ring2"></select>
+              </div>
+            </div>
+            <div class="slot" style="justify-content:flex-start">
+              <div class="tag">Reflector</div>
+              <select id="refl" style="width:86px"><option value="B">UKW&nbsp;B</option><option value="C">UKW&nbsp;C</option></select>
+              <div class="tag" style="margin-top:6px">Key</div>
+              <div class="mono" id="keyText" style="font-size:19px;color:var(--brass);letter-spacing:.14em">AAA</div>
+              <button class="ghost" id="btnRewind" style="font-size:11px;padding:5px 8px">Rewind</button>
+              <button class="ghost" id="btnRandom" style="font-size:11px;padding:5px 8px">Random key</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Signal path · last letter</h3>
+          <div class="canvwrap">
+            <canvas id="wire" height="340"></canvas>
+            <div class="legend">
+              <div><i style="background:var(--sig)"></i>out to reflector</div>
+              <div><i style="background:var(--ret)"></i>back to lamp</div>
+            </div>
+          </div>
+          <p class="hint" style="margin-top:9px"><b id="endPos" class="mono" style="color:var(--brass)"></b>Every keypress steps the fast wheel first; the middle wheel
+            double-steps when it sits on its notch. Because the path is a loop through the reflector, no letter
+            can ever encipher to itself — the flaw that cracked the machine.</p>
+        </div>
+
+        <div class="card">
+          <h3>Lampboard</h3>
+          <div class="kbd" id="lamps"></div>
+          <h3 style="margin-top:12px">Keyboard · tap to type</h3>
+          <div class="kbd" id="keys"></div>
+        </div>
+
+        <div class="card">
+          <h3>Plugboard · <span id="plugCount">0</span>/10 pairs</h3>
+          <div id="plugs"></div>
+          <div class="row" style="margin-top:9px">
+            <button class="ghost" id="btnPlugClear">Clear board</button>
+            <button class="ghost" id="btnPlugRand">Random 10</button>
+            <span class="hint">Tap two letters to cable them together.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ CLASSICAL ============ -->
+      <section id="panel-classic" class="hidden">
+        <div class="card">
+          <h3>Cipher</h3>
+          <div class="seg" id="cipherSeg">
+            <button data-c="caesar" aria-pressed="true">Caesar</button>
+            <button data-c="vigenere" aria-pressed="false">Vigenère</button>
+            <button data-c="playfair" aria-pressed="false">Playfair</button>
+            <button data-c="rail" aria-pressed="false">Rail fence</button>
+            <button data-c="atbash" aria-pressed="false">Atbash</button>
+          </div>
+          <div id="cParams" style="margin-top:11px;display:flex;flex-direction:column;gap:9px">
+            <div id="pCaesar" class="row">
+              <span class="lbl">Shift</span>
+              <input type="range" id="caesarShift" min="0" max="25" value="3" style="flex:1;min-width:140px">
+              <b class="mono" id="caesarVal" style="width:2.2em;text-align:right">3</b>
+            </div>
+            <div id="pKeyword">
+              <span class="lbl">Keyword</span>
+              <input type="text" id="keyword" value="ROTORWORKS" spellcheck="false" maxlength="40">
+            </div>
+            <div id="pRails" class="row">
+              <span class="lbl">Rails</span>
+              <input type="range" id="rails" min="2" max="8" value="3" style="flex:1;min-width:140px">
+              <b class="mono" id="railsVal" style="width:2.2em;text-align:right">3</b>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 id="visTitle">Mapping</h3>
+          <div class="canvwrap"><canvas id="cvis" height="260"></canvas></div>
+          <p class="hint" id="visNote" style="margin-top:9px"></p>
+        </div>
+      </section>
+
+      <!-- ============ ANALYSIS ============ -->
+      <section id="panel-analysis" class="hidden">
+        <div class="card">
+          <h3>Letter frequency · bars are the text, ticks are English</h3>
+          <div class="canvwrap"><canvas id="freq" height="230"></canvas></div>
+          <div class="row" style="margin-top:9px">
+            <div class="seg" id="srcSeg">
+              <button data-s="out" aria-pressed="true">Read output</button>
+              <button data-s="in" aria-pressed="false">Read input</button>
+            </div>
+          </div>
+          <div class="stat" style="margin-top:11px">
+            <span>Letters</span><b id="aN">0</b>
+            <span>Index of coincidence</span><b id="aIoC">—</b>
+            <span>χ² against English</span><b id="aChi">—</b>
+            <span>Reading</span><b id="aGuess">—</b>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Caesar — every shift, scored</h3>
+          <div class="cracks" id="caesarCracks"></div>
+        </div>
+        <div class="card">
+          <h3>Vigenère — key length by coincidence, then key by χ²</h3>
+          <div id="klens" style="display:flex;flex-direction:column;gap:5px"></div>
+          <div class="cracks" id="vigCrack" style="margin-top:10px"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ RAIL ============ -->
+    <div id="rail">
+      <div class="card">
+        <h3>Direction</h3>
+        <div class="seg" id="dirSeg">
+          <button data-d="enc" aria-pressed="true">Encipher</button>
+          <button data-d="dec" aria-pressed="false">Decipher</button>
+        </div>
+        <p class="hint" id="dirNote" style="margin-top:8px">Enigma is its own inverse — same key, same wires, text goes back.</p>
+      </div>
+      <div class="card">
+        <h3>Input</h3>
+        <textarea id="in" spellcheck="false" placeholder="Type here — letters only are enciphered.">ATTACK AT DAWN</textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="btnClear">Clear</button>
+          <button class="ghost" id="btnSample">Sample</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Output</h3>
+        <textarea id="out" readonly spellcheck="false"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="btnCopy">Copy</button>
+          <button class="ghost" id="btnSwap" title="Move output into input">↑ Feed back</button>
+          <button class="ghost" id="btnGroup" aria-pressed="true">Groups of 5</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Presets</h3>
+        <div class="row">
+          <select id="presetList" style="flex:1;min-width:0"><option value="">— saved keys —</option></select>
+          <button class="ghost" id="btnPresetLoad">Load</button>
+        </div>
+        <div class="row" style="margin-top:7px">
+          <button class="ghost" id="btnPresetSave">Save current</button>
+          <button class="ghost" id="btnPresetDel">Delete</button>
+        </div>
+        <p class="hint" style="margin-top:8px">Saved in this browser. Everything also autosaves as you work.</p>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ============================================================
+   Rotorworks — Cipher Workbench
+   Enigma I (3 wheels, UKW-B/C, plugboard) + classical ciphers
+   + a cryptanalysis bench. Single file, no dependencies.
+   ============================================================ */
+const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const mod26 = n => ((n % 26) + 26) % 26;
+const $ = id => document.getElementById(id);
+
+/* ---- historical wheel wirings + turnover notches ---- */
+const RAW = {
+  I:   ["EKMFLGDQVZNTOWYHXUSPAIBRCJ", "Q"],
+  II:  ["AJDKSIRUXBLHWTMCQGZNPYFVOE", "E"],
+  III: ["BDFHJLCPRTXVZNYEIWGAKMUSQO", "V"],
+  IV:  ["ESOVPZJAYQUIRHXLNFTGKDCMWB", "J"],
+  V:   ["VZBRGITYUPSDNHLXAWMJQOFECK", "Z"]
+};
+const ROT = {};
+for (const name in RAW) {
+  const wire = RAW[name][0];
+  const f = [], b = new Array(26);
+  for (let i = 0; i < 26; i++) { const o = A.indexOf(wire[i]); f.push(o); b[o] = i; }
+  ROT[name] = { f, b, notch: RAW[name][1], wire };
+}
+const REFL = { B: "YRUHQSLDPXNGOKMIEBFZCWVJAT", C: "FVPJIAOYEDRZXWGCTKUQSBNMHL" };
+const ENG = [8.167,1.492,2.782,4.253,12.702,2.228,2.015,6.094,6.966,0.153,0.772,4.025,2.406,
+             6.749,7.507,1.929,0.095,5.987,6.327,9.056,2.758,0.978,2.360,0.150,1.974,0.074];
+
+/* ------------------------------ state ------------------------------ */
+const S = {
+  mode: "enigma", dir: "enc", group: true, src: "out",
+  text: "ATTACK AT DAWN",
+  enigma: { rots: ["I","II","III"], rings: [0,0,0], pos: [0,0,0], refl: "B", pairs: ["AQ","BT","CS"] },
+  classic: { cipher: "caesar", shift: 3, keyword: "ROTORWORKS", rails: 3 }
+};
+const SKEY = "rotorworks_state_v1", PKEY = "rotorworks_presets_v1";
+let lastResult = { out: "", path: null, pos: [0,0,0], lamp: -1 };
+
+/* ------------------------------ enigma ------------------------------ */
+function plugMap(pairs) {
+  const m = []; for (let i = 0; i < 26; i++) m.push(i);
+  for (const p of pairs) {
+    const a = A.indexOf(p[0]), b = A.indexOf(p[1]);
+    if (a >= 0 && b >= 0 && a !== b) { m[a] = b; m[b] = a; }
+  }
+  return m;
+}
+const fwdRot = (name, pos, ring, c) => { const s = pos - ring; return mod26(ROT[name].f[mod26(c + s)] - s); };
+const bwdRot = (name, pos, ring, c) => { const s = pos - ring; return mod26(ROT[name].b[mod26(c + s)] - s); };
+
+function enigmaRun(text) {
+  const e = S.enigma, pm = plugMap(e.pairs), pos = e.pos.slice();
+  let out = "", path = null, lamp = -1;
+  for (const raw of text.toUpperCase()) {
+    const ci = A.indexOf(raw);
+    if (ci < 0) { out += raw; continue; }
+    const onNotch = i => ROT[e.rots[i]].notch.indexOf(A[pos[i]]) >= 0;
+    if (onNotch(1)) { pos[1] = mod26(pos[1] + 1); pos[0] = mod26(pos[0] + 1); }
+    else if (onNotch(2)) { pos[1] = mod26(pos[1] + 1); }
+    pos[2] = mod26(pos[2] + 1);
+
+    const p = [ci];
+    let c = pm[ci]; p.push(c);
+    for (let i = 2; i >= 0; i--) { c = fwdRot(e.rots[i], pos[i], e.rings[i], c); p.push(c); }
+    c = A.indexOf(REFL[e.refl][c]); p.push(c);
+    for (let i = 0; i < 3; i++) { c = bwdRot(e.rots[i], pos[i], e.rings[i], c); p.push(c); }
+    c = pm[c]; p.push(c);
+    out += A[c]; path = p; lamp = c;
+  }
+  return { out, pos, path, lamp };
+}
+
+/* --------------------------- classical ciphers --------------------------- */
+const letters = t => t.toUpperCase().replace(/[^A-Z]/g, "");
+
+function caesar(t, k, dec) {
+  const s = dec ? mod26(-k) : mod26(k);
+  let o = "";
+  for (const ch of t.toUpperCase()) { const i = A.indexOf(ch); o += i < 0 ? ch : A[mod26(i + s)]; }
+  return o;
+}
+function atbash(t) {
+  let o = "";
+  for (const ch of t.toUpperCase()) { const i = A.indexOf(ch); o += i < 0 ? ch : A[25 - i]; }
+  return o;
+}
+function vigenere(t, key, dec) {
+  const k = letters(key); if (!k) return t.toUpperCase();
+  let o = "", j = 0;
+  for (const ch of t.toUpperCase()) {
+    const i = A.indexOf(ch);
+    if (i < 0) { o += ch; continue; }
+    const s = A.indexOf(k[j % k.length]); j++;
+    o += A[mod26(dec ? i - s : i + s)];
+  }
+  return o;
+}
+function playfairSquare(key) {
+  const seen = [], src = letters(key).replace(/J/g, "I") + A.replace("J", "");
+  for (const ch of src) if (seen.indexOf(ch) < 0) seen.push(ch);
+  return seen.slice(0, 25);
+}
+function playfair(t, key, dec) {
+  const sq = playfairSquare(key), at = i => sq[i];
+  const idx = ch => sq.indexOf(ch);
+  let s = letters(t).replace(/J/g, "I");
+  const pairs = [];
+  for (let i = 0; i < s.length;) {
+    const a = s[i], b = s[i + 1];
+    if (!b) { pairs.push([a, "X"]); i += 1; }
+    else if (a === b) { pairs.push([a, "X"]); i += 1; }
+    else { pairs.push([a, b]); i += 2; }
+  }
+  let o = "";
+  for (const [a, b] of pairs) {
+    const ia = idx(a), ib = idx(b);
+    const ra = (ia / 5) | 0, ca = ia % 5, rb = (ib / 5) | 0, cb = ib % 5;
+    const d = dec ? 4 : 1;
+    if (ra === rb) o += at(ra * 5 + (ca + d) % 5) + at(rb * 5 + (cb + d) % 5);
+    else if (ca === cb) o += at(((ra + d) % 5) * 5 + ca) + at(((rb + d) % 5) * 5 + cb);
+    else o += at(ra * 5 + cb) + at(rb * 5 + ca);
+  }
+  return o;
+}
+function railFence(t, n, dec) {
+  const s = letters(t); if (n < 2 || !s) return s;
+  const pattern = [];
+  for (let i = 0, r = 0, dir = 1; i < s.length; i++) {
+    pattern.push(r); r += dir;
+    if (r === n - 1) dir = -1; else if (r === 0) dir = 1;
+  }
+  if (!dec) {
+    let o = "";
+    for (let r = 0; r < n; r++) for (let i = 0; i < s.length; i++) if (pattern[i] === r) o += s[i];
+    return o;
+  }
+  const out = new Array(s.length); let k = 0;
+  for (let r = 0; r < n; r++) for (let i = 0; i < s.length; i++) if (pattern[i] === r) out[i] = s[k++];
+  return out.join("");
+}
+function runClassic(text) {
+  const c = S.classic, dec = S.dir === "dec";
+  if (c.cipher === "caesar")   return caesar(text, c.shift, dec);
+  if (c.cipher === "atbash")   return atbash(text);
+  if (c.cipher === "vigenere") return vigenere(text, c.keyword, dec);
+  if (c.cipher === "playfair") return playfair(text, c.keyword, dec);
+  return railFence(text, c.rails, dec);
+}
+
+/* ------------------------------ analysis ------------------------------ */
+function counts(t) {
+  const c = new Array(26).fill(0);
+  for (const ch of letters(t)) c[A.indexOf(ch)]++;
+  return c;
+}
+function ioc(c) {
+  const n = c.reduce((a, b) => a + b, 0);
+  if (n < 2) return 0;
+  let s = 0; for (const v of c) s += v * (v - 1);
+  return s / (n * (n - 1));
+}
+function chi2(c) {
+  const n = c.reduce((a, b) => a + b, 0);
+  if (!n) return 0;
+  let s = 0;
+  for (let i = 0; i < 26; i++) { const e = n * ENG[i] / 100; s += (c[i] - e) * (c[i] - e) / (e || 1e-9); }
+  return s;
+}
+function crackCaesar(t) {
+  const base = counts(t), n = base.reduce((a, b) => a + b, 0);
+  const res = [];
+  for (let k = 0; k < 26; k++) {
+    const c = new Array(26);
+    for (let i = 0; i < 26; i++) c[i] = base[mod26(i + k)];
+    res.push({ k, score: chi2(c), n });
+  }
+  res.sort((a, b) => a.score - b.score);
+  return res;
+}
+function crackVigenere(t) {
+  const s = letters(t), lens = [];
+  for (let L = 1; L <= 12; L++) {
+    if (s.length < L * 2) { lens.push({ L, ioc: 0 }); continue; }
+    let sum = 0;
+    for (let o = 0; o < L; o++) {
+      const col = new Array(26).fill(0);
+      for (let i = o; i < s.length; i += L) col[A.indexOf(s[i])]++;
+      sum += ioc(col);
+    }
+    lens.push({ L, ioc: sum / L });
+  }
+  /* multiples of the true period score just as well, so take the
+     shortest length whose columns already read like one alphabet;
+     fall back to the plain winner when the text is too short to tell */
+  let best = null;
+  for (const e of lens) if (e.ioc >= 0.058) { best = e; break; }
+  if (!best) { best = lens[0]; for (const e of lens) if (e.ioc > best.ioc) best = e; }
+  let key = "";
+  for (let o = 0; o < best.L; o++) {
+    const col = new Array(26).fill(0);
+    for (let i = o; i < s.length; i += best.L) col[A.indexOf(s[i])]++;
+    let bk = 0, bs = Infinity;
+    for (let k = 0; k < 26; k++) {
+      const r = new Array(26);
+      for (let i = 0; i < 26; i++) r[i] = col[mod26(i + k)];
+      const sc = chi2(r);
+      if (sc < bs) { bs = sc; bk = k; }
+    }
+    key += A[bk];
+  }
+  return { lens, best, key };
+}
+
+/* ------------------------------ canvas helpers ------------------------------ */
+function fit(cv, h) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(240, cv.clientWidth || cv.parentElement.clientWidth || 600);
+  cv.style.height = h + "px";
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  return { g, w, h };
+}
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+
+/* ------------------------------ signal path ------------------------------ */
+const CAPS = ["KB", "PB", "", "", "", "UKW"];
+let anim = { on: false, t0: 0, raf: 0 };
+
+function drawWire(progress) {
+  const cv = $("wire"); if (!cv) return;
+  const { g, w, h } = fit(cv, Math.max(240, Math.min(360, cv.clientWidth * 0.52)));
+  const padL = 24, padR = 36, top = 26, bot = 10, cols = 6;
+  const colX = i => padL + i * (w - padL - padR) / (cols - 1);
+  const rowY = v => top + v * (h - top - bot) / 25;
+  const caps = CAPS.slice();
+  caps[2] = S.enigma.rots[2]; caps[3] = S.enigma.rots[1]; caps[4] = S.enigma.rots[0];
+  caps[5] = "UKW " + S.enigma.refl;
+
+  g.font = "600 8.5px ui-monospace,Menlo,monospace";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  for (let c = 0; c < cols; c++) {
+    g.fillStyle = "#5d5849";
+    g.textAlign = c === cols - 1 ? "right" : (c === 0 ? "left" : "center");
+    g.fillText(caps[c], c === cols - 1 ? w - 4 : (c === 0 ? 4 : colX(c)), 11);
+    g.textAlign = "center";
+    g.fillStyle = "#1d2029";
+    for (let v = 0; v < 26; v++) { g.beginPath(); g.arc(colX(c), rowY(v), 1.7, 0, 6.2832); g.fill(); }
+  }
+  g.textAlign = "right"; g.fillStyle = "#44403a";
+  for (let v = 0; v < 26; v++) g.fillText(A[v], padL - 7, rowY(v));
+
+  const p = lastResult.path;
+  if (!p) {
+    g.textAlign = "center"; g.fillStyle = "#56514a"; g.font = "600 12px system-ui,sans-serif";
+    g.fillText("type a letter to trace the circuit", w / 2, h / 2);
+    return;
+  }
+  const pts = [[0,p[0]],[1,p[1]],[2,p[2]],[3,p[3]],[4,p[4]],[5,p[5]],[4,p[6]],[3,p[7]],[2,p[8]],[1,p[9]],[0,p[9]]]
+    .map(([c, v]) => [colX(c), rowY(v)]);
+
+  const segs = [], lens = [];
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i+1][0] - pts[i][0], dy = pts[i+1][1] - pts[i][1];
+    const L = Math.hypot(dx, dy); segs.push([pts[i], pts[i+1]]); lens.push(L); total += L;
+  }
+  /* ghost of the whole circuit */
+  g.lineWidth = 1.2; g.strokeStyle = "rgba(255,255,255,.07)";
+  g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+  g.stroke();
+
+  let travelled = total * progress, head = pts[0];
+  g.lineCap = "round"; g.lineJoin = "round";
+  for (let i = 0; i < segs.length; i++) {
+    const fwd = i < 5;
+    g.strokeStyle = fwd ? "#5fd3c4" : "#f08a5d";
+    g.shadowColor = fwd ? "rgba(95,211,196,.55)" : "rgba(240,138,93,.5)";
+    g.shadowBlur = 8; g.lineWidth = 2;
+    const [a, b] = segs[i], L = lens[i];
+    if (travelled <= 0) break;
+    const t = Math.min(1, travelled / (L || 1));
+    const ex = a[0] + (b[0] - a[0]) * t, ey = a[1] + (b[1] - a[1]) * t;
+    g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(ex, ey); g.stroke();
+    head = [ex, ey]; travelled -= L;
+  }
+  g.shadowBlur = 0;
+  /* reflector bracket + head glow */
+  g.strokeStyle = "rgba(224,169,79,.5)"; g.lineWidth = 1.4;
+  g.beginPath(); g.moveTo(colX(5) + 7, rowY(p[4])); g.lineTo(colX(5) + 7, rowY(p[5])); g.stroke();
+  g.fillStyle = "#fff4d8"; g.shadowColor = "rgba(255,230,170,.9)"; g.shadowBlur = 14;
+  g.beginPath(); g.arc(head[0], head[1], 3.4, 0, 6.2832); g.fill(); g.shadowBlur = 0;
+}
+function pulse() {
+  cancelAnimationFrame(anim.raf);
+  anim.on = true; anim.t0 = performance.now();
+  const step = now => {
+    const k = Math.min(1, (now - anim.t0) / 620);
+    drawWire(k);
+    if (k < 1) { anim.raf = requestAnimationFrame(step); } else { anim.on = false; }
+  };
+  anim.raf = requestAnimationFrame(step);
+}
+
+/* ------------------------------ classical visuals ------------------------------ */
+function drawClassVis() {
+  const cv = $("cvis"); if (!cv) return;
+  const c = S.classic;
+  const h = c.cipher === "playfair" ? 306 : (c.cipher === "rail" ? 252 : 212);
+  const { g, w } = fit(cv, h);
+  const src = letters(S.text), out = letters(runClassic(S.text));
+  $("visTitle").textContent = { caesar: "The shifted alphabet", atbash: "The mirrored alphabet",
+    vigenere: "The key, letter by letter", playfair: "The keyed square",
+    rail: "The zigzag, before it is read off" }[c.cipher] || "Mapping";
+  g.textBaseline = "middle"; g.textAlign = "center";
+
+  const alphaRows = (mapFn, title) => {
+    const n = 26, cw = (w - 24) / n, y1 = 54, y2 = h - 54;
+    g.font = "600 10px ui-monospace,Menlo,monospace";
+    g.fillStyle = "#6b6757"; g.textAlign = "left";
+    g.fillText("PLAIN", 12, 30); g.fillText("CIPHER", 12, h - 30);
+    g.textAlign = "center";
+    for (let i = 0; i < n; i++) {
+      const x = 12 + cw * (i + .5), j = mapFn(i);
+      g.fillStyle = "#15171f"; roundRect(g, x - cw / 2 + 1, y1 - 11, cw - 2, 22, 4); g.fill();
+      g.fillStyle = "#15171f"; roundRect(g, x - cw / 2 + 1, y2 - 11, cw - 2, 22, 4); g.fill();
+      g.fillStyle = "#8b8676"; g.font = "600 " + Math.min(12, cw * .8) + "px ui-monospace,Menlo,monospace";
+      g.fillText(A[i], x, y1); g.fillStyle = "#e0a94f"; g.fillText(A[j], x, y2);
+    }
+    const seen = {};
+    for (const ch of src.slice(0, 60)) {
+      const i = A.indexOf(ch); if (seen[i]) continue; seen[i] = 1;
+      const x1 = 12 + cw * (i + .5), x2 = 12 + cw * (mapFn(i) + .5);
+      g.strokeStyle = "rgba(95,211,196,.5)"; g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(x1, y1 + 12); g.bezierCurveTo(x1, (y1 + y2) / 2, x2, (y1 + y2) / 2, x2, y2 - 12); g.stroke();
+    }
+    $("visNote").textContent = title;
+  };
+
+  if (c.cipher === "caesar") {
+    const s = S.dir === "dec" ? mod26(-c.shift) : mod26(c.shift);
+    alphaRows(i => mod26(i + s), "One fixed rotation of the alphabet. Teal threads are the letters your text actually uses — 26 keys is a morning's work by hand, which is why the Analysis tab solves it instantly.");
+  } else if (c.cipher === "atbash") {
+    alphaRows(i => 25 - i, "The alphabet folded on itself: A↔Z, B↔Y. No key at all, so enciphering twice gives the text back.");
+  } else if (c.cipher === "vigenere") {
+    const key = letters(c.keyword) || "A";
+    const n = Math.min(26, Math.max(8, Math.floor((w - 24) / 22)));
+    const cw = (w - 24) / n;
+    const rows = [["TEXT", src, "#8b8676"], ["KEY", "", "#5fd3c4"], ["OUT", out, "#e0a94f"]];
+    g.font = "600 10px ui-monospace,Menlo,monospace";
+    for (let r = 0; r < 3; r++) {
+      const y = 44 + r * ((h - 70) / 2);
+      g.textAlign = "left"; g.fillStyle = "#6b6757"; g.fillText(rows[r][0], 12, y - 22);
+      g.textAlign = "center";
+      for (let i = 0; i < n; i++) {
+        const x = 12 + cw * (i + .5);
+        const ch = r === 1 ? (src[i] ? key[i % key.length] : "") : (rows[r][1][i] || "");
+        g.fillStyle = r === 1 ? "#0f1a19" : "#15171f";
+        roundRect(g, x - cw / 2 + 1.5, y - 13, cw - 3, 26, 5); g.fill();
+        g.fillStyle = rows[r][2]; g.font = "700 " + Math.min(14, cw * .62) + "px ui-monospace,Menlo,monospace";
+        g.fillText(ch, x, y);
+      }
+    }
+    $("visNote").textContent = "The key letter under each text letter sets that letter's shift — " + key.length +
+      " alphabets in rotation. Repeat the key often enough and the repeats leak the period.";
+  } else if (c.cipher === "playfair") {
+    const sq = playfairSquare(c.keyword), cell = Math.min(50, (h - 76) / 5);
+    const x0 = (w - cell * 5) / 2, y0 = 46;
+    const pairFirst = (() => {
+      const s = letters(S.text).replace(/J/g, "I");
+      return s.length >= 2 ? [s[0], s[0] === s[1] ? "X" : s[1]] : null;
+    })();
+    g.font = "700 " + (cell * .46) + "px ui-monospace,Menlo,monospace";
+    for (let r = 0; r < 5; r++) for (let col = 0; col < 5; col++) {
+      const i = r * 5 + col, x = x0 + col * cell, y = y0 + r * cell;
+      const hot = pairFirst && (sq[i] === pairFirst[0] || sq[i] === pairFirst[1]);
+      g.fillStyle = hot ? "#2d2410" : "#15171f";
+      roundRect(g, x + 2, y + 2, cell - 4, cell - 4, 6); g.fill();
+      if (hot) { g.strokeStyle = "#e0a94f"; g.lineWidth = 1.3; g.stroke(); }
+      g.fillStyle = hot ? "#ffdfa0" : "#8b8676";
+      g.fillText(sq[i], x + cell / 2, y + cell / 2);
+    }
+    g.textAlign = "center"; g.font = "600 11px system-ui,sans-serif"; g.fillStyle = "#6b6757";
+    g.fillText("I and J share a cell · digraph: " + (pairFirst ? pairFirst.join("") : "—") +
+      " → " + (out.slice(0, 2) || "—"), w / 2, y0 + cell * 5 + 20);
+    $("visNote").textContent = "A 5×5 keyed square enciphers letters two at a time: same row shifts right, same column shifts down, otherwise swap corners. Pairs, not letters, blunt frequency analysis.";
+  } else {
+    const n = Math.min(src.length, Math.floor((w - 24) / 13)) || 1;
+    const cw = (w - 24) / Math.max(n, 1), rh = (h - 70) / Math.max(c.rails - 1, 1);
+    g.strokeStyle = "#1d2029"; g.lineWidth = 1;
+    for (let r = 0; r < c.rails; r++) {
+      const y = 40 + r * rh;
+      g.beginPath(); g.moveTo(12, y); g.lineTo(w - 12, y); g.stroke();
+    }
+    let r = 0, dir = 1; const path = [];
+    for (let i = 0; i < n; i++) { path.push(r); r += dir; if (r === c.rails - 1) dir = -1; else if (r === 0) dir = 1; }
+    g.strokeStyle = "rgba(95,211,196,.45)"; g.lineWidth = 1.4; g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = 12 + cw * (i + .5), y = 40 + path[i] * rh;
+      if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.stroke();
+    g.font = "700 11px ui-monospace,Menlo,monospace";
+    for (let i = 0; i < n; i++) {
+      const x = 12 + cw * (i + .5), y = 40 + path[i] * rh;
+      g.fillStyle = "#0d0f15"; g.beginPath(); g.arc(x, y, 8, 0, 6.2832); g.fill();
+      g.fillStyle = "#e0a94f"; g.fillText(src[i], x, y);
+    }
+    g.fillStyle = "#6b6757"; g.font = "600 10px system-ui,sans-serif"; g.textAlign = "left";
+    g.fillText("read rail by rail, left to right", 12, h - 14);
+    $("visNote").textContent = "Pure transposition: the letters never change, only their order — so the frequency chart in the Analysis tab stays perfectly English while the text is unreadable.";
+  }
+}
+
+/* ------------------------------ frequency chart ------------------------------ */
+function drawFreq(text) {
+  const cv = $("freq"); if (!cv) return;
+  const { g, w, h } = fit(cv, 210);
+  const c = counts(text), n = c.reduce((a, b) => a + b, 0);
+  const pad = 16, base = h - 24, cw = (w - pad * 2) / 26;
+  let max = 0; for (let i = 0; i < 26; i++) max = Math.max(max, n ? c[i] / n * 100 : 0);
+  max = Math.max(max, 13);
+  g.textAlign = "center"; g.textBaseline = "middle";
+  for (let i = 0; i < 26; i++) {
+    const x = pad + cw * i, pct = n ? c[i] / n * 100 : 0;
+    const bh = (pct / max) * (base - 22);
+    g.fillStyle = "#15171f"; roundRect(g, x + 1.5, 20, cw - 3, base - 20, 4); g.fill();
+    const grad = g.createLinearGradient(0, base - bh, 0, base);
+    grad.addColorStop(0, "#e0a94f"); grad.addColorStop(1, "#8a6520");
+    g.fillStyle = grad; roundRect(g, x + 1.5, base - bh, cw - 3, Math.max(bh, 0.5), 3); g.fill();
+    const ey = base - (ENG[i] / max) * (base - 22);
+    g.strokeStyle = "rgba(95,211,196,.85)"; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(x + 2, ey); g.lineTo(x + cw - 2, ey); g.stroke();
+    g.fillStyle = "#6b6757"; g.font = "600 9px ui-monospace,Menlo,monospace";
+    g.fillText(A[i], x + cw / 2, h - 10);
+  }
+}
+
+/* ------------------------------ UI build ------------------------------ */
+function buildControls() {
+  for (let i = 0; i < 3; i++) {
+    const rs = $("rot" + i), ri = $("ring" + i);
+    for (const name in ROT) {
+      const o = document.createElement("option"); o.value = name; o.textContent = name; rs.appendChild(o);
+    }
+    for (let v = 0; v < 26; v++) {
+      const o = document.createElement("option"); o.value = v; o.textContent = A[v]; ri.appendChild(o);
+    }
+    rs.addEventListener("change", () => { S.enigma.rots[i] = rs.value; render(); });
+    ri.addEventListener("change", () => { S.enigma.rings[i] = +ri.value; render(); });
+  }
+  document.querySelectorAll(".nudge button").forEach(b => {
+    b.addEventListener("click", () => {
+      const i = +b.dataset.pos;
+      S.enigma.pos[i] = mod26(S.enigma.pos[i] + (+b.dataset.d));
+      syncControls(); render();
+    });
+  });
+  $("refl").addEventListener("change", () => { S.enigma.refl = $("refl").value; render(); });
+
+  const plugs = $("plugs"), lamps = $("lamps"), keys = $("keys");
+  for (let v = 0; v < 26; v++) {
+    const p = document.createElement("button");
+    p.className = "plug"; p.dataset.l = A[v];
+    p.appendChild(document.createTextNode(A[v]));
+    const s = document.createElement("small"); p.appendChild(s);
+    p.addEventListener("click", () => togglePlug(A[v]));
+    plugs.appendChild(p);
+
+    const l = document.createElement("div");
+    l.className = "lamp"; l.dataset.l = A[v]; l.textContent = A[v];
+    lamps.appendChild(l);
+
+    const k = document.createElement("button");
+    k.className = "key"; k.textContent = A[v];
+    k.addEventListener("click", () => typeLetter(A[v]));
+    keys.appendChild(k);
+  }
+}
+let plugSel = null;
+function togglePlug(L) {
+  const e = S.enigma;
+  const idx = e.pairs.findIndex(p => p.indexOf(L) >= 0);
+  if (idx >= 0) { e.pairs.splice(idx, 1); plugSel = null; render(); return; }
+  if (plugSel === null) { plugSel = L; }
+  else if (plugSel === L) { plugSel = null; }
+  else {
+    if (e.pairs.length >= 10) { toast("The board holds ten cables."); plugSel = null; render(); return; }
+    e.pairs.push(plugSel + L); plugSel = null;
+  }
+  render();
+}
+function syncControls() {
+  for (let i = 0; i < 3; i++) { $("rot" + i).value = S.enigma.rots[i]; $("ring" + i).value = S.enigma.rings[i]; }
+  $("refl").value = S.enigma.refl;
+  $("caesarShift").value = S.classic.shift; $("caesarVal").textContent = S.classic.shift;
+  $("rails").value = S.classic.rails; $("railsVal").textContent = S.classic.rails;
+  $("keyword").value = S.classic.keyword;
+  document.querySelectorAll("#cipherSeg button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.c === S.classic.cipher)));
+  document.querySelectorAll("#dirSeg button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.d === S.dir)));
+  document.querySelectorAll("#srcSeg button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.s === S.src)));
+  $("btnGroup").setAttribute("aria-pressed", String(S.group));
+  $("pCaesar").classList.toggle("hidden", S.classic.cipher !== "caesar");
+  $("pKeyword").classList.toggle("hidden", S.classic.cipher !== "vigenere" && S.classic.cipher !== "playfair");
+  $("pRails").classList.toggle("hidden", S.classic.cipher !== "rail");
+  $("dirNote").textContent = S.engine === "enigma"
+    ? "Enigma is its own inverse — same key, same cables, and the text comes back."
+    : (S.classic.cipher === "atbash" ? "Atbash has no direction: it undoes itself."
+      : "Deciphering runs the same key backwards.");
+}
+const DRUMS = [];
+function setDrums(pos) {
+  for (let i = 0; i < 3; i++) {
+    const strip = $("strip" + i);
+    const p = pos[i];
+    if (DRUMS[i] === p) continue;
+    const rolled = DRUMS[i] !== undefined;
+    strip.textContent = "";
+    for (let k = -2; k <= 2; k++) {
+      const el = document.createElement("i");
+      el.textContent = A[mod26(p + k)];
+      if (k === 0) el.className = "cur";
+      strip.appendChild(el);
+    }
+    if (rolled) {
+      strip.style.transition = "none"; strip.style.transform = "translateY(0px)";
+      requestAnimationFrame(() => { strip.style.transition = ""; strip.style.transform = "translateY(-28px)"; });
+    } else { strip.style.transform = "translateY(-28px)"; }
+    DRUMS[i] = p;
+  }
+}
+function paintPlugs() {
+  const e = S.enigma;
+  const partner = {};
+  for (const p of e.pairs) { partner[p[0]] = p[1]; partner[p[1]] = p[0]; }
+  document.querySelectorAll(".plug").forEach(el => {
+    const L = el.dataset.l;
+    el.dataset.on = partner[L] ? "1" : "0";
+    el.dataset.sel = plugSel === L ? "1" : "0";
+    el.querySelector("small").textContent = partner[L] || "";
+  });
+  $("plugCount").textContent = e.pairs.length;
+}
+function paintLamps(lamp) {
+  document.querySelectorAll(".lamp").forEach((el, i) => el.dataset.lit = i === lamp ? "1" : "0");
+}
+
+/* ------------------------------ text plumbing ------------------------------ */
+function formatOut(s) {
+  if (!S.group) return s;
+  const L = letters(s); let o = "";
+  for (let i = 0; i < L.length; i += 5) o += (i ? " " : "") + L.slice(i, i + 5);
+  return o;
+}
+function typeLetter(L) {
+  const el = $("in");
+  el.value = el.value + L;
+  render(true);
+}
+function engineOutput() {
+  if (S.engine === "enigma") { lastResult = enigmaRun(S.text); return lastResult.out; }
+  return runClassic(S.text);
+}
+
+let resizeRaf = 0;
+function render(animated) {
+  S.text = $("in").value;
+  const out = engineOutput();
+  $("out").value = formatOut(out);
+  if (S.engine === "enigma") {
+    setDrums(lastResult.pos);
+    $("keyText").textContent = S.enigma.pos.map(p => A[p]).join("");
+    $("endPos").textContent = lastResult.path
+      ? "wheels now at " + lastResult.pos.map(p => A[p]).join("") + " · "
+      : "";
+    paintLamps(lastResult.lamp);
+  } else { paintLamps(-1); }
+  paintPlugs();
+  syncControls();
+  if (S.mode === "enigma") { if (animated && lastResult.path) pulse(); else drawWire(1); }
+  else if (S.mode === "classic") drawClassVis();
+  else updateAnalysis();
+  save();
+}
+
+/* ------------------------------ analysis UI ------------------------------ */
+function updateAnalysis() {
+  const text = S.src === "out" ? $("out").value : $("in").value;
+  const c = counts(text), n = c.reduce((a, b) => a + b, 0);
+  const I = ioc(c), X = chi2(c);
+  $("aN").textContent = n;
+  $("aIoC").textContent = n > 1 ? I.toFixed(4) : "—";
+  $("aChi").textContent = n ? X.toFixed(1) : "—";
+  $("aGuess").textContent = n < 20 ? "need more text"
+    : I > 0.058 ? (X < 120 ? "plain or transposed English" : "one substituted alphabet")
+    : I > 0.045 ? "short-key polyalphabetic" : "long key or machine cipher";
+  drawFreq(text);
+
+  const host = $("caesarCracks"); host.textContent = "";
+  const ranked = crackCaesar(text).slice(0, 6);
+  for (const r of ranked) {
+    const b = document.createElement("button");
+    b.className = "crack";
+    const k = document.createElement("span"); k.className = "k"; k.textContent = "−" + r.k;
+    const p = document.createElement("span"); p.className = "p";
+    p.textContent = n ? caesar(text, r.k, true).replace(/\s+/g, " ").slice(0, 52) : "—";
+    const s = document.createElement("span"); s.className = "s"; s.textContent = r.score.toFixed(0);
+    b.append(k, p, s);
+    b.addEventListener("click", () => applyCrack({ cipher: "caesar", shift: r.k }, text));
+    host.appendChild(b);
+  }
+
+  const v = crackVigenere(text), kl = $("klens"); kl.textContent = "";
+  const maxI = Math.max(0.0001, ...v.lens.map(e => e.ioc));
+  for (const e of v.lens) {
+    const row = document.createElement("div");
+    row.className = "klen" + (e.L === v.best.L ? " best" : "");
+    const a1 = document.createElement("span"); a1.textContent = "L=" + e.L;
+    const bar = document.createElement("div"); bar.className = "bar";
+    const fill = document.createElement("i"); fill.style.width = (e.ioc / maxI * 100).toFixed(1) + "%";
+    bar.appendChild(fill);
+    const a2 = document.createElement("span"); a2.className = "mono"; a2.textContent = e.ioc.toFixed(4);
+    row.append(a1, bar, a2);
+    kl.appendChild(row);
+  }
+  const vc = $("vigCrack"); vc.textContent = "";
+  const b = document.createElement("button"); b.className = "crack";
+  const k = document.createElement("span"); k.className = "k"; k.textContent = v.key || "—";
+  const p = document.createElement("span"); p.className = "p";
+  p.textContent = n ? vigenere(text, v.key || "A", true).replace(/\s+/g, " ").slice(0, 52) : "—";
+  const s = document.createElement("span"); s.className = "s"; s.textContent = "L=" + v.best.L;
+  b.append(k, p, s);
+  b.addEventListener("click", () => applyCrack({ cipher: "vigenere", keyword: v.key || "A" }, text));
+  vc.appendChild(b);
+}
+function applyCrack(cfg, text) {
+  S.engine = "classic"; S.dir = "dec";
+  Object.assign(S.classic, cfg);
+  $("in").value = text;
+  setMode("classic");
+  toast(cfg.cipher === "caesar" ? "Applied shift −" + cfg.shift : "Applied key " + cfg.keyword);
+}
+
+/* ------------------------------ modes ------------------------------ */
+function setMode(m) {
+  S.mode = m;
+  if (m === "enigma" || m === "classic") S.engine = m;
+  $("panel-enigma").classList.toggle("hidden", m !== "enigma");
+  $("panel-classic").classList.toggle("hidden", m !== "classic");
+  $("panel-analysis").classList.toggle("hidden", m !== "analysis");
+  $("tab-enigma").setAttribute("aria-selected", String(m === "enigma"));
+  $("tab-classic").setAttribute("aria-selected", String(m === "classic"));
+  $("tab-analysis").setAttribute("aria-selected", String(m === "analysis"));
+  render();
+}
+
+/* ------------------------------ export / share / storage ------------------------------ */
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), 1900);
+}
+function download(name, text, mime) {
+  const blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return blob.size;
+}
+function keyLine() {
+  const e = S.enigma;
+  if (S.engine === "enigma") {
+    return "Enigma I · wheels " + e.rots.join(" ") + " · rings " + e.rings.map(r => A[r]).join("") +
+      " · key " + e.pos.map(p => A[p]).join("") + " · " + "UKW " + e.refl +
+      " · plugs " + (e.pairs.length ? e.pairs.join(" ") : "none");
+  }
+  const c = S.classic;
+  const detail = c.cipher === "caesar" ? "shift " + c.shift
+    : c.cipher === "rail" ? c.rails + " rails"
+    : c.cipher === "atbash" ? "no key" : "keyword " + letters(c.keyword);
+  return c.cipher.toUpperCase() + " · " + detail + " · " + (S.dir === "dec" ? "deciphering" : "enciphering");
+}
+function transcript() {
+  const text = S.src === "out" ? $("out").value : $("in").value;
+  const c = counts(text), n = c.reduce((a, b) => a + b, 0);
+  const ce = crackCaesar(text)[0], vg = crackVigenere(text);
+  return [
+    "ROTORWORKS — CIPHER WORKBENCH",
+    new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC",
+    "",
+    "KEY   " + keyLine(),
+    "",
+    "--- INPUT ---", $("in").value,
+    "",
+    "--- OUTPUT ---", $("out").value,
+    "",
+    "--- ANALYSIS (" + (S.src === "out" ? "output" : "input") + ") ---",
+    "letters                " + n,
+    "index of coincidence   " + (n > 1 ? ioc(c).toFixed(4) : "n/a"),
+    "chi-square vs English  " + (n ? chi2(c).toFixed(1) : "n/a"),
+    "best Caesar shift      " + (n ? "-" + ce.k + "  (chi2 " + ce.score.toFixed(0) + ")" : "n/a"),
+    "Vigenere key guess     " + (n ? vg.key + "  (length " + vg.best.L + ", IoC " + vg.best.ioc.toFixed(4) + ")" : "n/a"),
+    ""
+  ].join("\n");
+}
+function compact() {
+  return {
+    v: 1, e: S.engine, d: S.dir, g: S.group ? 1 : 0, t: S.text.slice(0, 2000),
+    en: [S.enigma.rots.join(","), S.enigma.rings.join(","), S.enigma.pos.join(","), S.enigma.refl, S.enigma.pairs.join(",")],
+    cl: [S.classic.cipher, S.classic.shift, S.classic.keyword, S.classic.rails]
+  };
+}
+function applyCompact(o) {
+  try {
+    if (!o || o.v !== 1) return false;
+    S.engine = o.e === "classic" ? "classic" : "enigma";
+    S.dir = o.d === "dec" ? "dec" : "enc";
+    S.group = !!o.g;
+    S.text = typeof o.t === "string" ? o.t : S.text;
+    const en = o.en || [];
+    const rots = String(en[0] || "").split(",").filter(x => ROT[x]);
+    if (rots.length === 3) S.enigma.rots = rots;
+    const rings = String(en[1] || "").split(",").map(Number);
+    if (rings.length === 3 && rings.every(v => v >= 0 && v < 26)) S.enigma.rings = rings;
+    const pos = String(en[2] || "").split(",").map(Number);
+    if (pos.length === 3 && pos.every(v => v >= 0 && v < 26)) S.enigma.pos = pos;
+    if (en[3] === "B" || en[3] === "C") S.enigma.refl = en[3];
+    S.enigma.pairs = String(en[4] || "").split(",").filter(p => /^[A-Z]{2}$/.test(p)).slice(0, 10);
+    const cl = o.cl || [];
+    if (["caesar", "vigenere", "playfair", "rail", "atbash"].indexOf(cl[0]) >= 0) S.classic.cipher = cl[0];
+    if (cl[1] >= 0 && cl[1] < 26) S.classic.shift = +cl[1];
+    if (typeof cl[2] === "string") S.classic.keyword = cl[2].slice(0, 40);
+    if (cl[3] >= 2 && cl[3] <= 8) S.classic.rails = +cl[3];
+    return true;
+  } catch (err) { return false; }
+}
+function b64e(s) {
+  const bytes = new TextEncoder().encode(s);
+  let bin = ""; for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64d(s) {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function save() {
+  try { localStorage.setItem(SKEY, JSON.stringify(compact())); } catch (err) { /* private mode */ }
+}
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(SKEY);
+    if (raw) return applyCompact(JSON.parse(raw));
+  } catch (err) { /* ignore */ }
+  return false;
+}
+function presets() {
+  try { return JSON.parse(localStorage.getItem(PKEY) || "[]"); } catch (err) { return []; }
+}
+function paintPresets() {
+  const sel = $("presetList"), list = presets();
+  sel.textContent = "";
+  const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "— saved keys —";
+  sel.appendChild(o0);
+  list.forEach((p, i) => {
+    const o = document.createElement("option"); o.value = String(i); o.textContent = p.name;
+    sel.appendChild(o);
+  });
+}
+
+/* ------------------------------ events ------------------------------ */
+function wire() {
+  $("tab-enigma").addEventListener("click", () => setMode("enigma"));
+  $("tab-classic").addEventListener("click", () => setMode("classic"));
+  $("tab-analysis").addEventListener("click", () => setMode("analysis"));
+
+  $("in").addEventListener("input", () => render(true));
+  $("btnClear").addEventListener("click", () => { $("in").value = ""; DRUMS.length = 0; render(); });
+  $("btnSample").addEventListener("click", () => {
+    const samples = ["ATTACK AT DAWN", "THE SPRING OFFENSIVE BEGINS AT FIRST LIGHT ON THE NORTHERN ROAD",
+      "MEET ME WHERE THE RIVER BENDS AND BRING THE SECOND KEY SHEET",
+      "NOTHING IS EVER AS SECRET AS THE PEOPLE WHO BUILT IT BELIEVE"];
+    $("in").value = samples[(Math.random() * samples.length) | 0];
+    render(true);
+  });
+  $("btnCopy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("out").value); toast("Output copied."); }
+    catch (err) { $("out").select(); toast("Press ⌘/Ctrl-C to copy."); }
+  });
+  $("btnSwap").addEventListener("click", () => { $("in").value = $("out").value; render(); toast("Output fed back in."); });
+  $("btnGroup").addEventListener("click", () => { S.group = !S.group; render(); });
+
+  document.querySelectorAll("#dirSeg button").forEach(b =>
+    b.addEventListener("click", () => { S.dir = b.dataset.d; render(); }));
+  document.querySelectorAll("#srcSeg button").forEach(b =>
+    b.addEventListener("click", () => { S.src = b.dataset.s; render(); }));
+  document.querySelectorAll("#cipherSeg button").forEach(b =>
+    b.addEventListener("click", () => { S.classic.cipher = b.dataset.c; S.engine = "classic"; render(); }));
+
+  $("caesarShift").addEventListener("input", e => { S.classic.shift = +e.target.value; S.engine = "classic"; render(); });
+  $("rails").addEventListener("input", e => { S.classic.rails = +e.target.value; S.engine = "classic"; render(); });
+  $("keyword").addEventListener("input", e => { S.classic.keyword = e.target.value; S.engine = "classic"; render(); });
+
+  $("btnPlugClear").addEventListener("click", () => { S.enigma.pairs = []; plugSel = null; render(); });
+  $("btnPlugRand").addEventListener("click", () => {
+    const pool = A.split("");
+    for (let i = pool.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+    S.enigma.pairs = [];
+    for (let i = 0; i < 10; i++) S.enigma.pairs.push(pool[i * 2] + pool[i * 2 + 1]);
+    plugSel = null; render();
+  });
+  $("btnRewind").addEventListener("click", () => { S.enigma.pos = [0, 0, 0]; DRUMS.length = 0; render(); });
+  $("btnRandom").addEventListener("click", () => {
+    const names = Object.keys(ROT);
+    const pick = [];
+    while (pick.length < 3) { const n = names[(Math.random() * names.length) | 0]; if (pick.indexOf(n) < 0) pick.push(n); }
+    S.enigma.rots = pick;
+    S.enigma.rings = [0, 0, 0].map(() => (Math.random() * 26) | 0);
+    S.enigma.pos = [0, 0, 0].map(() => (Math.random() * 26) | 0);
+    S.enigma.refl = Math.random() < .5 ? "B" : "C";
+    DRUMS.length = 0;
+    $("btnPlugRand").click();
+    toast("New key: " + S.enigma.rots.join(" ") + " " + S.enigma.pos.map(p => A[p]).join(""));
+  });
+
+  $("btnTxt").addEventListener("click", () => {
+    const size = download("rotorworks-transcript.txt", transcript());
+    toast("Transcript saved · " + size + " bytes");
+  });
+  $("btnJson").addEventListener("click", () => {
+    const size = download("rotorworks-key.json", JSON.stringify(compact(), null, 2), "application/json");
+    toast("Key file saved · " + size + " bytes");
+  });
+  $("btnLink").addEventListener("click", async () => {
+    const hash = "#k=" + b64e(JSON.stringify(compact()));
+    history.replaceState(null, "", location.pathname + location.search + hash);
+    const url = location.href;
+    try { await navigator.clipboard.writeText(url); toast("Link copied — the key travels in the URL."); }
+    catch (err) { toast("Link is in the address bar."); }
+  });
+  $("btnPreset").addEventListener("click", () => {
+    $("rail").scrollTo({ top: $("rail").scrollHeight, behavior: "smooth" });
+    toast("Preset shelf is at the bottom of the right rail.");
+  });
+  $("btnPresetSave").addEventListener("click", () => {
+    const name = prompt("Name this key setting:", keyLine().slice(0, 28));
+    if (!name) return;
+    const list = presets();
+    list.unshift({ name: name.slice(0, 40), state: compact() });
+    try { localStorage.setItem(PKEY, JSON.stringify(list.slice(0, 12))); } catch (err) { }
+    paintPresets(); toast("Saved “" + name.slice(0, 24) + "”.");
+  });
+  $("btnPresetLoad").addEventListener("click", () => {
+    const i = $("presetList").value; if (i === "") { toast("Pick a saved key first."); return; }
+    const p = presets()[+i]; if (!p) return;
+    applyCompact(p.state); DRUMS.length = 0;
+    $("in").value = S.text; setMode(S.engine); toast("Loaded “" + p.name + "”.");
+  });
+  $("btnPresetDel").addEventListener("click", () => {
+    const i = $("presetList").value; if (i === "") return;
+    const list = presets(); list.splice(+i, 1);
+    try { localStorage.setItem(PKEY, JSON.stringify(list)); } catch (err) { }
+    paintPresets(); toast("Deleted.");
+  });
+
+  window.addEventListener("keydown", e => {
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) { typeLetter(e.key.toUpperCase()); e.preventDefault(); }
+    else if (e.key === "Backspace") { $("in").value = $("in").value.slice(0, -1); DRUMS.length = 0; render(); e.preventDefault(); }
+  });
+  window.addEventListener("resize", () => {
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => {
+      if (S.mode === "enigma") drawWire(1);
+      else if (S.mode === "classic") drawClassVis();
+      else drawFreq(S.src === "out" ? $("out").value : $("in").value);
+    });
+  });
+}
+
+/* ------------------------------ init ------------------------------ */
+function init() {
+  S.engine = "enigma";
+  buildControls(); wire(); paintPresets();
+  let restored = false;
+  if (location.hash.indexOf("#k=") === 0) {
+    try { restored = applyCompact(JSON.parse(b64d(location.hash.slice(3)))); } catch (err) { restored = false; }
+  }
+  if (!restored) restored = loadSaved();
+  $("in").value = S.text;
+  setMode(S.engine === "classic" ? "classic" : "enigma");
+  if (restored) toast("Key restored.");
+}
+init();
+</script>
+</body>
+</html>

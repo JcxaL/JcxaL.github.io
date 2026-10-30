@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A Face Built From Rays · Drop 4</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#fff8e7;--dim:#c0a271;--line:#3d3217;--glass:rgba(26,20,8,.78);--hot:#fbbf24}
+body{min-height:100dvh;background:
+    radial-gradient(900px 620px at 10% -10%,#3a2b0c 0,transparent 60%),
+    radial-gradient(820px 560px at 98% 10%,#2a1a2e 0,transparent 55%),#0a0805;
+  color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:70px 18px 92px;display:flex;flex-direction:column;align-items:center;gap:22px}
+.back-link,.panel{position:fixed;z-index:9;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(12px)}
+.back-link{left:16px;top:16px;padding:8px 14px;border-radius:999px;color:var(--ink);text-decoration:none;font-size:13px}
+.panel{right:16px;top:16px;border-radius:14px;padding:12px 14px;width:228px;font-size:12px}
+.panel h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+.panel label{display:flex;align-items:center;gap:8px;margin:7px 0;color:var(--dim)}
+.panel label span{flex:0 0 62px}
+.panel input[type=range]{flex:1;accent-color:var(--hot);min-width:0}
+.panel output{flex:0 0 38px;text-align:right;color:var(--hot);font-variant-numeric:tabular-nums}
+.panel button{width:100%;margin-top:7px;font:inherit;font-size:12px;color:var(--ink);background:#271d09;
+  border:1px solid var(--line);border-radius:9px;padding:7px;cursor:pointer}
+h1{font-size:clamp(20px,4vw,30px);font-weight:650;letter-spacing:-.025em;text-align:center}
+.lead{max-width:680px;text-align:center;color:var(--dim);font-size:13.5px}
+.lead code,code{font:13px ui-monospace,Menlo,monospace;color:var(--hot)}
+.stage{width:min(1000px,100%);display:grid;gap:16px;grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:780px){.stage{grid-template-columns:1fr}.panel{display:none}}
+figure{border:1px solid var(--line);border-radius:18px;padding:12px;background:linear-gradient(180deg,rgba(38,29,10,.6),rgba(10,8,5,.5));
+  display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;touch-action:manipulation}
+svg{width:100%;height:auto;display:block;overflow:visible}
+figcaption{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);display:flex;
+  justify-content:space-between;width:100%;gap:8px}
+figcaption b{color:var(--hot);font-weight:600}
+.readout{width:min(1000px,100%);display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--dim)}
+.readout b{color:var(--hot);font-family:ui-monospace,Menlo,monospace;font-weight:600}
+.hint{max-width:680px;text-align:center;color:#937a4e;font-size:12.5px}
+footer{position:fixed;left:0;right:0;bottom:0;padding:9px 16px;text-align:center;font-size:11.5px;color:#937a4e;
+  background:linear-gradient(180deg,transparent,rgba(8,6,3,.92));backdrop-filter:blur(6px)}
+footer a{color:#fcd34d}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="panel">
+  <h2>Rig</h2>
+  <label><span>Rays</span><input type="range" id="rays" min="12" max="192" step="4" value="128"><output id="raysO">128</output></label>
+  <label><span>Stiffness</span><input type="range" id="k" min="40" max="420" step="5" value="180"><output id="kO">180</output></label>
+  <label><span>Damping</span><input type="range" id="d" min="6" max="40" step="1" value="18"><output id="dO">18</output></label>
+  <label><span>Gaze</span><input type="range" id="gaze" min="0" max="70" step="1" value="42"><output id="gazeO">42°</output></label>
+  <label><span>Blink/min</span><input type="range" id="blink" min="0" max="40" step="1" value="14"><output id="blinkO">14</output></label>
+  <button id="proj">Pupils: spherical</button>
+  <button id="showRays">Show rays</button>
+</div>
+
+<h1>A face built from rays</h1>
+<p class="lead">No sprites and no keyframes: each outline is 128 radii sampled around a circle and lerped toward
+  the next shape by a spring. The pupils are points on a sphere, turned toward your cursor with Rodrigues'
+  rotation and projected flat — so they foreshorten at the edges instead of sliding. Move the pointer, click a
+  face to make it blink, and watch the loop park itself when everything settles.</p>
+
+<div class="stage" id="stage"></div>
+<div class="readout">
+  <span>loop <b id="rState">running</b></span>
+  <span>attribute writes/s <b id="rWrites">0</b></span>
+  <span>springs at rest <b id="rRest">0/3</b></span>
+  <span>integrator <b>120 Hz semi-implicit Euler</b></span>
+</div>
+<p class="hint">Only changed attributes are written back to the DOM — the counter above is the real cost of a
+  frame, and it drops to zero the moment the springs stop moving.</p>
+
+<footer>Inspired by <a href="https://github.com/ArvinYin1/grokbot-animation-anatomy" target="_blank" rel="noopener">ArvinYin1/grokbot-animation-anatomy</a> · UI Spotlight Day 146 · Drop #4</footer>
+
+<script>
+"use strict";
+const el = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const P = { rays: 128, k: 180, d: 18, gaze: 42, blink: 14, sphere: true, showRays: false };
+
+/* ---------- shapes: radius as a function of angle ---------- */
+const SHAPES = [
+  t => 1,
+  t => 1 / Math.pow(Math.pow(Math.abs(Math.cos(t)), 4.2) + Math.pow(Math.abs(Math.sin(t)), 4.2), 1 / 4.2),
+  t => 1 + .13 * Math.sin(3 * t + .6) + .07 * Math.sin(5 * t - 1.2)
+];
+const CASTS = [
+  { name: "Pebble", tint: "#fbbf24", shape: 0, hover: 2, kMul: 1,   dMul: 1,   eye: 15 },
+  { name: "Tile",   tint: "#a78bfa", shape: 1, hover: 0, kMul: 1.6, dMul: .8,  eye: 13 },
+  { name: "Drop",   tint: "#5eead4", shape: 2, hover: 1, kMul: .7,  dMul: 1.25, eye: 17 }
+];
+
+/* ---------- a tiny DOM-diffing writer ---------- */
+let writes = 0;
+function setAttr(node, name, value) {
+  const k = "_" + name;
+  if (node[k] === value) return;
+  node[k] = value; node.setAttribute(name, value); writes++;
+}
+function make(tag, attrs) {
+  const n = document.createElementNS(NS, tag);
+  for (const a in attrs) setAttr(n, a, attrs[a]);
+  return n;
+}
+
+/* ---------- springs ---------- */
+function spring(v) { return { x: v, v: 0, t: v }; }
+function stepSpring(s, k, d, dt) {
+  const a = k * (s.t - s.x) - d * s.v;
+  s.v += a * dt; s.x += s.v * dt;
+  return Math.abs(s.v) > .002 || Math.abs(s.t - s.x) > .0015;
+}
+
+/* ---------- build the cast ---------- */
+const rigs = CASTS.map((c, i) => {
+  const fig = document.createElement("figure");
+  const svg = make("svg", { viewBox: "-110 -110 220 220" });
+  const g = make("g", {});
+  const body = make("path", { fill: c.tint, "fill-opacity": ".16", stroke: c.tint, "stroke-width": "2.4",
+    "stroke-linejoin": "round" });
+  const rayG = make("g", { stroke: c.tint, "stroke-opacity": ".22", "stroke-width": ".6" });
+  const eyes = [-1, 1].map(side => {
+    const grp = make("g", {});
+    const white = make("circle", { cx: side * 30, cy: -6, r: c.eye, fill: "#0b0905", stroke: c.tint,
+      "stroke-opacity": ".5", "stroke-width": "1.4" });
+    const pupil = make("ellipse", { fill: c.tint, rx: 6, ry: 6, cx: side * 30, cy: -6 });
+    const glint = make("circle", { r: 2, fill: "#fffaf0", "fill-opacity": ".9", cx: side * 30, cy: -10 });
+    const lid = make("path", { fill: "#0a0805", d: "" });
+    grp.append(white, pupil, glint, lid);
+    return { grp, white, pupil, glint, lid, side };
+  });
+  const mouth = make("path", { stroke: c.tint, "stroke-width": "2.6", fill: "none", "stroke-linecap": "round" });
+  g.append(rayG, body, eyes[0].grp, eyes[1].grp, mouth);
+  svg.appendChild(g);
+  const cap = document.createElement("figcaption");
+  const nm = document.createElement("span"); nm.textContent = c.name;
+  const st = document.createElement("b"); st.textContent = "idle";
+  cap.append(nm, st);
+  fig.append(svg, cap);
+  el("stage").appendChild(fig);
+
+  const r = { c, fig, svg, g, body, rayG, eyes, mouth, state: st,
+    morph: spring(0), lean: { x: spring(0), y: spring(0) }, gaze: { x: spring(0), y: spring(0) },
+    lid: spring(0), blinkAt: 2 + Math.random() * 4, rayLines: [], hover: false };
+  fig.addEventListener("pointerenter", () => { r.hover = true; r.morph.t = 1; wake(); });
+  fig.addEventListener("pointerleave", () => { r.hover = false; r.morph.t = 0; wake(); });
+  fig.addEventListener("click", () => { blink(r); wake(); });
+  return r;
+});
+function blink(r) { r.lid.t = 1; r.blinkAt = 0.26; }
+
+/* ---------- pointer ---------- */
+const pointer = { x: innerWidth / 2, y: innerHeight * .4, live: false };
+addEventListener("pointermove", e => { pointer.x = e.clientX; pointer.y = e.clientY; pointer.live = true; wake(); }, { passive: true });
+
+/* ---------- geometry ---------- */
+function outline(r, m, squash) {
+  const n = P.rays, from = SHAPES[r.c.shape], to = SHAPES[r.c.hover];
+  let d = "";
+  r.rayLines.length = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / n * Math.PI * 2;
+    const rad = (from(t) * (1 - m) + to(t) * m) * 86;
+    const x = Math.cos(t) * rad * (1 + squash), y = Math.sin(t) * rad * (1 - squash);
+    d += (i ? "L" : "M") + x.toFixed(2) + " " + y.toFixed(2);
+    if (P.showRays && i % 4 === 0) r.rayLines.push([x, y]);
+  }
+  return d + "Z";
+}
+/* Rodrigues: rotate the forward vector about an axis in the screen plane */
+function gazePoint(ax, ay, radius) {
+  const len = Math.hypot(ax, ay);
+  if (len < 1e-5) return { x: 0, y: 0, z: 1 };
+  const ux = ax / len, uy = ay / len;
+  const ang = Math.min(len, 1) * (P.gaze * Math.PI / 180);
+  /* the flat comparison: the pupil just slides, with no foreshortening */
+  if (!P.sphere) { const f = Math.min(len, 1) * (P.gaze / 70); return { x: ux * f, y: uy * f, z: 1 }; }
+  const kx = -uy, ky = ux;                    /* axis ⟂ gaze, in the screen plane */
+  const px = 0, py = 0, pz = 1;               /* forward vector */
+  const c = Math.cos(ang), s = Math.sin(ang);
+  const crx = ky * pz - 0 * py, cry = 0 * px - kx * pz, crz = kx * py - ky * px;
+  const dot = kx * px + ky * py;
+  return { x: px * c + crx * s + kx * dot * (1 - c),
+           y: py * c + cry * s + ky * dot * (1 - c),
+           z: pz * c + crz * s };
+}
+
+/* ---------- frame ---------- */
+let raf = 0, last = 0, acc = 0, writeWindow = 0, writeCount = 0;
+const DT = 1 / 120;
+function frame(now) {
+  const dt = Math.min(.08, (now - last) / 1000 || 0); last = now;
+  acc += dt; writeWindow += dt;
+  let moving = false, resting = 0;
+  const steps = Math.min(16, Math.floor(acc / DT));
+  acc -= steps * DT;
+
+  for (const r of rigs) {
+    const box = r.svg.getBoundingClientRect();
+    const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+    const dx = (pointer.x - cx) / Math.max(120, box.width), dy = (pointer.y - cy) / Math.max(120, box.height);
+    const reach = Math.min(1.6, Math.hypot(dx, dy));
+    r.gaze.x.t = Math.max(-1, Math.min(1, dx * 1.4));
+    r.gaze.y.t = Math.max(-1, Math.min(1, dy * 1.4));
+    r.lean.x.t = Math.max(-1, Math.min(1, dx)) * (r.hover ? 10 : 5);
+    r.lean.y.t = Math.max(-1, Math.min(1, dy)) * (r.hover ? 10 : 5);
+
+    if (!reduced) {
+      r.blinkAt -= dt;
+      if (r.blinkAt <= 0) {
+        if (r.lid.t === 1) { r.lid.t = 0; r.blinkAt = P.blink > 0 ? (60 / P.blink) * (.6 + Math.random() * .8) : 1e6; }
+        else if (P.blink > 0) { r.lid.t = 1; r.blinkAt = .26 * .45; }
+        else r.blinkAt = 1e6;
+      }
+    }
+    const k = P.k * r.c.kMul, d = P.d * r.c.dMul;
+    let live = false;
+    for (let s = 0; s < steps; s++) {
+      live = stepSpring(r.morph, k, d, DT) || live;
+      live = stepSpring(r.lean.x, k * .6, d, DT) || live;
+      live = stepSpring(r.lean.y, k * .6, d, DT) || live;
+      live = stepSpring(r.gaze.x, k * 1.5, d * .9, DT) || live;
+      live = stepSpring(r.gaze.y, k * 1.5, d * .9, DT) || live;
+      live = stepSpring(r.lid, k * 4, d * 1.4, DT) || live;
+    }
+    moving = moving || live; if (!live) resting++;
+
+    const squash = Math.max(-.12, Math.min(.12, r.lean.x.v * .0009));
+    setAttr(r.body, "d", outline(r, r.morph.x, squash));
+    setAttr(r.g, "transform", "translate(" + r.lean.x.x.toFixed(2) + " " + r.lean.y.x.toFixed(2) + ")");
+    setAttr(r.body, "fill-opacity", (.14 + r.morph.x * .12).toFixed(3));
+
+    if (P.showRays) {
+      while (r.rayG.childNodes.length < r.rayLines.length) r.rayG.appendChild(make("line", {}));
+      while (r.rayG.childNodes.length > r.rayLines.length) r.rayG.lastChild.remove();
+      r.rayLines.forEach((p, i) => {
+        const ln = r.rayG.childNodes[i];
+        setAttr(ln, "x1", "0"); setAttr(ln, "y1", "0");
+        setAttr(ln, "x2", p[0].toFixed(1)); setAttr(ln, "y2", p[1].toFixed(1));
+      });
+    } else if (r.rayG.childNodes.length) { r.rayG.textContent = ""; }
+
+    const gp = gazePoint(r.gaze.x.x, r.gaze.y.x, 1);
+    for (const e of r.eyes) {
+      const R = r.c.eye - 5;
+      const px = e.side * 30 + gp.x * R, py = -6 + gp.y * R;
+      setAttr(e.pupil, "cx", px.toFixed(2)); setAttr(e.pupil, "cy", py.toFixed(2));
+      setAttr(e.pupil, "rx", (6 * (P.sphere ? Math.max(.35, Math.abs(gp.z)) : 1)).toFixed(2));
+      setAttr(e.pupil, "ry", "6");
+      setAttr(e.glint, "cx", (px - 2).toFixed(2)); setAttr(e.glint, "cy", (py - 3).toFixed(2));
+      const lid = r.lid.x, top = -6 - r.c.eye, h = lid * (r.c.eye * 2);
+      setAttr(e.lid, "d", "M" + (e.side * 30 - r.c.eye) + " " + top +
+        "h" + (r.c.eye * 2) + "v" + h.toFixed(2) +
+        "q" + (-r.c.eye) + " " + (r.c.eye * .5 * lid).toFixed(2) + " " + (-r.c.eye * 2) + " 0Z");
+    }
+    const smile = 10 + r.morph.x * 10 - Math.abs(r.gaze.y.x) * 6;
+    setAttr(r.mouth, "d", "M-22 38 Q0 " + (38 + smile).toFixed(1) + " 22 38");
+    r.state.textContent = r.hover ? "reaching" : (live ? "settling" : "idle");
+  }
+
+  if (writeWindow >= .5) { writeCount = Math.round(writes / writeWindow); writes = 0; writeWindow = 0; }
+  el("rWrites").textContent = String(writeCount);
+  el("rRest").textContent = resting + "/3";
+
+  if (moving || pointer.live) { pointer.live = false; raf = requestAnimationFrame(frame); }
+  else {
+    raf = 0; el("rState").textContent = "parked"; el("rWrites").textContent = "0";
+    /* nothing is moving: sleep until the next blink is due instead of burning frames */
+    if (!reduced && P.blink > 0) {
+      const soon = Math.max(.05, Math.min.apply(null, rigs.map(r => r.blinkAt)));
+      clearTimeout(nap); nap = setTimeout(wake, soon * 1000);
+    }
+  }
+}
+let nap = 0;
+function wake() {
+  clearTimeout(nap);
+  if (!raf) { el("rState").textContent = "running"; last = performance.now(); acc = 0; raf = requestAnimationFrame(frame); }
+}
+
+/* ---------- controls ---------- */
+const bind = (id, key, fmt) => el(id).addEventListener("input", e => {
+  P[key] = +e.target.value; el(id + "O").textContent = fmt(P[key]); wake();
+});
+bind("rays", "rays", v => String(v));
+bind("k", "k", v => String(v));
+bind("d", "d", v => String(v));
+bind("gaze", "gaze", v => v + "°");
+bind("blink", "blink", v => String(v));
+el("proj").addEventListener("click", () => {
+  P.sphere = !P.sphere;
+  el("proj").textContent = "Pupils: " + (P.sphere ? "spherical" : "flat");
+  wake();
+});
+el("showRays").addEventListener("click", () => {
+  P.showRays = !P.showRays;
+  el("showRays").textContent = P.showRays ? "Hide rays" : "Show rays";
+  wake();
+});
+wake();
+</script>
+</body>
+</html>
