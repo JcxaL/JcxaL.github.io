@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Keysmith — Keyboard Layout Lab</title>
+<meta name="description" content="Design a keyboard layout, score it against a real corpus, let an annealer optimise it, then drill it. Exports PNG, JSON and a share link.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#070910;--pane:rgba(17,23,37,.74);--pane2:rgba(23,31,48,.6);
+  --ink:#e9eefb;--dim:#8b9bbd;--line:rgba(136,168,214,.17);
+  --teal:#5eead4;--amber:#fbbf24;--pink:#f472b6;--indigo:#818cf8;--red:#fb7185;
+  --u:min(8.1vw,54px);--g:calc(var(--u)*.11);--r:calc(var(--u)*.17);
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 760px at 6% -10%,rgba(94,234,212,.13),transparent 58%),
+    radial-gradient(900px 640px at 100% 4%,rgba(129,140,248,.14),transparent 56%),
+    radial-gradient(1000px 700px at 50% 118%,rgba(251,191,36,.08),transparent 60%),
+    var(--bg);
+  color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow-x:hidden;overflow-y:auto;overscroll-behavior:none}
+.app{max-width:1180px;margin:0 auto;padding:14px 14px 40px;display:flex;flex-direction:column;gap:14px}
+
+/* ---------- top bar ---------- */
+.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:11px 14px;border-radius:17px;background:var(--pane);border:1px solid var(--line);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 14px 40px rgba(0,0,0,.42)}
+.brand{display:flex;align-items:baseline;gap:9px;margin-right:auto}
+.brand b{font:800 17px/1 system-ui,sans-serif;letter-spacing:.16em}
+.brand b i{font-style:normal;background:linear-gradient(96deg,var(--teal),var(--indigo) 60%,var(--pink));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.brand span{font:600 11px/1 system-ui,sans-serif;color:var(--dim);letter-spacing:.06em}
+.tabs{display:flex;gap:4px;padding:4px;border-radius:999px;background:rgba(8,12,22,.7);border:1px solid var(--line)}
+.tabs button{appearance:none;border:0;background:transparent;color:var(--dim);cursor:pointer;
+  font:700 12px/1 system-ui,sans-serif;letter-spacing:.07em;padding:9px 14px;border-radius:999px;
+  transition:color .2s,background .2s}
+.tabs button[aria-selected="true"]{color:#06121a;background:linear-gradient(180deg,#8df3e1,var(--teal));
+  box-shadow:0 4px 14px rgba(94,234,212,.3)}
+.tabs button:hover:not([aria-selected="true"]){color:var(--ink);background:rgba(255,255,255,.05)}
+select,.btn,textarea{font-family:inherit}
+select,.btn{appearance:none;cursor:pointer;color:var(--ink);background:rgba(10,15,26,.8);
+  border:1px solid var(--line);border-radius:11px;padding:9px 12px;font:600 12.5px/1 system-ui,sans-serif;
+  transition:border-color .2s,transform .12s,background .2s}
+select:hover,.btn:hover{border-color:rgba(94,234,212,.5)}
+.btn:active{transform:translateY(1px)}
+.btn.acc{background:linear-gradient(180deg,rgba(94,234,212,.2),rgba(94,234,212,.08));border-color:rgba(94,234,212,.45);color:#bff6ec}
+.btn.warn{background:linear-gradient(180deg,rgba(251,191,36,.18),rgba(251,191,36,.06));border-color:rgba(251,191,36,.4);color:#fde8b5}
+.btn[disabled]{opacity:.45;pointer-events:none}
+
+/* ---------- panels ---------- */
+.panel{display:flex;flex-direction:column;gap:14px}
+.panel[hidden]{display:none}
+.card{padding:15px;border-radius:18px;background:var(--pane);border:1px solid var(--line);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 14px 40px rgba(0,0,0,.36)}
+.card h3{font:700 11px/1 system-ui,sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-bottom:12px}
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.seg{display:flex;padding:3px;gap:3px;border-radius:11px;background:rgba(8,12,22,.7);border:1px solid var(--line)}
+.seg button{appearance:none;border:0;background:transparent;color:var(--dim);cursor:pointer;
+  font:700 11.5px/1 system-ui,sans-serif;padding:8px 11px;border-radius:8px;transition:.2s}
+.seg button[aria-pressed="true"]{background:rgba(129,140,248,.26);color:#cfd4ff}
+label.sw{display:inline-flex;align-items:center;gap:8px;font:600 12px/1 system-ui,sans-serif;color:var(--dim);cursor:pointer}
+label.sw input{appearance:none;width:38px;height:21px;border-radius:999px;background:rgba(8,12,22,.9);
+  border:1px solid var(--line);position:relative;cursor:pointer;transition:background .25s}
+label.sw input::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+  background:var(--dim);transition:transform .28s cubic-bezier(.3,1.5,.5,1),background .25s}
+label.sw input:checked{background:rgba(94,234,212,.26);border-color:rgba(94,234,212,.5)}
+label.sw input:checked::after{transform:translateX(17px);background:var(--teal)}
+
+/* ---------- keyboard ---------- */
+.board-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0}
+.kb{position:relative;display:flex;flex-direction:column;gap:var(--g);align-items:flex-start;touch-action:manipulation}
+.krow{display:flex;gap:var(--g)}
+.krow[data-r="1"]{margin-left:calc(var(--u)*.25)}
+.krow[data-r="2"]{margin-left:calc(var(--u)*.75)}
+.key{position:relative;width:var(--u);height:var(--u);border-radius:var(--r);border:1px solid rgba(150,180,225,.2);
+  background:linear-gradient(180deg,rgba(40,52,76,.95),rgba(22,30,47,.95));color:var(--ink);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font:700 calc(var(--u)*.4)/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  box-shadow:0 2px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08);
+  transition:transform .14s cubic-bezier(.3,1.4,.5,1),box-shadow .18s,border-color .18s;overflow:hidden}
+.key .heat{position:absolute;inset:0;opacity:.85;transition:background .35s}
+.key .gl{position:relative;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,.65)}
+.key .hp{position:absolute;bottom:calc(var(--u)*.08);left:50%;transform:translateX(-50%);width:34%;height:2px;
+  border-radius:2px;background:rgba(255,255,255,.42);z-index:2;display:none}
+.key[data-home="1"] .hp{display:block}
+.key .pin{position:absolute;top:2px;right:3px;z-index:3;font-size:calc(var(--u)*.2);opacity:0;transition:opacity .2s}
+.key[data-pin="1"] .pin{opacity:.95}
+.key[data-pin="1"]{border-color:rgba(251,191,36,.75)}
+.key:hover{transform:translateY(-2px);border-color:rgba(94,234,212,.6)}
+.key[data-sel="1"]{transform:translateY(-4px) scale(1.06);border-color:var(--teal);
+  box-shadow:0 0 0 2px rgba(94,234,212,.55),0 10px 22px rgba(0,0,0,.55);z-index:5}
+.key.hit{animation:hit .22s ease-out}
+@keyframes hit{0%{transform:translateY(3px) scale(.94)}100%{transform:none}}
+.key[data-next="1"]{border-color:var(--amber);box-shadow:0 0 0 2px rgba(251,191,36,.6),0 0 24px rgba(251,191,36,.4);
+  animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 2px rgba(251,191,36,.55),0 0 18px rgba(251,191,36,.3)}
+  50%{box-shadow:0 0 0 2px rgba(251,191,36,.9),0 0 30px rgba(251,191,36,.6)}}
+.key[data-err="1"]{border-color:var(--red);box-shadow:0 0 0 2px rgba(251,113,133,.6)}
+.spacebar{width:calc(var(--u)*6.25 + var(--g)*5);height:calc(var(--u)*.78);margin-left:calc(var(--u)*2.9);
+  border-radius:var(--r);border:1px solid rgba(150,180,225,.2);
+  background:linear-gradient(180deg,rgba(40,52,76,.9),rgba(22,30,47,.9));cursor:pointer;
+  box-shadow:0 2px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.07)}
+.spacebar[data-next="1"]{border-color:var(--amber);box-shadow:0 0 0 2px rgba(251,191,36,.6)}
+#arcs{position:absolute;inset:0;pointer-events:none;z-index:4}
+.fingers{display:flex;gap:var(--g);margin-left:calc(var(--u)*.25)}
+.fingers div{width:var(--u);text-align:center;font:700 9px/1.3 system-ui,sans-serif;color:var(--dim);
+  letter-spacing:.04em;text-transform:uppercase}
+
+/* ---------- stats ---------- */
+.stats{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}
+.stat{padding:11px 13px;border-radius:14px;background:var(--pane2);border:1px solid var(--line)}
+.stat .k{font:700 9.5px/1 system-ui,sans-serif;letter-spacing:.17em;text-transform:uppercase;color:var(--dim)}
+.stat .v{margin-top:7px;font:800 24px/1 system-ui,sans-serif;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;transition:color .3s}
+.stat .v small{font:600 12px/1 system-ui,sans-serif;color:var(--dim);margin-left:3px}
+.stat .d{margin-top:5px;font:600 10.5px/1.3 system-ui,sans-serif;color:var(--dim)}
+.good{color:var(--teal)}.bad{color:var(--red)}.mid{color:var(--amber)}
+
+.bars{display:flex;flex-direction:column;gap:7px}
+.bars .b{display:grid;grid-template-columns:76px 1fr 54px;gap:9px;align-items:center}
+.bars .b span.n{font:600 11.5px/1 system-ui,sans-serif;color:var(--dim)}
+.bars .b .t{height:11px;border-radius:999px;background:rgba(8,12,22,.75);overflow:hidden;position:relative}
+.bars .b .t i{position:absolute;inset:0 auto 0 0;border-radius:999px;transition:width .5s cubic-bezier(.22,1,.36,1),background .3s}
+.bars .b span.p{font:700 11.5px/1 system-ui,sans-serif;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+
+table{width:100%;border-collapse:collapse;font:600 12.5px/1 system-ui,sans-serif}
+th,td{padding:9px 8px;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font:700 9.5px/1.2 system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+  cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
+th:hover{color:var(--teal)}
+th[data-sorted]{color:var(--teal)}
+tbody tr{border-bottom:1px solid rgba(136,168,214,.08)}
+tbody tr.you{background:rgba(94,234,212,.07)}
+tbody tr.you td:first-child{color:var(--teal)}
+td.best{color:var(--teal)}
+td .cell{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+td .mb{width:46px;height:6px;border-radius:999px;background:rgba(8,12,22,.75);overflow:hidden;position:relative;flex:none}
+td .mb i{position:absolute;inset:0 auto 0 0;background:var(--indigo);border-radius:999px;transition:width .5s}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* ---------- drill ---------- */
+.prompt{font:600 clamp(15px,3.6vw,21px)/1.85 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.02em;overflow-wrap:break-word;min-height:3.7em;color:var(--dim)}
+.prompt b{font-weight:600;color:var(--ink)}
+.prompt u{position:relative;text-decoration:none;color:#06121a;background:var(--amber);border-radius:4px;
+  padding:1px 2px;box-shadow:0 0 18px rgba(251,191,36,.5)}
+.prompt s{text-decoration:none;color:var(--red);background:rgba(251,113,133,.16);border-radius:4px}
+.prompt i.sp{font-style:normal;opacity:.35}
+.hint{font:600 12.5px/1 system-ui,sans-serif;color:var(--dim)}
+.hint b{color:var(--amber)}
+.bigv{font:800 34px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+.prog{height:4px;border-radius:999px;background:rgba(8,12,22,.8);overflow:hidden;position:relative}
+.prog i{position:absolute;inset:0 auto 0 0;width:0;border-radius:999px;
+  background:linear-gradient(90deg,var(--teal),var(--indigo));transition:width .25s}
+.note{font:600 11.5px/1.6 system-ui,sans-serif;color:var(--dim)}
+.note code{font:600 11.5px/1 ui-monospace,monospace;color:var(--teal)}
+textarea{width:100%;min-height:92px;resize:vertical;background:rgba(8,12,22,.75);color:var(--ink);
+  border:1px solid var(--line);border-radius:12px;padding:11px;font:500 12.5px/1.6 ui-monospace,monospace}
+textarea:focus{outline:none;border-color:rgba(94,234,212,.5)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,24px);z-index:90;
+  padding:11px 17px;border-radius:999px;background:rgba(10,16,28,.95);border:1px solid rgba(94,234,212,.4);
+  color:var(--ink);font:600 12.5px/1 system-ui,sans-serif;opacity:0;pointer-events:none;
+  transition:opacity .28s,transform .28s;box-shadow:0 14px 40px rgba(0,0,0,.6)}
+.toast[data-on="1"]{opacity:1;transform:translate(-50%,0)}
+.split{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:880px){.split.two{grid-template-columns:1.25fr .75fr}}
+.hidem{display:initial}
+@media(max-width:700px){.hidem{display:none}.brand span{display:none}.tabs button{padding:9px 10px;font-size:11px}}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="bar">
+    <div class="brand"><b>KEY<i>SMITH</i></b><span>Keyboard Layout Lab</span></div>
+    <nav class="tabs" id="tabs" role="tablist">
+      <button role="tab" data-tab="design" aria-selected="true">Design</button>
+      <button role="tab" data-tab="analyze" aria-selected="false">Analyze</button>
+      <button role="tab" data-tab="compare" aria-selected="false">Compare</button>
+      <button role="tab" data-tab="drill" aria-selected="false">Drill</button>
+    </nav>
+    <select id="corpus" title="Corpus used for every metric">
+      <option value="prose">Corpus: English prose</option>
+      <option value="code">Corpus: JavaScript source</option>
+      <option value="words">Corpus: 220 common words</option>
+      <option value="custom">Corpus: your own text</option>
+    </select>
+  </header>
+
+  <!-- ============ DESIGN ============ -->
+  <section class="panel" id="p-design">
+    <div class="card">
+      <div class="row">
+        <select id="preset" title="Load a known layout">
+          <option value="">Load preset…</option>
+        </select>
+        <div class="seg" id="tool" title="Tap two keys to swap, or switch to Lock to pin keys in place">
+          <button data-tool="swap" aria-pressed="true">Swap</button>
+          <button data-tool="lock" aria-pressed="false">Lock</button>
+        </div>
+        <label class="sw"><input type="checkbox" id="heat" checked>Heatmap</label>
+        <button class="btn warn" id="opt">Optimise ⚡</button>
+        <button class="btn" id="shuffle">Shuffle</button>
+        <button class="btn" id="undo" disabled>Undo</button>
+        <button class="btn" id="reset">Reset</button>
+      </div>
+      <div class="prog" id="optprog" style="margin-top:12px"><i></i></div>
+      <div class="board-wrap">
+        <div class="kb" id="kb-design"></div>
+        <div class="fingers" id="fingerlabels"></div>
+      </div>
+      <p class="note" id="designnote"></p>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="card">
+      <h3>Export</h3>
+      <div class="row">
+        <button class="btn acc" id="ex-png">Download PNG</button>
+        <button class="btn acc" id="ex-json">Download JSON</button>
+        <button class="btn" id="ex-link">Copy share link</button>
+        <span class="note">Everything lives in the URL hash and in <code>localStorage</code> — reload and your layout is still here.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ANALYZE ============ -->
+  <section class="panel" id="p-analyze" hidden>
+    <div class="split two">
+      <div class="card">
+        <h3>Bigram flow — thickest paths, red = same finger</h3>
+        <div class="board-wrap">
+          <div class="kb" id="kb-analyze"><canvas id="arcs"></canvas></div>
+        </div>
+        <div class="row" style="margin-top:4px">
+          <label class="sw"><input type="checkbox" id="arcsame" checked>Same-finger only</label>
+          <span class="note">Arcs join letters that follow one another in the corpus.</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Finger load</h3>
+        <div class="bars" id="fingerbars"></div>
+        <h3 style="margin-top:18px">Row load</h3>
+        <div class="bars" id="rowbars"></div>
+      </div>
+    </div>
+    <div class="split two">
+      <div class="card">
+        <h3>Worst same-finger bigrams</h3>
+        <div class="scroll"><table id="sfbtable">
+          <thead><tr><th>Bigram</th><th>Finger</th><th>Share</th><th>Reach</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h3>Corpus</h3>
+        <div class="bars" id="corpusbars"></div>
+        <p class="note" id="corpusnote" style="margin-top:12px"></p>
+        <textarea id="customtext" placeholder="Paste your own text, then pick “Corpus: your own text” in the header…" hidden></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="panel" id="p-compare" hidden>
+    <div class="card">
+      <h3>Every preset, plus yours, on the same corpus</h3>
+      <div class="scroll"><table id="cmp">
+        <thead><tr>
+          <th data-col="name">Layout</th>
+          <th data-col="score" data-hi="1">Score</th>
+          <th data-col="travel">Travel m/1k</th>
+          <th data-col="sfb">SFB %</th>
+          <th data-col="home" data-hi="1">Home %</th>
+          <th data-col="alt" data-hi="1">Alternation %</th>
+          <th data-col="pinky">Pinky %</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <p class="note" style="margin-top:12px">Score is relative: QWERTY scores 100 on whatever corpus is loaded, and a
+        layout that halves QWERTY's effort scores 200. Click a column to sort; the teal cell is the best in its column.</p>
+    </div>
+    <div class="card">
+      <h3>Score</h3>
+      <div class="bars" id="cmpbars"></div>
+    </div>
+  </section>
+
+  <!-- ============ DRILL ============ -->
+  <section class="panel" id="p-drill" hidden>
+    <div class="card">
+      <div class="row">
+        <div class="seg" id="drillset">
+          <button data-set="words" aria-pressed="true">Words</button>
+          <button data-set="sym" aria-pressed="false">Symbols</button>
+          <button data-set="sent" aria-pressed="false">Sentences</button>
+        </div>
+        <button class="btn acc" id="drillnew">New run</button>
+        <span class="hint" id="drillhint"></span>
+      </div>
+      <div class="prog" id="drillprog" style="margin:13px 0"><i></i></div>
+      <p class="prompt" id="prompt"></p>
+    </div>
+    <div class="stats" id="drillstats"></div>
+    <div class="card">
+      <h3>Press the key in this position — the cap shows your layout</h3>
+      <div class="board-wrap">
+        <div class="kb" id="kb-drill"></div>
+        <div class="spacebar" id="spacebar"></div>
+      </div>
+      <p class="note">On a phone, tap the caps. On a keyboard, just type: the drill expects the physical key at that
+        position, so you learn the layout without remapping your OS. Red caps are where you slipped.</p>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ===================================================================
+   Keysmith — geometry of a 30-key alpha block (row-staggered, 19.05mm)
+   =================================================================== */
+const PITCH = 19.05;
+const ROWX  = [1.5, 1.75, 2.25];              // left offset of each row, in key units
+const COLF  = [0, 1, 2, 3, 3, 4, 4, 5, 6, 7]; // column -> finger id
+const FNAME = ['L pinky','L ring','L mid','L index','R index','R mid','R ring','R pinky'];
+const HOMEP = [10, 11, 12, 13, 16, 17, 18, 19];
+const FING = new Int8Array(30), KX = new Float64Array(30), KY = new Float64Array(30);
+const LAT = new Uint8Array(30);
+for (let p = 0; p < 30; p++) {
+  const r = p / 10 | 0, c = p % 10;
+  FING[p] = COLF[c]; KX[p] = ROWX[r] + c + 0.5; KY[p] = r + 0.5;
+  LAT[p] = (c === 4 || c === 5) ? 1 : 0;
+}
+const D = [];
+for (let a = 0; a < 30; a++) {
+  D[a] = new Float64Array(30);
+  for (let b = 0; b < 30; b++) D[a][b] = PITCH * Math.hypot(KX[a] - KX[b], KY[a] - KY[b]);
+}
+const DH = [];
+for (let f = 0; f < 8; f++) {
+  DH[f] = new Float64Array(30);
+  for (let p = 0; p < 30; p++) DH[f][p] = D[HOMEP[f]][p];
+}
+
+const QWERTY = ('qwertyuiop' + 'asdfghjkl;' + 'zxcvbnm,./').split('');
+const QPOS = {}; QWERTY.forEach((g, p) => QPOS[g] = p);
+
+const PRESETS = {
+  'QWERTY':     'qwertyuiop' + 'asdfghjkl;' + 'zxcvbnm,./',
+  'Dvorak':     "',.pyfgcrl" + 'aoeuidhtns' + ';qjkxbmwvz',
+  'Colemak':    'qwfpgjluy;' + 'arstdhneio' + 'zxcvbkm,./',
+  'Colemak-DH': 'qwfpbjluy;' + 'arstgmneio' + 'zxcdvkh,./',
+  'Workman':    'qdrwbjfup;' + 'ashtgyneoi' + 'zxmcvkl,./',
+  'Norman':     'qwdfkjurl;' + 'asetgynioh' + 'zxcvbpm,./'
+};
+
+/* ===================================================================
+   Corpora — all original sample text, embedded, no network
+   =================================================================== */
+const CORPORA = {
+prose: `A keyboard layout is an argument about where your fingers ought to spend the day. The
+arrangement most of us inherited was settled before anybody measured the cost of a reach, and it has
+outlived every machine it was drawn for. The honest way to compare two layouts is to stop arguing and
+start counting. Take a body of text, walk it one letter at a time, and add up how far each finger has
+to travel, how often the same finger is asked to move twice in a row, and how much of the work lands
+on the weakest digit on each hand. None of that settles the question, because comfort is personal and
+muscle memory is expensive to rebuild, but it is a far better guide than taste. What the counting
+shows, again and again, is that the common letters want the home row and the rare ones can live out on
+the edges, that the hands should take turns rather than one of them carrying the sentence alone, and
+that a short hop with the index finger costs less than a long stretch with the little one. Build a
+layout around those three ideas and the numbers improve almost at once. Push further and the gains get
+smaller and stranger, until the optimiser starts trading away readability for a tenth of a metre. That
+is the point where a human should take the keyboard back and decide what sort of compromise they can
+live with every single working hour of every single working week.
+There is a second question hiding behind the first one, which is what you actually type. A writer, a
+lawyer and a programmer wear a keyboard out in three different places, because the letters they lean on
+are not the same letters, and the punctuation certainly is not. Someone who spends the week inside
+source code wants the semicolon and the slash close to hand; someone drafting prose would rather give
+that space to a vowel and leave the brackets out on the rim. Any layout built from a general frequency
+table is therefore a guess about an average person who does not exist. The fix is cheap: swap the
+corpus, recount, and see whether the ranking survives. Quite often it does not, and a layout that looked
+decisive on one body of text turns out to be ordinary on another. Treat that as useful information
+rather than a disappointment, because it tells you how much of the advantage was real and how much was
+an artefact of the sample. Then there is the awkward matter of the hands themselves. Two fingers carry
+a quarter of the work on almost every arrangement anybody has drawn, while the little fingers are asked
+to stretch for shift, control, return and the bracket keys that nobody counts. A score that ignores all
+of that flatters the middle of the keyboard and quietly understates the edges, which is exactly where
+people say it hurts after a long week. So read the numbers, but read them as a sketch of the work rather
+than a verdict on it, and keep a locked key or two wherever your memory would rather not be rebuilt.`,
+code: `const cache = new Map();
+function resolve(node, depth) {
+  if (cache.has(node.id)) return cache.get(node.id);
+  const parts = node.children.map(child => resolve(child, depth + 1));
+  const value = parts.reduce((sum, part) => sum + part.weight, node.weight);
+  cache.set(node.id, { value, depth });
+  return cache.get(node.id);
+}
+export function build(rows, options) {
+  const { limit = 50, sort = 'score' } = options;
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    if (seen.has(row.key)) continue;
+    seen.add(row.key);
+    out.push({ key: row.key, score: row.score * row.weight, label: row.label.trim() });
+  }
+  out.sort((a, b) => b[sort] - a[sort]);
+  return out.slice(0, limit);
+}
+const render = state => state.items.filter(item => item.visible).map(item =>
+  template(item.label, item.score.toFixed(2))).join('');
+async function load(url) {
+  const res = await fetch(url, { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error('request failed with status ' + res.status);
+  return res.json();
+}`,
+words: ('the of and to in a is that it for was on are as with his they at be this from have or one had by '
++ 'but not what all were when we there can an your which their said if do will each about how up out them '
++ 'then she many some so these would other into has more her two like him see time could no make than first '
++ 'been its who now people my over down only just because very any most work know place after little good '
++ 'where much before move right through means old same tell does set three want air well also play small end '
++ 'put home read hand port large spell add even land here must big high such follow act why ask men change '
++ 'went light kind off need house picture try again animal point mother world near build self earth father '
++ 'head stand own page should country found answer school grow study still learn plant cover food sun four '
++ 'between state keep eye never last let thought city tree cross farm hard start might story saw far sea '
++ 'draw left late run while press close night real life few north open seem together next white children '
++ 'begin got walk example ease paper group always music those both mark often letter until mile river car '
++ 'feet care second book carry took science eat room friend began idea fish mountain north once base hear '
++ 'horse cut sure watch color face wood main enough plain girl usual young ready above ever red list though '
++ 'feel talk bird soon body dog family direct pose leave song measure door product black short numeral class '
++ 'wind question happen complete ship area half rock order fire south problem piece told knew pass since top '
++ 'whole king space heard best hour better true during hundred five remember step early hold west ground '
++ 'interest reach fast verb sing listen table travel less morning ten simple several vowel toward war lay '
++ 'against pattern slow center love person money serve appear road map rain rule govern pull cold notice '
++ 'voice unit power town fine certain fly fall lead cry dark machine note wait plan figure star box noun '
++ 'field rest correct able pound done beauty drive stood contain front teach week final gave green oh quick '
++ 'develop ocean warm free minute strong special mind behind clear tail produce fact street inch multiply '
++ 'nothing course stay wheel full force blue object decide surface deep moon island foot system busy test '
++ 'record boat common gold possible plane stead dry wonder laugh thousand ago ran check game shape equate '
++ 'hot miss brought heat snow tire bring yes distant fill east paint language among ').repeat(2)
+};
+
+const DRILLPOOL = {
+  words: ('the and for you that with have this from they will what about which their there would other more some '
+  + 'time into than only could first after work than most over think also back much even most know take year '
+  + 'come give good place point right small still these thing those under where while world write yours began '
+  + 'better bring change course should letter number people public result second system almost between because '
+  + 'country develop example follow general however include measure morning present problem program question '
+  + 'remember together through without').split(/\s+/),
+  sym: ["it's a short list, mostly; see the notes/addenda, i'd say.",
+    "well, that's one way; the other, i'm told, costs less.",
+    "keys: comma, period, semicolon, slash; don't skip them.",
+    "she'd rather measure; he'd rather argue, so, fine.",
+    "paths like src/lib/util, names like o'brien, and so on."],
+  sent: ['the quick brown fox jumps over a lazy dog and keeps running',
+    'every finger should have a reason to leave the home row',
+    'counting beats arguing when you want to know what a layout costs',
+    'a short hop with the index beats a long stretch with the little finger',
+    'hands that take turns are hands that last the whole afternoon',
+    'the common letters want the middle and the rare ones live on the edge',
+    'muscle memory is the most expensive thing you own on a keyboard',
+    'measure the reach, then decide which compromise you can live with']
+};
+
+/* ===================================================================
+   Corpus statistics + per-glyph-set contexts
+   =================================================================== */
+const ALLOWED = /[a-z,.;/'\-]/;
+function corpusStats(text) {
+  const chars = Object.create(null), big = Object.create(null);
+  const s = text.toLowerCase();
+  let prev = null, total = 0, space = 0, skipped = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r') { space++; prev = null; continue; }
+    if (!ALLOWED.test(ch)) { skipped++; prev = null; continue; }
+    chars[ch] = (chars[ch] || 0) + 1; total++;
+    if (prev !== null) { const k = prev + ch; big[k] = (big[k] || 0) + 1; }
+    prev = ch;
+  }
+  return { chars, big, total, space, skipped };
+}
+
+function buildCtx(st, glyphs) {
+  const gid = Object.create(null);
+  glyphs.forEach((g, i) => { gid[g] = i; });
+  const cnt = new Float64Array(30);
+  let mapped = 0;
+  for (const ch in st.chars) {
+    const i = gid[ch];
+    if (i !== undefined) { cnt[i] = st.chars[ch]; mapped += st.chars[ch]; }
+  }
+  const ba = [], bb = [], bn = [], bk = [];
+  let bt = 0;
+  for (const k in st.big) {
+    const a = gid[k[0]], b = gid[k[1]];
+    if (a !== undefined && b !== undefined) { ba.push(a); bb.push(b); bn.push(st.big[k]); bk.push(k); bt += st.big[k]; }
+  }
+  return {
+    gid, glyphs, cnt, mapped, bigTotal: bt, nb: ba.length, bigKeys: bk,
+    ba: Int8Array.from(ba), bb: Int8Array.from(bb), bn: Float64Array.from(bn),
+    total: st.total, space: st.space
+  };
+}
+
+const _fl = new Float64Array(8);
+function penaltyOf(perm, ctx) {
+  _fl.fill(0);
+  let lat = 0;
+  for (let i = 0; i < 30; i++) {
+    const n = ctx.cnt[i]; if (!n) continue;
+    const p = perm[i];
+    _fl[FING[p]] += n;
+    if (LAT[p]) lat += n;
+  }
+  let travel = 0, sfb = 0;
+  const ba = ctx.ba, bb = ctx.bb, bn = ctx.bn, nb = ctx.nb;
+  for (let i = 0; i < nb; i++) {
+    const pa = perm[ba[i]], pb = perm[bb[i]], n = bn[i], fa = FING[pa], fb = FING[pb];
+    if (fa === fb) { if (pa !== pb) { travel += n * D[pa][pb]; sfb += n; } }
+    else travel += n * DH[fb][pb];
+  }
+  const pinky = _fl[0] + _fl[7];
+  const pen = travel + 30 * sfb + 8 * lat + 25 * Math.max(0, pinky - 0.14 * ctx.mapped);
+  return ctx.mapped ? pen / ctx.mapped * 1000 : 0;
+}
+
+function metrics(perm, ctx) {
+  const fl = new Float64Array(8), rl = new Float64Array(3);
+  let lat = 0;
+  for (let i = 0; i < 30; i++) {
+    const n = ctx.cnt[i]; if (!n) continue;
+    const p = perm[i];
+    fl[FING[p]] += n; rl[p / 10 | 0] += n;
+    if (LAT[p]) lat += n;
+  }
+  let travel = 0, sfb = 0, alt = 0, sameHand = 0;
+  const sfbList = [];
+  for (let i = 0; i < ctx.nb; i++) {
+    const pa = perm[ctx.ba[i]], pb = perm[ctx.bb[i]], n = ctx.bn[i];
+    const fa = FING[pa], fb = FING[pb];
+    if (fa === fb) {
+      if (pa !== pb) {
+        travel += n * D[pa][pb]; sfb += n;
+        sfbList.push({ k: ctx.bigKeys[i], n: n, f: fa, d: D[pa][pb] });
+      }
+    } else travel += n * DH[fb][pb];
+    if ((fa < 4) === (fb < 4)) sameHand += n; else alt += n;
+  }
+  const m = ctx.mapped || 1, bt = ctx.bigTotal || 1;
+  const pinky = fl[0] + fl[7];
+  const pen = travel + 30 * sfb + 8 * lat + 25 * Math.max(0, pinky - 0.14 * ctx.mapped);
+  sfbList.sort((a, b) => b.n - a.n);
+  return {
+    penalty1k: pen / m * 1000,
+    travelM: travel / m,                 // metres per 1000 characters
+    sfbPct: sfb / bt * 100,
+    altPct: alt / bt * 100,
+    sameHandPct: sameHand / bt * 100,
+    homePct: rl[1] / m * 100,
+    topPct: rl[0] / m * 100,
+    botPct: rl[2] / m * 100,
+    pinkyPct: pinky / m * 100,
+    latPct: lat / m * 100,
+    fingerPct: Array.from(fl, v => v / m * 100),
+    rowPct: Array.from(rl, v => v / m * 100),
+    coverage: ctx.mapped / (ctx.total || 1) * 100,
+    sfbList: sfbList.slice(0, 14),
+    mapped: ctx.mapped
+  };
+}
+
+/* ---- simulated annealing over key positions ---- */
+function optimise(startPerm, ctx, pins, iters, onProgress, onDone) {
+  const perm = Int8Array.from(startPerm);
+  const inv = new Int8Array(30);
+  for (let i = 0; i < 30; i++) inv[perm[i]] = i;
+  const free = [];
+  for (let p = 0; p < 30; p++) if (!pins[p]) free.push(p);
+  if (free.length < 2) { onDone(perm, penaltyOf(perm, ctx)); return { cancel() {} }; }
+  let cur = penaltyOf(perm, ctx), best = cur;
+  const bestPerm = Int8Array.from(perm);
+  const T0 = 16, T1 = 0.03;
+  let it = 0, alive = true;
+  const step = Math.max(150, Math.ceil(iters / 80));
+  function chunk() {
+    if (!alive) return;
+    const end = Math.min(iters, it + step);
+    for (; it < end; it++) {
+      const T = T0 * Math.pow(T1 / T0, it / iters);
+      const p = free[Math.random() * free.length | 0], q = free[Math.random() * free.length | 0];
+      if (p === q) continue;
+      const i = inv[p], j = inv[q];
+      perm[i] = q; perm[j] = p; inv[p] = j; inv[q] = i;
+      const nv = penaltyOf(perm, ctx);
+      if (nv < cur || Math.random() < Math.exp((cur - nv) / T)) {
+        cur = nv;
+        if (nv < best) { best = nv; bestPerm.set(perm); }
+      } else { perm[i] = p; perm[j] = q; inv[p] = i; inv[q] = j; }
+    }
+    onProgress(it / iters, bestPerm, best);
+    if (it < iters) requestAnimationFrame(chunk); else onDone(bestPerm, best);
+  }
+  requestAnimationFrame(chunk);
+  return { cancel() { alive = false; } };
+}
+</script>
+
+<script>
+'use strict';
+/* ===================================================================
+   Keysmith — application state, boards, panels
+   =================================================================== */
+const LSKEY = 'keysmith_v1';
+const S = {
+  layout: PRESETS.QWERTY.split(''), name: 'QWERTY',
+  pins: new Uint8Array(30), corpus: 'prose', custom: '',
+  heat: true, tool: 'swap', sel: -1, tab: 'design',
+  hist: [], drillSet: 'words', best: {}
+};
+let POSOF = {};
+const $ = id => document.getElementById(id);
+const statCache = {}, ctxCache = {}, qwCache = {};
+
+function refreshPosOf() { POSOF = {}; S.layout.forEach((g, p) => { POSOF[g] = p; }); }
+
+function corpusKey() { return S.corpus === 'custom' ? 'custom:' + S.custom.length : S.corpus; }
+function curStats() {
+  const k = corpusKey();
+  if (!statCache[k]) statCache[k] = corpusStats(
+    S.corpus === 'custom' ? (S.custom.trim() || CORPORA.prose) : CORPORA[S.corpus]);
+  return statCache[k];
+}
+function ctxFor(layout) {
+  const glyphs = layout.slice().sort();
+  const key = glyphs.join('') + '@' + corpusKey();
+  if (!ctxCache[key]) ctxCache[key] = buildCtx(curStats(), glyphs);
+  return ctxCache[key];
+}
+function permFor(layout, ctx) {
+  const perm = new Int8Array(30);
+  for (let p = 0; p < 30; p++) perm[ctx.gid[layout[p]]] = p;
+  return perm;
+}
+function measure(layout) {
+  const ctx = ctxFor(layout), perm = permFor(layout, ctx);
+  return { ctx, perm, m: metrics(perm, ctx) };
+}
+function layoutFromPerm(perm, ctx) {
+  const L = new Array(30);
+  for (let i = 0; i < 30; i++) L[perm[i]] = ctx.glyphs[i];
+  return L;
+}
+function qwRef() {
+  const k = corpusKey();
+  if (qwCache[k] === undefined) qwCache[k] = measure(PRESETS.QWERTY.split('')).m.penalty1k;
+  return qwCache[k];
+}
+function scoreOf(m) { return m.penalty1k ? 100 * qwRef() / m.penalty1k : 0; }
+
+/* ---- heat colours ---- */
+function heatColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const h = 206 - 184 * Math.pow(t, 0.85);
+  const sa = 48 + 44 * t, l = 11 + 36 * Math.pow(t, 0.8);
+  return 'hsl(' + h.toFixed(0) + ' ' + sa.toFixed(0) + '% ' + l.toFixed(0) + '%)';
+}
+function freqArray(layout) {
+  const ctx = ctxFor(layout), f = new Float64Array(30);
+  let mx = 0;
+  for (let p = 0; p < 30; p++) { f[p] = ctx.cnt[ctx.gid[layout[p]]] || 0; if (f[p] > mx) mx = f[p]; }
+  if (mx > 0) for (let p = 0; p < 30; p++) f[p] = f[p] / mx;
+  return f;
+}
+
+/* ---- board factory ---- */
+function makeBoard(host) {
+  const keep = host.querySelector('canvas');
+  host.textContent = '';
+  const keys = [];
+  for (let r = 0; r < 3; r++) {
+    const row = document.createElement('div');
+    row.className = 'krow'; row.dataset.r = r;
+    for (let c = 0; c < 10; c++) {
+      const p = r * 10 + c;
+      const k = document.createElement('button');
+      k.type = 'button'; k.className = 'key'; k.dataset.p = p;
+      k.innerHTML = '<span class="heat"></span><span class="gl"></span><span class="hp"></span><span class="pin">&#128274;</span>';
+      if (HOMEP.indexOf(p) >= 0) k.dataset.home = '1';
+      keys.push(k); row.appendChild(k);
+    }
+    host.appendChild(row);
+  }
+  if (keep) host.appendChild(keep);
+  return keys;
+}
+const boards = {
+  design: makeBoard($('kb-design')),
+  analyze: makeBoard($('kb-analyze')),
+  drill: makeBoard($('kb-drill'))
+};
+
+function paintBoard(keys, opts) {
+  const o = opts || {};
+  const f = (o.heat === false) ? null : freqArray(S.layout);
+  for (let p = 0; p < 30; p++) {
+    const k = keys[p];
+    k.querySelector('.gl').textContent = S.layout[p];
+    k.querySelector('.heat').style.background = f ? heatColor(f[p]) : 'transparent';
+    if (o.pins) { if (S.pins[p]) k.dataset.pin = '1'; else delete k.dataset.pin; }
+    if (o.sel) { if (p === S.sel) k.dataset.sel = '1'; else delete k.dataset.sel; }
+    const fi = FING[p];
+    k.title = S.layout[p] + '  ·  ' + FNAME[fi] + '  ·  row ' + ['top', 'home', 'bottom'][p / 10 | 0];
+  }
+}
+function fingerLabels() {
+  const host = $('fingerlabels');
+  host.textContent = '';
+  const seen = [];
+  for (let c = 0; c < 10; c++) {
+    const d = document.createElement('div');
+    const f = COLF[c];
+    d.textContent = seen.indexOf(f) >= 0 ? '·' : FNAME[f].split(' ')[1];
+    seen.push(f);
+    host.appendChild(d);
+  }
+}
+
+/* ---- toast ---- */
+let toastT = 0;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.dataset.on = '1';
+  clearTimeout(toastT);
+  toastT = setTimeout(() => { delete t.dataset.on; }, 2200);
+}
+
+/* ===================================================================
+   Stat strip (Design)
+   =================================================================== */
+const STATS = [
+  ['Score', 'QWERTY = 100'], ['Travel', 'm / 1000 chars'], ['Same-finger', 'of all bigrams'],
+  ['Home row', 'of keystrokes'], ['Alternation', 'hand swaps'], ['Pinky load', 'both little fingers']
+];
+(function buildStats() {
+  const host = $('stats');
+  STATS.forEach(([k, d]) => {
+    const el = document.createElement('div');
+    el.className = 'stat';
+    el.innerHTML = '<div class="k">' + k + '</div><div class="v">—</div><div class="d">' + d + '</div>';
+    host.appendChild(el);
+  });
+})();
+function cls(v, ref, lowerBetter) {
+  const r = lowerBetter ? ref / v : v / ref;
+  return r > 1.08 ? 'good' : (r > 0.97 ? 'mid' : 'bad');
+}
+function updateStats(m) {
+  const q = measure(PRESETS.QWERTY.split('')).m;
+  const sc = scoreOf(m);
+  const cards = $('stats').children;
+  const set = (i, html, c) => {
+    const v = cards[i].querySelector('.v');
+    v.innerHTML = html; v.className = 'v ' + c;
+  };
+  set(0, sc.toFixed(0), sc >= 108 ? 'good' : (sc >= 98 ? 'mid' : 'bad'));
+  set(1, m.travelM.toFixed(2) + '<small>m</small>', cls(m.travelM, q.travelM, true));
+  set(2, m.sfbPct.toFixed(2) + '<small>%</small>', cls(m.sfbPct, q.sfbPct, true));
+  set(3, m.homePct.toFixed(1) + '<small>%</small>', cls(m.homePct, q.homePct, false));
+  set(4, m.altPct.toFixed(1) + '<small>%</small>', cls(m.altPct, q.altPct, false));
+  set(5, m.pinkyPct.toFixed(1) + '<small>%</small>', cls(m.pinkyPct, q.pinkyPct, true));
+}
+
+/* ===================================================================
+   Design panel
+   =================================================================== */
+(function fillPresets() {
+  const sel = $('preset');
+  Object.keys(PRESETS).forEach(n => {
+    const o = document.createElement('option');
+    o.value = n; o.textContent = n; sel.appendChild(o);
+  });
+})();
+
+function pushHist() {
+  S.hist.push(S.layout.join(''));
+  if (S.hist.length > 60) S.hist.shift();
+  $('undo').disabled = false;
+}
+function setLayout(arr, name) {
+  S.layout = arr.slice();
+  if (name !== undefined) S.name = name;
+  else S.name = matchPreset(S.layout) || 'Custom';
+  refreshPosOf();
+  renderAll();
+  save();
+}
+function matchPreset(L) {
+  const s = L.join('');
+  for (const n in PRESETS) if (PRESETS[n] === s) return n;
+  return null;
+}
+
+$('preset').addEventListener('change', e => {
+  const n = e.target.value;
+  if (!n) return;
+  pushHist(); setLayout(PRESETS[n].split(''), n);
+  e.target.value = '';
+  toast('Loaded ' + n);
+});
+$('tool').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tool]'); if (!b) return;
+  S.tool = b.dataset.tool; S.sel = -1;
+  [...$('tool').children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  paintBoard(boards.design, { pins: true, sel: true, heat: S.heat });
+});
+$('heat').addEventListener('change', e => { S.heat = e.target.checked; renderAll(); save(); });
+$('shuffle').addEventListener('click', () => {
+  pushHist();
+  const free = [], L = S.layout.slice();
+  for (let p = 0; p < 30; p++) if (!S.pins[p]) free.push(p);
+  for (let i = free.length - 1; i > 0; i--) {
+    const j = Math.random() * (i + 1) | 0;
+    const a = free[i], b = free[j], t = L[a]; L[a] = L[b]; L[b] = t;
+  }
+  setLayout(L); toast('Shuffled ' + free.length + ' unlocked keys');
+});
+$('undo').addEventListener('click', () => {
+  if (!S.hist.length) return;
+  setLayout(S.hist.pop().split(''));
+  $('undo').disabled = !S.hist.length;
+});
+$('reset').addEventListener('click', () => {
+  pushHist(); S.pins.fill(0); S.sel = -1;
+  setLayout(PRESETS.QWERTY.split(''), 'QWERTY'); toast('Back to QWERTY');
+});
+
+let runner = null;
+$('opt').addEventListener('click', () => {
+  const btn = $('opt');
+  if (runner) { runner.cancel(); runner = null; btn.textContent = 'Optimise ⚡'; $('optprog').firstElementChild.style.width = '0%'; return; }
+  pushHist();
+  const ctx = ctxFor(S.layout), perm = permFor(S.layout, ctx);
+  btn.textContent = 'Stop';
+  const bar = $('optprog').firstElementChild;
+  runner = optimise(perm, ctx, S.pins, 9000, (t, bestPerm) => {
+    bar.style.width = (t * 100).toFixed(1) + '%';
+    S.layout = layoutFromPerm(bestPerm, ctx);
+    refreshPosOf();
+    paintBoard(boards.design, { pins: true, sel: true, heat: S.heat });
+  }, (bestPerm, best) => {
+    runner = null; btn.textContent = 'Optimise ⚡';
+    bar.style.width = '0%';
+    setLayout(layoutFromPerm(bestPerm, ctx));
+    toast('Annealed to score ' + (100 * qwRef() / best).toFixed(0));
+  });
+});
+
+function keyTap(p) {
+  if (S.tool === 'lock') {
+    S.pins[p] = S.pins[p] ? 0 : 1;
+    paintBoard(boards.design, { pins: true, sel: true, heat: S.heat });
+    save(); return;
+  }
+  if (S.sel < 0) { S.sel = p; paintBoard(boards.design, { pins: true, sel: true, heat: S.heat }); return; }
+  if (S.sel === p) { S.sel = -1; paintBoard(boards.design, { pins: true, sel: true, heat: S.heat }); return; }
+  if (S.pins[p] || S.pins[S.sel]) { toast('That key is locked'); S.sel = -1; paintBoard(boards.design, { pins: true, sel: true, heat: S.heat }); return; }
+  pushHist();
+  const L = S.layout.slice(), a = S.sel;
+  const t = L[a]; L[a] = L[p]; L[p] = t;
+  S.sel = -1;
+  boards.design[p].classList.remove('hit'); void boards.design[p].offsetWidth;
+  boards.design[p].classList.add('hit');
+  setLayout(L);
+}
+$('kb-design').addEventListener('click', e => {
+  const k = e.target.closest('.key'); if (!k) return;
+  keyTap(+k.dataset.p);
+});
+
+/* ===================================================================
+   Analyze panel
+   =================================================================== */
+function barRow(host, name, pct, max, color) {
+  const d = document.createElement('div');
+  d.className = 'b';
+  d.innerHTML = '<span class="n"></span><div class="t"><i></i></div><span class="p"></span>';
+  d.querySelector('.n').textContent = name;
+  const i = d.querySelector('i');
+  i.style.width = (max > 0 ? Math.min(100, pct / max * 100) : 0) + '%';
+  i.style.background = color;
+  d.querySelector('.p').textContent = pct.toFixed(1) + '%';
+  host.appendChild(d);
+}
+function renderAnalyze(m) {
+  const fh = $('fingerbars'); fh.textContent = '';
+  const mx = Math.max.apply(null, m.fingerPct);
+  m.fingerPct.forEach((v, i) => barRow(fh, FNAME[i], v, mx,
+    i < 4 ? 'linear-gradient(90deg,#6366f1,#818cf8)' : 'linear-gradient(90deg,#db2777,#f472b6)'));
+  const rh = $('rowbars'); rh.textContent = '';
+  const rmax = Math.max.apply(null, m.rowPct);
+  ['Top row', 'Home row', 'Bottom row'].forEach((n, i) =>
+    barRow(rh, n, m.rowPct[i], rmax, i === 1 ? 'linear-gradient(90deg,#0d9488,#5eead4)' : 'linear-gradient(90deg,#b45309,#fbbf24)'));
+
+  const tb = $('sfbtable').querySelector('tbody'); tb.textContent = '';
+  const ctx = ctxFor(S.layout);
+  if (!m.sfbList.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="4" style="color:var(--teal)">No same-finger bigrams in this corpus — remarkable.</td>';
+    tb.appendChild(tr);
+  }
+  m.sfbList.forEach(b => {
+    const tr = document.createElement('tr');
+    const share = b.n / (ctx.bigTotal || 1) * 100;
+    tr.innerHTML = '<td style="font-family:ui-monospace,monospace;letter-spacing:.14em">' + b.k.replace(/ /g, '␣') +
+      '</td><td>' + FNAME[b.f] + '</td><td>' + share.toFixed(3) + '%</td><td>' + b.d.toFixed(1) + ' mm</td>';
+    tb.appendChild(tr);
+  });
+
+  const st = curStats();
+  const cb = $('corpusbars'); cb.textContent = '';
+  const pairs = Object.keys(st.chars).map(c => [c, st.chars[c]]).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const cmax = pairs.length ? pairs[0][1] / st.total * 100 : 1;
+  pairs.forEach(([c, n]) => barRow(cb, '"' + c + '"', n / st.total * 100, cmax, 'linear-gradient(90deg,#334155,#94a3b8)'));
+  $('corpusnote').innerHTML = st.total.toLocaleString() + ' letters, ' + st.space.toLocaleString() +
+    ' spaces, ' + Object.keys(st.big).length.toLocaleString() + ' distinct bigrams. This layout covers <code>' +
+    m.coverage.toFixed(1) + '%</code> of the corpus characters; the rest are glyphs it has no key for.';
+  drawArcs(m);
+}
+
+function drawArcs() {
+  const host = $('kb-analyze'), cv = $('arcs');
+  const w = host.clientWidth, h = host.clientHeight;
+  if (!w || !h) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = w * dpr; cv.height = h * dpr;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const cxy = [];
+  for (let p = 0; p < 30; p++) {
+    const k = boards.analyze[p];
+    cxy.push([k.offsetLeft + k.offsetWidth / 2, k.offsetTop + k.offsetHeight / 2]);
+  }
+  const ctx = ctxFor(S.layout), perm = permFor(S.layout, ctx);
+  const sameOnly = $('arcsame').checked;
+  const list = [];
+  for (let i = 0; i < ctx.nb; i++) {
+    const pa = perm[ctx.ba[i]], pb = perm[ctx.bb[i]];
+    if (pa === pb) continue;
+    const same = FING[pa] === FING[pb];
+    if (sameOnly && !same) continue;
+    list.push({ pa, pb, n: ctx.bn[i], same });
+  }
+  list.sort((a, b) => b.n - a.n);
+  const top = list.slice(0, sameOnly ? 26 : 42);
+  if (!top.length) return;
+  const mx = top[0].n;
+  for (let i = top.length - 1; i >= 0; i--) {
+    const b = top[i], t = b.n / mx;
+    const [x1, y1] = cxy[b.pa], [x2, y2] = cxy[b.pb];
+    const mxp = (x1 + x2) / 2, myp = (y1 + y2) / 2;
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+    const bow = Math.min(60, len * 0.34);
+    const cx = mxp - dy / len * bow, cy = myp + dx / len * bow;
+    g.beginPath();
+    g.moveTo(x1, y1); g.quadraticCurveTo(cx, cy, x2, y2);
+    g.lineWidth = 1 + t * 7;
+    g.strokeStyle = b.same ? 'rgba(251,113,133,' + (0.22 + t * 0.6) + ')'
+      : 'rgba(94,234,212,' + (0.14 + t * 0.42) + ')';
+    g.lineCap = 'round';
+    g.stroke();
+  }
+}
+$('arcsame').addEventListener('change', () => drawArcs());
+window.addEventListener('resize', () => { if (S.tab === 'analyze') drawArcs(); });
+
+$('customtext').addEventListener('input', e => {
+  S.custom = e.target.value;
+  if (S.corpus === 'custom') { for (const k in ctxCache) delete ctxCache[k]; renderAll(); }
+  save();
+});
+
+/* ===================================================================
+   Compare panel
+   =================================================================== */
+const CMPCOLS = [
+  ['score', false], ['travel', true], ['sfb', true],
+  ['home', false], ['alt', false], ['pinky', true]
+];
+let cmpSort = { col: 'score', dir: -1 };
+
+function rowOf(name, m, you) {
+  return {
+    name: name, you: !!you, score: scoreOf(m), travel: m.travelM, sfb: m.sfbPct,
+    home: m.homePct, alt: m.altPct, pinky: m.pinkyPct
+  };
+}
+function cmpRows() {
+  const rows = [];
+  for (const n in PRESETS) rows.push(rowOf(n, measure(PRESETS[n].split('')).m, false));
+  const mine = matchPreset(S.layout);
+  if (mine) rows.forEach(r => { if (r.name === mine) r.you = true; });
+  else rows.push(rowOf(S.name === 'Custom' ? 'Yours' : S.name, measure(S.layout).m, true));
+  return rows;
+}
+function renderCompare() {
+  const rows = cmpRows();
+  const best = {};
+  CMPCOLS.forEach(([c, low]) => {
+    best[c] = rows.reduce((acc, r) => (acc === null ? r[c] : (low ? Math.min(acc, r[c]) : Math.max(acc, r[c]))), null);
+  });
+  const maxOf = {};
+  CMPCOLS.forEach(([c]) => { maxOf[c] = Math.max.apply(null, rows.map(r => r[c])); });
+  rows.sort((a, b) => {
+    if (cmpSort.col === 'name') return a.name.localeCompare(b.name) * cmpSort.dir;
+    return (a[cmpSort.col] - b[cmpSort.col]) * cmpSort.dir;
+  });
+  const tb = $('cmp').querySelector('tbody'); tb.textContent = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    if (r.you) tr.className = 'you';
+    let html = '<td>' + r.name + (r.you ? ' &#9733;' : '') + '</td>';
+    CMPCOLS.forEach(([c]) => {
+      const dec = c === 'travel' ? 2 : (c === 'sfb' ? 2 : (c === 'score' ? 0 : 1));
+      const isBest = Math.abs(r[c] - best[c]) < 1e-9;
+      html += '<td class="' + (isBest ? 'best' : '') + '"><div class="cell"><div class="mb"><i style="width:' +
+        (maxOf[c] > 0 ? (r[c] / maxOf[c] * 100).toFixed(1) : 0) + '%;background:' +
+        (isBest ? 'var(--teal)' : 'var(--indigo)') + '"></i></div>' + r[c].toFixed(dec) + '</div></td>';
+    });
+    tr.innerHTML = html;
+    tb.appendChild(tr);
+  });
+  [...$('cmp').querySelectorAll('th')].forEach(th => {
+    if (th.dataset.col === cmpSort.col) th.dataset.sorted = cmpSort.dir > 0 ? 'up' : 'down';
+    else delete th.dataset.sorted;
+  });
+  const cb = $('cmpbars'); cb.textContent = '';
+  const smax = Math.max.apply(null, rows.map(r => r.score));
+  rows.slice().sort((a, b) => b.score - a.score).forEach(r =>
+    barRow(cb, r.name, r.score, smax, r.you ? 'linear-gradient(90deg,#0d9488,#5eead4)' : 'linear-gradient(90deg,#4338ca,#818cf8)'));
+  [...cb.querySelectorAll('.p')].forEach((el, i) => { el.textContent = el.textContent.replace('%', ''); });
+}
+$('cmp').querySelector('thead').addEventListener('click', e => {
+  const th = e.target.closest('th'); if (!th) return;
+  const c = th.dataset.col;
+  if (cmpSort.col === c) cmpSort.dir *= -1;
+  else cmpSort = { col: c, dir: c === 'name' ? 1 : -1 };
+  renderCompare();
+});
+
+/* ===================================================================
+   Drill panel
+   =================================================================== */
+const DR = { text: '', idx: 0, ok: 0, err: 0, t0: 0, wrong: false, errPos: new Uint8Array(30), done: false };
+const DSTATS = [['Speed', 'words per minute'], ['Accuracy', 'first-try keys'], ['Left', 'keys to go'], ['Best', 'on this layout']];
+(function buildDrillStats() {
+  const host = $('drillstats');
+  DSTATS.forEach(([k, d]) => {
+    const el = document.createElement('div');
+    el.className = 'stat';
+    el.innerHTML = '<div class="k">' + k + '</div><div class="v">—</div><div class="d">' + d + '</div>';
+    host.appendChild(el);
+  });
+})();
+function esc(s) {
+  return s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+function newRun() {
+  const set = S.drillSet, pool = DRILLPOOL[set];
+  let t;
+  if (set === 'words') {
+    const w = [];
+    for (let i = 0; i < 24; i++) w.push(pool[Math.random() * pool.length | 0]);
+    t = w.join(' ');
+  } else {
+    const a = [], used = {};
+    const want = Math.min(2, pool.length);
+    while (a.length < want) {
+      const s = pool[Math.random() * pool.length | 0];
+      if (!used[s]) { used[s] = 1; a.push(s); }
+    }
+    t = a.join(' ');
+  }
+  t = t.toLowerCase().split('').filter(ch => ch === ' ' || POSOF[ch] !== undefined).join('')
+       .replace(/\s+/g, ' ').trim();
+  DR.text = t; DR.idx = 0; DR.ok = 0; DR.err = 0; DR.t0 = 0;
+  DR.wrong = false; DR.done = false; DR.errPos.fill(0);
+  renderDrill();
+}
+function renderPrompt() {
+  const t = DR.text, i = DR.idx;
+  const show = ch => ch === ' ' ? '<i class="sp">·</i>' : esc(ch);
+  let html = '<b>';
+  for (let j = 0; j < i; j++) html += show(t[j]);
+  html += '</b>';
+  if (i < t.length) html += (DR.wrong ? '<s>' : '<u>') + show(t[i]) + (DR.wrong ? '</s>' : '</u>');
+  for (let j = i + 1; j < t.length; j++) html += show(t[j]);
+  $('prompt').innerHTML = html || '<b>done</b>';
+  const pct = t.length ? DR.idx / t.length * 100 : 0;
+  $('drillprog').firstElementChild.style.width = pct + '%';
+}
+function drillNumbers() {
+  const cards = $('drillstats').children;
+  const el = i => cards[i].querySelector('.v');
+  const mins = DR.t0 ? (performance.now() - DR.t0) / 60000 : 0;
+  const wpm = mins > 0.0005 ? (DR.ok / 5) / mins : 0;
+  const acc = (DR.ok + DR.err) ? DR.ok / (DR.ok + DR.err) * 100 : 100;
+  el(0).innerHTML = wpm.toFixed(0) + '<small>wpm</small>';
+  el(0).className = 'v ' + (wpm >= 40 ? 'good' : wpm >= 20 ? 'mid' : '');
+  el(1).innerHTML = acc.toFixed(0) + '<small>%</small>';
+  el(1).className = 'v ' + (acc >= 97 ? 'good' : acc >= 90 ? 'mid' : 'bad');
+  el(2).textContent = String(Math.max(0, DR.text.length - DR.idx));
+  const b = S.best[S.name] || 0;
+  el(3).innerHTML = b ? b.toFixed(0) + '<small>wpm</small>' : '—';
+  el(3).className = 'v ' + (b ? 'good' : '');
+  return wpm;
+}
+function paintDrillBoard() {
+  const keys = boards.drill;
+  const ch = DR.done ? null : DR.text[DR.idx];
+  const np = (ch && ch !== ' ') ? POSOF[ch] : -1;
+  for (let p = 0; p < 30; p++) {
+    const k = keys[p];
+    if (p === np) k.dataset.next = '1'; else delete k.dataset.next;
+    if (DR.errPos[p]) k.dataset.err = '1'; else delete k.dataset.err;
+  }
+  const sb = $('spacebar');
+  if (ch === ' ') sb.dataset.next = '1'; else delete sb.dataset.next;
+  const fi = np >= 0 ? FNAME[FING[np]] : (ch === ' ' ? 'thumb' : '—');
+  $('drillhint').innerHTML = DR.done
+    ? 'Run complete — press <b>Enter</b> or “New run”.'
+    : 'Next: <b>' + (ch === ' ' ? 'space' : esc(ch || '')) + '</b> &nbsp;·&nbsp; ' + fi;
+}
+function renderDrill() { renderPrompt(); drillNumbers(); paintDrillBoard(); paintBoard(boards.drill, { heat: S.heat }); }
+function finishRun() {
+  DR.done = true;
+  const wpm = drillNumbers();
+  if (wpm <= 300 && (!S.best[S.name] || wpm > S.best[S.name])) {
+    S.best[S.name] = wpm; save();
+    toast('New best on ' + S.name + ': ' + wpm.toFixed(0) + ' wpm');
+  } else toast('Finished at ' + wpm.toFixed(0) + ' wpm');
+  drillNumbers();   // re-read S.best so the Best card shows the run we just banked
+}
+function handleInput(phys) {
+  if (DR.done || !DR.text) return;
+  const ch = DR.text[DR.idx];
+  const exp = ch === ' ' ? ' ' : QWERTY[POSOF[ch]];
+  if (!DR.t0) DR.t0 = performance.now();
+  const pos = ch === ' ' ? -1 : POSOF[ch];
+  if (phys === exp) {
+    DR.ok++; DR.idx++; DR.wrong = false;
+    if (pos >= 0) {
+      const k = boards.drill[pos];
+      k.classList.remove('hit'); void k.offsetWidth; k.classList.add('hit');
+    }
+    if (DR.idx >= DR.text.length) { renderPrompt(); paintDrillBoard(); finishRun(); return; }
+  } else {
+    DR.err++; DR.wrong = true;
+    if (pos >= 0) DR.errPos[pos] = 1;
+  }
+  renderPrompt(); drillNumbers(); paintDrillBoard();
+}
+document.addEventListener('keydown', e => {
+  if (S.tab !== 'drill') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === ' ') { e.preventDefault(); handleInput(' '); return; }
+  if (e.key === 'Enter') { if (DR.done) newRun(); return; }
+  if (e.key.length === 1) handleInput(e.key.toLowerCase());
+});
+$('kb-drill').addEventListener('click', e => {
+  const k = e.target.closest('.key'); if (!k) return;
+  handleInput(QWERTY[+k.dataset.p]);
+});
+$('spacebar').addEventListener('click', () => handleInput(' '));
+$('drillnew').addEventListener('click', () => newRun());
+$('drillset').addEventListener('click', e => {
+  const b = e.target.closest('button[data-set]'); if (!b) return;
+  S.drillSet = b.dataset.set;
+  [...$('drillset').children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  newRun(); save();
+});
+setInterval(() => { if (S.tab === 'drill' && DR.t0 && !DR.done) drillNumbers(); }, 280);
+
+/* ===================================================================
+   Export
+   =================================================================== */
+function rrect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function renderCard() {
+  const W = 1280, H = 560;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const bg = g.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#070910'); bg.addColorStop(0.5, '#0c1222'); bg.addColorStop(1, '#0a0f1b');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(140, 40, 10, 140, 40, 620);
+  glow.addColorStop(0, 'rgba(94,234,212,.20)'); glow.addColorStop(1, 'rgba(94,234,212,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, W, H);
+
+  const r = measure(S.layout), m = r.m, sc = scoreOf(m);
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = '#5eead4';
+  g.font = '800 15px system-ui,sans-serif';
+  g.fillText('K E Y S M I T H   ·   K E Y B O A R D   L A Y O U T   L A B', 64, 64);
+  g.fillStyle = '#e9eefb';
+  g.font = '800 46px system-ui,sans-serif';
+  g.fillText(S.name, 64, 118);
+  g.fillStyle = '#8b9bbd';
+  g.font = '600 17px system-ui,sans-serif';
+  g.fillText('score ' + sc.toFixed(0) + '  (QWERTY = 100)   ·   corpus: ' +
+    $('corpus').selectedOptions[0].textContent.replace('Corpus: ', ''), 64, 146);
+
+  const f = freqArray(S.layout);
+  const U = 78, GP = 10, x0 = 64, y0 = 196;
+  for (let p = 0; p < 30; p++) {
+    const row = p / 10 | 0, col = p % 10;
+    const x = x0 + (ROWX[row] - ROWX[0]) * U + col * (U + GP);
+    const y = y0 + row * (U + GP);
+    rrect(g, x, y, U, U, 13);
+    g.fillStyle = heatColor(f[p]); g.fill();
+    g.lineWidth = 2; g.strokeStyle = S.pins[p] ? 'rgba(251,191,36,.85)' : 'rgba(150,180,225,.26)';
+    g.stroke();
+    g.fillStyle = '#f3f7ff';
+    g.font = '700 31px ui-monospace,SFMono-Regular,Menlo,monospace';
+    g.textAlign = 'center';
+    g.fillText(S.layout[p], x + U / 2, y + U / 2 + 11);
+    g.textAlign = 'left';
+    if (HOMEP.indexOf(p) >= 0) {
+      g.fillStyle = 'rgba(255,255,255,.5)';
+      rrect(g, x + U / 2 - 13, y + U - 13, 26, 3, 2); g.fill();
+    }
+  }
+
+  const stats = [
+    ['TRAVEL', m.travelM.toFixed(2) + ' m/1k'], ['SAME-FINGER', m.sfbPct.toFixed(2) + ' %'],
+    ['HOME ROW', m.homePct.toFixed(1) + ' %'], ['ALTERNATION', m.altPct.toFixed(1) + ' %'],
+    ['PINKY', m.pinkyPct.toFixed(1) + ' %']
+  ];
+  let sx = 980;
+  stats.forEach((s, i) => {
+    const y = 210 + i * 62;
+    g.fillStyle = '#8b9bbd'; g.font = '700 11px system-ui,sans-serif';
+    g.fillText(s[0], sx, y);
+    g.fillStyle = '#e9eefb'; g.font = '800 26px system-ui,sans-serif';
+    g.fillText(s[1], sx, y + 28);
+  });
+  g.fillStyle = 'rgba(136,168,214,.55)';
+  g.font = '600 13px system-ui,sans-serif';
+  g.fillText('jccl.me/playground  ·  ' + S.layout.join('').replace(/(.{10})/g, '$1  ').trim(), 64, H - 34);
+  return c;
+}
+$('ex-png').addEventListener('click', () => {
+  const c = renderCard();
+  c.toBlob(b => {
+    if (!b || !b.size) { toast('PNG export failed'); return; }
+    download(b, 'keysmith-' + S.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.png');
+    toast('PNG saved (' + Math.round(b.size / 1024) + ' KB)');
+  }, 'image/png');
+});
+$('ex-json').addEventListener('click', () => {
+  const r = measure(S.layout), m = r.m;
+  const data = {
+    app: 'Keysmith', generated: new Date().toISOString(), name: S.name,
+    layout: { top: S.layout.slice(0, 10).join(''), home: S.layout.slice(10, 20).join(''), bottom: S.layout.slice(20, 30).join('') },
+    locked: Array.from(S.pins).map((v, p) => v ? S.layout[p] : null).filter(Boolean),
+    corpus: S.corpus,
+    metrics: {
+      score_vs_qwerty: +scoreOf(m).toFixed(1), effort_per_1000: +m.penalty1k.toFixed(1),
+      travel_m_per_1000: +m.travelM.toFixed(3), same_finger_pct: +m.sfbPct.toFixed(3),
+      home_row_pct: +m.homePct.toFixed(2), top_row_pct: +m.topPct.toFixed(2), bottom_row_pct: +m.botPct.toFixed(2),
+      hand_alternation_pct: +m.altPct.toFixed(2), pinky_pct: +m.pinkyPct.toFixed(2),
+      lateral_stretch_pct: +m.latPct.toFixed(2),
+      finger_pct: m.fingerPct.map((v, i) => ({ finger: FNAME[i], pct: +v.toFixed(2) })),
+      coverage_pct: +m.coverage.toFixed(2)
+    },
+    worst_same_finger: m.sfbList.slice(0, 10).map(b => ({ bigram: b.k, finger: FNAME[b.f], count: b.n, reach_mm: +b.d.toFixed(1) }))
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  download(blob, 'keysmith-' + S.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.json');
+  toast('JSON saved (' + blob.size + ' bytes)');
+});
+function shareURL() {
+  return location.origin + location.pathname +
+    '#l=' + encodeURIComponent(S.layout.join('')) + '&c=' + S.corpus;
+}
+$('ex-link').addEventListener('click', () => {
+  const u = shareURL();
+  history.replaceState(null, '', '#l=' + encodeURIComponent(S.layout.join('')) + '&c=' + S.corpus);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(u).then(() => toast('Share link copied'), () => toast('Link is in the address bar'));
+  } else toast('Link is in the address bar');
+});
+
+/* ===================================================================
+   Tabs, persistence, boot
+   =================================================================== */
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tab]'); if (!b) return;
+  S.tab = b.dataset.tab;
+  [...$('tabs').children].forEach(x => x.setAttribute('aria-selected', String(x === b)));
+  ['design', 'analyze', 'compare', 'drill'].forEach(t => { $('p-' + t).hidden = (t !== S.tab); });
+  renderAll();
+  if (S.tab === 'analyze') requestAnimationFrame(() => drawArcs());
+  save();
+});
+$('corpus').addEventListener('change', e => {
+  S.corpus = e.target.value;
+  $('customtext').hidden = S.corpus !== 'custom';
+  if (S.corpus === 'custom' && !S.custom) toast('Paste text in the Analyze tab to drive the metrics');
+  renderAll(); save();
+});
+
+function save() {
+  try {
+    localStorage.setItem(LSKEY, JSON.stringify({
+      layout: S.layout.join(''), name: S.name, pins: Array.from(S.pins).join(''),
+      corpus: S.corpus, custom: S.custom.slice(0, 20000), heat: S.heat,
+      drillSet: S.drillSet, best: S.best, tab: S.tab
+    }));
+  } catch (err) { /* storage full or blocked — the app still works */ }
+}
+function load() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(LSKEY) || 'null'); } catch (err) { d = null; }
+  if (d && typeof d.layout === 'string' && d.layout.length === 30) {
+    S.layout = d.layout.split('');
+    S.name = d.name || matchPreset(S.layout) || 'Custom';
+    if (typeof d.pins === 'string' && d.pins.length === 30)
+      for (let i = 0; i < 30; i++) S.pins[i] = d.pins[i] === '1' ? 1 : 0;
+    if (d.corpus && (CORPORA[d.corpus] || d.corpus === 'custom')) S.corpus = d.corpus;
+    if (typeof d.custom === 'string') S.custom = d.custom;
+    if (typeof d.heat === 'boolean') S.heat = d.heat;
+    if (d.drillSet && DRILLPOOL[d.drillSet]) S.drillSet = d.drillSet;
+    if (d.best && typeof d.best === 'object') S.best = d.best;
+    if (d.tab && ['design', 'analyze', 'compare', 'drill'].indexOf(d.tab) >= 0) S.tab = d.tab;
+  }
+  const h = location.hash.replace(/^#/, '');
+  if (h) {
+    const q = {};
+    h.split('&').forEach(kv => { const i = kv.indexOf('='); if (i > 0) q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); });
+    if (q.l && q.l.length === 30 && new Set(q.l.split('')).size === 30) {
+      S.layout = q.l.split('');
+      S.name = matchPreset(S.layout) || 'Shared';
+    }
+    if (q.c && (CORPORA[q.c] || q.c === 'custom')) S.corpus = q.c;
+  }
+}
+
+function renderAll() {
+  refreshPosOf();
+  const r = measure(S.layout);
+  paintBoard(boards.design, { pins: true, sel: true, heat: S.heat });
+  paintBoard(boards.analyze, { heat: true });
+  paintBoard(boards.drill, { heat: S.heat });
+  updateStats(r.m);
+  const locked = Array.from(S.pins).reduce((a, b) => a + b, 0);
+  $('designnote').innerHTML = '<b style="color:var(--ink)">' + S.name + '</b> — tap two caps to swap them' +
+    (locked ? ', ' + locked + ' key' + (locked === 1 ? '' : 's') + ' locked' : '') +
+    '. <code>Optimise</code> runs 9,000 annealing steps against the loaded corpus and keeps the best layout it finds.';
+  if (S.tab === 'analyze') renderAnalyze(r.m);
+  if (S.tab === 'compare') renderCompare();
+  if (S.tab === 'drill') { if (!DR.text) newRun(); else renderDrill(); }
+}
+
+load();
+refreshPosOf();
+fingerLabels();
+$('corpus').value = S.corpus;
+$('heat').checked = S.heat;
+$('customtext').hidden = S.corpus !== 'custom';
+$('customtext').value = S.custom;
+[...$('drillset').children].forEach(x => x.setAttribute('aria-pressed', String(x.dataset.set === S.drillSet)));
+[...$('tabs').children].forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === S.tab)));
+['design', 'analyze', 'compare', 'drill'].forEach(t => { $('p-' + t).hidden = (t !== S.tab); });
+renderAll();
+if (S.tab === 'analyze') requestAnimationFrame(() => drawArcs());
+</script>
+</body>
+</html>
