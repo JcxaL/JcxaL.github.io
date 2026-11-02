@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 2 — Masonry the Browser Does Itself</title>
+<style>
+:root{
+  --ink:#eaf2ee; --dim:#8ea2a0; --accent:#34d399; --line:rgba(255,255,255,.12);
+  --lanes:3; --gap:14px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;min-height:100%;background:
+    radial-gradient(900px 480px at 15% -6%, #0d2a24 0%, transparent 62%),
+    radial-gradient(760px 420px at 92% 4%, #0a1f2e 0%, transparent 58%), #05080a;
+  color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:70px 16px 90px;
+}
+.glass{
+  background:rgba(12,20,20,.66);backdrop-filter:blur(16px) saturate(1.4);
+  -webkit-backdrop-filter:blur(16px) saturate(1.4);
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px -22px #000;
+}
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:20;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:550;
+  background:rgba(12,20,20,.66);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--line);transition:.2s;
+}
+.back-link:hover{background:rgba(24,40,38,.8);transform:translateX(-2px)}
+#panel{position:fixed;top:14px;right:14px;z-index:20;width:214px;padding:12px}
+#panel h3{margin:0 0 10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:11.5px;color:var(--dim)}
+.row label{flex:0 0 46px}
+.row output{flex:0 0 26px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:18px;background:transparent;cursor:pointer;min-width:0}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(255,255,255,.17)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);margin-top:-5px}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.17)}
+input[type=range]::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;background:var(--accent)}
+.modes{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.modes button{
+  border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--dim);border-radius:9px;
+  padding:7px 9px;font:inherit;font-size:11.5px;font-weight:550;cursor:pointer;transition:.18s;text-align:left;
+}
+.modes button:hover{color:var(--ink);border-color:#2d5a4c}
+.modes button[aria-pressed="true"]{background:rgba(52,211,153,.16);color:#b6f3da;border-color:#2d6d56}
+.modes button small{display:block;font-weight:400;font-size:10px;opacity:.72;margin-top:1px}
+.readout{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);font-size:11px;color:var(--dim);line-height:1.65}
+.readout b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+header{max-width:1060px;margin:0 auto 22px;padding:0 2px}
+h1{margin:0 0 8px;font-size:clamp(23px,5vw,38px);letter-spacing:-.025em;line-height:1.08;font-weight:620}
+h1 em{font-style:normal;background:linear-gradient(96deg,var(--accent),#7dd3fc);-webkit-background-clip:text;background-clip:text;color:transparent}
+header p{margin:0;color:var(--dim);max-width:62ch;font-size:14.5px}
+.badge{
+  display:inline-flex;align-items:center;gap:7px;margin-top:13px;padding:7px 13px;border-radius:999px;
+  border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:12px;font-weight:550;
+}
+.badge i{width:7px;height:7px;border-radius:50%;background:#f87171;box-shadow:0 0 10px #f87171}
+.badge.yes i{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:rgba(255,255,255,.07);padding:1px 6px;border-radius:5px}
+
+/* ---- the three layouts ---- */
+#gal{max-width:1060px;margin:0 auto;gap:var(--gap)}
+/* progressive enhancement, in the order the article prescribes: every browser gets
+   a plain grid, and the one that understands grid-lanes overrides it on the next line */
+#gal[data-mode="lanes"]{display:grid;grid-template-columns:repeat(var(--lanes),1fr);align-items:start;display:grid-lanes}
+#gal[data-mode="grid"] {display:grid;grid-template-columns:repeat(var(--lanes),1fr);align-items:start}
+#gal[data-mode="js"]   {display:grid;grid-template-columns:repeat(var(--lanes),1fr);align-items:start}
+.lane{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.card{
+  border-radius:13px;border:1px solid var(--line);padding:13px;position:relative;overflow:hidden;
+  background:linear-gradient(170deg,rgba(255,255,255,.08),rgba(255,255,255,.02));
+  transition:transform .22s cubic-bezier(.2,.9,.3,1),box-shadow .22s,border-color .22s;
+  will-change:transform;
+}
+.card:hover{transform:translateY(-3px);border-color:rgba(52,211,153,.4);box-shadow:0 16px 36px -20px #000}
+.card .sw{height:var(--h);border-radius:9px;background:var(--bg);position:relative;overflow:hidden}
+.card .sw::after{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(120px 80px at 70% 15%,rgba(255,255,255,.3),transparent 70%);
+}
+.card b{display:block;margin-top:10px;font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+.card span{display:block;color:var(--dim);font-size:11.5px;margin-top:2px}
+.card u{
+  position:absolute;top:11px;right:11px;width:22px;height:22px;border-radius:7px;text-decoration:none;
+  background:rgba(0,0,0,.42);display:grid;place-items:center;font-size:10.5px;font-variant-numeric:tabular-nums;
+  color:#fff;backdrop-filter:blur(6px);
+}
+footer{
+  max-width:1060px;margin:40px auto 0;color:#5f7471;font-size:11px;text-align:center;line-height:1.7;
+}
+footer a{color:#8fb0a8}
+@media (max-width:860px){
+  #panel{position:static;width:auto;max-width:1060px;margin:0 auto 20px}
+  body{padding-top:62px}
+  .modes{flex-direction:row;flex-wrap:wrap}
+  .modes button{flex:1 1 128px}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important;scroll-behavior:auto} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<aside id="panel" class="glass">
+  <h3>Layout</h3>
+  <div class="modes" id="modes">
+    <button data-m="lanes" aria-pressed="true">display: grid-lanes<small>native packing, one property</small></button>
+    <button data-m="js" aria-pressed="false">JS lane balancing<small>the fallback everyone ships</small></button>
+    <button data-m="grid" aria-pressed="false">plain CSS grid<small>rows align, bottoms go ragged</small></button>
+  </div>
+  <div class="row" style="margin-top:12px"><label for="lanes">Lanes</label><input type="range" id="lanes" min="1" max="5" step="1" value="3"><output id="lanes-o">3</output></div>
+  <div class="row"><label for="gap">Gap</label><input type="range" id="gap" min="0" max="36" step="2" value="14"><output id="gap-o">14</output></div>
+  <div class="readout" id="read">measuring…</div>
+</aside>
+
+<header>
+  <h1>Masonry, <em>without the JavaScript</em></h1>
+  <p>Safari shipped <code>display: grid-lanes</code> — items flow into the shortest lane and the browser does the packing that masonry libraries have faked for fifteen years. Flip between the native property, a hand-written lane balancer, and plain grid to see what each one actually produces.</p>
+  <div class="badge" id="support"><i></i><span>checking support…</span></div>
+</header>
+
+<div id="gal" data-mode="lanes"></div>
+
+<footer>
+  Inspired by <a href="https://piccalil.li/blog/native-masonry-layouts-with-css-grid-lanes/" target="_blank" rel="noopener">Piccalilli — “Native masonry layouts with CSS grid lanes”</a> · UI Spotlight Day 149 · Drop #2
+</footer>
+
+<script>
+"use strict";
+/* ===========================================================
+   grid-lanes vs. the thing we used to write by hand.
+   Native: set display:grid-lanes and the browser places each
+   item in whichever lane is currently shortest.
+   Fallback: measure, then do exactly that in JS — which is why
+   the fallback needs a resize observer and the native one doesn't.
+   =========================================================== */
+const ITEMS = [
+  ['Tidal',       'field recording',  132, 'linear-gradient(150deg,#0ea5e9,#1e3a8a)'],
+  ['Kiln',        'ceramics',          96, 'linear-gradient(150deg,#f97316,#7c2d12)'],
+  ['Understory',  'botanical survey', 188, 'linear-gradient(150deg,#34d399,#065f46)'],
+  ['Pressed',     'risograph',        118, 'linear-gradient(150deg,#f472b6,#831843)'],
+  ['Sable',       'type specimen',    164, 'linear-gradient(150deg,#a78bfa,#3b0764)'],
+  ['Groundwater', 'data study',        88, 'linear-gradient(150deg,#22d3ee,#0e7490)'],
+  ['Marbled',     'paper',            206, 'linear-gradient(150deg,#fbbf24,#78350f)'],
+  ['Halftone',    'print test',       112, 'linear-gradient(150deg,#94a3b8,#1e293b)'],
+  ['Saltflat',    'landscape',        148, 'linear-gradient(150deg,#fda4af,#881337)'],
+  ['Cordage',     'textile',           92, 'linear-gradient(150deg,#4ade80,#14532d)'],
+  ['Nocturne',    'long exposure',    176, 'linear-gradient(150deg,#818cf8,#1e1b4b)'],
+  ['Ferrous',     'oxide study',      124, 'linear-gradient(150deg,#fb7185,#7f1d1d)'],
+  ['Thermals',    'flight log',       100, 'linear-gradient(150deg,#67e8f9,#155e75)'],
+  ['Cyanotype',   'contact print',    194, 'linear-gradient(150deg,#38bdf8,#0c4a6e)'],
+  ['Quarry',      'site notes',       136, 'linear-gradient(150deg,#d6d3d1,#44403c)']
+];
+const gal = document.getElementById('gal');
+const nodes = ITEMS.map((it, i) => {
+  const el = document.createElement('article');
+  el.className = 'card';
+  el.style.setProperty('--h', it[2] + 'px');
+  el.style.setProperty('--bg', it[3]);
+  el.innerHTML = '<div class="sw"></div><b></b><span></span><u></u>';
+  el.querySelector('b').textContent = it[0];
+  el.querySelector('span').textContent = it[1];
+  el.querySelector('u').textContent = String(i + 1);
+  return el;
+});
+
+const SUPPORTED = (function(){
+  try { return !!(window.CSS && CSS.supports && CSS.supports('display', 'grid-lanes')); }
+  catch (e) { return false; }
+})();
+let mode = 'lanes', lanes = 3;
+
+function buildLanes(){
+  gal.textContent = '';
+  const cols = [];
+  for (let i = 0; i < lanes; i++){
+    const d = document.createElement('div');
+    d.className = 'lane';
+    gal.appendChild(d);
+    cols.push({ el: d, h: 0 });
+  }
+  /* shortest-lane-first — the same rule grid-lanes applies internally */
+  nodes.forEach((n) => {
+    let best = cols[0];
+    for (let i = 1; i < cols.length; i++) if (cols[i].h < best.h - 0.5) best = cols[i];
+    best.el.appendChild(n);
+    best.h += n.getBoundingClientRect().height + parseFloat(getComputedStyle(gal).gap || 0);
+  });
+}
+function build(){
+  gal.dataset.mode = mode;
+  if (mode === 'js'){ buildLanes(); }
+  else {
+    gal.textContent = '';
+    nodes.forEach((n) => gal.appendChild(n));
+  }
+  requestAnimationFrame(measure);
+}
+function measure(){
+  /* the honest metric for a packing algorithm is not raggedness at the bottom,
+     it is how much vertical slack the layout leaves behind in total */
+  const base = gal.getBoundingClientRect();
+  const gap = parseFloat(getComputedStyle(gal).rowGap || getComputedStyle(gal).gap) || 0;
+  const cards = gal.querySelectorAll('.card');
+  const sumH = new Array(lanes).fill(0), count = new Array(lanes).fill(0);
+  Array.prototype.forEach.call(cards, (c) => {
+    const r = c.getBoundingClientRect();
+    const idx = Math.max(0, Math.min(lanes - 1, Math.round((r.left - base.left) / (base.width / lanes))));
+    sumH[idx] += r.height;
+    count[idx]++;
+  });
+  let dead = 0;
+  for (let i = 0; i < lanes; i++){
+    if (!count[i]) continue;
+    dead += Math.max(0, base.height - (sumH[i] + Math.max(0, count[i] - 1) * gap));
+  }
+  const label = mode === 'lanes' ? (SUPPORTED ? 'native grid-lanes' : 'grid-lanes not supported — plain grid')
+              : mode === 'js' ? 'JS lane balancing' : 'plain CSS grid';
+  document.getElementById('read').innerHTML =
+    label + '<br>total height <b>' + Math.round(base.height) + 'px</b>' +
+    '<br>vertical slack <b>' + Math.round(dead) + 'px</b>' +
+    '<br>JS measurements <b>' + (mode === 'js' ? cards.length : 0) + '</b>';
+}
+
+document.querySelectorAll('#modes button').forEach((b) => {
+  b.addEventListener('click', () => {
+    mode = b.dataset.m;
+    document.querySelectorAll('#modes button').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    build();
+  });
+});
+const laneIn = document.getElementById('lanes'), gapIn = document.getElementById('gap');
+laneIn.addEventListener('input', () => {
+  lanes = parseInt(laneIn.value, 10);
+  document.getElementById('lanes-o').textContent = lanes;
+  document.documentElement.style.setProperty('--lanes', lanes);
+  build();
+});
+gapIn.addEventListener('input', () => {
+  const v = parseInt(gapIn.value, 10);
+  document.getElementById('gap-o').textContent = v;
+  document.documentElement.style.setProperty('--gap', v + 'px');
+  if (mode === 'js') build(); else requestAnimationFrame(measure);
+});
+
+const sup = document.getElementById('support');
+sup.classList.toggle('yes', SUPPORTED);
+sup.querySelector('span').textContent = SUPPORTED
+  ? 'This browser supports display: grid-lanes — the first layout is the real thing.'
+  : 'No grid-lanes here, so “native” falls back to plain grid — which is exactly why you ship the fallback.';
+
+let rt;
+window.addEventListener('resize', () => {
+  clearTimeout(rt);
+  rt = setTimeout(() => { if (mode === 'js') build(); else measure(); }, 130);
+});
+build();
+</script>
+</body>
+</html>

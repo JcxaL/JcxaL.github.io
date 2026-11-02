@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 1 — A Stylesheet That Renders 3D</title>
+<style>
+:root{ --ink:#eef1f7; --dim:#97a0b4; --accent:#38bdf8; --line:rgba(255,255,255,.12); }
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#05070c}
+body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#gl:active{cursor:grabbing}
+.glass{
+  background:rgba(14,18,28,.62);backdrop-filter:blur(16px) saturate(1.5);
+  -webkit-backdrop-filter:blur(16px) saturate(1.5);
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px -20px #000;
+}
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:9;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:550;
+  background:rgba(14,18,28,.62);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--line);transition:.2s;
+}
+.back-link:hover{background:rgba(30,38,56,.78);transform:translateX(-2px)}
+/* the stylesheet editor — left on desktop, a drawer on phones */
+#editor{
+  position:fixed;left:14px;bottom:14px;z-index:8;width:min(390px,calc(100vw - 28px));padding:11px;
+}
+#editor h3{margin:0 0 7px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);display:flex;gap:8px;align-items:center}
+#editor h3 i{flex:1;height:1px;background:var(--line)}
+#sheet{
+  width:100%;height:186px;resize:vertical;background:#070a11;color:#d7e3f4;border:1px solid var(--line);
+  border-radius:9px;padding:9px 10px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  tab-size:2;outline:none;
+}
+#sheet:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(56,189,248,.14)}
+.samples{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.samples button,.pill{
+  border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--dim);border-radius:999px;
+  padding:6px 11px;font:inherit;font-size:11.5px;font-weight:550;cursor:pointer;transition:.18s;
+}
+.samples button:hover,.pill:hover{color:var(--ink);border-color:#3d4a66;background:rgba(255,255,255,.09)}
+.samples button[aria-pressed="true"]{background:rgba(56,189,248,.16);color:#bfe6ff;border-color:#2f6c92}
+#err{margin-top:7px;font-size:11.5px;color:#fca5a5;min-height:15px;font-family:ui-monospace,monospace}
+#panel{position:fixed;top:14px;right:14px;z-index:8;width:206px;padding:11px}
+#panel h3{margin:0 0 9px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.row{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:11.5px;color:var(--dim)}
+.row label{flex:0 0 58px}
+.row output{flex:0 0 32px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:18px;background:transparent;cursor:pointer;min-width:0}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(255,255,255,.17)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);margin-top:-5px}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.17)}
+input[type=range]::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;background:var(--accent)}
+footer{
+  position:fixed;bottom:12px;right:14px;z-index:7;font-size:10.5px;color:#6b748a;
+  text-align:right;line-height:1.6;max-width:44vw;
+}
+footer a{color:#8fa2bd}
+@media (max-width:900px){
+  #panel{display:none}
+  #editor{width:calc(100vw - 28px)}
+  #sheet{height:118px}
+  footer{max-width:60vw;bottom:auto;top:16px;right:14px}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<section id="editor" class="glass">
+  <h3>scene.gss <i></i><span style="color:#6b748a;text-transform:none;letter-spacing:0">live</span></h3>
+  <textarea id="sheet" spellcheck="false" aria-label="GSS stylesheet"></textarea>
+  <div class="samples" id="samples"></div>
+  <div id="err"></div>
+</section>
+
+<aside id="panel" class="glass">
+  <h3>Raymarcher</h3>
+  <div class="row"><label for="steps">Steps</label><input type="range" id="steps" min="24" max="140" step="4" value="88"><output id="steps-o">88</output></div>
+  <div class="row"><label for="tscale">Time</label><input type="range" id="tscale" min="0" max="250" step="5" value="100"><output id="tscale-o">1.0</output></div>
+  <div class="row"><label for="light">Key</label><input type="range" id="light" min="0" max="200" step="5" value="100"><output id="light-o">1.0</output></div>
+  <div class="row" style="margin-top:10px"><button class="pill" id="sdf" aria-pressed="false" style="flex:1">Show cost map</button></div>
+  <p style="margin:9px 0 0;font-size:11px;color:#6b748a;line-height:1.5">Every shape in the sheet is one SDF term in a single fragment shader. Drag to orbit.</p>
+</aside>
+
+<footer>
+  Inspired by <a href="https://github.com/LukyVj/GSS" target="_blank" rel="noopener">LukyVj/GSS</a> · UI Spotlight Day 149 · Drop #1
+</footer>
+
+<script>
+"use strict";
+/* ===========================================================
+   GSS, in miniature.
+   The idea borrowed from LukyVj/GSS: declare a 3D scene the way
+   you declare a document — an @scene block of elements, id rules
+   that set their properties, @keyframes that animate them — and
+   compile the lot into ONE raymarching fragment shader. No meshes,
+   no scene graph: each declared shape is a signed-distance term,
+   and the cascade is just "last rule wins".
+   =========================================================== */
+const SAMPLES = {
+  'jelly': `@scene {
+  torus#ring;
+  sphere#ball;
+  box#plinth;
+}
+#ring {
+  translate: 0 0.15 0;
+  rotate-x: 74deg;
+  radius: 1.15; thickness: 0.085;
+  color: #e9e4d8;
+  animation: spin 7s linear;
+}
+#ball {
+  translate: 0 0.15 0;
+  radius: 0.5;
+  color: #ff5a36;
+  material: jelly(0.75);
+  animation: float 1.9s ease-in-out alternate;
+}
+#plinth {
+  translate: 0 -0.95 0;
+  size: 1.5 0.07 1.5;
+  color: #2b3448;
+}
+@keyframes float {
+  from { translate: 0 0.05 0; }
+  to   { translate: 0 0.62 0; }
+}
+@keyframes spin {
+  from { rotate-y: 0deg; }
+  to   { rotate-y: 360deg; }
+}`,
+  'pendulum': `@scene {
+  sphere#a; sphere#b; sphere#c; box#bar;
+}
+#bar { translate: 0 0.9 0; size: 1.45 0.035 0.035; color: #46506a; }
+#a { radius: 0.3; color: #38bdf8; material: jelly(0.9);
+     animation: swingL 1.4s ease-in-out alternate; }
+#b { radius: 0.3; color: #e9e4d8; translate: 0 -0.1 0; }
+#c { radius: 0.3; color: #fbbf24; material: jelly(0.9);
+     animation: swingR 1.4s ease-in-out alternate; }
+@keyframes swingL {
+  from { translate: -1.05 -0.1 0; }
+  to   { translate: -0.62 0.25 0; }
+}
+@keyframes swingR {
+  from { translate: 1.05 -0.1 0; }
+  to   { translate: 0.62 0.25 0; }
+}`,
+  'stack': `@scene {
+  box#t1; box#t2; box#t3; torus#halo;
+}
+#t1 { translate: 0 -0.55 0; size: 0.78 0.14 0.78; color: #1b3a5c; }
+#t2 { translate: 0 -0.2 0;  size: 0.58 0.14 0.58; color: #2e6b4f;
+      animation: turn 5s linear; }
+#t3 { translate: 0 0.15 0;  size: 0.38 0.14 0.38; color: #d6b03a;
+      animation: turn 3s linear; }
+#halo { translate: 0 0.72 0; rotate-x: 90deg; radius: 0.52; thickness: 0.04;
+        color: #ff5a36; animation: bob 2.4s ease-in-out alternate; }
+@keyframes turn { from { rotate-y: 0deg; } to { rotate-y: 360deg; } }
+@keyframes bob  { from { translate: 0 0.62 0; } to { translate: 0 0.96 0; } }`
+};
+
+/* ---------- parser: brace-matched blocks, then declarations ---------- */
+function blocks(src){
+  const out = []; let i = 0;
+  while (i < src.length){
+    const open = src.indexOf('{', i);
+    if (open < 0) break;
+    const head = src.slice(i, open).trim();
+    let depth = 1, j = open + 1;
+    while (j < src.length && depth > 0){
+      const ch = src[j];
+      if (ch === '{') depth++; else if (ch === '}') depth--;
+      j++;
+    }
+    out.push({ head: head, body: src.slice(open + 1, j - 1) });
+    i = j;
+  }
+  return out;
+}
+function decls(body){
+  const o = {};
+  body.split(';').forEach((d) => {
+    const k = d.indexOf(':');
+    if (k < 0) return;
+    const name = d.slice(0, k).trim().toLowerCase();
+    const val = d.slice(k + 1).trim();
+    if (name) o[name] = val;
+  });
+  return o;
+}
+const TYPES = { sphere: 0, box: 1, torus: 2 };
+function parseGSS(src){
+  src = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  const top = blocks(src);
+  const scene = [], frames = {}, rules = {};
+  top.forEach((b) => {
+    const head = b.head;
+    if (/^@scene$/i.test(head)){
+      b.body.split(/[;\n]/).forEach((tok) => {
+        const t = tok.trim();
+        if (!t) return;
+        const m = t.match(/^(sphere|box|torus)\s*#([A-Za-z0-9_-]+)$/i);
+        if (!m) throw new Error('@scene: cannot read "' + t + '"');
+        scene.push({ type: TYPES[m[1].toLowerCase()], id: m[2] });
+      });
+    } else if (/^@keyframes\s+/i.test(head)){
+      const name = head.replace(/^@keyframes\s+/i, '').trim();
+      const stops = [];
+      blocks(b.body).forEach((st) => {
+        const h = st.head.toLowerCase();
+        const off = h === 'from' ? 0 : h === 'to' ? 1 : (parseFloat(h) || 0) / 100;
+        stops.push({ at: off, d: decls(st.body) });
+      });
+      stops.sort((a, b2) => a.at - b2.at);
+      frames[name] = stops;
+    } else if (/^#/.test(head)){
+      head.split(',').forEach((sel) => {
+        const id = sel.trim().replace(/^#/, '');
+        rules[id] = Object.assign(rules[id] || {}, decls(b.body));   /* the cascade */
+      });
+    }
+  });
+  if (!scene.length) throw new Error('@scene block is empty');
+  if (scene.length > 8) throw new Error('this build raymarches at most 8 shapes');
+  return { scene: scene, frames: frames, rules: rules };
+}
+
+/* ---------- property readers ---------- */
+function nums(v, n, dflt){
+  const got = String(v).trim().split(/\s+/).map(parseFloat).filter((x) => !isNaN(x));
+  const out = dflt.slice();
+  for (let i = 0; i < n && i < got.length; i++) out[i] = got[i];
+  return out;
+}
+function col(v, dflt){
+  const m = String(v).trim().match(/^#([0-9a-f]{6})$/i);
+  if (!m) return dflt;
+  const h = m[1];
+  return [parseInt(h.slice(0,2),16)/255, parseInt(h.slice(2,4),16)/255, parseInt(h.slice(4,6),16)/255];
+}
+function material(v){
+  const m = String(v).match(/jelly\(([\d.]+)\)/i);
+  if (m) return Math.max(0, Math.min(1, parseFloat(m[1])));
+  if (/chrome/i.test(v)) return 1;
+  return 0.12;
+}
+const EASE = {
+  linear: (t) => t,
+  'ease-in-out': (t) => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2,
+  'ease-in': (t) => t*t,
+  'ease-out': (t) => 1 - (1-t)*(1-t),
+  ease: (t) => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2
+};
+function parseAnim(v){
+  if (!v) return null;
+  const parts = String(v).trim().split(/\s+/);
+  const name = parts[0];
+  let dur = 1, ease = 'ease', alt = false;
+  parts.slice(1).forEach((p) => {
+    if (/^[\d.]+m?s$/.test(p)) dur = /ms$/.test(p) ? parseFloat(p) / 1000 : parseFloat(p);
+    else if (p === 'alternate') alt = true;
+    else if (EASE[p]) ease = p;
+  });
+  return { name: name, dur: Math.max(0.05, dur), ease: ease, alt: alt };
+}
+
+/* resolve one shape's live properties at time t */
+function propsAt(shape, rules, frames, t){
+  const base = rules[shape.id] || {};
+  const anim = parseAnim(base.animation);
+  let merged = base;
+  if (anim && frames[anim.name] && frames[anim.name].length){
+    const stops = frames[anim.name];
+    let u = t / anim.dur;
+    u = anim.alt ? Math.abs(((u % 2) + 2) % 2 - 1) : ((u % 1) + 1) % 1;
+    if (anim.alt) u = 1 - u;
+    const e = (EASE[anim.ease] || EASE.ease)(Math.max(0, Math.min(1, u)));
+    let lo = stops[0], hi = stops[stops.length - 1];
+    for (let i = 0; i < stops.length - 1; i++){
+      if (e >= stops[i].at && e <= stops[i+1].at){ lo = stops[i]; hi = stops[i+1]; break; }
+    }
+    const span = hi.at - lo.at;
+    const k = span > 0 ? (e - lo.at) / span : 0;
+    merged = Object.assign({}, base);
+    Object.keys(hi.d).forEach((key) => {
+      const a = lo.d[key] !== undefined ? lo.d[key] : (base[key] !== undefined ? base[key] : hi.d[key]);
+      const an = nums(a, 3, [0,0,0]), bn = nums(hi.d[key], 3, [0,0,0]);
+      merged[key] = an.map((x, i) => x + (bn[i] - x) * k).join(' ');
+    });
+  }
+  const pos = nums(merged.translate !== undefined ? merged.translate : '0 0 0', 3, [0,0,0]);
+  const rot = [
+    nums(merged['rotate-x'] || '0', 1, [0])[0],
+    nums(merged['rotate-y'] || '0', 1, [0])[0],
+    nums(merged['rotate-z'] || '0', 1, [0])[0]
+  ].map((d) => d * Math.PI / 180);
+  let size;
+  if (shape.type === 1) size = nums(merged.size !== undefined ? merged.size : '0.5 0.5 0.5', 3, [0.5,0.5,0.5]);
+  else if (shape.type === 2) size = [nums(merged.radius || '1', 1, [1])[0], nums(merged.thickness || '0.1', 1, [0.1])[0], 0];
+  else size = [nums(merged.radius || '0.5', 1, [0.5])[0], 0, 0];
+  return { pos: pos, rot: rot, size: size, col: col(merged.color, [0.86,0.88,0.92]), mat: material(merged.material || '') };
+}
+</script>
+<script>
+"use strict";
+/* ---------- the one shader every sheet compiles into ---------- */
+const VS = [
+ 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}'
+].join('\n');
+const FS = [
+'precision highp float;',
+'uniform vec2  uRes;',
+'uniform float uCount, uSteps, uKey, uCost;',
+'uniform vec3  uCam;',
+'uniform vec3  uPos[8], uSize[8], uCol[8], uRot[8];',
+'uniform float uType[8], uMat[8];',
+'float sdSphere(vec3 p,float r){ return length(p)-r; }',
+'float sdBox(vec3 p,vec3 b){ vec3 q=abs(p)-b; return length(max(q,0.))+min(max(q.x,max(q.y,q.z)),0.); }',
+'float sdTorus(vec3 p,vec2 t){ vec2 q=vec2(length(p.xz)-t.x,p.y); return length(q)-t.y; }',
+'vec3 rot(vec3 p, vec3 a){',
+'  float c,s; vec3 q=p;',
+'  c=cos(a.x); s=sin(a.x); q=vec3(q.x, c*q.y+s*q.z, -s*q.y+c*q.z);',
+'  c=cos(a.y); s=sin(a.y); q=vec3(c*q.x-s*q.z, q.y, s*q.x+c*q.z);',
+'  c=cos(a.z); s=sin(a.z); q=vec3(c*q.x+s*q.y, -s*q.x+c*q.y, q.z);',
+'  return q;',
+'}',
+/* map returns (distance, shape index) — the whole @scene as one field */
+'vec2 map(vec3 p){',
+'  float d = p.y + 1.15;',          /* ground plane */
+'  float id = -1.;',
+'  for (int i = 0; i < 8; i++){',
+'    if (float(i) >= uCount) break;',
+'    vec3 q = rot(p - uPos[i], uRot[i]);',
+'    float t = uType[i], dd;',
+'    if (t < 0.5)      dd = sdSphere(q, uSize[i].x);',
+'    else if (t < 1.5) dd = sdBox(q, uSize[i]);',
+'    else              dd = sdTorus(q, uSize[i].xy);',
+'    if (dd < d){ d = dd; id = float(i); }',
+'  }',
+'  return vec2(d, id);',
+'}',
+'vec3 colorOf(float id){',
+'  vec3 c = vec3(0.07,0.08,0.11);',
+'  for (int i = 0; i < 8; i++){ if (abs(float(i) - id) < 0.5) c = uCol[i]; }',
+'  return c;',
+'}',
+'float matOf(float id){',
+'  float m = 0.02;',
+'  for (int i = 0; i < 8; i++){ if (abs(float(i) - id) < 0.5) m = uMat[i]; }',
+'  return m;',
+'}',
+'vec3 normal(vec3 p){',
+'  vec2 e = vec2(0.0018, 0.);',
+'  return normalize(vec3(map(p+e.xyy).x-map(p-e.xyy).x, map(p+e.yxy).x-map(p-e.yxy).x, map(p+e.yyx).x-map(p-e.yyx).x));',
+'}',
+'float shadow(vec3 o, vec3 l){',
+'  float t = 0.05, r = 1.;',
+'  for (int i = 0; i < 26; i++){',
+'    float h = map(o + l*t).x;',
+'    r = min(r, 10.*h/t);',
+'    t += clamp(h, 0.03, 0.35);',
+'    if (r < 0.004 || t > 6.) break;',
+'  }',
+'  return clamp(r, 0., 1.);',
+'}',
+'void main(){',
+'  vec2 uv = (gl_FragCoord.xy - 0.5*uRes) / uRes.y;',
+'  vec3 ro = uCam;',
+'  vec3 fw = normalize(vec3(0., 0.05, 0.) - ro);',
+'  vec3 rt = normalize(cross(vec3(0.,1.,0.), fw));',
+'  vec3 upv = cross(fw, rt);',
+'  vec3 rd = normalize(fw*1.5 + rt*uv.x + upv*uv.y);',
+'  float t = 0., hitId = -1.; vec3 pos = ro; float used = 0.;',
+'  for (int i = 0; i < 140; i++){',
+'    if (float(i) >= uSteps) break;',
+'    pos = ro + rd*t;',
+'    vec2 h = map(pos);',
+'    used += 1.;',
+'    if (h.x < 0.0012){ hitId = h.y; break; }',
+'    t += h.x;',
+'    if (t > 14.){ break; }',
+'  }',
+'  vec3 col;',
+'  if (t > 14.){',
+'    col = mix(vec3(0.02,0.03,0.05), vec3(0.05,0.07,0.12), 0.5+0.5*rd.y);',
+'  } else {',
+'    vec3 n = normal(pos);',
+'    vec3 base = hitId < -0.5 ? vec3(0.055,0.065,0.09) : colorOf(hitId);',
+'    float m = hitId < -0.5 ? 0.02 : matOf(hitId);',
+'    if (hitId < -0.5){',
+'      float chk = mod(floor(pos.x*1.6) + floor(pos.z*1.6), 2.);',
+'      base *= 0.72 + 0.28*chk;',
+'    }',
+'    vec3 L = normalize(vec3(0.72, 0.86, -0.5));',
+'    float dif = max(dot(n, L), 0.) * uKey;',
+'    float sh  = shadow(pos + n*0.004, L);',
+'    float rim = pow(1.0 - max(dot(n, -rd), 0.), 3.0);',
+'    vec3 h = normalize(L - rd);',
+'    float spec = pow(max(dot(n, h), 0.), 26.0 + 70.0*m) * (0.18 + 1.1*m);',
+'    float sky = 0.30 + 0.30*n.y;',
+'    col = base * (sky + dif*sh*0.95) + vec3(1.,0.96,0.9)*spec*sh + vec3(0.33,0.55,0.95)*rim*0.30;',
+'    col = mix(col, vec3(0.02,0.03,0.05), clamp((t-3.2)/10.0, 0., 0.85));',
+'  }',
+'  if (uCost > 0.5){',
+'    float c = used / max(uSteps, 1.);',
+'    col = mix(vec3(0.05,0.35,0.75), vec3(1.,0.35,0.15), c) * (0.25 + c);',
+'  }',
+'  col = pow(max(col, 0.), vec3(0.4545));',
+'  gl_FragColor = vec4(col, 1.);',
+'}'
+].join('\n');
+
+const cv = document.getElementById('gl');
+const gl = cv.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+let prog = null, U = {}, parsed = null, orbit = { a: 0.62, e: 0.26, r: 4.4 }, cost = 0;
+const opts = { steps: 88, time: 1, key: 1 };
+
+function compile(){
+  if (!gl) return false;
+  const mk = (type, src) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader');
+    return s;
+  };
+  prog = gl.createProgram();
+  gl.attachShader(prog, mk(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'link');
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  ['uRes','uCount','uSteps','uKey','uCost','uCam'].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+  /* array uniforms are addressed by their first element */
+  U.uPos  = gl.getUniformLocation(prog, 'uPos[0]');
+  U.uSize = gl.getUniformLocation(prog, 'uSize[0]');
+  U.uCol  = gl.getUniformLocation(prog, 'uCol[0]');
+  U.uRot  = gl.getUniformLocation(prog, 'uRot[0]');
+  U.uType = gl.getUniformLocation(prog, 'uType[0]');
+  U.uMat  = gl.getUniformLocation(prog, 'uMat[0]');
+  return true;
+}
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+  const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+  if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+  if (gl) gl.viewport(0, 0, cv.width, cv.height);
+}
+const P = new Float32Array(24), S = new Float32Array(24), C = new Float32Array(24),
+      R = new Float32Array(24), T = new Float32Array(8), M = new Float32Array(8);
+let t0 = performance.now(), clock = 0;
+function frame(now){
+  const dt = Math.min((now - t0) / 1000, 0.05); t0 = now;
+  clock += dt * opts.time;
+  if (gl && prog && parsed){
+    const n = Math.min(parsed.scene.length, 8);
+    for (let i = 0; i < n; i++){
+      const pr = propsAt(parsed.scene[i], parsed.rules, parsed.frames, clock);
+      P[i*3]=pr.pos[0]; P[i*3+1]=pr.pos[1]; P[i*3+2]=pr.pos[2];
+      S[i*3]=pr.size[0]; S[i*3+1]=pr.size[1]; S[i*3+2]=pr.size[2];
+      C[i*3]=pr.col[0];  C[i*3+1]=pr.col[1];  C[i*3+2]=pr.col[2];
+      R[i*3]=pr.rot[0];  R[i*3+1]=pr.rot[1];  R[i*3+2]=pr.rot[2];
+      T[i]=parsed.scene[i].type; M[i]=pr.mat;
+    }
+    gl.uniform2f(U.uRes, cv.width, cv.height);
+    gl.uniform1f(U.uCount, n);
+    gl.uniform1f(U.uSteps, opts.steps);
+    gl.uniform1f(U.uKey, opts.key);
+    gl.uniform1f(U.uCost, cost);
+    const ce = Math.max(-1.2, Math.min(1.3, orbit.e));
+    gl.uniform3f(U.uCam, Math.cos(orbit.a)*Math.cos(ce)*orbit.r, Math.sin(ce)*orbit.r + 0.35, Math.sin(orbit.a)*Math.cos(ce)*orbit.r);
+    gl.uniform3fv(U.uPos, P); gl.uniform3fv(U.uSize, S);
+    gl.uniform3fv(U.uCol, C); gl.uniform3fv(U.uRot, R);
+    gl.uniform1fv(U.uType, T); gl.uniform1fv(U.uMat, M);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- wiring ---------- */
+const sheet = document.getElementById('sheet'), errEl = document.getElementById('err');
+function apply(){
+  try { parsed = parseGSS(sheet.value); errEl.textContent = ''; }
+  catch (e) { errEl.textContent = '▲ ' + e.message; }
+}
+let deb;
+sheet.addEventListener('input', () => { clearTimeout(deb); deb = setTimeout(apply, 220); });
+const samples = document.getElementById('samples');
+Object.keys(SAMPLES).forEach((k, i) => {
+  const b = document.createElement('button');
+  b.textContent = k;
+  b.setAttribute('aria-pressed', String(i === 0));
+  b.addEventListener('click', () => {
+    Array.prototype.forEach.call(samples.children, (o) => o.setAttribute('aria-pressed', String(o === b)));
+    sheet.value = SAMPLES[k]; clock = 0; apply();
+  });
+  samples.appendChild(b);
+});
+const bind = (id, fmt, set) => {
+  const el = document.getElementById(id), o = document.getElementById(id + '-o');
+  if (!el) return;
+  el.addEventListener('input', () => { const v = parseFloat(el.value); if (o) o.textContent = fmt(v); set(v); });
+};
+bind('steps', (v) => v, (v) => opts.steps = v);
+bind('tscale', (v) => (v/100).toFixed(1), (v) => opts.time = v/100);
+bind('light', (v) => (v/100).toFixed(1), (v) => opts.key = v/100);
+const sdfBtn = document.getElementById('sdf');
+if (sdfBtn) sdfBtn.addEventListener('click', () => {
+  cost = cost ? 0 : 1;
+  sdfBtn.setAttribute('aria-pressed', String(!!cost));
+  sdfBtn.textContent = cost ? 'Hide cost map' : 'Show cost map';
+});
+let drag = null;
+cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  orbit.a += (e.clientX - drag.x) * 0.0062;
+  orbit.e = Math.max(-0.35, Math.min(1.2, orbit.e - (e.clientY - drag.y) * 0.0048));
+  drag = { x: e.clientX, y: e.clientY };
+});
+const stop = () => drag = null;
+cv.addEventListener('pointerup', stop);
+cv.addEventListener('pointercancel', stop);
+cv.addEventListener('wheel', (e) => { e.preventDefault(); orbit.r = Math.max(2.1, Math.min(9, orbit.r + e.deltaY * 0.0022)); }, { passive: false });
+window.addEventListener('resize', resize);
+
+sheet.value = SAMPLES.jelly;
+apply();
+resize();
+if (!gl){
+  errEl.textContent = '▲ WebGL unavailable — the sheet still parses, there is just nothing to march.';
+} else {
+  try { compile(); requestAnimationFrame(frame); }
+  catch (e) { errEl.textContent = '▲ shader: ' + e.message; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 4 — The Half Second After a Click</title>
+<style>
+:root{ --ink:#fff7e8; --dim:#a79272; --accent:#fbbf24; --line:rgba(255,255,255,.12); --dur:1; }
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;background:
+    radial-gradient(880px 460px at 16% -8%, #3a2a08 0%, transparent 60%),
+    radial-gradient(720px 420px at 92% 4%, #2a1a06 0%, transparent 58%), #090703;
+  color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:70px 16px 80px;
+}
+.glass{
+  background:rgba(26,20,8,.62);backdrop-filter:blur(16px) saturate(1.4);
+  -webkit-backdrop-filter:blur(16px) saturate(1.4);
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px -22px #000;
+}
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:20;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:550;
+  background:rgba(26,20,8,.66);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--line);transition:.2s;
+}
+.back-link:hover{background:rgba(52,40,16,.82);transform:translateX(-2px)}
+#panel{position:fixed;top:14px;right:14px;z-index:20;width:214px;padding:12px}
+#panel h3{margin:0 0 10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:11.5px;color:var(--dim)}
+.row label{flex:0 0 56px}
+.row output{flex:0 0 32px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:18px;background:transparent;cursor:pointer;min-width:0}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(255,255,255,.17)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);margin-top:-5px}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.17)}
+input[type=range]::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;background:var(--accent)}
+.pill{
+  border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--dim);border-radius:999px;
+  padding:7px 13px;font:inherit;font-size:11.5px;font-weight:550;cursor:pointer;transition:.18s;
+}
+.pill:hover{color:var(--ink);border-color:#6b5420;background:rgba(255,255,255,.09)}
+.pill[aria-pressed="true"]{background:rgba(251,191,36,.18);color:#ffe7ab;border-color:#8a6f28}
+
+header{max-width:900px;margin:0 auto 24px}
+h1{margin:0 0 8px;font-size:clamp(23px,5vw,38px);letter-spacing:-.025em;line-height:1.08;font-weight:620}
+h1 em{font-style:normal;background:linear-gradient(96deg,var(--accent),#fb923c);-webkit-background-clip:text;background-clip:text;color:transparent}
+header p{margin:0;color:var(--dim);max-width:64ch;font-size:14.5px}
+
+main{max-width:900px;margin:0 auto;display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:760px){ main{grid-template-columns:repeat(2,minmax(0,1fr))} .wide{grid-column:1/-1} }
+.demo{padding:16px}
+.demo h2{margin:0 0 3px;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+.demo p.note{margin:0 0 15px;font-size:12.5px;color:#8a7554;line-height:1.5}
+.btn{
+  border:1px solid rgba(251,191,36,.35);background:linear-gradient(180deg,#3a2c0b,#241a05);color:#ffe7ab;
+  border-radius:11px;padding:11px 18px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;
+  position:relative;overflow:hidden;transition:transform .14s,border-color .2s,background .2s;
+}
+.btn:hover{border-color:rgba(251,191,36,.6)}
+.btn:active{transform:scale(.97)}
+.btn[disabled]{cursor:default;opacity:.95}
+.btn.done{border-color:rgba(74,222,128,.5);background:linear-gradient(180deg,#0f2c1b,#08190f);color:#a7f3c4}
+.btn.fail{border-color:rgba(248,113,113,.5);background:linear-gradient(180deg,#2c1010,#190808);color:#fca5a5}
+.states{position:relative;display:inline-grid;vertical-align:top}
+.states.reserve{justify-items:stretch}
+.sline{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.after{font-size:12.5px;color:#8a7554}
+.ghost{
+  position:absolute;inset:-4px;border:1px dashed rgba(251,191,36,.55);border-radius:14px;
+  opacity:0;transition:opacity .2s;pointer-events:none;
+}
+body.showbox .ghost{opacity:1}
+
+/* undo row */
+.rows{display:flex;flex-direction:column;gap:8px}
+.item{
+  display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:11px;
+  border:1px solid var(--line);background:rgba(255,255,255,.04);
+  transition:opacity calc(.26s * var(--dur)),transform calc(.26s * var(--dur));
+}
+.item .nm{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .sz{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.item.gone{opacity:0;transform:translateX(-14px) scale(.97)}
+.item.undo{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08)}
+.xbtn{
+  border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--dim);border-radius:8px;
+  width:28px;height:28px;cursor:pointer;font:inherit;font-size:14px;line-height:1;transition:.16s;flex:0 0 auto;
+}
+.xbtn:hover{color:#fca5a5;border-color:rgba(248,113,113,.5)}
+.ring{width:26px;height:26px;flex:0 0 auto;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:3;stroke-linecap:round}
+.ring .bg{stroke:rgba(255,255,255,.14)}
+.ring .fg{stroke:var(--accent)}
+
+/* drag to confirm */
+.track{
+  position:relative;height:50px;border-radius:25px;border:1px solid var(--line);
+  background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(251,191,36,.1));overflow:hidden;
+  touch-action:none;user-select:none;-webkit-user-select:none;
+}
+.track .fillbar{position:absolute;inset:0;width:0;background:linear-gradient(90deg,rgba(251,191,36,.3),rgba(74,222,128,.34))}
+.track .cap{
+  position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;color:var(--dim);
+  letter-spacing:.06em;text-transform:uppercase;pointer-events:none;
+}
+.track .knob{
+  position:absolute;top:4px;left:4px;width:42px;height:42px;border-radius:50%;cursor:grab;
+  background:linear-gradient(180deg,#fde68a,#d9a21a);box-shadow:0 5px 14px -5px #000;
+  display:grid;place-items:center;color:#2a1c02;font-weight:800;font-size:16px;
+}
+.track.armed .knob{background:linear-gradient(180deg,#86efac,#22a559);color:#06260f}
+.log{
+  margin-top:11px;font:11.5px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#8a7554;max-height:92px;overflow:auto;border-top:1px solid var(--line);padding-top:9px;
+}
+.log b{color:var(--ink);font-weight:500}
+
+/* optimistic like */
+.like{
+  display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:999px;
+  padding:9px 16px;background:rgba(255,255,255,.05);cursor:pointer;font:inherit;font-size:14px;color:var(--ink);
+  position:relative;transition:border-color .2s,background .2s;
+}
+.like:hover{border-color:rgba(251,191,36,.45)}
+.like .heart{font-size:16px;transition:transform calc(.3s * var(--dur))}
+.like.on{border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.12)}
+.like.on .heart{transform:scale(1.22)}
+.like .n{font-variant-numeric:tabular-nums;min-width:3ch;text-align:left}
+.like .bloom{
+  position:absolute;inset:0;border-radius:999px;border:2px solid rgba(248,113,113,.75);
+  opacity:0;pointer-events:none;
+}
+.like.pulse .bloom{animation:bloom calc(.52s * var(--dur)) cubic-bezier(.2,.9,.3,1)}
+@keyframes bloom{ from{opacity:.9;transform:scale(1)} to{opacity:0;transform:scale(1.4)} }
+.like.shake{animation:shake calc(.34s * var(--dur))}
+@keyframes shake{ 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translate(-50%,24px);opacity:0;pointer-events:none;z-index:40;
+  background:rgba(26,20,8,.9);border:1px solid #6b5420;color:var(--ink);padding:10px 17px;border-radius:999px;
+  font-size:13px;font-weight:550;transition:transform .26s cubic-bezier(.2,1.2,.3,1),opacity .26s;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);max-width:90vw;text-align:center;
+}
+.toast.on{transform:translate(-50%,0);opacity:1}
+body.rm *{animation-duration:.001s!important;transition-duration:.001s!important}
+footer{max-width:900px;margin:36px auto 0;color:#6f5c3a;font-size:11px;text-align:center;line-height:1.7}
+footer a{color:#b79a62}
+@media (max-width:900px){
+  #panel{position:static;width:auto;max-width:900px;margin:0 auto 18px}
+  body{padding-top:62px}
+}
+@media (prefers-reduced-motion:reduce){ *{animation-duration:.001s!important;transition-duration:.001s!important} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<aside id="panel" class="glass">
+  <h3>Behaviour</h3>
+  <div class="row"><label for="dur">Speed</label><input type="range" id="dur" min="30" max="300" step="10" value="100"><output id="dur-o">1.0</output></div>
+  <div class="row"><label for="fail">Fail %</label><input type="range" id="fail" min="0" max="100" step="10" value="30"><output id="fail-o">30</output></div>
+  <div class="row"><label for="undodur">Undo s</label><input type="range" id="undodur" min="2" max="9" step="1" value="4"><output id="undodur-o">4</output></div>
+  <div class="row" style="margin-top:10px"><button class="pill" id="reserve" aria-pressed="true" style="flex:1">Reserve space</button></div>
+  <div class="row"><button class="pill" id="box" aria-pressed="false" style="flex:1">Show reserved box</button></div>
+  <div class="row"><button class="pill" id="rm" aria-pressed="false" style="flex:1">prefers-reduced-motion</button></div>
+</aside>
+
+<header>
+  <h1>The half second <em>after</em> a click</h1>
+  <p>Most components animate the click and abandon the moment after it. Four rules fix that: reserve the space every state will need before any of them appear, give destructive actions a window instead of a dialog, assume every gesture can be interrupted, and make sure the information still arrives when motion is switched off.</p>
+</header>
+
+<main>
+  <section class="demo glass">
+    <h2>1 · No layout jump</h2>
+    <p class="note">“Save” → “Saving…” → “Saved” are three different widths. Measure all three up front and the row beside it never moves. Turn reservation off and watch the timestamp slide.</p>
+    <div class="sline">
+      <span class="states reserve" id="saveStates">
+        <span class="ghost"></span>
+        <button class="btn" id="saveBtn">Save draft</button>
+      </span>
+      <span class="after" id="saveAfter">edited 2 minutes ago</span>
+    </div>
+  </section>
+
+  <section class="demo glass">
+    <h2>2 · A window, not a dialog</h2>
+    <p class="note">Delete acts immediately and leaves an undo window with the time visibly draining. Escape also undoes, and the row's space is held the whole time.</p>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <section class="demo glass">
+    <h2>3 · Every gesture can be interrupted</h2>
+    <p class="note">Drag to the end to confirm. Let go early, drag off the track, or lose the pointer and it springs back — each cancellation path is logged.</p>
+    <div class="track" id="track">
+      <div class="fillbar" id="fill"></div>
+      <div class="cap" id="cap">drag to publish</div>
+      <div class="knob" id="knob">›</div>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <section class="demo glass">
+    <h2>4 · Optimistic, and reversible</h2>
+    <p class="note">The count moves on the click, not on the response. When the request fails the count rolls back and says so — the optimism is only worth it if the rollback is honest.</p>
+    <div class="sline">
+      <button class="like" id="like">
+        <span class="bloom"></span>
+        <span class="heart">♥</span>
+        <span class="n" id="likeN">248</span>
+      </button>
+      <span class="after" id="likeState">idle</span>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<footer>
+  Inspired by <a href="https://github.com/ddoemonn/interior" target="_blank" rel="noopener">ddoemonn/interior</a> · UI Spotlight Day 149 · Drop #4
+</footer>
+
+<script>
+"use strict";
+/* ===========================================================
+   Four rules from Interior, each made visible:
+     - reserve space for every state before any of them render
+     - motion only in response to a user action
+     - every gesture accounts for the ways it can be cancelled
+     - under reduced motion the information still arrives
+   =========================================================== */
+const OPT = { dur: 1, fail: 0.3, undo: 4 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * OPT.dur));
+const toastEl = document.getElementById('toast');
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toastEl.classList.remove('on'), 1800);
+}
+const log = (() => {
+  const el = document.getElementById('log');
+  return (msg, strong) => {
+    const line = document.createElement('div');
+    line.innerHTML = '<span style="opacity:.5">' +
+      new Date().toLocaleTimeString(undefined, { hour12: false }) + '</span> ' +
+      (strong ? '<b>' + msg + '</b>' : msg);
+    el.insertBefore(line, el.firstChild);
+    while (el.childElementCount > 24) el.removeChild(el.lastChild);
+  };
+})();
+
+/* ---------- 1. reserved space ---------- */
+const saveBtn = document.getElementById('saveBtn');
+const saveStates = document.getElementById('saveStates');
+const SAVE_STATES = ['Save draft', 'Saving…', 'Saved', 'Failed — retry'];
+let reserve = true;
+function measureStates(){
+  /* render each label offscreen in the real button to get its real width */
+  const probe = saveBtn.cloneNode(true);
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  probe.style.pointerEvents = 'none';
+  probe.style.minWidth = '0';
+  document.body.appendChild(probe);
+  let max = 0;
+  SAVE_STATES.forEach((s) => {
+    probe.textContent = s;
+    max = Math.max(max, probe.getBoundingClientRect().width);
+  });
+  probe.remove();
+  return Math.ceil(max);
+}
+let reservedWidth = 0;
+function applyReserve(){
+  if (!reservedWidth) reservedWidth = measureStates();
+  saveBtn.style.minWidth = reserve ? reservedWidth + 'px' : '';
+  saveStates.querySelector('.ghost').style.width = reservedWidth + 8 + 'px';
+}
+let saving = false;
+saveBtn.addEventListener('click', async () => {
+  if (saving) return;
+  saving = true;
+  const beforeX = document.getElementById('saveAfter').getBoundingClientRect().left;
+  saveBtn.disabled = true;
+  saveBtn.className = 'btn';
+  saveBtn.textContent = SAVE_STATES[1];
+  await sleep(760);
+  const failed = Math.random() < OPT.fail;
+  saveBtn.textContent = failed ? SAVE_STATES[3] : SAVE_STATES[2];
+  saveBtn.className = 'btn ' + (failed ? 'fail' : 'done');
+  const afterX = document.getElementById('saveAfter').getBoundingClientRect().left;
+  const shift = Math.round(Math.abs(afterX - beforeX));
+  document.getElementById('saveAfter').textContent = failed
+    ? 'not saved · neighbour shifted ' + shift + 'px'
+    : 'saved just now · neighbour shifted ' + shift + 'px';
+  await sleep(1150);
+  saveBtn.className = 'btn';
+  saveBtn.textContent = SAVE_STATES[0];
+  saveBtn.disabled = false;
+  saving = false;
+});
+
+/* ---------- 2. undo window ---------- */
+const FILES = [
+  ['loom-draft-twill.json', '4.1 kB'],
+  ['selvedge-notes.md', '12 kB'],
+  ['tartan-sett.png', '318 kB']
+];
+const rowsEl = document.getElementById('rows');
+function makeRow(name, size){
+  const row = document.createElement('div');
+  row.className = 'item';
+  row.innerHTML = '<span class="nm"></span><span class="sz"></span>' +
+    '<button class="xbtn" title="Delete">×</button>';
+  row.querySelector('.nm').textContent = name;
+  row.querySelector('.sz').textContent = size;
+  let timer = null, raf = null, pending = false;
+  function restore(){
+    pending = false;
+    clearTimeout(timer); cancelAnimationFrame(raf);
+    row.className = 'item';
+    row.innerHTML = '<span class="nm"></span><span class="sz"></span><button class="xbtn" title="Delete">×</button>';
+    row.querySelector('.nm').textContent = name;
+    row.querySelector('.sz').textContent = size;
+    row.querySelector('.xbtn').addEventListener('click', del);
+  }
+  function del(){
+    if (pending) return;
+    pending = true;
+    /* the row keeps its box — only its contents change */
+    row.className = 'item undo';
+    row.innerHTML =
+      '<svg class="ring" viewBox="0 0 26 26"><circle class="bg" cx="13" cy="13" r="10"/>' +
+      '<circle class="fg" cx="13" cy="13" r="10"/></svg>' +
+      '<span class="nm" style="color:#a79272"></span>' +
+      '<button class="pill" style="padding:5px 12px">Undo</button>';
+    row.querySelector('.nm').textContent = name + ' deleted';
+    const fg = row.querySelector('.fg');
+    const circ = 2 * Math.PI * 10;
+    fg.style.strokeDasharray = circ;
+    const total = OPT.undo * 1000;
+    const t0 = performance.now();
+    (function drain(now){
+      const k = Math.min(1, (now - t0) / total);
+      fg.style.strokeDashoffset = (circ * k).toFixed(2);
+      if (k < 1 && pending) raf = requestAnimationFrame(drain);
+    })(t0);
+    row.querySelector('.pill').addEventListener('click', () => {
+      restore();
+      toast('Restored ' + name);
+      log('undo taken · ' + name, true);
+    });
+    row.__undo = () => { if (pending){ restore(); toast('Restored ' + name); log('undo via Escape', true); } };
+    timer = setTimeout(() => {
+      if (!pending) return;
+      pending = false;
+      row.classList.add('gone');
+      log('undo window closed · ' + name);
+      setTimeout(() => { row.remove(); if (!rowsEl.childElementCount) reseed(); }, 300 * OPT.dur);
+    }, total);
+  }
+  row.querySelector('.xbtn').addEventListener('click', del);
+  return row;
+}
+function reseed(){
+  rowsEl.textContent = '';
+  FILES.forEach((f) => rowsEl.appendChild(makeRow(f[0], f[1])));
+}
+reseed();
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const rows = rowsEl.querySelectorAll('.item.undo');
+  if (!rows.length) return;
+  rows[rows.length - 1].__undo();
+});
+
+/* ---------- 3. interruptible gesture ---------- */
+const track = document.getElementById('track'), knob = document.getElementById('knob'),
+      fill = document.getElementById('fill'), cap = document.getElementById('cap');
+let dragging = false, startX = 0, pos = 0, springRaf = null, locked = false;
+function limit(){ return track.clientWidth - knob.offsetWidth - 8; }
+function place(p){
+  pos = Math.max(0, Math.min(limit(), p));
+  knob.style.left = (4 + pos) + 'px';
+  fill.style.width = (pos + knob.offsetWidth + 4) + 'px';
+  const k = limit() > 0 ? pos / limit() : 0;
+  track.classList.toggle('armed', k > 0.94);
+  cap.textContent = locked ? 'published' : k > 0.94 ? 'release to publish' : k > 0.05 ? 'keep going' : 'drag to publish';
+}
+function springBack(why){
+  cancelAnimationFrame(springRaf);
+  let v = 0;
+  const step = () => {
+    const a = -260 * pos - 22 * v;
+    v += a * 0.016; pos += v * 0.016;
+    if (pos <= 0.4 && Math.abs(v) < 1){ place(0); return; }
+    place(pos);
+    springRaf = requestAnimationFrame(step);
+  };
+  step();
+  if (why) log('cancelled — ' + why);
+}
+knob.addEventListener('pointerdown', (e) => {
+  if (locked) return;
+  dragging = true; startX = e.clientX - pos;
+  cancelAnimationFrame(springRaf);
+  try { knob.setPointerCapture(e.pointerId); } catch (err) {}
+  log('gesture started');
+});
+knob.addEventListener('pointermove', (e) => { if (dragging) place(e.clientX - startX); });
+knob.addEventListener('pointerup', () => {
+  if (!dragging) return;
+  dragging = false;
+  if (limit() > 0 && pos / limit() > 0.94){
+    locked = true; place(limit()); cap.textContent = 'published';
+    log('confirmed', true); toast('Published');
+    setTimeout(() => { locked = false; springBack(null); cap.textContent = 'drag to publish'; log('reset'); }, 1600 * OPT.dur);
+  } else springBack('released before the end');
+});
+knob.addEventListener('pointercancel', () => {
+  if (!dragging) return;
+  dragging = false; springBack('pointercancel (the OS took the gesture)');
+});
+window.addEventListener('blur', () => {
+  if (!dragging) return;
+  dragging = false; springBack('window lost focus mid-drag');
+});
+window.addEventListener('resize', () => place(pos));
+place(0);
+log('ready');
+
+/* ---------- 4. optimistic like ---------- */
+const likeBtn = document.getElementById('like'), likeN = document.getElementById('likeN'),
+      likeState = document.getElementById('likeState');
+let liked = false, count = 248, inflight = false;
+likeBtn.addEventListener('click', async () => {
+  if (inflight) return;
+  inflight = true;
+  const was = liked, wasCount = count;
+  liked = !liked;
+  count += liked ? 1 : -1;                       /* optimistic: move now */
+  likeN.textContent = count;
+  likeBtn.classList.toggle('on', liked);
+  likeBtn.classList.remove('shake');
+  if (liked){
+    likeBtn.classList.remove('pulse');
+    void likeBtn.offsetWidth;
+    likeBtn.classList.add('pulse');
+  }
+  likeState.textContent = 'sending…';
+  await sleep(620);
+  if (Math.random() < OPT.fail){
+    liked = was; count = wasCount;
+    likeN.textContent = count;
+    likeBtn.classList.toggle('on', liked);
+    likeBtn.classList.add('shake');
+    likeState.textContent = 'request failed · rolled back';
+    toast('Could not save that — rolled back');
+    log('optimistic update rolled back');
+  } else {
+    likeState.textContent = liked ? 'liked' : 'unliked';
+  }
+  inflight = false;
+});
+
+/* ---------- panel ---------- */
+const bindRange = (id, fmt, set) => {
+  const el = document.getElementById(id), o = document.getElementById(id + '-o');
+  el.addEventListener('input', () => { const v = parseFloat(el.value); o.textContent = fmt(v); set(v); });
+};
+bindRange('dur', (v) => (v / 100).toFixed(1), (v) => {
+  OPT.dur = v / 100;
+  document.documentElement.style.setProperty('--dur', OPT.dur);
+});
+bindRange('fail', (v) => v, (v) => OPT.fail = v / 100);
+bindRange('undodur', (v) => v, (v) => OPT.undo = v);
+const resBtn = document.getElementById('reserve');
+resBtn.addEventListener('click', () => {
+  reserve = !reserve;
+  resBtn.setAttribute('aria-pressed', String(reserve));
+  applyReserve();
+  log(reserve ? 'space reserved for all four states' : 'reservation off — the button will resize');
+});
+const boxBtn = document.getElementById('box');
+boxBtn.addEventListener('click', () => {
+  const on = boxBtn.getAttribute('aria-pressed') !== 'true';
+  boxBtn.setAttribute('aria-pressed', String(on));
+  document.body.classList.toggle('showbox', on);
+});
+const rmBtn = document.getElementById('rm');
+rmBtn.addEventListener('click', () => {
+  const on = rmBtn.getAttribute('aria-pressed') !== 'true';
+  rmBtn.setAttribute('aria-pressed', String(on));
+  document.body.classList.toggle('rm', on);
+  log(on ? 'reduced motion — states change instantly, nothing is skipped' : 'motion restored');
+});
+applyReserve();
+</script>
+</body>
+</html>
