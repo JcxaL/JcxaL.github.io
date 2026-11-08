@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop #5 — Exploded Component</title>
+<meta name="description" content="A live component pulled apart into its paint layers, with measurements read from the DOM rather than typed.">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#05060c; --ink:#eaf0ff; --dim:#8c9bba; --line:rgba(130,165,225,.15);
+    --ac:#a78bfa; --glass:rgba(12,18,32,.72);
+
+    /* ---- the component's own tokens (what T reveals) ---- */
+    --card-bg:#121a2b;
+    --card-stroke:#2b3a58;
+    --card-radius:16px;
+    --card-pad:18px;
+    --card-gap:12px;
+    --chip-radius:999px;
+    --chip-bg:#1d2942;
+    --accent:#a78bfa;
+    --shadow-lg:0 18px 40px -22px rgba(0,0,0,.95);
+  }
+  html,body{margin:0;min-height:100dvh}
+  body{
+    background:
+      radial-gradient(1000px 640px at 14% -10%,rgba(167,139,250,.14),transparent 60%),
+      radial-gradient(860px 560px at 86% 8%,rgba(56,189,248,.09),transparent 58%),
+      var(--bg);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:68px 18px 90px;
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:30;text-decoration:none;color:var(--ink);
+    font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:999px;
+    border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(10px);
+  }
+  .back-link:hover{border-color:var(--ac)}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:clamp(1.3rem,3.4vw,2rem);margin:0 0 6px;letter-spacing:-.02em}
+  h1 em{font-style:normal;color:var(--ac)}
+  .lede{color:var(--dim);font-size:.92rem;max-width:64ch;margin:0 0 24px;line-height:1.6}
+  .lede kbd{
+    font-family:ui-monospace,Menlo,monospace;background:#1a2338;border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:.86em;color:#cbd5f5;
+  }
+
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+
+  /* ---------- the figure ---------- */
+  .figure{
+    position:relative;height:460px;border:1px solid var(--line);border-radius:18px;overflow:hidden;
+    background:
+      linear-gradient(180deg,rgba(14,20,36,.75),rgba(7,10,19,.75)),
+      repeating-linear-gradient(0deg,rgba(130,165,225,.05) 0 1px,transparent 1px 34px),
+      repeating-linear-gradient(90deg,rgba(130,165,225,.05) 0 1px,transparent 1px 34px);
+    perspective:1400px;
+  }
+  .iso{
+    position:absolute;inset:0;display:grid;place-items:center;
+    transform-style:preserve-3d;
+    transform:rotateX(58deg) rotateZ(-42deg) scale(.8);
+    transition:transform .5s cubic-bezier(.22,1,.36,1);
+  }
+  .figure.flat .iso{transform:rotateX(0deg) rotateZ(0deg) scale(1)}
+  .figure.flat .layer .tagline{transform:translateX(-50%)}
+  .layer{
+    position:absolute;transform-style:preserve-3d;
+    transition:transform .5s cubic-bezier(.22,1,.36,1),opacity .25s;
+    transform:translateZ(0px);
+  }
+  .layer.dim{opacity:.5}
+  .layer .plate{
+    position:absolute;inset:-14px;border:1px dashed rgba(167,139,250,.32);border-radius:10px;
+    opacity:0;transition:opacity .2s;pointer-events:none;
+  }
+  .layer.sel .plate{opacity:1}
+  .layer .tagline{
+    position:absolute;left:50%;top:-34px;
+    transform:translateX(-50%) rotateZ(42deg) rotateX(-58deg);transform-origin:50% 100%;
+    font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ac);white-space:nowrap;opacity:0;transition:opacity .2s;pointer-events:none;
+  }
+  .layer.sel .tagline{opacity:1}
+
+  /* ---------- the component ---------- */
+  .card{
+    width:292px;border:1px solid var(--card-stroke);border-radius:var(--card-radius);
+    background:var(--card-bg);padding:var(--card-pad);display:flex;flex-direction:column;gap:var(--card-gap);
+    box-shadow:var(--shadow-lg);font-family:inherit;color:var(--ink);text-align:left;
+    outline:2px solid transparent;outline-offset:3px;
+    transition:border-color .18s,background .18s,transform .18s,outline-color .18s;
+  }
+  :is(.card:hover,.card.is-hover){border-color:var(--accent);transform:translateY(-2px)}
+  :is(.card:focus-visible,.card.is-focus){outline-color:var(--accent)}
+  :is(.card:active,.card.is-active){transform:translateY(1px);background:#0f1726}
+  .card .head{display:flex;align-items:center;gap:10px}
+  .card .av{
+    width:34px;height:34px;border-radius:50%;flex:0 0 auto;
+    background:conic-gradient(from 210deg,#a78bfa,#38bdf8,#34d399,#a78bfa);
+  }
+  .card .ttl{font-size:14px;font-weight:650;letter-spacing:-.01em}
+  .card .sub{font-size:11.5px;color:var(--dim)}
+  .card .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .card .chip{
+    background:var(--chip-bg);border-radius:var(--chip-radius);padding:4px 10px;
+    font-size:10.5px;color:#b9c6e4;letter-spacing:.02em;
+  }
+  .card .cta{
+    margin-top:2px;background:var(--accent);color:#120d22;border:0;border-radius:9px;
+    padding:8px 12px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;text-align:center;
+  }
+
+  /* layer isolation: everything that belongs to another layer is made transparent */
+  .lay-elev .card{background:transparent;border-color:transparent;color:transparent}
+  .lay-elev .card *{visibility:hidden}
+  .lay-surf .card{box-shadow:none;border-color:transparent;color:transparent}
+  .lay-surf .card *{visibility:hidden}
+  .lay-stroke .card{box-shadow:none;background:transparent;color:transparent}
+  .lay-stroke .card *{visibility:hidden}
+  .lay-chip .card{box-shadow:none;background:transparent;border-color:transparent}
+  .lay-chip .card .av,.lay-chip .card .ttl,.lay-chip .card .sub{visibility:hidden}
+  .lay-chip .card .cta{background:rgba(167,139,250,.33);color:transparent}
+  .lay-content .card{box-shadow:none;background:transparent;border-color:transparent}
+  .lay-content .card .chip{background:transparent;color:#b9c6e4}
+  .lay-content .card .cta{background:transparent;color:#d6c9ff}
+  .lay-focus .card{box-shadow:none;background:transparent;border-color:transparent;outline-color:var(--accent)}
+  .lay-focus .card *{visibility:hidden}
+
+  /* ---------- side panel ---------- */
+  .side{display:flex;flex-direction:column;gap:12px}
+  .box{border:1px solid var(--line);border-radius:14px;padding:13px;background:rgba(10,15,26,.6)}
+  .box h2{margin:0 0 10px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6d7e9d;font-weight:700}
+  .stack{display:flex;flex-direction:column;gap:4px}
+  .stack button{
+    display:flex;align-items:center;gap:9px;border:1px solid transparent;background:#101828;color:var(--dim);
+    border-radius:9px;padding:7px 10px;font-size:12px;font-family:inherit;cursor:pointer;text-align:left;
+  }
+  .stack button:hover{border-color:rgba(167,139,250,.5);color:var(--ink)}
+  .stack button[aria-pressed=true]{border-color:var(--ac);color:var(--ink);background:#1a1733}
+  .stack .n{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#5e6e8c;min-width:14px}
+  .redline{font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.75;color:var(--dim)}
+  .redline div{display:flex;gap:8px;justify-content:space-between}
+  .redline b{color:#d9e2ff;font-weight:600;text-align:right}
+  .redline b.tok{color:#9df0cd}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{
+    flex:1;background:#101828;border:0;border-right:1px solid var(--line);color:var(--dim);
+    padding:6px 2px;font-size:11px;font-family:inherit;cursor:pointer;
+  }
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed=true]{background:var(--ac);color:#120d22;font-weight:700}
+  .keys{font-size:11px;color:#6c7b99;line-height:1.7}
+  .keys kbd{font-family:ui-monospace,Menlo,monospace;background:#1a2338;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+  .live{display:grid;place-items:center;padding:18px 0 6px}
+
+  .credit{
+    position:fixed;left:0;right:0;bottom:0;text-align:center;font-size:11px;color:var(--dim);
+    padding:11px;background:linear-gradient(180deg,transparent,rgba(5,7,13,.92));pointer-events:none;
+  }
+  .credit a{color:var(--ac);text-decoration:none;pointer-events:auto}
+  @media (max-width:900px){ .stage{grid-template-columns:minmax(0,1fr)} .figure{height:380px} }
+  @media (max-width:720px){ body{padding-top:62px} .iso{transform:rotateX(52deg) rotateZ(-40deg) scale(.66)} }
+  @media (prefers-reduced-motion:reduce){ .iso,.layer{transition:none} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="wrap">
+  <h1>Exploded <em>component</em></h1>
+  <p class="lede">
+    Every layer in this figure is a clone of the live card on the right, with the paint that belongs to the
+    other layers made transparent. Nothing is redrawn and no number is typed — the redlines come from
+    <code>getComputedStyle</code> on the real element, so the diagram cannot drift from the component.
+    Press <kbd>E</kbd> to collapse, <kbd>T</kbd> for token names, <kbd>↑</kbd><kbd>↓</kbd> to walk the stack.
+  </p>
+
+  <div class="stage">
+    <div class="figure" id="figure">
+      <div class="iso" id="iso"></div>
+    </div>
+
+    <div class="side">
+      <div class="box">
+        <h2>Paint layers</h2>
+        <div class="stack" id="layers"></div>
+      </div>
+      <div class="box">
+        <h2>Redlines <span id="mode" style="color:#5e6e8c;letter-spacing:0;text-transform:none">· raw</span></h2>
+        <div class="redline" id="redline"></div>
+      </div>
+      <div class="box">
+        <h2>Forced state</h2>
+        <div class="seg" id="states"></div>
+        <div class="live"><div id="liveHost"></div></div>
+        <div class="keys"><kbd>E</kbd> explode · <kbd>T</kbd> tokens · <kbd>↑</kbd><kbd>↓</kbd> layer</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="credit">Inspired by <a href="https://github.com/diip3sh/exploded" target="_blank" rel="noopener">diip3sh/exploded</a> · UI Spotlight Day 151 · Drop #5</footer>
+
+<script>
+(function(){
+"use strict";
+var CARD_HTML=
+  '<div class="head"><span class="av"></span><span>'+
+  '<span class="ttl">Deploy finished</span><br><span class="sub">web · 2 min ago</span></span></div>'+
+  '<div class="chips"><span class="chip">production</span><span class="chip">eu-west</span><span class="chip">v4.2.0</span></div>'+
+  '<div class="cta">View run</div>';
+
+var LAYERS=[
+  {id:'elev',   cls:'lay-elev',    name:'Elevation',      z:0},
+  {id:'surf',   cls:'lay-surf',    name:'Surface',        z:46},
+  {id:'stroke', cls:'lay-stroke',  name:'Stroke',         z:92},
+  {id:'chip',   cls:'lay-chip',    name:'Inner surfaces', z:138},
+  {id:'content',cls:'lay-content', name:'Content',        z:184},
+  {id:'focus',  cls:'lay-focus',   name:'Focus ring',     z:230}
+];
+var TOKENS={
+  '16px':'--card-radius','18px':'--card-pad','12px':'--card-gap','999px':'--chip-radius',
+  'rgb(18, 26, 43)':'--card-bg','rgb(43, 58, 88)':'--card-stroke','rgb(29, 41, 66)':'--chip-bg',
+  'rgb(167, 139, 250)':'--accent','1px':'--stroke-1'
+};
+var state={exploded:true,tokens:false,sel:1,force:''};
+
+/* ---- the live reference component ---- */
+var live=document.createElement('div');
+live.className='card'; live.tabIndex=0; live.innerHTML=CARD_HTML;
+document.getElementById('liveHost').appendChild(live);
+
+/* ---- one cloned plate per layer ---- */
+var iso=document.getElementById('iso'), plates=[];
+LAYERS.forEach(function(L,i){
+  var wrap=document.createElement('div');
+  wrap.className='layer '+L.cls;
+  var clone=live.cloneNode(true);
+  clone.removeAttribute('tabindex');
+  wrap.appendChild(clone);
+  var plate=document.createElement('span'); plate.className='plate'; wrap.appendChild(plate);
+  var tag=document.createElement('span'); tag.className='tagline'; tag.textContent=L.name;
+  wrap.appendChild(tag);
+  wrap.addEventListener('pointerenter',function(){ select(i); });
+  iso.appendChild(wrap);
+  plates.push({L:L,el:wrap,clone:clone});
+});
+
+/* ---- measurements read off the live element ---- */
+function val(el,prop){ return getComputedStyle(el).getPropertyValue(prop).trim(); }
+function readFor(L){
+  var chip=live.querySelector('.chip'), out=[];
+  function push(k,v){ out.push([k,v]); }
+  if(L.id==='elev')    push('box-shadow', shortShadow(val(live,'box-shadow')));
+  if(L.id==='surf'){   push('background', val(live,'background-color')); push('border-radius', val(live,'border-radius')); }
+  if(L.id==='stroke'){ push('border-width', val(live,'border-top-width')); push('border-color', val(live,'border-top-color')); push('border-radius', val(live,'border-radius')); }
+  if(L.id==='chip'){   push('chip radius', val(chip,'border-radius')); push('chip background', val(chip,'background-color')); push('chip gap', val(live.querySelector('.chips'),'column-gap')); }
+  if(L.id==='content'){push('padding', val(live,'padding-top')); push('row gap', val(live,'row-gap')); push('title size', val(live.querySelector('.ttl'),'font-size')); push('width', Math.round(live.getBoundingClientRect().width)+'px'); }
+  if(L.id==='focus'){  push('outline-width', val(live,'outline-width')); push('outline-offset', val(live,'outline-offset')); push('outline-color', val(live,'outline-color')); }
+  return out;
+}
+function shortShadow(s){
+  var m=s.match(/(-?\d+px\s+-?\d+px\s+-?\d+px\s+-?\d+px)/);
+  return m?m[1]:s.slice(0,30);
+}
+function display(v){
+  if(!state.tokens) return {text:v,tok:false};
+  var t=TOKENS[v];
+  return t ? {text:'var('+t+')',tok:true} : {text:v,tok:false};
+}
+
+function renderRedline(){
+  var box=document.getElementById('redline'), L=LAYERS[state.sel];
+  box.innerHTML='';
+  var rows=readFor(L);
+  rows.forEach(function(r){
+    var d=document.createElement('div');
+    var k=document.createElement('span'); k.textContent=r[0];
+    var dv=display(r[1]);
+    var b=document.createElement('b'); b.textContent=dv.text;
+    if(dv.tok) b.className='tok';
+    d.appendChild(k); d.appendChild(b); box.appendChild(d);
+  });
+  document.getElementById('mode').textContent = state.tokens ? '· tokens' : '· raw';
+}
+function renderLayers(){
+  var box=document.getElementById('layers'); box.innerHTML='';
+  LAYERS.forEach(function(L,i){
+    var b=document.createElement('button');
+    b.setAttribute('aria-pressed', i===state.sel?'true':'false');
+    var n=document.createElement('span'); n.className='n'; n.textContent=(i+1);
+    b.appendChild(n); b.appendChild(document.createTextNode(L.name));
+    b.addEventListener('click',function(){ select(i); });
+    b.addEventListener('pointerenter',function(){ select(i); });
+    box.appendChild(b);
+  });
+}
+function select(i){
+  state.sel=i; applyStack(); renderLayers(); renderRedline();
+}
+function applyStack(){
+  document.getElementById('figure').classList.toggle('flat',!state.exploded);
+  /* centre the stack on z = 0 so it never climbs out of the frame */
+  var mid = LAYERS[LAYERS.length-1].z / 2;
+  plates.forEach(function(p,i){
+    var z = state.exploded ? p.L.z - mid : i*0.4 - 1;
+    p.el.style.transform='translateZ('+z+'px)';
+    p.el.classList.toggle('sel', i===state.sel);
+    p.el.classList.toggle('dim', state.exploded && i!==state.sel && state.sel>=0);
+  });
+}
+/* forced states reuse the component's own declarations via :is() selectors */
+var STATES=[['','rest'],['is-hover','hover'],['is-focus','focus'],['is-active','active']];
+function renderStates(){
+  var box=document.getElementById('states'); box.innerHTML='';
+  STATES.forEach(function(s){
+    var b=document.createElement('button'); b.textContent=s[1];
+    b.setAttribute('aria-pressed', state.force===s[0]?'true':'false');
+    b.addEventListener('click',function(){ state.force=s[0]; applyState(); renderStates(); renderRedline(); });
+    box.appendChild(b);
+  });
+}
+function applyState(){
+  var all=['is-hover','is-focus','is-active'];
+  [live].concat(plates.map(function(p){return p.clone})).forEach(function(el){
+    all.forEach(function(c){ el.classList.remove(c); });
+    if(state.force) el.classList.add(state.force);
+  });
+}
+document.addEventListener('keydown',function(e){
+  var k=e.key.toLowerCase();
+  if(k==='e'){ state.exploded=!state.exploded; applyStack(); }
+  else if(k==='t'){ state.tokens=!state.tokens; renderRedline(); }
+  else if(e.key==='ArrowDown'||e.key==='ArrowRight'){ e.preventDefault(); select((state.sel+1)%LAYERS.length); }
+  else if(e.key==='ArrowUp'||e.key==='ArrowLeft'){ e.preventDefault(); select((state.sel+LAYERS.length-1)%LAYERS.length); }
+});
+document.getElementById('figure').addEventListener('click',function(){
+  state.exploded=!state.exploded; applyStack();
+});
+
+renderLayers(); renderStates(); applyState(); applyStack(); renderRedline();
+window.__drop5={LAYERS:LAYERS,state:state,select:select,readFor:readFor,plates:plates,live:live,applyStack:applyStack};
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop #1 — Live ASCII Renderer</title>
+<meta name="description" content="Procedural scenes sampled to luminance and printed as characters — the animated-ASCII pattern, in three panels.">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#05060c; --ink:#eaf0ff; --dim:#8c9bba; --line:rgba(130,165,225,.15);
+    --ac:#38bdf8; --glass:rgba(12,18,32,.72);
+  }
+  html,body{margin:0;min-height:100dvh}
+  body{
+    background:
+      radial-gradient(1000px 640px at 14% -10%,rgba(56,189,248,.16),transparent 60%),
+      radial-gradient(820px 560px at 86% 8%,rgba(167,139,250,.11),transparent 58%),
+      var(--bg);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:68px 18px 86px;
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:20;text-decoration:none;color:var(--ink);
+    font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:999px;
+    border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(10px);
+  }
+  .back-link:hover{border-color:var(--ac)}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:clamp(1.3rem,3.4vw,2rem);margin:0 0 6px;letter-spacing:-.02em}
+  h1 em{font-style:normal;color:var(--ac)}
+  .lede{color:var(--dim);font-size:.92rem;max-width:62ch;margin:0 0 26px;line-height:1.6}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px}
+  .panel{
+    border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    background:linear-gradient(180deg,rgba(14,20,36,.85),rgba(7,10,19,.85));
+  }
+  .phead{
+    display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:1px solid var(--line);
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+  }
+  .phead .dot{width:8px;height:8px;border-radius:50%;background:var(--pc,var(--ac));box-shadow:0 0 10px var(--pc,var(--ac))}
+  .phead .fps{margin-left:auto;font-family:ui-monospace,Menlo,monospace;letter-spacing:0;text-transform:none;color:#5e6e8c}
+  pre{
+    margin:0;padding:12px 10px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    line-height:1.0;white-space:pre;overflow:hidden;text-align:center;
+    background:linear-gradient(170deg,var(--pc,var(--ac)),#ffffff 48%,var(--pc,var(--ac)));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    user-select:none;
+  }
+  .lab{
+    padding:9px 13px 12px;font-size:12px;color:var(--dim);border-top:1px solid var(--line);line-height:1.5;
+  }
+  .lab b{color:var(--ink);font-weight:600}
+  .tuner{
+    position:fixed;top:14px;right:14px;z-index:20;width:208px;padding:12px 13px;border-radius:14px;
+    border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(12px);font-size:11.5px;color:var(--dim);
+  }
+  .tuner h2{margin:0 0 9px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6d7e9d;font-weight:700}
+  .tuner label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .tuner input[type=range]{width:96px;accent-color:var(--ac)}
+  .tuner select{
+    width:104px;background:#0e1626;color:var(--ink);border:1px solid var(--line);border-radius:7px;
+    padding:3px 5px;font-size:11px;font-family:inherit;
+  }
+  .tuner output{font-family:ui-monospace,Menlo,monospace;color:var(--ac);min-width:28px;text-align:right}
+  .credit{
+    position:fixed;left:0;right:0;bottom:0;text-align:center;font-size:11px;color:var(--dim);
+    padding:11px;background:linear-gradient(180deg,transparent,rgba(5,7,13,.92));pointer-events:none;
+  }
+  .credit a{color:var(--ac);text-decoration:none;pointer-events:auto}
+  @media (max-width:720px){
+    body{padding-top:62px}
+    .tuner{position:static;width:100%;margin:0 0 18px;backdrop-filter:none}
+    pre{font-size:7px}
+  }
+  @media (prefers-reduced-motion:reduce){ pre{animation:none} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<aside class="tuner">
+  <h2>Tune the render</h2>
+  <label>Density <input type="range" id="cols" min="34" max="104" step="2" value="66"><output id="colsv">66</output></label>
+  <label>Frame rate <input type="range" id="fps" min="6" max="60" step="2" value="30"><output id="fpsv">30</output></label>
+  <label>Ramp <select id="ramp">
+    <option value=" .:-=+*#%@">classic</option>
+    <option value=" .'`^,:;Il!i&gt;&lt;~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&amp;8%B@$">long</option>
+    <option value=" ░▒▓█">blocks</option>
+    <option value=" ·-+■▣▦▩█">geo</option>
+  </select></label>
+  <label>Invert <input type="checkbox" id="inv"></label>
+</aside>
+
+<div class="wrap">
+  <h1>Live <em>ASCII</em> renderer</h1>
+  <p class="lede">
+    Three procedural scenes, none of them images: each frame is sampled to a luminance grid, and every
+    cell picks a glyph from a brightness ramp. Nothing is drawn — the whole animation is text in a
+    <code>&lt;pre&gt;</code>, which is why it costs almost nothing and scales to any character set you hand it.
+  </p>
+
+  <div class="grid">
+    <section class="panel" style="--pc:#38bdf8">
+      <div class="phead"><span class="dot"></span>Torus <span class="fps" id="f0">—</span></div>
+      <pre id="p0"></pre>
+      <div class="lab"><b>Z-buffered donut.</b> Points on a torus are rotated, projected, and shaded by the dot product of the surface normal with a fixed light.</div>
+    </section>
+    <section class="panel" style="--pc:#a78bfa">
+      <div class="phead"><span class="dot"></span>Plasma <span class="fps" id="f1">—</span></div>
+      <pre id="p1"></pre>
+      <div class="lab"><b>Summed sine fields.</b> Four travelling waves are added per cell; the result maps straight onto the ramp with no geometry at all.</div>
+    </section>
+    <section class="panel" style="--pc:#34d399">
+      <div class="phead"><span class="dot"></span>Sea <span class="fps" id="f2">—</span></div>
+      <pre id="p2"></pre>
+      <div class="lab"><b>Height field.</b> Layered swells give each column a surface height; cells above it stay empty, cells below shade by depth and foam.</div>
+    </section>
+  </div>
+</div>
+
+<footer class="credit">Inspired by <a href="https://github.com/bas3line/ascii" target="_blank" rel="noopener">bas3line/ascii</a> · UI Spotlight Day 151 · Drop #1</footer>
+
+<script>
+(function(){
+"use strict";
+var cfg={cols:66,fps:30,ramp:" .:-=+*#%@",inv:false};
+var panels=[{el:document.getElementById('p0'),fps:document.getElementById('f0'),kind:'torus'},
+            {el:document.getElementById('p1'),fps:document.getElementById('f1'),kind:'plasma'},
+            {el:document.getElementById('p2'),fps:document.getElementById('f2'),kind:'sea'}];
+
+function glyph(l){
+  var r=cfg.ramp, v=cfg.inv?1-l:l;
+  var i=Math.round(Math.max(0,Math.min(1,v))*(r.length-1));
+  return r.charAt(i);
+}
+
+/* ---- scene 1: z-buffered torus ---- */
+function torus(cols,rows,t){
+  var out=new Array(rows*cols).fill(0), zb=new Array(rows*cols).fill(-1e9);
+  var A=t*0.9, B=t*0.45;
+  var cA=Math.cos(A),sA=Math.sin(A),cB=Math.cos(B),sB=Math.sin(B);
+  var R1=1, R2=2.1, K2=6.2, K1=cols*K2*0.26/(R1+R2);
+  for(var th=0;th<6.283;th+=0.085){
+    var ct=Math.cos(th),st=Math.sin(th);
+    for(var ph=0;ph<6.283;ph+=0.022){
+      var cp=Math.cos(ph),sp=Math.sin(ph);
+      var cx=R2+R1*ct, cy=R1*st;
+      var x=cx*(cB*cp+sA*sB*sp)-cy*cA*sB;
+      var y=cx*(sB*cp-sA*cB*sp)+cy*cA*cB;
+      var z=K2+cA*cx*sp+cy*sA;
+      var ooz=1/z;
+      var xp=(cols/2+K1*ooz*x)|0, yp=(rows/2-K1*ooz*y*0.5)|0;
+      if(xp<0||xp>=cols||yp<0||yp>=rows) continue;
+      var L=cp*ct*sB-cA*ct*sp-sA*st+cB*(cA*st-ct*sA*sp);
+      var idx=yp*cols+xp;
+      if(ooz>zb[idx]){ zb[idx]=ooz; out[idx]=Math.max(0,L)/1.42; }
+    }
+  }
+  return out;
+}
+
+/* ---- scene 2: additive plasma ---- */
+function plasma(cols,rows,t){
+  var out=new Array(rows*cols),i=0;
+  for(var y=0;y<rows;y++){
+    var fy=y/rows*2-1;
+    for(var x=0;x<cols;x++){
+      var fx=x/cols*2-1;
+      var v=Math.sin(fx*3.1+t*1.2)
+           +Math.sin((fy*2.4-t*0.8)*1.6)
+           +Math.sin((fx+fy)*2.2+t*0.6)
+           +Math.sin(Math.sqrt(fx*fx*2.4+fy*fy*5.1)*4.4-t*1.9);
+      out[i++]=(v+4)/8;
+    }
+  }
+  return out;
+}
+
+/* ---- scene 3: height-field sea ---- */
+function sea(cols,rows,t){
+  var out=new Array(rows*cols).fill(0),x,y;
+  var h=new Array(cols);
+  for(x=0;x<cols;x++){
+    var fx=x/cols;
+    h[x]=0.5
+      +0.16*Math.sin(fx*7.2+t*1.5)
+      +0.09*Math.sin(fx*13.7-t*2.3)
+      +0.05*Math.sin(fx*23.1+t*3.4);
+  }
+  for(y=0;y<rows;y++){
+    var fy=y/rows;
+    for(x=0;x<cols;x++){
+      var surf=h[x];
+      var i=y*cols+x;
+      if(fy<surf-0.012){ out[i]=0; }
+      else if(fy<surf+0.03){ out[i]=0.95; }
+      else{
+        var d=(fy-surf)/(1-surf);
+        out[i]=Math.max(0,0.62-d*0.58)+0.1*Math.sin(x*0.7+y*0.5-t*2.6);
+      }
+    }
+  }
+  return out;
+}
+
+function render(p,t){
+  var cols=cfg.cols, rows=Math.max(10,Math.round(cols*0.42));
+  var buf = p.kind==='torus' ? torus(cols,rows,t) : p.kind==='plasma' ? plasma(cols,rows,t) : sea(cols,rows,t);
+  var lines=new Array(rows);
+  for(var y=0;y<rows;y++){
+    var s='';
+    for(var x=0;x<cols;x++) s+=glyph(buf[y*cols+x]);
+    lines[y]=s;
+  }
+  p.el.textContent=lines.join('\n');
+}
+function fit(){
+  for(var i=0;i<panels.length;i++){
+    var w=panels[i].el.clientWidth-20;
+    var size=Math.max(4,Math.min(13,(w/cfg.cols)/0.6));
+    panels[i].el.style.fontSize=size.toFixed(2)+'px';
+  }
+}
+
+var last=0, acc=0, fcount=0, ftimer=0;
+var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function loop(now){
+  requestAnimationFrame(loop);
+  if(!last) last=now;
+  var dt=(now-last)/1000; last=now;
+  acc+=dt;
+  var step=1/cfg.fps;
+  if(acc<step) return;
+  acc=Math.min(acc-step,step);
+  var t=reduce?2.4:now/1000;
+  for(var i=0;i<panels.length;i++) render(panels[i],t+i*1.7);
+  fcount++; ftimer+=step;
+  if(ftimer>=0.5){
+    var v=Math.round(fcount/ftimer);
+    for(var k=0;k<panels.length;k++) panels[k].fps.textContent=v+' fps';
+    fcount=0; ftimer=0;
+  }
+  if(reduce){ /* single frame only */ }
+}
+
+function bind(id,fn){ var e=document.getElementById(id); e.addEventListener('input',fn); return e; }
+bind('cols',function(){ cfg.cols=+this.value; document.getElementById('colsv').textContent=cfg.cols; fit(); });
+bind('fps',function(){ cfg.fps=+this.value; document.getElementById('fpsv').textContent=cfg.fps; });
+bind('ramp',function(){ cfg.ramp=this.value; });
+bind('inv',function(){ cfg.inv=this.checked; });
+window.addEventListener('resize',fit);
+
+fit();
+for(var i=0;i<panels.length;i++) render(panels[i],1.2+i*1.7);
+requestAnimationFrame(loop);
+window.__drop1={cfg:cfg,render:render,panels:panels,torus:torus,plasma:plasma,sea:sea};
+})();
+</script>
+</body>
+</html>
