@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drop 5 — Press, Slide, Release</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{--bucket:#a78bfa}
+  html,body{height:100%}
+  body{
+    margin:0;background:#05060c;color:#e8ecf6;min-height:100%;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:76px 16px 92px;gap:18px;overflow-x:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(900px 560px at 50% 0%,rgba(167,139,250,.13),transparent 62%);
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:90;text-decoration:none;color:#e8ecf6;
+    font:600 13px/1 ui-sans-serif,system-ui,sans-serif;padding:10px 15px;border-radius:999px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(12px);
+  }
+  .back-link:hover{background:rgba(255,255,255,.15)}
+  h1{margin:0;font-size:clamp(19px,4.2vw,28px);letter-spacing:-.02em;text-align:center}
+  .sub{margin:0;color:#8e98b4;font-size:13.5px;text-align:center;max-width:62ch;line-height:1.6}
+
+  .targets{display:grid;gap:14px;width:min(900px,100%);grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .target{
+    position:relative;border-radius:16px;padding:20px 18px;min-height:168px;cursor:grab;
+    border:1px solid rgba(255,255,255,.12);background:linear-gradient(160deg,#141827,#0b0e18);
+    display:flex;flex-direction:column;justify-content:flex-end;gap:7px;
+    touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;
+    transition:transform .18s cubic-bezier(.2,.9,.3,1.3),border-color .2s;
+  }
+  .target:hover{border-color:rgba(167,139,250,.45)}
+  .target:focus-visible{outline:2px solid var(--bucket);outline-offset:3px}
+  .target.armed{transform:scale(.975);border-color:var(--bucket)}
+  .target .kicker{font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--bucket)}
+  .target h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .target p{margin:0;font-size:12.5px;color:#8e98b4;line-height:1.5}
+  .target .art{
+    position:absolute;inset:0;border-radius:16px;opacity:.5;pointer-events:none;
+    background:radial-gradient(60% 60% at 70% 22%, var(--art), transparent 70%);
+  }
+  .target .chosen{
+    font:600 11px/1 ui-monospace,monospace;color:#cbb6ff;min-height:12px;
+  }
+
+  /* ── the radial menu ────────────────────────────────────────────── */
+  #layer{position:fixed;inset:0;z-index:70;pointer-events:none;opacity:0;transition:opacity .13s}
+  #layer.on{opacity:1}
+  #layer .veil{position:absolute;inset:0;background:rgba(4,5,10,.42);backdrop-filter:blur(2px)}
+  .menu{position:absolute;left:0;top:0;width:0;height:0}
+  .menu .hub{
+    position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
+    background:var(--bucket);box-shadow:0 0 0 7px rgba(167,139,250,.2);
+  }
+  .menu .item{
+    position:absolute;transform:translate(-50%,-50%) scale(.55);opacity:0;
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    transition:transform .19s cubic-bezier(.2,.9,.3,1.35),opacity .16s;
+  }
+  .menu.open .item{transform:translate(-50%,-50%) scale(1);opacity:1}
+  .menu .disc{
+    width:50px;height:50px;border-radius:50%;display:grid;place-items:center;font-size:21px;
+    background:rgba(20,24,40,.94);border:1px solid rgba(255,255,255,.18);
+    box-shadow:0 12px 30px -14px rgba(0,0,0,.95);
+    transition:transform .14s cubic-bezier(.2,.9,.3,1.5),background .14s,border-color .14s;
+  }
+  .menu .lab{
+    font:600 10.5px/1 ui-sans-serif,system-ui,sans-serif;color:#aab3c9;
+    background:rgba(8,10,18,.8);padding:4px 7px;border-radius:7px;white-space:nowrap;opacity:0;
+    transition:opacity .14s;
+  }
+  .menu .item.hot .disc{
+    transform:scale(1.26);background:var(--bucket);border-color:var(--bucket);color:#140a2b;
+  }
+  .menu .item.hot .lab{opacity:1;color:#e9e3ff}
+  .menu .trace{position:absolute;overflow:visible;pointer-events:none}
+  .menu .trace path{fill:none;stroke:var(--bucket);stroke-width:2;stroke-linecap:round;opacity:.55}
+
+  .toast{
+    position:fixed;left:50%;bottom:52px;transform:translate(-50%,14px);z-index:95;
+    background:#e8ecf6;color:#0b0c10;font:600 13px ui-sans-serif,system-ui,sans-serif;
+    padding:10px 16px;border-radius:999px;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;
+  }
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:90;width:222px;padding:13px 14px;border-radius:14px;
+    background:rgba(12,15,26,.76);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(16px);
+    box-shadow:0 20px 48px -26px rgba(0,0,0,.9);
+  }
+  .panel h2{margin:0 0 10px;font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;
+    text-transform:uppercase;color:#8e98b4}
+  .row{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;color:#dbe2f2}
+  .row b{font:600 11px ui-monospace,monospace;color:var(--bucket)}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:0 0 9px}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:9px;background:rgba(255,255,255,.18)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+    background:var(--bucket);margin-top:-5px}
+  input[type=range]::-moz-range-track{height:3px;border-radius:9px;background:rgba(255,255,255,.18)}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;background:var(--bucket)}
+  .chk{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#dbe2f2;margin-top:4px}
+  .hint{font-size:11.5px;color:#7b86a3;text-align:center;margin:0;max-width:60ch;line-height:1.55}
+  footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:60;padding:9px 14px;text-align:center;
+    font:500 11px/1.5 ui-sans-serif,system-ui,sans-serif;color:#6d7794;
+    background:linear-gradient(transparent,rgba(5,6,12,.9) 55%);
+  }
+  footer a{color:#93a2c4}
+  @media (max-width:820px){ .panel{display:none} body{padding-top:62px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Press, slide, release</h1>
+<p class="sub">No menu that waits for a second tap. Press and the options arrive <em>around</em> your finger, already in reach; slide and each one catches with a detent; release on the one you want. One gesture, start to finish — and it still works from the keyboard.</p>
+
+<div class="targets" id="targets"></div>
+<p class="hint">Press and hold anywhere on a card · or focus one with <kbd>Tab</kbd>, press <kbd>Enter</kbd>, steer with <kbd>←</kbd> <kbd>→</kbd>, confirm with <kbd>Enter</kbd></p>
+
+<div id="layer"><div class="veil"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="panel">
+  <h2>Parameters</h2>
+  <div class="row"><span>Radius</span><b id="vR">104px</b></div>
+  <input type="range" id="radius" min="64" max="160" step="4" value="104">
+  <div class="row"><span>Arc spread</span><b id="vA">210°</b></div>
+  <input type="range" id="arc" min="90" max="340" step="10" value="210">
+  <div class="row"><span>Detent strength</span><b id="vD">0.55</b></div>
+  <input type="range" id="detent" min="0" max="1" step="0.05" value="0.55">
+  <div class="row"><span>Dead zone</span><b id="vZ">26px</b></div>
+  <input type="range" id="dead" min="0" max="70" step="2" value="26">
+  <label class="chk"><input type="checkbox" id="haptic" checked> Haptic tick</label>
+</div>
+
+<footer>Inspired by <a href="https://github.com/ds-spec/detent-ui" target="_blank" rel="noopener">ds-spec/detent-ui — Popup</a> · UI Spotlight Day 152 · Drop #5</footer>
+
+<script>
+"use strict";
+const CARDS = [
+  {kicker:"Share sheet", title:"Quarterly deck", body:"Press the card and the share targets fan out under your thumb.",
+   art:"rgba(167,139,250,.5)",
+   items:[["✉︎","Email"],["💬","Message"],["🔗","Copy link"],["📥","Download"],["🗂","Move"]]},
+  {kicker:"Reactions", title:"Deploy succeeded", body:"Hold to react. The detent means you can aim without looking.",
+   art:"rgba(56,189,248,.45)",
+   items:[["👍","Like"],["🎉","Party"],["🔥","Fire"],["👀","Eyes"],["🙇","Thanks"],["🚀","Ship"]]},
+  {kicker:"Tools", title:"Canvas region", body:"The same gesture as a tool palette — pick, slide, release, keep drawing.",
+   art:"rgba(52,211,153,.42)",
+   items:[["✏️","Draw"],["⬚","Select"],["✂︎","Cut"],["🪄","Magic"]]}
+];
+const cfg = {radius:104, arc:210, detent:.55, dead:26, haptic:true};
+const layer = document.getElementById("layer");
+const toastEl = document.getElementById("toast");
+let toastT = 0;
+function toast(msg){
+  toastEl.textContent = msg; toastEl.classList.add("on");
+  clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), 1700);
+}
+
+const wrap = document.getElementById("targets");
+CARDS.forEach((card, idx) => {
+  const el = document.createElement("div");
+  el.className = "target"; el.tabIndex = 0; el.style.setProperty("--art", card.art);
+  el.setAttribute("role","button");
+  el.setAttribute("aria-haspopup","menu");
+  el.innerHTML = `<span class="art"></span><span class="kicker">${card.kicker}</span>
+    <h3>${card.title}</h3><p>${card.body}</p><span class="chosen"></span>`;
+  wrap.appendChild(el);
+  attach(el, card, idx);
+});
+
+function attach(el, card, idx){
+  let menu = null, items = [], hot = -1, origin = null, pid = null, keyMode = false;
+
+  function open(x, y, viaKey){
+    close(true);
+    keyMode = !!viaKey;
+    origin = {x, y};
+    menu = document.createElement("div");
+    menu.className = "menu";
+    menu.setAttribute("role","menu");
+    menu.innerHTML = `<span class="hub" style="left:${x}px;top:${y}px"></span>
+      <svg class="trace" style="left:0;top:0;width:100vw;height:100vh"><path d=""/></svg>`;
+    layer.appendChild(menu);
+    /* the arc flips so it never opens off-screen */
+    const up = y > innerHeight*0.42;
+    const base = up ? -90 : 90;
+    const n = card.items.length;
+    const spread = cfg.arc * Math.PI/180;
+    items = card.items.map(([icon,label], i) => {
+      const t = n === 1 ? .5 : i/(n-1);
+      const ang = (base*Math.PI/180) - spread/2 + spread*t;
+      const node = document.createElement("div");
+      node.className = "item"; node.setAttribute("role","menuitem");
+      node.innerHTML = `<span class="disc">${icon}</span><span class="lab">${label}</span>`;
+      const ix = x + Math.cos(ang)*cfg.radius, iy = y + Math.sin(ang)*cfg.radius;
+      node.style.left = ix + "px"; node.style.top = iy + "px";
+      node.style.transitionDelay = (i*16) + "ms";
+      menu.appendChild(node);
+      return {node, ang, x:ix, y:iy, label, icon};
+    });
+    layer.classList.add("on");
+    el.classList.add("armed");
+    requestAnimationFrame(() => menu.classList.add("open"));
+    hot = -1;
+    if(viaKey) setHot(Math.floor(items.length/2));
+  }
+  function setHot(i){
+    if(i === hot) return;
+    hot = i;
+    items.forEach((it, k) => it.node.classList.toggle("hot", k === i));
+    if(cfg.haptic && i >= 0 && navigator.vibrate) navigator.vibrate(8);
+    const path = menu.querySelector(".trace path");
+    if(i >= 0) path.setAttribute("d", `M${origin.x} ${origin.y} L${items[i].x} ${items[i].y}`);
+    else path.setAttribute("d", "");
+  }
+  function track(x, y){
+    if(!menu) return;
+    const dx = x - origin.x, dy = y - origin.y;
+    const d = Math.hypot(dx, dy);
+    if(d < cfg.dead){ setHot(-1); return; }
+    const a = Math.atan2(dy, dx);
+    let best = -1, bestD = Infinity;
+    items.forEach((it, i) => {
+      let diff = Math.abs(((a - it.ang + Math.PI*3) % (Math.PI*2)) - Math.PI);
+      if(diff < bestD){ bestD = diff; best = i; }
+    });
+    /* the detent: the current pick holds on until the pointer clears a threshold */
+    if(hot >= 0 && best !== hot){
+      let cur = Math.abs(((a - items[hot].ang + Math.PI*3) % (Math.PI*2)) - Math.PI);
+      const stickiness = cfg.detent * (cfg.arc*Math.PI/180) / Math.max(1, items.length-1) * 0.5;
+      if(cur - bestD < stickiness) best = hot;
+    }
+    setHot(best);
+  }
+  function commit(){
+    if(!menu) return;
+    const pick = hot >= 0 ? items[hot] : null;
+    if(pick){
+      el.querySelector(".chosen").textContent = "→ " + pick.label;
+      toast(`${pick.icon}  ${pick.label} — ${card.title}`);
+      if(cfg.haptic && navigator.vibrate) navigator.vibrate([6,24,10]);
+    }
+    close();
+  }
+  function close(silent){
+    el.classList.remove("armed");
+    if(menu){ menu.remove(); menu = null; items = []; hot = -1; }
+    if(!silent) layer.classList.remove("on");
+    if(pid !== null){ try{ el.releasePointerCapture(pid); }catch(e){} pid = null; }
+  }
+
+  el.addEventListener("pointerdown", ev => {
+    if(ev.button != null && ev.button !== 0) return;
+    ev.preventDefault();
+    pid = ev.pointerId;
+    try{ el.setPointerCapture(pid); }catch(e){}
+    open(ev.clientX, ev.clientY, false);
+  });
+  el.addEventListener("pointermove", ev => { if(menu && !keyMode) track(ev.clientX, ev.clientY); });
+  el.addEventListener("pointerup", ev => { if(menu && !keyMode) commit(); });
+  el.addEventListener("pointercancel", () => close());
+  el.addEventListener("lostpointercapture", () => { if(menu && !keyMode) commit(); });
+
+  el.addEventListener("keydown", ev => {
+    if(!menu && (ev.key === "Enter" || ev.key === " ")){
+      ev.preventDefault();
+      const r = el.getBoundingClientRect();
+      open(r.left + r.width/2, r.top + r.height/2, true);
+      return;
+    }
+    if(!menu) return;
+    if(ev.key === "ArrowRight" || ev.key === "ArrowDown"){ ev.preventDefault(); setHot(Math.min(items.length-1, hot+1)); }
+    else if(ev.key === "ArrowLeft" || ev.key === "ArrowUp"){ ev.preventDefault(); setHot(Math.max(0, hot-1)); }
+    else if(ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); commit(); }
+    else if(ev.key === "Escape"){ ev.preventDefault(); close(); }
+  });
+  el.addEventListener("blur", () => { if(keyMode) close(); });
+  el.addEventListener("contextmenu", ev => ev.preventDefault());
+}
+
+/* panel */
+function wire(id, out, key, fmt){
+  const el = document.getElementById(id), o = document.getElementById(out);
+  const sync = () => { cfg[key] = parseFloat(el.value); o.textContent = fmt(cfg[key]); };
+  el.addEventListener("input", sync); sync();
+}
+wire("radius","vR","radius", v => v + "px");
+wire("arc","vA","arc", v => v + "°");
+wire("detent","vD","detent", v => v.toFixed(2));
+wire("dead","vZ","dead", v => v + "px");
+document.getElementById("haptic").addEventListener("change", e => { cfg.haptic = e.target.checked; });
+</script>
+</body>
+</html>

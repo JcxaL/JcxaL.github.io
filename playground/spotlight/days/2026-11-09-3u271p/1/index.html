@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drop 1 — Effects That Are Only Code</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{--bucket:#38bdf8}
+  html,body{height:100%}
+  body{
+    margin:0;background:#05060c;color:#e8ecf6;min-height:100%;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:76px 16px 86px;gap:22px;overflow-x:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(900px 560px at 50% 0%,rgba(56,189,248,.12),transparent 62%);
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:40;text-decoration:none;color:#e8ecf6;
+    font:600 13px/1 ui-sans-serif,system-ui,sans-serif;padding:10px 15px;border-radius:999px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(12px);
+  }
+  .back-link:hover{background:rgba(255,255,255,.15)}
+  h1{margin:0;font-size:clamp(20px,4.4vw,30px);letter-spacing:-.02em;text-align:center}
+  .sub{margin:0;color:#8e98b4;font-size:13.5px;text-align:center;max-width:62ch;line-height:1.6}
+  .grid{
+    display:grid;gap:14px;width:min(960px,100%);
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  }
+  .fx{
+    position:relative;border-radius:14px;overflow:hidden;background:#090b14;
+    border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 50px -28px rgba(0,0,0,.95);
+  }
+  .fx canvas{display:block;width:100%;height:auto;image-rendering:pixelated}
+  .fx .tag{
+    position:absolute;left:9px;top:9px;font:600 10px/1 ui-monospace,monospace;letter-spacing:.1em;
+    text-transform:uppercase;color:#cfe6ff;background:rgba(5,6,12,.62);padding:5px 8px;border-radius:7px;
+    border:1px solid rgba(255,255,255,.12);
+  }
+  .fx .kind{
+    position:absolute;right:9px;top:9px;font:600 9px/1 ui-monospace,monospace;letter-spacing:.08em;
+    color:#05060c;background:var(--bucket);padding:5px 7px;border-radius:6px;
+  }
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:40;width:216px;padding:13px 14px;border-radius:14px;
+    background:rgba(12,15,26,.74);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(16px);
+    box-shadow:0 20px 48px -26px rgba(0,0,0,.9);
+  }
+  .panel h2{margin:0 0 10px;font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;
+    text-transform:uppercase;color:#8e98b4}
+  .row{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;color:#dbe2f2}
+  .row b{font:600 11px ui-monospace,monospace;color:var(--bucket)}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:0 0 9px}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:9px;background:rgba(255,255,255,.18)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+    background:var(--bucket);margin-top:-5px}
+  input[type=range]::-moz-range-track{height:3px;border-radius:9px;background:rgba(255,255,255,.18)}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;background:var(--bucket)}
+  .pal{display:flex;gap:5px;margin-top:2px}
+  .pal button{
+    flex:1;cursor:pointer;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);
+    color:#cfd7ea;border-radius:7px;padding:6px 2px;font:600 10px ui-sans-serif,system-ui,sans-serif;
+  }
+  .pal button[aria-pressed="true"]{background:var(--bucket);border-color:var(--bucket);color:#05060c}
+  footer{
+    position:fixed;left:0;right:0;bottom:0;padding:9px 14px;text-align:center;
+    font:500 11px/1.5 ui-sans-serif,system-ui,sans-serif;color:#6d7794;
+    background:linear-gradient(transparent,rgba(5,6,12,.9) 55%);
+  }
+  footer a{color:#93a2c4}
+  @media (max-width:760px){ .panel{display:none} body{padding-top:62px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Effects that are only code</h1>
+<p class="sub">No sprite sheets, no shaders. Each cell writes raw bytes into an <code>ImageData</code> at 48&nbsp;×&nbsp;48 and blows it up with <code>image-rendering: pixelated</code>. Two buffers — colour and light — and a seeded RNG, so frame <em>n</em> always comes out identical.</p>
+
+<div class="grid" id="grid"></div>
+
+<div class="panel">
+  <h2>Parameters</h2>
+  <div class="row"><span>Resolution</span><b id="vRes">48</b></div>
+  <input type="range" id="res" min="20" max="80" step="4" value="48">
+  <div class="row"><span>Speed</span><b id="vSpd">1.00</b></div>
+  <input type="range" id="spd" min="0.2" max="2.4" step="0.05" value="1">
+  <div class="row"><span>Light buffer</span><b id="vGlow">0.85</b></div>
+  <input type="range" id="glow" min="0" max="1.6" step="0.05" value="0.85">
+  <div class="row" style="margin-top:6px"><span>Palette</span></div>
+  <div class="pal" id="pal"></div>
+</div>
+
+<footer>Inspired by <a href="https://github.com/patch-gg/pixelfx" target="_blank" rel="noopener">patch-gg/pixelfx</a> · UI Spotlight Day 152 · Drop #1</footer>
+
+<script>
+"use strict";
+/* seeded RNG — same seed, same frame, every time */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const hash2 = (x,y,s) => {
+  let h = Math.imul(x*374761393 + y*668265263 ^ s, 1274126177);
+  h = (h ^ h >>> 13) >>> 0;
+  return h / 4294967296;
+};
+
+const PALETTES = {
+  Ember: {fire:[[12,4,10],[88,12,16],[190,48,20],[246,138,38],[255,226,140]], cold:[[10,8,24],[48,34,96],[120,92,214],[186,164,255],[240,236,255]]},
+  Frost: {fire:[[6,10,20],[14,56,96],[40,128,186],[126,208,238],[232,250,255]], cold:[[8,6,22],[26,60,120],[70,138,210],[152,206,246],[240,250,255]]},
+  Toxic: {fire:[[8,14,8],[22,72,26],[68,160,46],[158,224,72],[236,255,186]], cold:[[14,6,22],[70,22,86],[150,44,142],[224,106,196],[255,214,246]]}
+};
+let paletteName = "Ember";
+const cfg = {res:48, speed:1, glow:.85};
+
+/* ── effect definitions ───────────────────────────────────────────── */
+/* pure(p, t, put, rnd)   — depends only on time, loops seamlessly
+   sim                    — keeps particle state, stepped each frame     */
+const EFFECTS = [
+  {name:"Campfire", kind:"pure", draw(N, t, C, L, pal){
+    const ramp = pal.fire;
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+      const fy = 1 - y/N;
+      const cx = (x - N/2)/N;
+      /* three drifting noise lanes advected upward */
+      let v = 0;
+      for(let o=1;o<=3;o++){
+        const sy = Math.floor(y*0.7 + t*22*o*cfg.speed) % 512;
+        v += hash2(Math.floor(x*0.8 + Math.sin(t*1.6*o)*2), sy, o*77) / o;
+      }
+      v /= 1.84;
+      const body = Math.max(0, 1 - Math.abs(cx)*(2.6 + fy*4.4));
+      let heat = body * (fy*1.5) * (0.55 + v*0.85);
+      if(y > N*0.82) heat *= (N - y)/(N*0.18) * 0.9 + 0.1;
+      put(C, x, y, ramp, heat);
+      if(heat > .35) addLight(L, x, y, N, heat*1.3, ramp[4]);
+    }
+  }},
+  {name:"Frost nova", kind:"pure", draw(N, t, C, L, pal){
+    const ramp = pal.cold, cyc = (t*0.52*cfg.speed) % 1;
+    const R = cyc * N * 0.62;
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+      const dx = x - N/2 + .5, dy = y - N/2 + .5;
+      const d = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+      /* crystalline spokes modulate the ring radius */
+      const spokes = 0.76 + 0.24*Math.cos(a*8 + Math.sin(a*3)*1.2);
+      const edge = R*spokes;
+      const band = 1 - Math.min(1, Math.abs(d - edge)/(2.4 + cyc*5));
+      let v = Math.pow(band, 1.7) * (1 - cyc*0.75);
+      if(d < edge*0.72) v = Math.max(v, (0.3 - cyc*0.3) * hash2(x,y,9));
+      put(C, x, y, ramp, v);
+      if(v > .45) addLight(L, x, y, N, v*1.1, ramp[4]);
+    }
+  }},
+  {name:"Plasma ball", kind:"pure", draw(N, t, C, L, pal){
+    const ramp = pal.cold;
+    const rnd = mulberry32(Math.floor(t*12*cfg.speed));
+    const cx = N/2, cy = N/2;
+    for(let arc=0;arc<5;arc++){
+      let a = rnd()*Math.PI*2, x = cx, y = cy;
+      const steps = Math.floor(N*0.55);
+      for(let i=0;i<steps;i++){
+        a += (rnd()-.5)*0.9;
+        x += Math.cos(a); y += Math.sin(a);
+        const ix = Math.round(x), iy = Math.round(y);
+        if(ix<0||iy<0||ix>=N||iy>=N) break;
+        const v = 1 - i/steps*0.7;
+        put(C, ix, iy, ramp, v);
+        addLight(L, ix, iy, N, v*0.9, ramp[3]);
+      }
+    }
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+      const d = Math.hypot(x-cx+.5, y-cy+.5);
+      if(d < N*0.1) put(C, x, y, ramp, 1 - d/(N*0.1)*0.4);
+    }
+  }},
+  {name:"Burst", kind:"sim", init(){ this.parts = []; this.clock = 0; },
+   draw(N, t, C, L, pal, dt){
+    const ramp = pal.fire;
+    this.clock -= dt*cfg.speed;
+    if(this.clock <= 0){
+      this.clock = 1.5;
+      const rnd = mulberry32(Math.floor(t*3) + 7);
+      this.parts = [];
+      for(let i=0;i<46;i++){
+        const a = rnd()*Math.PI*2, sp = 6 + rnd()*16;
+        this.parts.push({x:N/2, y:N/2, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 3, life:1});
+      }
+    }
+    for(const p of this.parts){
+      p.x += p.vx*dt*cfg.speed; p.y += p.vy*dt*cfg.speed;
+      p.vy += 26*dt*cfg.speed; p.vx *= 0.985;
+      p.life -= dt*0.7*cfg.speed;
+      if(p.life <= 0) continue;
+      const ix = Math.round(p.x), iy = Math.round(p.y);
+      if(ix<0||iy<0||ix>=N||iy>=N) continue;
+      put(C, ix, iy, ramp, p.life);
+      addLight(L, ix, iy, N, p.life*1.2, ramp[3]);
+    }
+    const shock = Math.max(0, 1 - (1.5 - this.clock)*2.2);
+    if(shock > 0){
+      const R = (1.5 - this.clock)*N*0.5;
+      for(let a=0;a<64;a++){
+        const an = a/64*Math.PI*2;
+        const ix = Math.round(N/2 + Math.cos(an)*R), iy = Math.round(N/2 + Math.sin(an)*R);
+        if(ix<0||iy<0||ix>=N||iy>=N) continue;
+        put(C, ix, iy, ramp, shock*0.8);
+      }
+    }
+  }}
+];
+
+/* ── buffers ──────────────────────────────────────────────────────── */
+function put(C, x, y, ramp, v){
+  if(v <= 0.02) return;
+  v = Math.min(1, v);
+  /* dither the ramp so bands read as pixel art, not a gradient */
+  const f = v * (ramp.length - 1);
+  let i = Math.floor(f);
+  if(hash2(x, y, 31) < f - i) i++;
+  i = Math.min(ramp.length - 1, i);
+  const c = ramp[i], o = (y*C.n + x)*4;
+  C.d[o] = c[0]; C.d[o+1] = c[1]; C.d[o+2] = c[2]; C.d[o+3] = 255;
+}
+function addLight(L, x, y, N, v, col){
+  for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+    const ix = x+dx, iy = y+dy;
+    if(ix<0||iy<0||ix>=N||iy>=N) continue;
+    const k = (dx||dy) ? 0.32 : 1;
+    const o = (iy*N + ix)*3;
+    L[o] += col[0]*v*k*0.14; L[o+1] += col[1]*v*k*0.14; L[o+2] += col[2]*v*k*0.14;
+  }
+}
+
+/* ── wire up cells ────────────────────────────────────────────────── */
+const grid = document.getElementById("grid");
+const cells = EFFECTS.map(fx => {
+  const wrap = document.createElement("div");
+  wrap.className = "fx";
+  wrap.innerHTML = `<span class="tag">${fx.name}</span><span class="kind">${fx.kind}</span>`;
+  const cv = document.createElement("canvas");
+  wrap.appendChild(cv); grid.appendChild(wrap);
+  if(fx.init) fx.init();
+  return {fx, cv, ctx: cv.getContext("2d", {alpha:false}), img:null, light:null, n:0};
+});
+function resize(){
+  const n = cfg.res;
+  for(const c of cells){
+    if(c.n === n) continue;
+    c.n = n; c.cv.width = n; c.cv.height = n;
+    c.img = c.ctx.createImageData(n, n);
+    c.light = new Float32Array(n*n*3);
+  }
+}
+resize();
+
+let last = performance.now(), acc = 0;
+function frame(now){
+  const dt = Math.min(.05, (now - last)/1000); last = now;
+  const t = now/1000;
+  const pal = PALETTES[paletteName];
+  for(const c of cells){
+    const N = c.n, C = {d:c.img.data, n:N};
+    C.d.fill(0);
+    for(let i=0;i<C.d.length;i+=4){ C.d[i+3] = 255; }
+    c.light.fill(0);
+    c.fx.draw(N, t, C, c.light, pal, dt);
+    if(cfg.glow > 0){
+      for(let i=0, j=0;i<C.d.length;i+=4, j+=3){
+        C.d[i]   = Math.min(255, C.d[i]   + c.light[j]  *cfg.glow*255);
+        C.d[i+1] = Math.min(255, C.d[i+1] + c.light[j+1]*cfg.glow*255);
+        C.d[i+2] = Math.min(255, C.d[i+2] + c.light[j+2]*cfg.glow*255);
+      }
+    }
+    c.ctx.putImageData(c.img, 0, 0);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* controls */
+const bind = (id, out, key, fmt) => {
+  const el = document.getElementById(id), o = document.getElementById(out);
+  const sync = () => {
+    cfg[key] = parseFloat(el.value);
+    o.textContent = fmt(cfg[key]);
+    if(key === "res") resize();
+  };
+  el.addEventListener("input", sync); sync();
+};
+bind("res","vRes","res", v=>v);
+bind("spd","vSpd","speed", v=>v.toFixed(2));
+bind("glow","vGlow","glow", v=>v.toFixed(2));
+const palBox = document.getElementById("pal");
+Object.keys(PALETTES).forEach(nm => {
+  const b = document.createElement("button");
+  b.textContent = nm; b.setAttribute("aria-pressed", String(nm === paletteName));
+  b.addEventListener("click", () => {
+    paletteName = nm;
+    palBox.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  });
+  palBox.appendChild(b);
+});
+</script>
+</body>
+</html>
