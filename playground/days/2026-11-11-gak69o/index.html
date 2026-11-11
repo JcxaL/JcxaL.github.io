@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Apogee — Orbital Mission Lab</title>
+<meta name="description" content="Fling satellites into orbit, plan impulsive burns with a live conic preview, solve Hohmann transfers, clear mission badges, and export your constellation.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04060d; --panel:#080d16; --line:#18212f; --line2:#121a26;
+  --ink:#e8eef9; --dim:#8396b1; --dim2:#5e6f87;
+  --acc:#5ad1ff; --acc2:#8affc1; --acc3:#ffd166; --bad:#ff6b7f; --vio:#b79bff;
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1100px 700px at 8% -12%,#0c1b36 0%,transparent 62%),
+    radial-gradient(900px 620px at 100% 108%,#1a1136 0%,transparent 60%),
+    var(--bg);
+  color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow:hidden;-webkit-text-size-adjust:100%;
+}
+#app{display:flex;flex-direction:column;height:100%;height:100dvh}
+header{
+  display:flex;align-items:center;gap:9px;padding:8px 12px;flex-wrap:wrap;flex:0 0 auto;
+  border-bottom:1px solid var(--line);background:rgba(5,9,16,.88);backdrop-filter:blur(12px);
+}
+.brand{font-weight:800;letter-spacing:.3px;font-size:15px;white-space:nowrap;line-height:1.1}
+.brand i{font-style:normal;color:var(--acc)}
+.brand small{display:block;font-weight:500;font-size:10px;color:var(--dim2);letter-spacing:.7px;text-transform:uppercase}
+.ctrls{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap}
+button,select{
+  font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);
+  background:linear-gradient(180deg,#141d2b,#0d141f);border:1px solid var(--line);
+  border-radius:9px;padding:7px 10px;cursor:pointer;white-space:nowrap;
+  transition:transform .12s ease,border-color .15s,background .15s,box-shadow .15s;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+select{padding:7px 8px}
+button:hover,select:hover{border-color:#2b3a52}
+button:active{transform:translateY(1px) scale(.985)}
+button.pri{background:linear-gradient(180deg,#6fd9ff,#1ea7e0);color:#02121c;border-color:#8fe4ff;box-shadow:0 7px 20px -9px #5ad1ffaa}
+button.go{background:linear-gradient(180deg,#9bffcf,#2fc584);color:#032015;border-color:#b6ffdd;box-shadow:0 7px 20px -9px #8affc1aa}
+button.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px #5ad1ff55,0 0 16px -6px #5ad1ff99}
+button.sm{padding:5px 8px;font-size:11.5px}
+button:disabled{opacity:.42;cursor:not-allowed}
+.warp{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--dim);
+  background:#0c131e;border:1px solid var(--line);border-radius:9px;padding:5px 9px}
+.warp input{width:92px;accent-color:var(--acc)}
+.warp b{color:var(--ink);font-variant-numeric:tabular-nums;min-width:32px;text-align:right;font-size:12px}
+main{flex:1 1 auto;display:flex;min-height:0}
+#stage{position:relative;flex:1 1 auto;min-width:0;min-height:0;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+aside{
+  flex:0 0 286px;border-left:1px solid var(--line);background:rgba(7,11,19,.92);
+  display:flex;flex-direction:column;min-height:0;
+}
+.tabs{display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs button{flex:1;padding:6px 3px;font-size:11px;border-radius:8px}
+.tabs button.on{background:linear-gradient(180deg,#1b2a3e,#111a27)}
+.body{flex:1 1 auto;overflow:auto;padding:12px;-webkit-overflow-scrolling:touch}
+.pane{display:none}
+.pane.on{display:block}
+h3{font-size:10px;text-transform:uppercase;letter-spacing:1.3px;color:var(--dim2);margin:0 0 8px;font-weight:700}
+h3:not(:first-child){margin-top:16px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.kpi{background:#0b111b;border:1px solid var(--line2);border-radius:10px;padding:7px 9px;min-width:0}
+.kpi b{display:block;font-size:15.5px;font-variant-numeric:tabular-nums;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi span{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2)}
+.kpi.w{grid-column:span 2}
+.row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:9px;background:#0b111b;
+  border:1px solid var(--line2);margin-bottom:5px;cursor:pointer;transition:border-color .15s,background .15s}
+.row:hover{border-color:#27374e}
+.row.sel{border-color:var(--acc);background:#0d1826;box-shadow:inset 0 0 0 1px #5ad1ff33}
+.row.dead{opacity:.45}
+.dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 10px currentColor}
+.row .nm{flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .rt{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums;text-align:right}
+.row .x{padding:2px 6px;font-size:11px;border-radius:6px;background:#121a26;border:1px solid var(--line2)}
+.sl{margin-bottom:11px}
+.sl label{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px}
+.sl label b{color:var(--ink);font-variant-numeric:tabular-nums;text-transform:none;letter-spacing:0;font-size:12px}
+.sl input[type=range]{width:100%;accent-color:var(--acc)}
+.sl.g input[type=range]{accent-color:var(--acc2)}
+.pad{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:8px 0 2px}
+.note{font-size:11px;color:var(--dim);line-height:1.5}
+.note code{background:#101826;border:1px solid var(--line2);border-radius:5px;padding:1px 5px;font-size:10.5px}
+.note b{color:var(--ink)}
+.card{background:#0b111b;border:1px solid var(--line2);border-radius:11px;padding:9px 10px;margin-bottom:7px}
+.card.done{border-color:#1f5440;background:linear-gradient(180deg,#0a1c16,#0a1220)}
+.card .hd{display:flex;gap:7px;align-items:center}
+.card .hd b{font-size:12.5px}
+.card .hd em{margin-left:auto;font-style:normal;font-size:15px;line-height:1}
+.card p{font-size:10.8px;color:var(--dim);margin-top:4px;line-height:1.45}
+.stack{display:flex;flex-direction:column;gap:6px}
+.stack button{width:100%}
+.hint{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:5;
+  background:rgba(6,10,18,.92);border:1px solid #26374e;border-radius:11px;padding:8px 14px;
+  font-size:12px;color:var(--ink);pointer-events:none;white-space:nowrap;
+  box-shadow:0 10px 32px -12px #000;transition:opacity .4s ease;backdrop-filter:blur(8px)}
+.hint.hide{opacity:0}
+.hint b{color:var(--acc)}
+#toast{position:absolute;left:50%;top:14px;transform:translateX(-50%) translateY(-12px);z-index:7;
+  background:rgba(6,12,20,.95);border:1px solid #2c7a5c;border-radius:11px;padding:9px 15px;
+  font-size:12.5px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;
+  box-shadow:0 12px 34px -12px #000;max-width:88%;text-align:center}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.bad{border-color:#7a2c38}
+.zoomer{position:absolute;right:10px;bottom:10px;z-index:5;display:flex;flex-direction:column;gap:5px}
+.zoomer button{width:34px;height:34px;padding:0;font-size:15px;border-radius:9px;
+  background:rgba(8,13,21,.88);backdrop-filter:blur(6px)}
+.legend{position:absolute;left:10px;top:10px;z-index:4;font-size:10.5px;color:var(--dim);
+  background:rgba(6,11,19,.78);border:1px solid var(--line2);border-radius:10px;padding:7px 10px;
+  backdrop-filter:blur(6px);pointer-events:none;line-height:1.7}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px dashed currentColor;
+  vertical-align:middle;margin-right:6px}
+.legend .g{color:#8affc1}.legend .y{color:#ffd166}.legend .v{color:#b79bff}
+@media (max-width:780px){
+  main{flex-direction:column}
+  aside{flex:0 0 43%;border-left:none;border-top:1px solid var(--line);order:2}
+  #stage{order:1;flex:1 1 auto}
+  .legend{display:none}
+  .brand small{display:none}
+  .warp input{width:70px}
+  header{padding:6px 9px;gap:6px}
+  button,select{padding:6px 9px;font-size:12px}
+  .hint{white-space:normal;max-width:84%;text-align:center;font-size:11.5px;bottom:10px}
+}
+@media (max-width:420px){ .tabs button{font-size:10px} }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><i>◈</i> Apogee<small>Orbital Mission Lab</small></div>
+    <div class="ctrls">
+      <button id="bPlay" class="pri">❚❚ Pause</button>
+      <label class="warp">warp <input id="iWarp" type="range" min="0" max="7" step="1" value="2"><b id="vWarp">4×</b></label>
+      <select id="selPreset" title="Load a scenario">
+        <option value="">Scenario…</option>
+        <option value="leo">Low parking orbit</option>
+        <option value="gto">Transfer orbit (GTO)</option>
+        <option value="molniya">Molniya ellipse</option>
+        <option value="sync">Sync-ring constellation</option>
+        <option value="flyby">Moonlet flyby</option>
+        <option value="swarm">Debris swarm</option>
+        <option value="empty">Empty sky</option>
+      </select>
+      <button id="bAdd" class="sm">+ Craft</button>
+    </div>
+  </header>
+  <main>
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div class="legend">
+        <div><i></i>osculating orbit</div>
+        <div class="g"><i></i>burn preview</div>
+        <div class="y">◆ apoapsis &nbsp; ◇ periapsis</div>
+        <div class="v"><i></i>sync ring</div>
+      </div>
+      <div class="zoomer">
+        <button id="bZi" title="Zoom in">+</button>
+        <button id="bZo" title="Zoom out">−</button>
+        <button id="bFit" title="Frame everything" style="font-size:12px">⤢</button>
+      </div>
+      <div class="hint" id="hint"><b>Drag</b> from empty sky to fling a satellite — pull back to aim.</div>
+      <div id="toast"></div>
+    </div>
+    <aside>
+      <div class="tabs">
+        <button data-t="fleet" class="on">Fleet</button>
+        <button data-t="burn">Burn</button>
+        <button data-t="miss">Missions</button>
+        <button data-t="save">Save</button>
+      </div>
+      <div class="body">
+        <div class="pane on" id="p-fleet">
+          <h3>Selected craft</h3>
+          <div class="kpis" id="kpis"></div>
+          <h3>Fleet <span id="fleetN" style="color:var(--dim)"></span></h3>
+          <div id="fleet"></div>
+          <h3>How it flies</h3>
+          <p class="note">Gravity is the real thing — an inverse-square pull from <b>Terra</b>, plus a
+          nudge from the moonlet <b>Selene</b>. Below 190&nbsp;km the air bites and orbits decay;
+          touch the surface and you are a crater. Drag in empty sky to fling a new satellite.</p>
+        </div>
+
+        <div class="pane" id="p-burn">
+          <h3>Impulsive manoeuvre</h3>
+          <div class="sl"><label>Prograde Δv <b id="vPro">0 m/s</b></label>
+            <input id="iPro" type="range" min="-2500" max="2500" step="5" value="0"></div>
+          <div class="sl g"><label>Radial Δv <b id="vRad">0 m/s</b></label>
+            <input id="iRad" type="range" min="-1500" max="1500" step="5" value="0"></div>
+          <div class="pad">
+            <button class="sm" data-nudge="p">▲ pro</button>
+            <button class="sm" data-nudge="r">◀ out</button>
+            <button class="sm" data-nudge="i">▶ in</button>
+            <button class="sm" data-nudge="m">▼ retro</button>
+          </div>
+          <p class="note">Green dashes preview the orbit you will be on. Hold <code>W</code>/<code>S</code>
+          for live prograde thrust, <code>A</code>/<code>D</code> for radial.</p>
+          <div class="stack" style="margin-top:10px">
+            <button id="bBurn" class="go">Execute burn</button>
+            <button id="bZero" class="sm">Reset sliders</button>
+          </div>
+          <h3>Transfer solver</h3>
+          <div class="sl"><label>Target radius <b id="vTgt">6627 km</b></label>
+            <input id="iTgt" type="range" min="6600" max="92000" step="100" value="42164"></div>
+          <div class="kpis" id="hoh"></div>
+          <div class="stack" style="margin-top:8px">
+            <button id="bT1" class="sm">Load Δv₁ (raise)</button>
+            <button id="bT2" class="sm">Load Δv₂ (circularise)</button>
+            <button id="bTsync" class="sm">Target: sync ring</button>
+            <button id="bTmoon" class="sm">Target: Selene orbit</button>
+          </div>
+          <p class="note" style="margin-top:9px">Δv₁ burns at your current radius to raise the far side;
+          coast to apoapsis, then Δv₂ rounds it off. Budget left is shown on the Fleet tab.</p>
+        </div>
+
+        <div class="pane" id="p-miss">
+          <h3>Flight badges <span id="missN" style="color:var(--dim)"></span></h3>
+          <div id="miss"></div>
+          <div class="stack"><button id="bMclr" class="sm">Clear badge progress</button></div>
+        </div>
+
+        <div class="pane" id="p-save">
+          <h3>Export</h3>
+          <div class="stack">
+            <button id="bPng" class="pri">Save orbit chart (PNG)</button>
+            <button id="bJson">Download scenario (JSON)</button>
+            <button id="bImp">Import scenario…</button>
+            <button id="bShare">Copy share link</button>
+          </div>
+          <input id="fileIn" type="file" accept=".json,application/json" style="display:none">
+          <h3>Autosave</h3>
+          <p class="note">Your sky is stored in this browser and restored on return —
+          badges too. A share link packs the whole scenario into the URL.</p>
+          <div class="stack" style="margin-top:8px"><button id="bWipe" class="sm">Forget saved sky</button></div>
+          <h3>Keys</h3>
+          <p class="note"><b>Space</b> pause · <b>W/S/A/D</b> thrust · <b>1–8</b> warp ·
+          <b>F</b> frame all · <b>Tab</b> next craft · <b>Del</b> scuttle craft ·
+          wheel or pinch to zoom, drag background with two fingers to pan.</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+<script>
+'use strict';
+/* ---------- units -------------------------------------------------------
+   1 world unit = Terra radius = 6371 km.  GM = 1  =>  surface circular
+   speed = 1 unit = 7.905 km/s, and 1 time unit = 806.2 s.               */
+const RK = 6371, VMS = 7905, TS = 806.2, MU = 1;
+const SEL = { a: 14, r: 0.27, mu: 0.0123, w: Math.sqrt(1 / (14 * 14 * 14)) };
+const TROT = 86400 / TS;                                   // Terra rotation
+const RSYNC = Math.cbrt(TROT * TROT * MU / (4 * Math.PI * Math.PI));
+const ATM = 0.03;                                          // ~190 km
+const NAMES = ['Kestrel','Vireo','Halcyon','Nimbus','Tanager','Corvid','Meridian',
+  'Zephyr','Lumen','Sable','Petrel','Cygnet','Aurora','Quill','Tern','Pika'];
+const COLS = ['#5ad1ff','#8affc1','#ffd166','#ff8fb1','#b79bff','#7df9ff','#ffb86b','#9ef28a'];
+const WARP = [1,2,4,8,16,32,64,128];
+const K_SCENE = 'apogee_v1_scene', K_BADGE = 'apogee_v1_badges';
+
+/* ---------- state ------------------------------------------------------ */
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1, stars = [];
+let view = { s: 20, cx: 0, cy: 0 };
+let craft = [], sel = null, uid = 1, simT = 0, rot = 0, selAng = 0;
+let playing = true, warpI = 2;
+let burn = { pro: 0, rad: 0 };
+let badges = {}, thrust = { w:0, s:0, a:0, d:0 };
+let drag = null, ptrs = new Map(), pinch = null, hintTimer = 0;
+
+const BADGES = [
+  { id:'orbit',  t:'Make Orbit',      d:'Close a full orbit with periapsis above 190 km.' },
+  { id:'circ',   t:'Round Number',    d:'Hold an orbit with eccentricity under 0.02.' },
+  { id:'sync',   t:'Sync Lock',       d:'Park within 2% of the sync-ring radius, nearly circular.' },
+  { id:'ellip',  t:'The Long Way',    d:'Fly an ellipse with eccentricity over 0.6 that clears the air.' },
+  { id:'graze',  t:'Grazer',          d:'Survive a periapsis pass below 120 km.' },
+  { id:'flyby',  t:'Selene Flyby',    d:'Pass within 5 000 km of the moonlet and live.' },
+  { id:'capture',t:'Captured',        d:'Get gravitationally bound to Selene, not Terra.' },
+  { id:'escape', t:'Escape Terra',    d:'Reach a hyperbolic orbit and cross 20 Terra radii.' },
+  { id:'fleet',  t:'Constellation',   d:'Keep five craft in stable orbit at once.' },
+  { id:'crater', t:'Lithobraking',    d:'Discover the ground, the hard way.' }
+];
+
+/* ---------- helpers ---------------------------------------------------- */
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const fmt = (v,d) => v.toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
+function kmTxt(u){ const k = u*RK; return k >= 10000 ? fmt(k/1000,1)+' Mm' : Math.round(k)+' km'; }
+function msTxt(v){ const m = v*VMS; return Math.abs(m) >= 1000 ? fmt(m/1000,2)+' km/s' : Math.round(m)+' m/s'; }
+function durTxt(t){ const s = t*TS; if (s < 3600) return fmt(s/60,1)+' min';
+  if (s < 86400*2) return fmt(s/3600,2)+' h'; return fmt(s/86400,2)+' d'; }
+function toast(msg, bad){ const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'on' + (bad ? ' bad' : '');
+  clearTimeout(toast._t); toast._t = setTimeout(() => el.className = bad ? 'bad' : '', 2300); }
+
+/* osculating conic about Terra from a state vector */
+function elems(c){
+  const r = Math.hypot(c.x, c.y), v2 = c.vx*c.vx + c.vy*c.vy;
+  const h = c.x*c.vy - c.y*c.vx;
+  const rv = c.x*c.vx + c.y*c.vy;
+  const k = v2 - MU/r;
+  const ex = (k*c.x - rv*c.vx)/MU, ey = (k*c.y - rv*c.vy)/MU;
+  const e = Math.hypot(ex, ey);
+  const p = h*h/MU;
+  const E = v2/2 - MU/r;
+  const a = Math.abs(E) < 1e-12 ? Infinity : -MU/(2*E);
+  return { r, v: Math.sqrt(v2), h, e, p, a, E,
+    w: Math.atan2(ey, ex), rp: p/(1+e), ra: e < 1 ? p/(1-e) : Infinity,
+    T: e < 1 && a > 0 ? 2*Math.PI*Math.sqrt(a*a*a/MU) : Infinity };
+}
+function selenePos(t){ const A = SEL.w*t; return { x: Math.cos(A)*SEL.a, y: Math.sin(A)*SEL.a }; }
+
+/* ---------- physics ---------------------------------------------------- */
+function accel(x, y, vx, vy, t, out){
+  const r2 = x*x + y*y, r = Math.sqrt(r2), ir3 = 1/(r2*r);
+  let ax = -MU*x*ir3, ay = -MU*y*ir3;
+  const sp = selenePos(t);
+  const dx = x - sp.x, dy = y - sp.y, d2 = dx*dx + dy*dy, d = Math.sqrt(d2);
+  const id3 = 1/(d2*d);
+  ax -= SEL.mu*dx*id3; ay -= SEL.mu*dy*id3;
+  const alt = r - 1;
+  if (alt < ATM){
+    const rho = Math.exp(-Math.max(alt, -0.01)/0.0063);
+    const v = Math.hypot(vx, vy), k = 0.9*rho*v;
+    ax -= k*vx; ay -= k*vy;
+  }
+  out.ax = ax; out.ay = ay; out.d = d; out.r = r;
+}
+const _A = { ax:0, ay:0, d:0, r:0 };
+function step(c, h, t){
+  accel(c.x, c.y, c.vx, c.vy, t, _A);
+  const hx = c.vx + _A.ax*h*0.5, hy = c.vy + _A.ay*h*0.5;
+  c.x += hx*h; c.y += hy*h;
+  accel(c.x, c.y, hx, hy, t + h, _A);
+  c.vx = hx + _A.ax*h*0.5; c.vy = hy + _A.ay*h*0.5;
+  c.selD = _A.d; c.rr = _A.r;
+}
+
+/* ---------- craft ------------------------------------------------------ */
+function mkCraft(x, y, vx, vy, name){
+  const i = uid++;
+  return { id:i, name: name || NAMES[(i-1) % NAMES.length] + (i > NAMES.length ? '-' + i : ''),
+    col: COLS[(i-1) % COLS.length], x, y, vx, vy, trail: [], alive: true, dv: 6000/VMS,
+    born: simT, orbT: 0, lowest: 9, selD: 9, rr: Math.hypot(x,y), fade: 0 };
+}
+function addCraft(c){ craft.push(c); if (craft.length > 24) craft.splice(0,1); sel = c; syncUI(); return c; }
+function circAt(r, ang, retro){
+  const v = Math.sqrt(MU/r)*(retro ? -1 : 1);
+  return mkCraft(Math.cos(ang)*r, Math.sin(ang)*r, -Math.sin(ang)*v, Math.cos(ang)*v);
+}
+function ellipseAt(rp, ra, ang){
+  const a = (rp+ra)/2, v = Math.sqrt(MU*(2/rp - 1/a));
+  return mkCraft(Math.cos(ang)*rp, Math.sin(ang)*rp, -Math.sin(ang)*v, Math.cos(ang)*v);
+}
+
+/* ---------- scenarios -------------------------------------------------- */
+const SCENES = {
+  leo(){ craft = []; uid = 1; addCraft(circAt(1.08, 0.4)); addCraft(circAt(1.22, 2.6)); fit(8); },
+  gto(){ craft = []; uid = 1; addCraft(ellipseAt(1.08, RSYNC, 0.2)); fit(2*RSYNC+3); },
+  molniya(){ craft = []; uid = 1; addCraft(ellipseAt(1.1, 7.2, 1.1)); addCraft(ellipseAt(1.35, 9.4, 4.0)); fit(22); },
+  sync(){ craft = []; uid = 1; for (let i = 0; i < 6; i++) addCraft(circAt(RSYNC, i*Math.PI/3)); fit(2*RSYNC+4); },
+  flyby(){ craft = []; uid = 1;
+    const sp = selenePos(simT), ang = Math.atan2(sp.y, sp.x);
+    const c = ellipseAt(1.12, SEL.a*1.04, ang - 2.52); addCraft(c); fit(34); },
+  swarm(){ craft = []; uid = 1;
+    for (let i = 0; i < 9; i++){
+      const rp = 1.06 + Math.random()*1.6, ra = rp + Math.random()*7;
+      addCraft(ellipseAt(rp, ra, Math.random()*6.28));
+    } fit(22); },
+  empty(){ craft = []; uid = 1; sel = null; fit(34); }
+};
+
+/* ---------- view ------------------------------------------------------- */
+function fit(span){
+  const m = Math.min(W, H) || 600;
+  view.s = clamp(m / Math.max(span, 1.6), 1.2, 4200);
+  view.cx = 0; view.cy = 0;
+}
+function fitAll(){
+  let m = 3.2;
+  for (const c of craft) if (c.alive){
+    const e = elems(c);
+    m = Math.max(m, Math.min(e.e < 1 ? e.ra : e.r*1.4, 70), e.r);
+  }
+  fit(m*2.25);
+}
+function w2s(x, y){ return [W/2 + (x - view.cx)*view.s, H/2 + (y - view.cy)*view.s]; }
+function s2w(px, py){ return [(px - W/2)/view.s + view.cx, (py - H/2)/view.s + view.cy]; }
+function zoomAt(f, px, py){
+  const [wx, wy] = s2w(px, py);
+  const ns = clamp(view.s*f, 1.2, 4200);
+  if (ns === view.s) return;
+  view.s = ns;
+  const [nx, ny] = s2w(px, py);
+  view.cx += wx - nx; view.cy += wy - ny;
+}
+
+/* ---------- resize ----------------------------------------------------- */
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.max(1, Math.round(r.width)); H = Math.max(1, Math.round(r.height));
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  stars = [];
+  const n = Math.round(W*H/5200);
+  for (let i = 0; i < n; i++)
+    stars.push({ x: Math.random()*W, y: Math.random()*H,
+      r: Math.random() < .08 ? 1.5 : Math.random()*0.9 + 0.35,
+      a: Math.random()*0.55 + 0.2, tw: Math.random()*6.28 });
+}
+
+/* ---------- drawing ---------------------------------------------------- */
+function conicPath(ctx, e, vw, dir){
+  const steps = 160;
+  ctx.beginPath();
+  if (e.e < 0.999){
+    for (let i = 0; i <= steps; i++){
+      const nu = i/steps*Math.PI*2;
+      const r = e.p/(1 + e.e*Math.cos(nu));
+      if (!isFinite(r) || r > 400) continue;
+      const x = Math.cos(nu + e.w)*r, y = Math.sin(nu + e.w)*r;
+      const px = vw.W/2 + (x - vw.cx)*vw.s, py = vw.H/2 + (y - vw.cy)*vw.s;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+  } else {
+    const lim = Math.acos(clamp(-1/e.e, -1, 1)) - 0.02;
+    let first = true;
+    for (let i = 0; i <= steps; i++){
+      const nu = -lim + i/steps*2*lim;
+      const r = e.p/(1 + e.e*Math.cos(nu));
+      if (!isFinite(r) || r > 400) continue;
+      const x = Math.cos(nu + e.w)*r, y = Math.sin(nu + e.w)*r;
+      const px = vw.W/2 + (x - vw.cx)*vw.s, py = vw.H/2 + (y - vw.cy)*vw.s;
+      first ? (ctx.moveTo(px, py), first = false) : ctx.lineTo(px, py);
+    }
+  }
+  if (dir) ctx.stroke();
+}
+function apsisMarks(ctx, e, vw, col){
+  const put = (nu, fill) => {
+    const r = e.p/(1 + e.e*Math.cos(nu));
+    if (!isFinite(r) || r > 400) return;
+    const px = vw.W/2 + (Math.cos(nu + e.w)*r - vw.cx)*vw.s;
+    const py = vw.H/2 + (Math.sin(nu + e.w)*r - vw.cy)*vw.s;
+    ctx.beginPath();
+    ctx.moveTo(px, py-4); ctx.lineTo(px+4, py); ctx.lineTo(px, py+4); ctx.lineTo(px-4, py);
+    ctx.closePath();
+    if (fill){ ctx.fillStyle = col; ctx.fill(); } else { ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.stroke(); }
+  };
+  if (e.e < 0.999) put(Math.PI, true);
+  put(0, false);
+}
+function drawTerra(ctx, vw){
+  const [cx, cy] = [vw.W/2 - vw.cx*vw.s, vw.H/2 - vw.cy*vw.s];
+  const R = vw.s;
+  if (cx + R < -40 || cx - R > vw.W + 40 || cy + R < -40 || cy - R > vw.H + 40) return;
+  const glow = ctx.createRadialGradient(cx, cy, R*0.96, cx, cy, R*1.3);
+  glow.addColorStop(0, 'rgba(90,180,255,.34)');
+  glow.addColorStop(1, 'rgba(90,180,255,0)');
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, R*1.3, 0, 6.2832); ctx.fill();
+  const gd = ctx.createRadialGradient(cx - R*0.34, cy - R*0.38, R*0.08, cx, cy, R*1.04);
+  gd.addColorStop(0, '#6fd3ff'); gd.addColorStop(0.42, '#1d6fae');
+  gd.addColorStop(0.82, '#0d3356'); gd.addColorStop(1, '#061a2c');
+  ctx.fillStyle = gd; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.fill();
+  if (R > 14){
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R*0.995, 0, 6.2832); ctx.clip();
+    ctx.strokeStyle = 'rgba(180,230,255,.17)'; ctx.lineWidth = Math.max(0.6, R/190);
+    for (let k = 0; k < 6; k++){
+      const w = Math.cos(rot + k*Math.PI/6);
+      ctx.beginPath(); ctx.ellipse(cx, cy, Math.abs(w)*R, R, 0, 0, 6.2832); ctx.stroke();
+    }
+    for (let k = -2; k <= 2; k++){
+      const f = Math.cos(k*0.55);
+      ctx.beginPath(); ctx.ellipse(cx, cy + Math.sin(k*0.55)*R, R*f, R*f*0.13, 0, 0, 6.2832); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(140,220,255,.5)'; ctx.lineWidth = 1.1;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.stroke();
+  const [ax, ay] = [cx, cy];
+  ctx.strokeStyle = 'rgba(120,200,255,.2)'; ctx.setLineDash([3,5]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(ax, ay, R*(1+ATM), 0, 6.2832); ctx.stroke(); ctx.setLineDash([]);
+}
+function drawSelene(ctx, vw, t){
+  const sp = selenePos(t);
+  ctx.strokeStyle = 'rgba(150,170,205,.17)'; ctx.lineWidth = 1;
+  const [ox, oy] = [vw.W/2 - vw.cx*vw.s, vw.H/2 - vw.cy*vw.s];
+  ctx.beginPath(); ctx.arc(ox, oy, SEL.a*vw.s, 0, 6.2832); ctx.stroke();
+  const px = vw.W/2 + (sp.x - vw.cx)*vw.s, py = vw.H/2 + (sp.y - vw.cy)*vw.s;
+  const R = Math.max(2.2, SEL.r*vw.s);
+  const gd = ctx.createRadialGradient(px - R*0.35, py - R*0.35, R*0.1, px, py, R);
+  gd.addColorStop(0, '#e9eef7'); gd.addColorStop(0.6, '#9aa6bb'); gd.addColorStop(1, '#4d566b');
+  ctx.fillStyle = gd; ctx.beginPath(); ctx.arc(px, py, R, 0, 6.2832); ctx.fill();
+  if (R > 9){
+    ctx.fillStyle = 'rgba(70,80,100,.4)';
+    const cr = [[-.3,-.1,.19],[.26,.22,.14],[.05,-.42,.1],[-.12,.4,.12],[.42,-.22,.09]];
+    for (const [a,b,c] of cr){ ctx.beginPath(); ctx.arc(px + a*R, py + b*R, c*R, 0, 6.2832); ctx.fill(); }
+  }
+  if (vw.s*SEL.a > 60){
+    ctx.fillStyle = 'rgba(190,205,230,.6)'; ctx.font = '600 10px system-ui,sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('SELENE', px, py - R - 7);
+  }
+}
+function drawRings(ctx, vw){
+  const [ox, oy] = [vw.W/2 - vw.cx*vw.s, vw.H/2 - vw.cy*vw.s];
+  ctx.strokeStyle = 'rgba(183,155,255,.3)'; ctx.setLineDash([6,7]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(ox, oy, RSYNC*vw.s, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]);
+  if (vw.s*RSYNC > 70){
+    ctx.fillStyle = 'rgba(183,155,255,.62)'; ctx.font = '600 9.5px system-ui,sans-serif';
+    ctx.textAlign = 'left'; ctx.fillText('SYNC RING', ox + 5, oy - RSYNC*vw.s - 6);
+  }
+}
+function drawCraft(ctx, vw, c, isSel){
+  if (c.trail.length > 1){
+    ctx.strokeStyle = c.col; ctx.globalAlpha = 0.22; ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    for (let i = 0; i < c.trail.length; i += 2){
+      const px = vw.W/2 + (c.trail[i].x - vw.cx)*vw.s, py = vw.H/2 + (c.trail[i].y - vw.cy)*vw.s;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.stroke();
+    const n = c.trail.length, from = Math.max(0, n - 70);
+    ctx.globalAlpha = 0.72; ctx.lineWidth = 1.6; ctx.beginPath();
+    for (let i = from; i < n; i++){
+      const px = vw.W/2 + (c.trail[i].x - vw.cx)*vw.s, py = vw.H/2 + (c.trail[i].y - vw.cy)*vw.s;
+      i === from ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  if (!c.alive){
+    const px = vw.W/2 + (c.x - vw.cx)*vw.s, py = vw.H/2 + (c.y - vw.cy)*vw.s;
+    ctx.globalAlpha = clamp(c.fade, 0, 1);
+    ctx.strokeStyle = '#ff6b7f'; ctx.lineWidth = 1.4;
+    for (let k = 0; k < 6; k++){
+      const a = k*1.047 + c.id, L = 5 + (1 - clamp(c.fade,0,1))*16;
+      ctx.beginPath(); ctx.moveTo(px + Math.cos(a)*4, py + Math.sin(a)*4);
+      ctx.lineTo(px + Math.cos(a)*L, py + Math.sin(a)*L); ctx.stroke();
+    }
+    ctx.globalAlpha = 1; return;
+  }
+  const e = elems(c);
+  ctx.strokeStyle = c.col; ctx.globalAlpha = isSel ? 0.62 : 0.26;
+  ctx.lineWidth = isSel ? 1.4 : 1; ctx.setLineDash(isSel ? [] : [4,6]);
+  conicPath(ctx, e, vw, true); ctx.setLineDash([]);
+  if (isSel){ ctx.globalAlpha = 0.9; apsisMarks(ctx, e, vw, '#ffd166'); }
+  ctx.globalAlpha = 1;
+  const px = vw.W/2 + (c.x - vw.cx)*vw.s, py = vw.H/2 + (c.y - vw.cy)*vw.s;
+  const ang = Math.atan2(c.vy, c.vx);
+  if (isSel){
+    ctx.strokeStyle = c.col; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(px, py, 11, 0, 6.2832); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
+  ctx.fillStyle = c.col; ctx.shadowColor = c.col; ctx.shadowBlur = 9;
+  ctx.beginPath(); ctx.moveTo(6.5,0); ctx.lineTo(-4.5,3.6); ctx.lineTo(-2.6,0); ctx.lineTo(-4.5,-3.6);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.shadowBlur = 0;
+  if (vw.label !== false && (isSel || vw.s > 8)){
+    ctx.fillStyle = c.col; ctx.globalAlpha = isSel ? 0.95 : 0.6;
+    ctx.font = '600 10px system-ui,sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(c.name, px + 10, py - 8); ctx.globalAlpha = 1;
+  }
+}
+function drawPreview(ctx, vw){
+  if (!sel || !sel.alive) return;
+  if (!burn.pro && !burn.rad && !drag) return;
+  if (drag && drag.kind !== 'aim' && drag.kind !== 'new') return;
+  const p = previewState();
+  if (!p) return;
+  const e = elems(p);
+  ctx.strokeStyle = '#8affc1'; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.5;
+  ctx.setLineDash([7,6]); conicPath(ctx, e, vw, true);
+  ctx.setLineDash([]); apsisMarks(ctx, e, vw, '#8affc1'); ctx.globalAlpha = 1;
+}
+function drawDrag(ctx){
+  if (!drag || (drag.kind !== 'new' && drag.kind !== 'aim')) return;
+  const a = w2s(drag.wx, drag.wy);
+  ctx.strokeStyle = '#8affc1'; ctx.lineWidth = 1.6; ctx.setLineDash([2,4]);
+  ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(drag.px, drag.py); ctx.stroke();
+  ctx.setLineDash([]);
+  const vx = (a[0] - drag.px), vy = (a[1] - drag.py), L = Math.hypot(vx, vy);
+  if (L > 6){
+    const ux = vx/L, uy = vy/L, tipx = a[0] + ux*Math.min(L,70), tipy = a[1] + uy*Math.min(L,70);
+    ctx.strokeStyle = '#8affc1'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(tipx, tipy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tipx, tipy);
+    ctx.lineTo(tipx - ux*7 + uy*5, tipy - uy*7 - ux*5);
+    ctx.lineTo(tipx - ux*7 - uy*5, tipy - uy*7 + ux*5);
+    ctx.closePath(); ctx.fillStyle = '#8affc1'; ctx.fill();
+  }
+  ctx.fillStyle = '#8affc1'; ctx.font = '600 11px system-ui,sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(msTxt(dragVel().v), drag.px + 11, drag.py - 9);
+  ctx.beginPath(); ctx.arc(a[0], a[1], 4, 0, 6.2832); ctx.fillStyle = '#8affc1'; ctx.fill();
+}
+function draw(ctx, vw, tNow){
+  ctx.fillStyle = '#04060d'; ctx.fillRect(0, 0, vw.W, vw.H);
+  const bg = ctx.createRadialGradient(vw.W*0.1, -vw.H*0.1, 10, vw.W*0.1, -vw.H*0.1, vw.W*1.1);
+  bg.addColorStop(0, 'rgba(18,44,86,.55)'); bg.addColorStop(1, 'rgba(4,6,13,0)');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, vw.W, vw.H);
+  for (const st of stars){
+    if (st.x > vw.W || st.y > vw.H) continue;
+    ctx.globalAlpha = st.a*(0.72 + 0.28*Math.sin(tNow*0.0016 + st.tw));
+    ctx.fillStyle = '#dfeaff';
+    ctx.fillRect(st.x, st.y, st.r, st.r);
+  }
+  ctx.globalAlpha = 1;
+  drawRings(ctx, vw);
+  drawSelene(ctx, vw, simT);
+  drawTerra(ctx, vw);
+  for (const c of craft) if (c !== sel) drawCraft(ctx, vw, c, false);
+  if (sel) drawCraft(ctx, vw, sel, true);
+  drawPreview(ctx, vw);
+}
+
+/* ---------- burn maths ------------------------------------------------- */
+function dragVel(){
+  if (!drag) return { vx:0, vy:0, v:0 };
+  const a = w2s(drag.wx, drag.wy);
+  let vx = (a[0] - drag.px)/110, vy = (a[1] - drag.py)/110;
+  const v = Math.hypot(vx, vy);
+  if (v > 2.7){ vx *= 2.7/v; vy *= 2.7/v; return { vx, vy, v: 2.7 }; }
+  return { vx, vy, v };
+}
+function previewState(){
+  if (drag && (drag.kind === 'new' || drag.kind === 'aim')){
+    const d = dragVel();
+    if (d.v < 0.02) return null;
+    return { x: drag.wx, y: drag.wy, vx: d.vx, vy: d.vy };
+  }
+  if (!sel || !sel.alive) return null;
+  const d = burnVec(sel);
+  return { x: sel.x, y: sel.y, vx: sel.vx + d.dx, vy: sel.vy + d.dy };
+}
+function burnVec(c){
+  const v = Math.hypot(c.vx, c.vy) || 1e-9;
+  const ux = c.vx/v, uy = c.vy/v;                  // prograde
+  const r = Math.hypot(c.x, c.y) || 1e-9;
+  const rx = c.x/r, ry = c.y/r;                    // radial out
+  const p = burn.pro/VMS, q = burn.rad/VMS;
+  return { dx: ux*p + rx*q, dy: uy*p + ry*q, mag: Math.hypot(p, q) };
+}
+function doBurn(){
+  if (!sel || !sel.alive) return toast('Select a living craft first', true);
+  const d = burnVec(sel);
+  if (d.mag < 1e-6) return toast('Dial in some Δv first', true);
+  if (d.mag > sel.dv + 1e-9) return toast('Not enough Δv — budget is ' + msTxt(sel.dv), true);
+  sel.vx += d.dx; sel.vy += d.dy; sel.dv -= d.mag;
+  toast('Burn: ' + msTxt(d.mag) + ' spent · ' + msTxt(sel.dv) + ' left');
+  burn.pro = burn.rad = 0; syncBurnInputs(); save();
+}
+function hohmann(){
+  if (!sel || !sel.alive) return null;
+  const r1 = Math.hypot(sel.x, sel.y), r2 = +document.getElementById('iTgt').value/RK;
+  const v1 = Math.sqrt(MU/r1), v2 = Math.sqrt(MU/r2);
+  const dv1 = v1*(Math.sqrt(2*r2/(r1+r2)) - 1);
+  const dv2 = v2*(1 - Math.sqrt(2*r1/(r1+r2)));
+  const tof = Math.PI*Math.sqrt(Math.pow((r1+r2)/2, 3)/MU);
+  return { r1, r2, dv1, dv2, tof, total: Math.abs(dv1) + Math.abs(dv2) };
+}
+
+/* ---------- missions --------------------------------------------------- */
+function win(id){
+  if (badges[id]) return;
+  badges[id] = true;
+  const b = BADGES.find(x => x.id === id);
+  toast('★ Badge unlocked — ' + (b ? b.t : id));
+  try { localStorage.setItem(K_BADGE, JSON.stringify(badges)); } catch (e) {}
+  renderMissions();
+}
+function checkBadges(){
+  let stable = 0;
+  for (const c of craft){
+    if (!c.alive) continue;
+    const e = elems(c);
+    const altP = (e.rp - 1)*RK, safe = altP > 190;
+    if (e.e < 1 && safe){
+      stable++;
+      if (c.orbT > e.T) win('orbit');
+      if (e.e < 0.02) win('circ');
+      if (Math.abs(e.a - RSYNC)/RSYNC < 0.02 && e.e < 0.05) win('sync');
+      if (e.e > 0.6 && e.ra > 5) win('ellip');
+    }
+    if (c.lowest < 1 + 120/RK && c.rr > 1.02 && e.e < 1 && e.rp > 1.0) win('graze');
+    if (c.selD < 5000/RK) win('flyby');
+    if (c.selD < 2.4){
+      const sp = selenePos(simT);
+      const svx = -Math.sin(SEL.w*simT)*SEL.a*SEL.w, svy = Math.cos(SEL.w*simT)*SEL.a*SEL.w;
+      const rvx = c.vx - svx, rvy = c.vy - svy;
+      const E = (rvx*rvx + rvy*rvy)/2 - SEL.mu/Math.max(c.selD, 1e-6);
+      if (E < 0 && c.selD < 1.8) win('capture');
+    }
+    if (e.e >= 1 && e.r > 20) win('escape');
+  }
+  if (stable >= 5) win('fleet');
+}
+function renderMissions(){
+  const host = document.getElementById('miss');
+  let n = 0;
+  host.innerHTML = BADGES.map(b => {
+    const done = !!badges[b.id]; if (done) n++;
+    return '<div class="card' + (done ? ' done' : '') + '"><div class="hd"><b>' + b.t +
+      '</b><em>' + (done ? '★' : '☆') + '</em></div><p>' + b.d + '</p></div>';
+  }).join('');
+  document.getElementById('missN').textContent = n + '/' + BADGES.length;
+}
+
+/* ---------- panel ------------------------------------------------------ */
+let lastUI = 0;
+function syncUI(){ lastUI = 0; }
+function renderKPIs(){
+  const host = document.getElementById('kpis');
+  if (!sel){ host.innerHTML = '<div class="kpi w"><b>—</b><span>no craft selected</span></div>'; return; }
+  if (!sel.alive){ host.innerHTML = '<div class="kpi w"><b style="color:var(--bad)">Lost</b><span>' +
+    sel.name + ' hit the ground</span></div>'; return; }
+  const e = elems(sel);
+  const alt = (e.r - 1)*RK;
+  const rows = [
+    ['altitude', Math.round(alt).toLocaleString('en-US') + ' km'],
+    ['speed', msTxt(e.v)],
+    ['apoapsis', e.e < 1 ? kmTxt(e.ra - 1) : '∞'],
+    ['periapsis', e.rp < 1 ? 'impact' : kmTxt(e.rp - 1)],
+    ['eccentricity', fmt(e.e, 3)],
+    ['period', e.e < 1 ? durTxt(e.T) : 'escape'],
+    ['Δv budget', msTxt(sel.dv)],
+    ['to Selene', kmTxt(sel.selD)]
+  ];
+  host.innerHTML = rows.map(r => '<div class="kpi"><b>' + r[1] + '</b><span>' + r[0] + '</span></div>').join('');
+}
+function renderFleet(){
+  const host = document.getElementById('fleet');
+  if (!craft.length){ host.innerHTML = '<p class="note">Empty sky. Drag anywhere, or press <b>+ Craft</b>.</p>';
+    document.getElementById('fleetN').textContent = ''; return; }
+  document.getElementById('fleetN').textContent = craft.filter(c => c.alive).length + ' live';
+  host.innerHTML = craft.map(c => {
+    const e = c.alive ? elems(c) : null;
+    const rt = e ? (e.e < 1 ? Math.round((e.ra - 1)*RK).toLocaleString('en-US') + ' km apo'
+      : 'hyperbolic') : 'lost';
+    return '<div class="row' + (c === sel ? ' sel' : '') + (c.alive ? '' : ' dead') + '" data-id="' + c.id +
+      '"><span class="dot" style="background:' + c.col + ';color:' + c.col + '"></span><span class="nm">' +
+      c.name + '</span><span class="rt">' + rt + '</span><button class="x" data-del="' + c.id + '">✕</button></div>';
+  }).join('');
+}
+function renderHoh(){
+  const h = hohmann(), host = document.getElementById('hoh');
+  if (!h){ host.innerHTML = '<div class="kpi w"><b>—</b><span>select a craft</span></div>'; return; }
+  host.innerHTML =
+    '<div class="kpi"><b>' + msTxt(h.dv1) + '</b><span>Δv₁ raise</span></div>' +
+    '<div class="kpi"><b>' + msTxt(h.dv2) + '</b><span>Δv₂ circularise</span></div>' +
+    '<div class="kpi"><b>' + msTxt(h.total) + '</b><span>total budget</span></div>' +
+    '<div class="kpi"><b>' + durTxt(h.tof) + '</b><span>coast time</span></div>';
+}
+function syncBurnInputs(){
+  document.getElementById('iPro').value = burn.pro;
+  document.getElementById('iRad').value = burn.rad;
+  document.getElementById('vPro').textContent = Math.round(burn.pro) + ' m/s';
+  document.getElementById('vRad').textContent = Math.round(burn.rad) + ' m/s';
+}
+
+/* ---------- persistence ------------------------------------------------ */
+function scene(){
+  return { v: 1, t: +simT.toFixed(4), view: { s: +view.s.toFixed(4), cx: +view.cx.toFixed(4), cy: +view.cy.toFixed(4) },
+    craft: craft.filter(c => c.alive).map(c => ({ n: c.name, c: c.col,
+      x: +c.x.toFixed(6), y: +c.y.toFixed(6), vx: +c.vx.toFixed(6), vy: +c.vy.toFixed(6),
+      dv: +c.dv.toFixed(6) })) };
+}
+function loadScene(o){
+  if (!o || !Array.isArray(o.craft)) return false;
+  craft = []; uid = 1; simT = +o.t || 0;
+  for (const d of o.craft){
+    const c = mkCraft(+d.x || 0, +d.y || 0, +d.vx || 0, +d.vy || 0, d.n);
+    if (d.c) c.col = d.c;
+    if (typeof d.dv === 'number') c.dv = d.dv;
+    craft.push(c);
+  }
+  sel = craft[0] || null;
+  if (o.view && o.view.s){ view.s = clamp(+o.view.s, 1.2, 4200); view.cx = +o.view.cx || 0; view.cy = +o.view.cy || 0; }
+  else fitAll();
+  syncUI(); return true;
+}
+let saveT = 0;
+function save(){
+  try { localStorage.setItem(K_SCENE, JSON.stringify(scene())); } catch (e) {}
+}
+function b64(s){ return btoa(unescape(encodeURIComponent(s))).replace(/=+$/, ''); }
+function unb64(s){ try { return decodeURIComponent(escape(atob(s))); } catch (e) { return null; } }
+function download(name, blob){
+  const u = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = u; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(u); }, 400);
+}
+function exportPNG(){
+  const EW = 1500, EH = 950, o = document.createElement('canvas');
+  o.width = EW; o.height = EH;
+  const x = o.getContext('2d');
+  let span = 3.4;
+  for (const c of craft) if (c.alive){ const e = elems(c);
+    span = Math.max(span, Math.min(e.e < 1 ? e.ra : e.r*1.35, 70), e.r); }
+  const vw = { W: EW, H: EH, s: Math.min(EW, EH - 120)/(span*2.3), cx: 0, cy: 0, label: true };
+  const sstars = stars; stars = [];
+  for (let i = 0; i < 1500; i++) stars.push({ x: Math.random()*EW, y: Math.random()*EH,
+    r: Math.random() < .08 ? 2 : Math.random()*1.2 + 0.4, a: Math.random()*0.55 + 0.2, tw: 0 });
+  draw(x, vw, 0);
+  stars = sstars;
+  x.fillStyle = 'rgba(4,6,13,.82)'; x.fillRect(0, EH - 74, EW, 74);
+  x.fillStyle = 'rgba(90,209,255,.5)'; x.fillRect(0, EH - 75, EW, 1);
+  x.fillStyle = '#e8eef9'; x.font = '700 26px system-ui,sans-serif'; x.textAlign = 'left';
+  x.fillText('APOGEE — orbit chart', 34, EH - 40);
+  x.fillStyle = '#8396b1'; x.font = '500 15px system-ui,sans-serif';
+  const live = craft.filter(c => c.alive).length;
+  x.fillText(live + ' craft aloft · mission clock ' + durTxt(simT) + ' · ' +
+    Object.keys(badges).length + '/' + BADGES.length + ' badges', 34, EH - 16);
+  x.textAlign = 'right'; x.fillStyle = '#5e6f87'; x.font = '500 14px system-ui,sans-serif';
+  x.fillText('Terra r = 6371 km · sync ring ' + Math.round(RSYNC*RK).toLocaleString('en-US') +
+    ' km · ' + new Date().toISOString().slice(0, 10), EW - 34, EH - 28);
+  o.toBlob(b => { if (!b || !b.size) return toast('PNG export failed', true);
+    download('apogee-orbit-' + Date.now() + '.png', b); toast('Orbit chart saved'); }, 'image/png');
+}
+
+/* ---------- input ------------------------------------------------------ */
+function hit(px, py){
+  let best = null, bd = 20;
+  for (const c of craft){
+    if (!c.alive) continue;
+    const [sx, sy] = w2s(c.x, c.y), d = Math.hypot(sx - px, sy - py);
+    if (d < bd){ bd = d; best = c; }
+  }
+  return best;
+}
+function localPt(ev){ const r = cv.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; }
+cv.addEventListener('pointerdown', ev => {
+  cv.setPointerCapture(ev.pointerId);
+  const [px, py] = localPt(ev);
+  ptrs.set(ev.pointerId, { px, py });
+  if (ptrs.size === 2){
+    drag = null;
+    const p = [...ptrs.values()];
+    pinch = { d: Math.hypot(p[0].px - p[1].px, p[0].py - p[1].py),
+      mx: (p[0].px + p[1].px)/2, my: (p[0].py + p[1].py)/2, s: view.s };
+    return;
+  }
+  const h = hit(px, py);
+  const [wx, wy] = s2w(px, py);
+  const insidePlanet = Math.hypot(wx, wy) < 1.015;
+  if (h){ sel = h; burn.pro = burn.rad = 0; syncBurnInputs(); syncUI();
+    drag = { kind: 'aim', id: ev.pointerId, wx: h.x, wy: h.y, px, py, target: h, moved: 0 }; }
+  else if (ev.button === 2 || ev.shiftKey || insidePlanet){
+    drag = { kind: 'pan', id: ev.pointerId, px, py, cx: view.cx, cy: view.cy, sx: px, sy: py };
+  } else {
+    drag = { kind: 'new', id: ev.pointerId, wx, wy, px, py, moved: 0 };
+  }
+  document.getElementById('hint').classList.add('hide');
+});
+cv.addEventListener('pointermove', ev => {
+  const [px, py] = localPt(ev);
+  if (ptrs.has(ev.pointerId)) ptrs.set(ev.pointerId, { px, py });
+  if (pinch && ptrs.size === 2){
+    const p = [...ptrs.values()];
+    const d = Math.hypot(p[0].px - p[1].px, p[0].py - p[1].py);
+    const mx = (p[0].px + p[1].px)/2, my = (p[0].py + p[1].py)/2;
+    if (pinch.d > 8){
+      const f = (d/pinch.d)*(pinch.s/view.s);
+      zoomAt(f, mx, my);
+    }
+    const [aw, ah] = s2w(mx, my), [bw, bh] = s2w(pinch.mx, pinch.my);
+    view.cx += bw - aw; view.cy += bh - ah;
+    pinch.d = d; pinch.mx = mx; pinch.my = my; pinch.s = view.s;
+    return;
+  }
+  if (!drag || drag.id !== ev.pointerId) return;
+  if (drag.kind === 'pan'){
+    view.cx = drag.cx - (px - drag.sx)/view.s;
+    view.cy = drag.cy - (py - drag.sy)/view.s;
+    return;
+  }
+  drag.moved = Math.max(drag.moved, Math.hypot(px - drag.px, py - drag.py));
+  drag.px = px; drag.py = py;
+});
+function endDrag(ev){
+  ptrs.delete(ev.pointerId);
+  if (ptrs.size < 2) pinch = null;
+  if (!drag || drag.id !== ev.pointerId){ if (!ptrs.size) drag = null; return; }
+  const d = drag; drag = null;
+  if (d.kind === 'pan') return;
+  const vel = (() => { drag = d; const v = dragVel(); drag = null; return v; })();
+  if (d.kind === 'new'){
+    if (Math.hypot(d.wx, d.wy) < 1.02) return;
+    if (vel.v < 0.04){ toast('Pull further to give it some speed', true); return; }
+    addCraft(mkCraft(d.wx, d.wy, vel.vx, vel.vy));
+    toast('Launched at ' + msTxt(vel.v));
+    save();
+  } else if (d.kind === 'aim'){
+    if (d.moved > 10 && vel.v > 0.04 && d.target.alive){
+      d.target.vx = vel.vx; d.target.vy = vel.vy; d.target.trail.length = 0;
+      toast(d.target.name + ' re-aimed at ' + msTxt(vel.v));
+      save();
+    }
+  }
+  syncUI();
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const [px, py] = localPt(ev);
+  zoomAt(Math.exp(-ev.deltaY*0.0014), px, py);
+}, { passive: false });
+
+/* ---------- wiring ----------------------------------------------------- */
+const $ = id => document.getElementById(id);
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.t));
+  syncUI();
+}));
+$('bPlay').addEventListener('click', () => { playing = !playing;
+  $('bPlay').textContent = playing ? '❚❚ Pause' : '▶ Play'; });
+$('iWarp').addEventListener('input', e => { warpI = +e.target.value;
+  $('vWarp').textContent = WARP[warpI] + '×'; });
+$('selPreset').addEventListener('change', e => {
+  const k = e.target.value; e.target.value = '';
+  if (SCENES[k]){ SCENES[k](); save(); toast('Scenario loaded'); }
+});
+$('bAdd').addEventListener('click', () => {
+  const r = 1.12 + Math.random()*2.4;
+  addCraft(circAt(r, Math.random()*6.28));
+  if (view.s*r > Math.min(W, H)/2) fitAll();
+  toast(sel.name + ' inserted at ' + kmTxt(r - 1)); save();
+});
+$('bZi').addEventListener('click', () => zoomAt(1.45, W/2, H/2));
+$('bZo').addEventListener('click', () => zoomAt(1/1.45, W/2, H/2));
+$('bFit').addEventListener('click', fitAll);
+$('fleet').addEventListener('click', ev => {
+  const del = ev.target.closest('[data-del]');
+  if (del){
+    const id = +del.dataset.del, i = craft.findIndex(c => c.id === id);
+    if (i >= 0){ const was = craft[i]; craft.splice(i, 1);
+      if (sel === was) sel = craft[0] || null; syncUI(); save(); }
+    ev.stopPropagation(); return;
+  }
+  const row = ev.target.closest('[data-id]');
+  if (row){ const c = craft.find(x => x.id === +row.dataset.id);
+    if (c){ sel = c; burn.pro = burn.rad = 0; syncBurnInputs(); syncUI(); } }
+});
+$('iPro').addEventListener('input', e => { burn.pro = +e.target.value; syncBurnInputs(); });
+$('iRad').addEventListener('input', e => { burn.rad = +e.target.value; syncBurnInputs(); });
+document.querySelectorAll('[data-nudge]').forEach(b => b.addEventListener('click', () => {
+  const k = b.dataset.nudge, S = 25;
+  if (k === 'p') burn.pro = clamp(burn.pro + S, -2500, 2500);
+  if (k === 'm') burn.pro = clamp(burn.pro - S, -2500, 2500);
+  if (k === 'r') burn.rad = clamp(burn.rad + S, -1500, 1500);
+  if (k === 'i') burn.rad = clamp(burn.rad - S, -1500, 1500);
+  syncBurnInputs();
+}));
+$('bBurn').addEventListener('click', doBurn);
+$('bZero').addEventListener('click', () => { burn.pro = burn.rad = 0; syncBurnInputs(); });
+$('iTgt').addEventListener('input', e => {
+  $('vTgt').textContent = (+e.target.value).toLocaleString('en-US') + ' km'; renderHoh();
+});
+$('bT1').addEventListener('click', () => { const h = hohmann();
+  if (!h) return toast('Select a craft first', true);
+  burn.pro = clamp(Math.round(h.dv1*VMS), -2500, 2500); burn.rad = 0; syncBurnInputs();
+  toast('Δv₁ loaded — press Execute burn'); });
+$('bT2').addEventListener('click', () => { const h = hohmann();
+  if (!h) return toast('Select a craft first', true);
+  burn.pro = clamp(Math.round(h.dv2*VMS), -2500, 2500); burn.rad = 0; syncBurnInputs();
+  toast('Δv₂ loaded — fire at apoapsis'); });
+$('bTsync').addEventListener('click', () => { $('iTgt').value = Math.round(RSYNC*RK);
+  $('iTgt').dispatchEvent(new Event('input')); });
+$('bTmoon').addEventListener('click', () => { $('iTgt').value = Math.round(SEL.a*RK);
+  $('iTgt').dispatchEvent(new Event('input')); });
+$('bMclr').addEventListener('click', () => { badges = {};
+  try { localStorage.removeItem(K_BADGE); } catch (e) {}
+  renderMissions(); toast('Badge progress cleared'); });
+$('bPng').addEventListener('click', exportPNG);
+$('bJson').addEventListener('click', () => {
+  const s = JSON.stringify(scene(), null, 1);
+  download('apogee-scenario-' + Date.now() + '.json', new Blob([s], { type: 'application/json' }));
+  toast('Scenario downloaded (' + s.length + ' bytes)');
+});
+$('bImp').addEventListener('click', () => $('fileIn').click());
+$('fileIn').addEventListener('change', ev => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try { if (loadScene(JSON.parse(fr.result))) { toast('Scenario imported'); save(); }
+      else toast('That file has no craft in it', true); }
+    catch (e) { toast('Could not parse that JSON', true); }
+  };
+  fr.readAsText(f); ev.target.value = '';
+});
+$('bShare').addEventListener('click', () => {
+  const h = '#s=' + b64(JSON.stringify(scene()));
+  const url = location.href.split('#')[0] + h;
+  history.replaceState(null, '', h);
+  const done = () => toast('Share link copied (' + url.length + ' chars)');
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(url).then(done, () => toast('Link is in the address bar'));
+  else toast('Link is in the address bar');
+});
+$('bWipe').addEventListener('click', () => {
+  try { localStorage.removeItem(K_SCENE); } catch (e) {}
+  toast('Saved sky forgotten');
+});
+window.addEventListener('keydown', ev => {
+  const t = ev.target.tagName;
+  if (t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
+  const k = ev.key.toLowerCase();
+  if (k === ' '){ ev.preventDefault(); $('bPlay').click(); return; }
+  if (k === 'f'){ fitAll(); return; }
+  if (k === 'tab'){ ev.preventDefault();
+    const live = craft.filter(c => c.alive);
+    if (live.length){ const i = live.indexOf(sel); sel = live[(i + 1) % live.length]; syncUI(); }
+    return; }
+  if ((k === 'delete' || k === 'backspace') && sel){
+    ev.preventDefault();
+    const i = craft.indexOf(sel); if (i >= 0) craft.splice(i, 1);
+    sel = craft[0] || null; syncUI(); save(); return; }
+  if (k >= '1' && k <= '8'){ warpI = +k - 1; $('iWarp').value = warpI;
+    $('vWarp').textContent = WARP[warpI] + '×'; return; }
+  if (k in thrust){ thrust[k] = 1; ev.preventDefault(); }
+});
+window.addEventListener('keyup', ev => { const k = ev.key.toLowerCase(); if (k in thrust) thrust[k] = 0; });
+window.addEventListener('blur', () => { thrust.w = thrust.s = thrust.a = thrust.d = 0; });
+window.addEventListener('resize', () => { resize(); });
+
+/* ---------- live thrust ------------------------------------------------ */
+const THRUST_RATE = 220/VMS;             // 220 m/s of Delta-v per second held
+function liveThrust(wallSec){
+  if (!sel || !sel.alive || sel.dv <= 0) return;
+  const p = (thrust.w ? 1 : 0) - (thrust.s ? 1 : 0);
+  const q = (thrust.a ? 1 : 0) - (thrust.d ? 1 : 0);
+  if (!p && !q) return;
+  const unit = Math.hypot(p, q);
+  let need = unit*THRUST_RATE*wallSec;
+  if (need > sel.dv){ need = sel.dv; }
+  const v = Math.hypot(sel.vx, sel.vy) || 1e-9, r = Math.hypot(sel.x, sel.y) || 1e-9;
+  const ax = ((sel.vx/v)*p + (sel.x/r)*q)/unit, ay = ((sel.vy/v)*p + (sel.y/r)*q)/unit;
+  sel.vx += ax*need; sel.vy += ay*need; sel.dv -= need;
+  if (sel.dv <= 1e-9){ sel.dv = 0; toast(sel.name + ' is out of Delta-v', true); }
+}
+
+/* ---------- loop ------------------------------------------------------- */
+let prev = performance.now();
+function frame(now){
+  const wall = Math.min((now - prev)/1000, 0.05); prev = now;
+  if (playing){
+    const warp = WARP[warpI];
+    let total = wall*0.9*warp;
+    let near = false;
+    for (const c of craft) if (c.alive && c.rr < 1.45) near = true;
+    const hMax = near ? 0.0016 : 0.004;
+    let steps = clamp(Math.ceil(total/hMax), 1, 220);
+    const h = total/steps;
+    liveThrust(wall);
+    for (let s = 0; s < steps; s++){
+      for (const c of craft){
+        if (!c.alive){ c.fade -= h*2.2; continue; }
+        step(c, h, simT);
+        if (c.rr < 1){
+          c.alive = false; c.fade = 1; win('crater');
+          if (c === sel) syncUI();
+          continue;
+        }
+        c.lowest = Math.min(c.lowest, c.rr);
+        c.orbT += h;
+        const tl = c.trail, n = tl.length;
+        const thr = Math.max(0.008, 0.9/view.s);
+        if (!n || Math.hypot(c.x - tl[n-1].x, c.y - tl[n-1].y) > thr){
+          tl.push({ x: c.x, y: c.y });
+          if (tl.length > 520) tl.splice(0, 60);
+        }
+      }
+      simT += h;
+    }
+    rot += total*(2*Math.PI/TROT);
+    checkBadges();
+    for (let i = craft.length - 1; i >= 0; i--)
+      if (!craft[i].alive && craft[i].fade < -0.6){
+        if (craft[i] === sel) sel = craft.find(c => c.alive) || null;
+        craft.splice(i, 1); syncUI();
+      }
+    saveT += wall;
+    if (saveT > 4){ saveT = 0; save(); }
+  }
+  draw(g, { W, H, s: view.s, cx: view.cx, cy: view.cy }, now);
+  drawDrag(g);
+  if (now - lastUI > 140){
+    lastUI = now;
+    renderKPIs();
+    if ($('p-fleet').classList.contains('on')) renderFleet();
+    if ($('p-burn').classList.contains('on')) renderHoh();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- boot ------------------------------------------------------- */
+(function boot(){
+  resize();
+  try { badges = JSON.parse(localStorage.getItem(K_BADGE) || '{}') || {}; } catch (e) { badges = {}; }
+  renderMissions();
+  $('vTgt').textContent = (+$('iTgt').value).toLocaleString('en-US') + ' km';
+  $('vWarp').textContent = WARP[warpI] + '×';
+  syncBurnInputs();
+  let booted = false;
+  const hash = location.hash.match(/^#s=(.+)$/);
+  if (hash){ const txt = unb64(hash[1]);
+    if (txt){ try { booted = loadScene(JSON.parse(txt)); } catch (e) {} }
+    if (booted) toast('Scenario loaded from link'); }
+  if (!booted){
+    try { const raw = localStorage.getItem(K_SCENE);
+      if (raw) booted = loadScene(JSON.parse(raw));
+    } catch (e) {}
+    if (booted) toast('Welcome back — sky restored');
+  }
+  if (!booted || !craft.length) SCENES.gto();
+  renderKPIs(); renderFleet(); renderHoh();
+  setTimeout(() => $('hint').classList.add('hide'), 7000);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
