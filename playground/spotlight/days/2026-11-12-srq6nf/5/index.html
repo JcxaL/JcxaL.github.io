@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>A Lightbox Built From Scrolling — UI Spotlight Day 155</title>
+<meta name="description" content="The thumbnail morphs into the slide on a view transition, the slides are a scroll-snap strip rather than a transform carousel, and pulling down dismisses it elastically.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#06070c;--ink:#e9eff8;--dim:#8396b1;--line:#1b2535;--acc:#a78bfa}
+html,body{min-height:100%}
+body{background:radial-gradient(1100px 680px at 50% -18%,#17123a 0%,transparent 62%),var(--bg);
+  color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100dvh;padding:68px 18px 56px;-webkit-text-size-adjust:100%}
+body.lock{overflow:hidden}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:clamp(21px,3.8vw,31px);font-weight:800;letter-spacing:-.7px;text-align:center}
+.lede{color:var(--dim);font-size:13px;text-align:center;margin:8px auto 22px;max-width:54ch}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{border:none;padding:0;background:none;cursor:zoom-in;text-align:left;
+  -webkit-tap-highlight-color:transparent}
+.tile .ph{aspect-ratio:4/3;border-radius:14px;background:var(--g);position:relative;overflow:hidden;
+  box-shadow:0 16px 36px -24px #000;transition:transform .2s ease,box-shadow .2s}
+.tile .ph::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(115deg,rgba(255,255,255,.08) 0 2px,transparent 2px 7px);mix-blend-mode:overlay}
+.tile:hover .ph{transform:translateY(-3px);box-shadow:0 22px 46px -22px #000}
+.tile b{display:block;font-size:12px;font-weight:700;margin-top:8px}
+.tile span{display:block;font-size:11px;color:#6d8098}
+.lb{position:fixed;inset:0;z-index:20;display:none}
+.lb.on{display:block}
+.scrim{position:absolute;inset:0;background:rgba(4,5,10,.92);backdrop-filter:blur(8px)}
+.strip{position:relative;height:100%;display:flex;overflow-x:auto;overflow-y:hidden;
+  scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior:contain}
+.strip::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;height:100%;scroll-snap-align:center;display:flex;align-items:center;justify-content:center;
+  padding:64px 22px 92px;touch-action:pan-x}
+.slide .ph{width:min(760px,100%);aspect-ratio:4/3;border-radius:18px;background:var(--g);position:relative;overflow:hidden;
+  box-shadow:0 40px 90px -40px #000;will-change:transform}
+.slide .ph::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(115deg,rgba(255,255,255,.08) 0 2px,transparent 2px 7px);mix-blend-mode:overlay}
+.slide.zoom{touch-action:none;cursor:grab}
+.cap{position:absolute;left:0;right:0;bottom:0;padding:16px 20px 20px;z-index:3;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(4,5,10,.85));text-align:center}
+.cap b{display:block;font-size:14px;font-weight:700}
+.cap span{font-size:11.5px;color:#93a6bf}
+.hud{position:absolute;left:0;right:0;top:0;z-index:3;display:flex;align-items:center;gap:8px;padding:14px 16px}
+.hud .n{font-size:11.5px;font-weight:700;color:#cdd9ea;background:rgba(14,18,28,.72);border:1px solid #28344a;
+  border-radius:999px;padding:6px 12px;font-variant-numeric:tabular-nums}
+.hud .x{margin-left:auto;font:inherit;font-size:14px;font-weight:700;color:var(--ink);cursor:pointer;
+  background:rgba(14,18,28,.72);border:1px solid #28344a;border-radius:999px;width:34px;height:34px}
+.hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:3;font-size:11px;color:#7d8ea7;
+  background:rgba(14,18,28,.6);border:1px solid #243046;border-radius:999px;padding:6px 12px;white-space:nowrap}
+.back-link{position:fixed;left:14px;top:14px;z-index:9;display:inline-flex;align-items:center;gap:6px;
+  font-size:12.5px;font-weight:600;text-decoration:none;color:var(--ink);padding:8px 13px;border-radius:999px;
+  background:rgba(10,15,24,.72);border:1px solid #243246;backdrop-filter:blur(10px);transition:border-color .18s,transform .18s}
+.back-link:hover{border-color:var(--acc);transform:translateX(-2px)}
+.panel{position:fixed;right:14px;top:14px;z-index:9;width:198px;padding:13px;border-radius:16px;
+  background:rgba(9,13,21,.82);border:1px solid #243246;backdrop-filter:blur(14px);box-shadow:0 20px 50px -26px #000}
+.panel h2{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin-bottom:9px;font-weight:700}
+.panel h2+h2{margin-top:13px}
+.lay{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#c6d6ea;padding:5px 7px;border-radius:9px;
+  border:1px solid #1d2a3c;background:#0b1522;margin-bottom:5px;cursor:pointer}
+.lay input{accent-color:var(--acc)}
+.sl{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);margin:9px 0 2px}
+.sl input{flex:1 1 0;min-width:0;accent-color:var(--acc)}
+.sl b{color:var(--ink);min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
+.tiny{font-size:10px;color:#56687f;margin-top:10px;line-height:1.55}
+footer{position:fixed;left:0;right:0;bottom:0;z-index:9;text-align:center;font-size:10.5px;color:#64768f;
+  padding:9px;background:linear-gradient(180deg,transparent,rgba(6,7,12,.9))}
+footer a{color:#9a8bd0}
+@media (max-width:860px){
+  body{padding:58px 12px 56px}
+  .panel{position:static;width:auto;margin:18px auto 0;backdrop-filter:none}
+  .slide{padding:58px 14px 96px}
+}
+@media (prefers-reduced-motion:reduce){ .tile .ph{transition:none} }
+::view-transition-old(frame),::view-transition-new(frame){animation-duration:.34s;mix-blend-mode:normal}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="wrap">
+  <h1>The lightbox is a scroller</h1>
+  <p class="lede">The thumbnail <em>morphs</em> into the slide on a view transition; the slides themselves are a
+  scroll-snap strip, so swiping is native scrolling with native momentum. Pull one down to let it go.</p>
+  <div class="gal" id="gal"></div>
+</div>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Gallery viewer">
+  <div class="scrim" id="scrim"></div>
+  <div class="strip" id="strip"></div>
+  <div class="hud"><span class="n" id="count">1 / 9</span><button class="x" id="close" aria-label="Close">✕</button></div>
+  <div class="hint" id="hint">drag down to dismiss · double-tap to zoom</div>
+  <div class="cap" id="cap"></div>
+</div>
+
+<div class="panel">
+  <h2>Viewer</h2>
+  <label class="lay"><input type="checkbox" id="morph" checked>morph on open</label>
+  <label class="lay"><input type="checkbox" id="snap" checked>scroll snapping</label>
+  <label class="lay"><input type="checkbox" id="elastic" checked>elastic pull</label>
+  <h2>Dismiss</h2>
+  <label class="sl">threshold <input id="th" type="range" min="40" max="260" step="10" value="120"><b id="vth">120px</b></label>
+  <div class="tiny" id="sup">view transitions: checking…</div>
+  <div class="tiny">Arrows move, Esc closes, double-click zooms, ctrl + wheel zooms at the pointer.</div>
+</div>
+<footer>Inspired by <a href="https://github.com/arturbien/ramka" target="_blank" rel="noopener">arturbien/ramka</a> · UI Spotlight Day 155 · Drop #5</footer>
+<script>
+(function(){
+"use strict";
+var DATA = [
+  ["Harbour, 5am",      "linear-gradient(145deg,#ff9a6b,#e05f8f 48%,#6442b8)"],
+  ["Cold front",        "linear-gradient(160deg,#38bdf8,#1e3a8a 60%,#0b1220)"],
+  ["Pollen",            "linear-gradient(135deg,#fde68a,#f59e0b 55%,#b45309)"],
+  ["Moss study",        "linear-gradient(150deg,#6ee7b7,#065f46 62%,#052e26)"],
+  ["Night bus",         "linear-gradient(200deg,#a78bfa,#4c1d95 58%,#140b2b)"],
+  ["Salt flat",         "linear-gradient(125deg,#f4f1ea,#cbbfa8 58%,#8a7c63)"],
+  ["Tungsten",          "linear-gradient(170deg,#fca5a5,#b91c1c 56%,#450a0a)"],
+  ["Deep water",        "linear-gradient(155deg,#22d3ee,#0e7490 50%,#082f49)"],
+  ["Paper, folded",     "linear-gradient(140deg,#e2e8f0,#94a3b8 55%,#334155)"]
+];
+var gal = document.getElementById("gal"), strip = document.getElementById("strip");
+var lb = document.getElementById("lb"), capEl = document.getElementById("cap"), countEl = document.getElementById("count");
+var cur = 0, open = false, opts = { morph:true, snap:true, elastic:true, th:120 };
+var canVT = typeof document.startViewTransition === "function";
+var reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+document.getElementById("sup").textContent = "view transitions: " + (canVT ? "native" : "crossfade fallback");
+
+DATA.forEach(function(d, i){
+  var b = document.createElement("button");
+  b.className = "tile"; b.type = "button";
+  b.innerHTML = '<div class="ph" style="--g:' + d[1] + '"></div><b>' + d[0] + '</b><span>plate ' + (i + 1) + ' of ' + DATA.length + '</span>';
+  b.addEventListener("click", function(){ openAt(i, b); });
+  gal.appendChild(b);
+  var s = document.createElement("div");
+  s.className = "slide";
+  s.innerHTML = '<div class="ph" style="--g:' + d[1] + '"></div>';
+  strip.appendChild(s);
+});
+var slides = [].slice.call(strip.children);
+function ph(i, root){ return (root || document).querySelectorAll(".ph")[i]; }
+
+/* ── open / close, with the thumbnail morphing into the slide ──── */
+function openAt(i, tile){
+  cur = i;
+  var from = tile.querySelector(".ph"), to = slides[i].querySelector(".ph");
+  var run = function(){
+    lb.classList.add("on"); document.body.classList.add("lock");
+    strip.scrollLeft = i * strip.clientWidth;
+    open = true; paint();
+  };
+  if (opts.morph && canVT && !reduce){
+    from.style.viewTransitionName = "frame";          // only ever one element wears the name
+    var vt = document.startViewTransition(function(){
+      from.style.viewTransitionName = "";
+      to.style.viewTransitionName = "frame";
+      run();
+    });
+    vt.finished.finally(function(){ to.style.viewTransitionName = ""; });
+  } else { run(); lb.animate([{ opacity:0 }, { opacity:1 }], { duration: reduce ? 1 : 180 }); }
+}
+function close(){
+  if (!open) return;
+  var to = document.querySelectorAll(".tile")[cur].querySelector(".ph");
+  var from = slides[cur].querySelector(".ph");
+  var run = function(){
+    lb.classList.remove("on"); document.body.classList.remove("lock");
+    open = false; resetPull(); unzoom();
+  };
+  if (opts.morph && canVT && !reduce){
+    from.style.viewTransitionName = "frame";
+    var vt = document.startViewTransition(function(){
+      from.style.viewTransitionName = "";
+      to.style.viewTransitionName = "frame";
+      run();
+    });
+    vt.finished.finally(function(){ to.style.viewTransitionName = ""; });
+  } else run();
+}
+document.getElementById("close").addEventListener("click", close);
+document.getElementById("scrim").addEventListener("click", close);
+function paint(){
+  countEl.textContent = (cur + 1) + " / " + DATA.length;
+  capEl.innerHTML = "<b>" + DATA[cur][0] + "</b><span>scroll-snap slide " + (cur + 1) +
+    " · " + (zoom > 1 ? "zoomed " + zoom.toFixed(1) + "×" : "fit") + "</span>";
+}
+/* ── the strip is the carousel: native scrolling drives the state ── */
+strip.addEventListener("scroll", function(){
+  var i = Math.round(strip.scrollLeft / Math.max(1, strip.clientWidth));
+  if (i !== cur && i >= 0 && i < DATA.length){ cur = i; unzoom(); paint(); }
+}, { passive:true });
+function goto(i){
+  i = Math.max(0, Math.min(DATA.length - 1, i));
+  strip.scrollTo({ left: i * strip.clientWidth, behavior: reduce ? "auto" : "smooth" });
+}
+/* ── pull to dismiss: elastic, interruptible ────────────────────── */
+var pull = null, pulled = 0;
+function resetPull(){
+  pulled = 0;
+  slides.forEach(function(s){ s.querySelector(".ph").style.transform = ""; });
+  document.getElementById("scrim").style.opacity = "";
+}
+function applyPull(dy){
+  pulled = dy;
+  var el = slides[cur].querySelector(".ph");
+  var damp = opts.elastic ? Math.sign(dy) * Math.pow(Math.abs(dy), .86) : dy;
+  var k = Math.min(.22, Math.abs(damp) / 1400);
+  el.style.transform = "translateY(" + damp + "px) scale(" + (1 - k) + ")";
+  document.getElementById("scrim").style.opacity = String(Math.max(.25, 1 - Math.abs(damp) / 520));
+}
+strip.addEventListener("pointerdown", function(e){
+  if (!open) return;
+  if (zoom > 1){ panStart(e); return; }
+  pull = { y: e.clientY, x: e.clientX, id: e.pointerId, lock: null };
+});
+strip.addEventListener("pointermove", function(e){
+  if (zoom > 1){ panMove(e); return; }
+  if (!pull || e.pointerId !== pull.id) return;
+  var dy = e.clientY - pull.y, dx = e.clientX - pull.x;
+  if (pull.lock === null && (Math.abs(dy) > 6 || Math.abs(dx) > 6)) pull.lock = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
+  if (pull.lock !== "y") return;
+  if (e.pointerType === "mouse") e.preventDefault();
+  applyPull(dy);
+});
+["pointerup", "pointercancel", "pointerleave"].forEach(function(ev){
+  strip.addEventListener(ev, function(e){
+    if (zoom > 1){ panEnd(); return; }
+    if (!pull) return;
+    pull = null;
+    if (Math.abs(pulled) > opts.th) close();
+    else {
+      var el = slides[cur].querySelector(".ph");
+      el.animate([{ transform: el.style.transform || "none" }, { transform:"none" }],
+                 { duration: reduce ? 1 : 260, easing:"cubic-bezier(.22,1,.36,1)" });
+      resetPull();
+    }
+  });
+});
+/* ── zoom: double-click, or ctrl + wheel at the pointer ─────────── */
+var zoom = 1, zx = 0, zy = 0, panning = null;
+function applyZoom(){
+  var el = slides[cur].querySelector(".ph");
+  el.style.transform = zoom > 1 ? "translate(" + zx + "px," + zy + "px) scale(" + zoom + ")" : "";
+  slides[cur].classList.toggle("zoom", zoom > 1);
+  paint();
+}
+function unzoom(){ if (zoom !== 1){ zoom = 1; zx = zy = 0; applyZoom(); } }
+strip.addEventListener("dblclick", function(e){
+  if (!open) return;
+  if (zoom > 1) unzoom();
+  else {
+    zoom = 2.4;
+    var r = slides[cur].querySelector(".ph").getBoundingClientRect();
+    zx = (r.left + r.width / 2 - e.clientX) * 1.1; zy = (r.top + r.height / 2 - e.clientY) * 1.1;
+    applyZoom();
+  }
+});
+strip.addEventListener("wheel", function(e){
+  if (!open) return;
+  if (!e.ctrlKey && zoom === 1) return;       // plain wheel keeps scrolling the strip
+  e.preventDefault();
+  zoom = Math.max(1, Math.min(5, zoom * (e.deltaY > 0 ? .9 : 1.1)));
+  if (zoom === 1){ zx = zy = 0; }
+  applyZoom();
+}, { passive:false });
+function panStart(e){ panning = { x:e.clientX - zx, y:e.clientY - zy, id:e.pointerId }; }
+function panMove(e){ if (!panning || e.pointerId !== panning.id) return; zx = e.clientX - panning.x; zy = e.clientY - panning.y; applyZoom(); }
+function panEnd(){ panning = null; }
+/* ── keyboard ───────────────────────────────────────────────────── */
+document.addEventListener("keydown", function(e){
+  if (!open) return;
+  if (e.key === "Escape") close();
+  if (e.key === "ArrowRight"){ unzoom(); goto(cur + 1); }
+  if (e.key === "ArrowLeft"){ unzoom(); goto(cur - 1); }
+});
+window.addEventListener("resize", function(){ if (open) strip.scrollLeft = cur * strip.clientWidth; });
+/* ── panel ──────────────────────────────────────────────────────── */
+document.getElementById("morph").addEventListener("change", function(e){ opts.morph = e.target.checked; });
+document.getElementById("elastic").addEventListener("change", function(e){ opts.elastic = e.target.checked; });
+document.getElementById("snap").addEventListener("change", function(e){
+  opts.snap = e.target.checked;
+  strip.style.scrollSnapType = opts.snap ? "x mandatory" : "none";
+});
+document.getElementById("th").addEventListener("input", function(e){
+  opts.th = +e.target.value; document.getElementById("vth").textContent = opts.th + "px";
+});
+paint();
+window.__lb = { openAt: function(i){ openAt(i, document.querySelectorAll(".tile")[i]); },
+                close: close, state: function(){ return { open:open, cur:cur, zoom:zoom, canVT:canVT }; },
+                pull: function(dy){ applyPull(dy); }, goto: goto };
+})();
+</script>
+</body>
+</html>

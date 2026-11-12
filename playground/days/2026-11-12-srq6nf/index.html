@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Headway — Timetable Stringline Studio</title>
+<meta name="description" content="Lay out a railway, run services down it, drag the strings to retime them, and let the analyser find every single-track meet and headway breach — then export the timetable.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#05070c; --panel:#080d15; --line:#18212f; --line2:#111926;
+  --ink:#e9eef8; --dim:#8395b0; --dim2:#5d6e85;
+  --loc:#5ad1ff; --exp:#ffd166; --frt:#b79bff; --bad:#ff6b7f; --ok:#8affc1;
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1100px 680px at 6% -14%,#0b1a33 0%,transparent 60%),
+    radial-gradient(900px 600px at 102% 106%,#1a1030 0%,transparent 58%),
+    var(--bg);
+  color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow:hidden;-webkit-text-size-adjust:100%;
+}
+#app{display:flex;flex-direction:column;height:100%;height:100dvh}
+header{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;flex-wrap:wrap;flex:0 0 auto;
+  border-bottom:1px solid var(--line);background:rgba(5,9,15,.9);backdrop-filter:blur(12px);
+}
+.brand{font-weight:800;letter-spacing:.3px;font-size:15px;white-space:nowrap;line-height:1.1}
+.brand i{font-style:normal;color:var(--loc)}
+.brand small{display:block;font-weight:500;font-size:10px;color:var(--dim2);letter-spacing:.7px;text-transform:uppercase}
+.ctrls{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap}
+button,select,input[type=text],input[type=number]{
+  font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);
+  background:linear-gradient(180deg,#131c29,#0c131e);border:1px solid var(--line);
+  border-radius:9px;padding:7px 10px;cursor:pointer;white-space:nowrap;
+  transition:transform .12s ease,border-color .15s,background .15s,box-shadow .15s;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+input[type=text],input[type=number]{cursor:text;font-weight:500}
+select{padding:7px 8px}
+button:hover,select:hover{border-color:#2b3a52}
+button:active{transform:translateY(1px) scale(.985)}
+button.pri{background:linear-gradient(180deg,#6fd9ff,#1ea7e0);color:#02121c;border-color:#8fe4ff;box-shadow:0 7px 20px -9px #5ad1ffaa}
+button.go{background:linear-gradient(180deg,#9bffcf,#2fc584);color:#032015;border-color:#b6ffdd;box-shadow:0 7px 20px -9px #8affc1aa}
+button.sm{padding:5px 8px;font-size:11.5px}
+button.ic{padding:5px 7px;font-size:11px;color:var(--dim)}
+button.on{border-color:var(--loc);box-shadow:inset 0 0 0 1px #5ad1ff55}
+button:disabled{opacity:.42;cursor:not-allowed}
+main{flex:1 1 auto;display:flex;min-height:0}
+#stage{position:relative;flex:1 1 auto;min-width:0;min-height:0;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#tip{
+  position:absolute;pointer-events:none;opacity:0;transition:opacity .12s;z-index:5;
+  background:rgba(8,13,21,.95);border:1px solid #23314a;border-radius:10px;padding:7px 9px;
+  font-size:11.5px;line-height:1.5;max-width:230px;box-shadow:0 14px 34px -16px #000;
+}
+#tip b{color:var(--loc)}
+#tip s{display:block;color:var(--dim);text-decoration:none;font-size:10.5px}
+.hud{
+  position:absolute;left:10px;bottom:10px;display:flex;gap:6px;flex-wrap:wrap;z-index:4;
+  max-width:calc(100% - 130px);
+}
+.pill{
+  font-size:10.5px;font-weight:700;letter-spacing:.4px;color:var(--dim);
+  background:rgba(8,13,21,.82);border:1px solid var(--line);border-radius:999px;padding:5px 10px;
+  backdrop-filter:blur(8px);
+}
+.pill b{color:var(--ink);font-variant-numeric:tabular-nums}
+.pill.bad{color:#ffd9de;border-color:#5a2733;background:rgba(60,16,26,.7)}
+.pill.ok{color:#d6ffe9;border-color:#1f4f3b;background:rgba(10,42,30,.6)}
+.zoomer{position:absolute;right:10px;bottom:10px;display:flex;gap:5px;z-index:4}
+aside{
+  flex:0 0 300px;border-left:1px solid var(--line);background:rgba(7,11,18,.94);
+  display:flex;flex-direction:column;min-height:0;
+}
+.tabs{display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs button{flex:1 1 0;justify-content:center;text-align:center;padding:7px 4px;font-size:12px}
+.pane{flex:1 1 auto;overflow-y:auto;padding:10px 10px 22px;display:none;scrollbar-width:thin}
+.pane.show{display:block}
+.pane::-webkit-scrollbar{width:8px}
+.pane::-webkit-scrollbar-thumb{background:#1b2634;border-radius:8px}
+h3{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim2);margin:12px 0 7px;font-weight:700}
+h3:first-child{margin-top:2px}
+.row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.row input[type=text]{flex:1 1 0;min-width:0;padding:6px 8px}
+.row input[type=number]{width:62px;padding:6px 6px;text-align:right}
+.lab{font-size:11px;color:var(--dim);flex:0 0 auto}
+.svc{
+  border:1px solid var(--line);border-radius:12px;padding:9px;margin-bottom:8px;
+  background:linear-gradient(170deg,rgba(18,26,38,.7),rgba(9,13,21,.8));
+  border-left:3px solid var(--c,#5ad1ff);cursor:pointer;transition:border-color .15s,transform .12s;
+}
+.svc.sel{box-shadow:inset 0 0 0 1px #5ad1ff44;border-top-color:#2b3a52;border-right-color:#2b3a52;border-bottom-color:#2b3a52}
+.svc .hd{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.svc .hd b{font-size:12.5px;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.svc .hd .tag{font-size:9.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--c);
+  border:1px solid currentColor;border-radius:6px;padding:2px 5px;opacity:.85}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld span{font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);font-weight:700}
+.fld input,.fld select{width:100%;padding:5px 6px;font-size:12px}
+.stops{display:flex;gap:3px;flex-wrap:wrap;margin-top:7px}
+.stops button{padding:3px 6px;font-size:10px;font-weight:700;border-radius:6px;color:var(--dim2);background:#0c131e}
+.stops button.on{color:#021018;background:linear-gradient(180deg,#9bd9ff,#4ab6e8);border-color:#9bd9ff}
+.sta{display:flex;align-items:center;gap:5px;margin-bottom:5px}
+.sta input[type=text]{flex:1 1 0;min-width:0;padding:5px 7px;font-size:12px}
+.sta input[type=number]{width:54px;padding:5px 5px;font-size:12px;text-align:right}
+.seg{display:flex;align-items:center;gap:7px;margin:0 0 5px 10px;font-size:10.5px;color:var(--dim2)}
+.seg button{padding:2px 7px;font-size:10px;border-radius:999px}
+.seg button.single{color:#ffd9b0;border-color:#5a4327;background:#241a10}
+.cf{border:1px solid #3a1f29;background:rgba(48,14,22,.5);border-radius:10px;padding:8px;margin-bottom:6px;
+  font-size:11.5px;cursor:pointer;transition:border-color .15s}
+.cf:hover{border-color:#7d3346}
+.cf b{color:#ffb3c0}
+.cf s{display:block;text-decoration:none;color:#b98f9b;font-size:10.5px;margin-top:2px}
+.empty{font-size:11.5px;color:var(--dim2);border:1px dashed #1d2938;border-radius:10px;padding:12px;text-align:center}
+table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:4px 5px;border-bottom:1px solid var(--line2);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:#080d15}
+thead th{color:var(--dim2);font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;position:sticky;top:0;background:#080d15;z-index:2}
+.tw{overflow:auto;max-height:100%;border:1px solid var(--line);border-radius:10px}
+.sl{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);margin-bottom:8px}
+.sl input[type=range]{flex:1 1 0;accent-color:var(--loc);min-width:0}
+.sl b{color:var(--ink);font-variant-numeric:tabular-nums;min-width:40px;text-align:right}
+.hint{font-size:10.5px;color:var(--dim2);line-height:1.6;margin-top:10px;border-left:2px solid #1b2634;padding-left:9px}
+.back{position:fixed;left:10px;top:auto;bottom:auto;display:none}
+@media (max-width:860px){
+  main{flex-direction:column}
+  aside{flex:0 0 46%;border-left:none;border-top:1px solid var(--line)}
+  .brand small{display:none}
+  .hud{bottom:6px;left:6px}
+  .zoomer{bottom:6px;right:6px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><i>Headway</i><small>Timetable Stringline Studio</small></div>
+    <div class="ctrls">
+      <select id="preset" title="Load a line"><option value="">Line…</option></select>
+      <button id="addSvc" class="pri">+ Service</button>
+      <button id="repeat">Clockface…</button>
+      <button id="resolve" class="go">Resolve</button>
+      <select id="exp">
+        <option value="">Export…</option>
+        <option value="png">Stringline PNG</option>
+        <option value="csv">Timetable CSV</option>
+        <option value="json">Plan JSON</option>
+        <option value="link">Share link</option>
+      </select>
+    </div>
+  </header>
+  <main>
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div id="tip"></div>
+      <div class="hud">
+        <span class="pill" id="pSv">— services</span>
+        <span class="pill" id="pCf">—</span>
+        <span class="pill" id="pZ">—</span>
+      </div>
+      <div class="zoomer">
+        <button class="sm" id="zOut">−</button>
+        <button class="sm" id="zIn">+</button>
+        <button class="sm" id="zFit">Fit</button>
+      </div>
+    </div>
+    <aside>
+      <div class="tabs">
+        <button data-t="svc" class="on">Services</button>
+        <button data-t="line">Line</button>
+        <button data-t="an">Analyse</button>
+        <button data-t="tt">Timetable</button>
+      </div>
+      <div class="pane show" id="pane-svc"></div>
+      <div class="pane" id="pane-line"></div>
+      <div class="pane" id="pane-an"></div>
+      <div class="pane" id="pane-tt"></div>
+    </aside>
+  </main>
+</div>
+<script>
+(function(){
+"use strict";
+/* ───────────────────────── model ───────────────────────── */
+var KEY = "headway_plan_v1";
+var CLS = {
+  local:   { name:"Local",   color:"#5ad1ff", speed:70,  dwell:45 },
+  express: { name:"Express", color:"#ffd166", speed:120, dwell:30 },
+  freight: { name:"Freight", color:"#b79bff", speed:48,  dwell:0  }
+};
+var PRESETS = {
+  valley: {
+    name:"Valley Branch",
+    stations:[
+      {n:"Harbour Quay",km:0},{n:"Saltmarsh",km:7.5},{n:"Wrenfield",km:16},
+      {n:"Cobb Hollow",km:24},{n:"Thistle Gate",km:33.5},{n:"Upper Ley",km:41}
+    ],
+    single:[false,true,true,false,true],
+    svcs:[
+      {n:"V1 Local",  cls:"local",  dir: 1, dep:6*60,    stops:[1,1,1,1,1,1]},
+      {n:"V2 Local",  cls:"local",  dir:-1, dep:6*60+12, stops:[1,1,1,1,1,1]},
+      {n:"V3 Express",cls:"express",dir: 1, dep:6*60+34, stops:[1,0,1,0,0,1]},
+      {n:"V4 Freight",cls:"freight",dir:-1, dep:6*60+20, stops:[1,0,0,0,0,1]}
+    ]
+  },
+  trunk: {
+    name:"Northern Trunk",
+    stations:[
+      {n:"Central",km:0},{n:"Foundry Road",km:5},{n:"Kiln Park",km:12},{n:"Marrow Bridge",km:21},
+      {n:"Alderstone",km:30},{n:"Pike End",km:38},{n:"North Gate",km:47}
+    ],
+    single:[false,false,false,true,false,false],
+    svcs:[
+      {n:"N1 Local",  cls:"local",  dir: 1, dep:7*60,    stops:[1,1,1,1,1,1,1]},
+      {n:"N2 Express",cls:"express",dir: 1, dep:7*60+8,  stops:[1,0,0,1,0,0,1]},
+      {n:"N3 Local",  cls:"local",  dir:-1, dep:7*60+4,  stops:[1,1,1,1,1,1,1]},
+      {n:"N4 Express",cls:"express",dir:-1, dep:7*60+26, stops:[1,0,0,1,0,0,1]}
+    ]
+  },
+  mountain: {
+    name:"Pass & Summit",
+    stations:[
+      {n:"Lowgate",km:0},{n:"Birch Siding",km:6},{n:"Ravine Halt",km:11},
+      {n:"Summit",km:17.5},{n:"Scree Loop",km:23},{n:"Farside",km:29}
+    ],
+    single:[true,true,true,true,true],
+    svcs:[
+      {n:"M1 Local",  cls:"local",  dir: 1, dep:8*60,    stops:[1,1,1,1,1,1]},
+      {n:"M2 Local",  cls:"local",  dir:-1, dep:8*60+6,  stops:[1,1,1,1,1,1]},
+      {n:"M3 Freight",cls:"freight",dir: 1, dep:8*60+40, stops:[1,0,0,1,0,1]}
+    ]
+  }
+};
+var uid = 1;
+var S = null;          // live plan
+var view = { t0: 360, t1: 480 };
+var sel = null;        // selected service id
+var dpr = 1, W = 800, H = 500;
+var PAD = { l: 92, r: 14, t: 28, b: 22 };
+var cfs = [];          // conflicts
+var hover = null;
+
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function newPlan(key){
+  var p = PRESETS[key] || PRESETS.valley;
+  var plan = {
+    preset:key, name:p.name,
+    stations:p.stations.map(function(s){ return { name:s.n, km:s.km }; }),
+    single:p.single.slice(),
+    headway:4,
+    services:p.svcs.map(function(s){
+      return { id:uid++, name:s.n, cls:s.cls, dir:s.dir, dep:s.dep,
+               speed:CLS[s.cls].speed, dwell:CLS[s.cls].dwell, stops:s.stops.map(Boolean) };
+    })
+  };
+  return plan;
+}
+/* ───────────────────────── schedule maths ───────────────────────── */
+var STOP_PENALTY = 0.65;  // minutes lost braking + accelerating for a stop
+
+function schedule(sv){
+  var st = S.stations, n = st.length;
+  var order = [];
+  for (var i = 0; i < n; i++) order.push(sv.dir > 0 ? i : n - 1 - i);
+  var rows = [], t = sv.dep;
+  for (var k = 0; k < order.length; k++){
+    var idx = order[k];
+    if (k === 0){ rows.push({ i: idx, arr: t, dep: t }); continue; }
+    var d = Math.abs(st[idx].km - st[order[k-1]].km);
+    var tt = d / Math.max(8, sv.speed) * 60;
+    var stopsHere = sv.stops[idx] || k === order.length - 1;
+    var stoppedBefore = sv.stops[order[k-1]] || k === 1;
+    if (stopsHere) tt += STOP_PENALTY / 2;
+    if (stoppedBefore) tt += STOP_PENALTY / 2;
+    var arr = t + tt;
+    var dw = stopsHere && k !== order.length - 1 ? sv.dwell / 60 : 0;
+    rows.push({ i: idx, arr: arr, dep: arr + dw });
+    t = arr + dw;
+  }
+  return rows;
+}
+function recalc(){
+  S.services.forEach(function(sv){
+    sv.sched = schedule(sv);
+    var pts = [];
+    sv.sched.forEach(function(r){
+      pts.push({ t: r.arr, km: S.stations[r.i].km });
+      if (r.dep > r.arr + 1e-9) pts.push({ t: r.dep, km: S.stations[r.i].km });
+    });
+    sv.pts = pts;
+  });
+  cfs = findConflicts();
+}
+function occupancy(){
+  // per segment index -> [{sv, t0, t1}]
+  var occ = {};
+  S.services.forEach(function(sv){
+    for (var k = 1; k < sv.sched.length; k++){
+      var a = sv.sched[k-1], b = sv.sched[k];
+      var seg = Math.min(a.i, b.i);
+      (occ[seg] = occ[seg] || []).push({ sv: sv, t0: a.dep, t1: b.arr });
+    }
+  });
+  return occ;
+}
+function findConflicts(){
+  var out = [], occ = occupancy(), st = S.stations;
+  Object.keys(occ).forEach(function(k){
+    var seg = +k, list = occ[k], isSingle = !!S.single[seg];
+    for (var a = 0; a < list.length; a++) for (var b = a + 1; b < list.length; b++){
+      var A = list[a], B = list[b];
+      var ov0 = Math.max(A.t0, B.t0), ov1 = Math.min(A.t1, B.t1);
+      if (ov1 - ov0 <= 1e-6) continue;
+      var opposing = A.sv.dir !== B.sv.dir;
+      if (opposing && !isSingle) continue;      // double track handles meets fine
+      var km = (st[seg].km + st[seg+1].km) / 2;
+      out.push({
+        type: opposing ? "meet" : "overtake",
+        t: (ov0 + ov1) / 2, km: km, seg: seg, a: A.sv, b: B.sv,
+        mins: ov1 - ov0,
+        text: opposing
+          ? A.sv.name + " meets " + B.sv.name + " on single track"
+          : A.sv.name + " catches " + B.sv.name + " between stations",
+        where: st[seg].name + " → " + st[seg+1].name
+      });
+    }
+  });
+  // station headway breaches, per direction
+  st.forEach(function(s, i){
+    [1, -1].forEach(function(dir){
+      var deps = S.services.filter(function(sv){ return sv.dir === dir; }).map(function(sv){
+        var r = sv.sched.filter(function(r){ return r.i === i; })[0];
+        return r ? { sv: sv, t: r.dep } : null;
+      }).filter(Boolean).sort(function(x, y){ return x.t - y.t; });
+      for (var k = 1; k < deps.length; k++){
+        var gap = deps[k].t - deps[k-1].t;
+        if (gap < S.headway - 1e-6) out.push({
+          type:"headway", t:(deps[k].t + deps[k-1].t)/2, km:s.km, seg:-1,
+          a:deps[k-1].sv, b:deps[k].sv, mins:gap,
+          text: deps[k].sv.name + " is " + fmtDur(gap) + " behind " + deps[k-1].sv.name,
+          where: s.name + " · min headway " + S.headway + " min"
+        });
+      }
+    });
+  });
+  return out;
+}
+function autoResolve(){
+  var tries = 0, moved = 0;
+  while (tries++ < 400){
+    recalc();
+    if (!cfs.length) break;
+    var c = cfs[0];
+    // nudge whichever service departs later; freight yields first on a meet
+    var cand = c.a.dep > c.b.dep ? c.a : c.b;
+    if (c.type === "meet"){
+      if (c.a.cls === "freight") cand = c.a;
+      else if (c.b.cls === "freight") cand = c.b;
+    }
+    cand.dep += 1; moved++;
+    if (cand.dep > 24 * 60) { cand.dep -= 24 * 60; }
+  }
+  recalc();
+  return { moved: moved, left: cfs.length };
+}
+/* ───────────────────────── formatting ───────────────────────── */
+function fmtT(m){
+  m = ((m % 1440) + 1440) % 1440;
+  var h = Math.floor(m / 60), mm = Math.floor(m % 60);
+  return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
+}
+function fmtTs(m){
+  var s = Math.round((m % 1) * 60);
+  return fmtT(m) + (s ? ":" + (s < 10 ? "0" : "") + s : "");
+}
+function fmtDur(m){
+  if (m < 1) return Math.round(m * 60) + "s";
+  return (Math.round(m * 10) / 10) + " min";
+}
+/* ───────────────────────── canvas ───────────────────────── */
+var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+function resize(){
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  var r = cv.parentNode.getBoundingClientRect();
+  W = Math.max(240, r.width); H = Math.max(200, r.height);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  PAD.l = W < 520 ? 88 : 112;
+  draw();
+}
+function kmSpan(){
+  var st = S.stations, lo = st[0].km, hi = st[0].km;
+  st.forEach(function(s){ lo = Math.min(lo, s.km); hi = Math.max(hi, s.km); });
+  if (hi - lo < 1) hi = lo + 1;
+  return [lo, hi];
+}
+function X(t){ return PAD.l + (t - view.t0) / (view.t1 - view.t0) * (W - PAD.l - PAD.r); }
+function Y(km){ var s = kmSpan(); return PAD.t + (km - s[0]) / (s[1] - s[0]) * (H - PAD.t - PAD.b); }
+function invX(px){ return view.t0 + (px - PAD.l) / (W - PAD.l - PAD.r) * (view.t1 - view.t0); }
+
+function ellipsize(txt, max){
+  if (ctx.measureText(txt).width <= max) return txt;
+  var t = txt;
+  while (t.length > 1 && ctx.measureText(t + "…").width > max) t = t.slice(0, -1);
+  return t + "…";
+}
+function draw(){
+  ctx.clearRect(0, 0, W, H);
+  var plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b;
+  // backdrop
+  var g = ctx.createLinearGradient(0, PAD.t, 0, H - PAD.b);
+  g.addColorStop(0, "rgba(14,22,36,.72)"); g.addColorStop(1, "rgba(7,11,18,.72)");
+  ctx.fillStyle = g; ctx.fillRect(PAD.l, PAD.t, plotW, plotH);
+
+  // single-track bands
+  for (var i = 0; i < S.stations.length - 1; i++){
+    if (!S.single[i]) continue;
+    var y0 = Y(S.stations[i].km), y1 = Y(S.stations[i+1].km);
+    ctx.fillStyle = "rgba(255,190,110,.065)";
+    ctx.fillRect(PAD.l, Math.min(y0, y1), plotW, Math.abs(y1 - y0));
+  }
+  // time grid
+  var span = view.t1 - view.t0;
+  var step = span > 480 ? 60 : span > 240 ? 30 : span > 120 ? 15 : span > 50 ? 10 : 5;
+  ctx.font = "600 10px system-ui,sans-serif"; ctx.textBaseline = "alphabetic";
+  var t = Math.ceil(view.t0 / step) * step;
+  for (; t <= view.t1; t += step){
+    var x = X(t);
+    ctx.strokeStyle = t % 60 === 0 ? "#1d2838" : "#141d29";
+    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
+    ctx.fillStyle = t % 60 === 0 ? "#8395b0" : "#5d6e85";
+    ctx.textAlign = "center"; ctx.fillText(fmtT(t), x, PAD.t - 9);
+  }
+  // station lines + labels
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  S.stations.forEach(function(s, i){
+    var y = Y(s.km);
+    ctx.strokeStyle = "#22303f"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
+    ctx.fillStyle = "#9fb0c8"; ctx.font = "600 10.5px system-ui,sans-serif";
+    ctx.fillText(ellipsize(s.name, PAD.l - 38), PAD.l - 32, y);
+    ctx.fillStyle = "#4f5f74"; ctx.font = "500 9px system-ui,sans-serif";
+    ctx.fillText(s.km.toFixed(1), PAD.l - 6, y);
+  });
+  // strings
+  var labelBoxes = [];
+  S.services.forEach(function(sv){
+    var col = CLS[sv.cls].color, isSel = sv.id === sel;
+    ctx.lineWidth = isSel ? 3.1 : 2;
+    ctx.strokeStyle = col;
+    ctx.globalAlpha = isSel || sel === null ? 1 : .42;
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    if (isSel){ ctx.shadowColor = col; ctx.shadowBlur = 12; }
+    ctx.beginPath();
+    sv.pts.forEach(function(p, k){
+      var x = X(p.t), y = Y(p.km);
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke(); ctx.shadowBlur = 0;
+    // stop dots
+    ctx.fillStyle = col;
+    sv.sched.forEach(function(r){
+      if (!sv.stops[r.i]) return;
+      var x = X(r.arr), y = Y(S.stations[r.i].km);
+      if (x < PAD.l - 6 || x > W - PAD.r + 6) return;
+      ctx.beginPath(); ctx.arc(x, y, isSel ? 3 : 2.2, 0, 6.2832); ctx.fill();
+    });
+    // name tag at first visible point
+    var p0 = sv.pts[0];
+    var tx = X(p0.t), ty = Y(p0.km);
+    if (tx > PAD.l - 40 && tx < W - PAD.r - 30){
+      ctx.font = "700 10px system-ui,sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      var lx = Math.max(PAD.l + 4, tx + 6);
+      var ly = Math.min(H - PAD.b - 9, Math.max(PAD.t + 10, ty + (sv.dir > 0 ? 11 : -11)));
+      var lw = ctx.measureText(sv.name).width;
+      for (var g = 0; g < 8; g++){                       // stagger labels that would collide
+        var clash = labelBoxes.some(function(r){
+          return lx < r.x + r.w + 4 && lx + lw + 4 > r.x && Math.abs(ly - r.y) < 13;
+        });
+        if (!clash) break;
+        ly += sv.dir > 0 ? 14 : -14;
+        if (ly > H - PAD.b - 9 || ly < PAD.t + 10){ ly = Math.min(H - PAD.b - 9, Math.max(PAD.t + 10, ly)); break; }
+      }
+      labelBoxes.push({ x: lx, y: ly, w: lw });
+      ctx.fillStyle = "rgba(5,8,14,.72)";
+      ctx.fillRect(lx - 3, ly - 7, lw + 6, 14);
+      ctx.fillStyle = col;
+      ctx.fillText(sv.name, lx, ly);
+    }
+    ctx.globalAlpha = 1;
+  });
+  // conflict markers
+  cfs.forEach(function(c){
+    var x = X(c.t), y = Y(c.km);
+    if (x < PAD.l || x > W - PAD.r) return;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = c.type === "headway" ? "#ff9db0" : "#ff6b7f";
+    ctx.lineWidth = 2; ctx.shadowColor = "#ff6b7f"; ctx.shadowBlur = 10;
+    if (c.type === "headway"){
+      ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, 6.2832); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(-5, -5); ctx.lineTo(5, 5); ctx.moveTo(5, -5); ctx.lineTo(-5, 5); ctx.stroke();
+    }
+    ctx.restore();
+  });
+  // frame
+  ctx.strokeStyle = "#22303f"; ctx.lineWidth = 1;
+  ctx.strokeRect(PAD.l + .5, PAD.t + .5, plotW - 1, plotH - 1);
+  // axis captions
+  ctx.fillStyle = "#4f5f74"; ctx.font = "700 9px system-ui,sans-serif";
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText("KM", 6, PAD.t - 20);
+  updateHud();
+}
+function updateHud(){
+  document.getElementById("pSv").innerHTML = "<b>" + S.services.length + "</b> services";
+  var cp = document.getElementById("pCf");
+  if (cfs.length){ cp.className = "pill bad"; cp.innerHTML = "<b>" + cfs.length + "</b> conflicts"; }
+  else { cp.className = "pill ok"; cp.innerHTML = "timetable is clear"; }
+  document.getElementById("pZ").innerHTML = fmtT(view.t0) + " – " + fmtT(view.t1) +
+    " · <b>" + Math.round(view.t1 - view.t0) + "</b> min";
+}
+/* ───────────────────────── picking + drag ───────────────────────── */
+function pick(px, py){
+  var best = null, bestD = 11;
+  S.services.forEach(function(sv){
+    for (var k = 1; k < sv.pts.length; k++){
+      var x1 = X(sv.pts[k-1].t), y1 = Y(sv.pts[k-1].km);
+      var x2 = X(sv.pts[k].t),   y2 = Y(sv.pts[k].km);
+      var d = segDist(px, py, x1, y1, x2, y2);
+      if (d < bestD){ bestD = d; best = sv; }
+    }
+  });
+  return best;
+}
+function segDist(px, py, x1, y1, x2, y2){
+  var dx = x2 - x1, dy = y2 - y1, L = dx*dx + dy*dy;
+  var t = L ? ((px - x1) * dx + (py - y1) * dy) / L : 0;
+  t = Math.max(0, Math.min(1, t));
+  var qx = x1 + t * dx, qy = y1 + t * dy;
+  return Math.hypot(px - qx, py - qy);
+}
+var drag = null;
+function localPt(e){
+  var r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+cv.addEventListener("pointerdown", function(e){
+  var p = localPt(e);
+  var sv = pick(p.x, p.y);
+  cv.setPointerCapture(e.pointerId);
+  if (sv){
+    sel = sv.id; renderSvc();
+    drag = { mode:"retime", sv: sv, x0: p.x, dep0: sv.dep };
+  } else {
+    drag = { mode:"pan", x0: p.x, t0: view.t0, t1: view.t1 };
+    sel = null; renderSvc();
+  }
+  draw();
+});
+cv.addEventListener("pointermove", function(e){
+  var p = localPt(e);
+  if (drag){
+    var mpp = (view.t1 - view.t0) / (W - PAD.l - PAD.r);
+    if (drag.mode === "retime"){
+      var d = (p.x - drag.x0) * mpp;
+      drag.sv.dep = Math.round((drag.dep0 + d) * 2) / 2;
+      recalc(); draw(); renderSvc(); renderAn(); renderTT();
+    } else {
+      var d2 = (p.x - drag.x0) * mpp;
+      view.t0 = drag.t0 - d2; view.t1 = drag.t1 - d2;
+      draw();
+    }
+    return;
+  }
+  var sv = pick(p.x, p.y);
+  var tip = document.getElementById("tip");
+  cv.style.cursor = sv ? "grab" : "default";
+  if (sv){
+    var tAt = invX(p.x);
+    var at = nearestStop(sv, tAt);
+    tip.innerHTML = "<b>" + esc(sv.name) + "</b> · " + CLS[sv.cls].name +
+      "<s>" + (sv.dir > 0 ? "down" : "up") + " · " + sv.speed + " km/h · dwell " + sv.dwell + "s</s>" +
+      "<s>dep " + fmtT(sv.dep) + " · arr " + fmtT(sv.sched[sv.sched.length-1].arr) +
+      " · " + fmtDur(sv.sched[sv.sched.length-1].arr - sv.dep) + "</s>" +
+      (at ? "<s>" + esc(S.stations[at.i].name) + " a" + fmtTs(at.arr) + " d" + fmtTs(at.dep) + "</s>" : "");
+    tip.style.opacity = 1;
+    var tw = 200;
+    tip.style.left = Math.min(W - tw - 8, Math.max(6, p.x + 12)) + "px";
+    tip.style.top = Math.max(4, p.y - 64) + "px";
+    hover = sv.id;
+  } else { tip.style.opacity = 0; hover = null; }
+});
+function nearestStop(sv, t){
+  var best = null, bd = 1e9;
+  sv.sched.forEach(function(r){
+    var d = Math.min(Math.abs(r.arr - t), Math.abs(r.dep - t));
+    if (d < bd){ bd = d; best = r; }
+  });
+  return best;
+}
+function endDrag(){ if (drag){ drag = null; save(); } }
+cv.addEventListener("pointerup", endDrag);
+cv.addEventListener("pointercancel", endDrag);
+cv.addEventListener("pointerleave", function(){ document.getElementById("tip").style.opacity = 0; });
+cv.addEventListener("wheel", function(e){
+  e.preventDefault();
+  var p = localPt(e), tAt = invX(p.x);
+  var f = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+  var span = Math.max(12, Math.min(1440, (view.t1 - view.t0) * f));
+  var frac = (tAt - view.t0) / (view.t1 - view.t0);
+  view.t0 = tAt - frac * span; view.t1 = view.t0 + span;
+  draw();
+}, { passive:false });
+
+function zoom(f){
+  var mid = (view.t0 + view.t1) / 2;
+  var span = Math.max(12, Math.min(1440, (view.t1 - view.t0) * f));
+  view.t0 = mid - span / 2; view.t1 = mid + span / 2; draw();
+}
+function fit(){
+  var lo = 1e9, hi = -1e9;
+  S.services.forEach(function(sv){
+    lo = Math.min(lo, sv.dep);
+    hi = Math.max(hi, sv.sched[sv.sched.length-1].arr);
+  });
+  if (lo > hi){ lo = 360; hi = 480; }
+  var pad = Math.max(6, (hi - lo) * .08);
+  view.t0 = lo - pad; view.t1 = hi + pad; draw();
+}
+/* ───────────────────────── panels ───────────────────────── */
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+  return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]; }); }
+
+function renderSvc(){
+  var p = document.getElementById("pane-svc"), h = "";
+  h += '<h3>Services on the line</h3>';
+  if (!S.services.length) h += '<div class="empty">No services yet — hit <b>+ Service</b>.</div>';
+  S.services.forEach(function(sv){
+    var c = CLS[sv.cls];
+    h += '<div class="svc' + (sv.id === sel ? ' sel' : '') + '" data-id="' + sv.id + '" style="--c:' + c.color + '">' +
+      '<div class="hd"><b>' + esc(sv.name) + '</b><span class="tag">' + (sv.dir > 0 ? "down" : "up") + '</span>' +
+      '<button class="ic" data-act="clone" data-id="' + sv.id + '" title="Duplicate">⧉</button>' +
+      '<button class="ic" data-act="del" data-id="' + sv.id + '" title="Delete">✕</button></div>' +
+      '<div class="grid2">' +
+        fld("Depart", '<input type="text" data-f="dep" data-id="' + sv.id + '" value="' + fmtT(sv.dep) + '">') +
+        fld("Class", '<select data-f="cls" data-id="' + sv.id + '">' +
+          Object.keys(CLS).map(function(k){ return '<option value="' + k + '"' + (k === sv.cls ? ' selected' : '') + '>' + CLS[k].name + '</option>'; }).join("") +
+          '</select>') +
+        fld("km/h", '<input type="number" min="10" max="320" step="5" data-f="speed" data-id="' + sv.id + '" value="' + sv.speed + '">') +
+        fld("Dwell s", '<input type="number" min="0" max="600" step="5" data-f="dwell" data-id="' + sv.id + '" value="' + sv.dwell + '">') +
+        fld("Direction", '<select data-f="dir" data-id="' + sv.id + '"><option value="1"' + (sv.dir > 0 ? ' selected' : '') + '>Down ↓</option><option value="-1"' + (sv.dir < 0 ? ' selected' : '') + '>Up ↑</option></select>') +
+        fld("Name", '<input type="text" data-f="name" data-id="' + sv.id + '" value="' + esc(sv.name) + '">') +
+      '</div>' +
+      '<div class="stops">' + S.stations.map(function(st, i){
+        return '<button data-act="stop" data-id="' + sv.id + '" data-i="' + i + '" class="' + (sv.stops[i] ? "on" : "") + '">' + esc(st.name.split(" ")[0]) + '</button>';
+      }).join("") + '</div>' +
+      '<div class="hint" style="margin-top:8px">runs ' + fmtDur(sv.sched[sv.sched.length-1].arr - sv.dep) +
+        ' · ' + sv.stops.filter(Boolean).length + ' calls · arrives ' + fmtT(sv.sched[sv.sched.length-1].arr) + '</div>' +
+      '</div>';
+  });
+  h += '<div class="hint">Drag any string sideways on the chart to retime it. Arrow keys nudge the selected service by a minute; <b>D</b> duplicates it.</div>';
+  p.innerHTML = h;
+}
+function fld(label, inner){ return '<label class="fld"><span>' + label + '</span>' + inner + '</label>'; }
+
+function renderLine(){
+  var p = document.getElementById("pane-line"), h = "";
+  h += '<h3>Line name</h3><div class="row"><input type="text" id="lineName" value="' + esc(S.name) + '"></div>';
+  h += '<h3>Stations &amp; track</h3>';
+  S.stations.forEach(function(st, i){
+    h += '<div class="sta">' +
+      '<input type="text" data-sf="name" data-i="' + i + '" value="' + esc(st.name) + '">' +
+      '<input type="number" step="0.5" data-sf="km" data-i="' + i + '" value="' + st.km + '">' +
+      '<button class="ic" data-act="delsta" data-i="' + i + '" title="Remove station">✕</button></div>';
+    if (i < S.stations.length - 1){
+      h += '<div class="seg"><span>↕</span><button data-act="single" data-i="' + i + '" class="' +
+        (S.single[i] ? "single" : "") + '">' + (S.single[i] ? "single track" : "double track") + '</button>' +
+        '<span>' + Math.abs(S.stations[i+1].km - st.km).toFixed(1) + ' km</span></div>';
+    }
+  });
+  h += '<div class="row"><button class="sm" data-act="addsta">+ Station</button>' +
+       '<button class="sm" data-act="allsingle">All single</button>' +
+       '<button class="sm" data-act="alldouble">All double</button></div>';
+  h += '<h3>Load a different line</h3><div class="row">' +
+       Object.keys(PRESETS).map(function(k){ return '<button class="sm" data-act="preset" data-k="' + k + '">' + esc(PRESETS[k].name) + '</button>'; }).join("") +
+       '</div>';
+  h += '<div class="hint">Shaded bands on the chart are single-track sections — two strings crossing inside one is a head-on meet, and the analyser will say so.</div>';
+  p.innerHTML = h;
+}
+function renderAn(){
+  var p = document.getElementById("pane-an"), h = "";
+  h += '<h3>Minimum headway</h3>' +
+    '<div class="sl"><input type="range" id="hwR" min="1" max="20" step="1" value="' + S.headway + '"><b id="hwV">' + S.headway + ' min</b></div>';
+  var meets = cfs.filter(function(c){ return c.type === "meet"; }).length;
+  var ovt = cfs.filter(function(c){ return c.type === "overtake"; }).length;
+  var hw = cfs.filter(function(c){ return c.type === "headway"; }).length;
+  h += '<h3>Findings</h3>';
+  if (!cfs.length) h += '<div class="empty" style="border-color:#1f4f3b;color:#9fe8c4">Clear: no meets, no overtakes, no headway breaches.</div>';
+  else {
+    h += '<div class="hint" style="margin:0 0 9px;border-color:#5a2733;color:#d9a7b2">' +
+      meets + ' single-track meet' + (meets === 1 ? "" : "s") + ' · ' + ovt + ' overtake' + (ovt === 1 ? "" : "s") +
+      ' · ' + hw + ' headway breach' + (hw === 1 ? "" : "es") + '</div>';
+    cfs.slice()
+       .sort(function(a, b){ return a.t - b.t; })
+       .forEach(function(c, k){
+      h += '<div class="cf" data-act="goto" data-k="' + k + '" data-t="' + c.t + '">' +
+        '<b>' + c.type.toUpperCase() + '</b> ' + esc(c.text) +
+        '<s>' + esc(c.where) + ' · around ' + fmtT(c.t) + ' · overlap ' + fmtDur(c.mins) + '</s></div>';
+    });
+  }
+  h += '<h3>Capacity</h3>';
+  var busiest = 0, occ = occupancy();
+  Object.keys(occ).forEach(function(k){ busiest = Math.max(busiest, occ[k].length); });
+  var span = 0;
+  S.services.forEach(function(sv){ span = Math.max(span, sv.sched[sv.sched.length-1].arr - sv.dep); });
+  h += '<div class="hint" style="border-color:#1b2634;color:#8395b0">' +
+    'longest run ' + fmtDur(span) + ' · busiest section carries ' + busiest + ' train' + (busiest === 1 ? "" : "s") +
+    ' · ' + S.single.filter(Boolean).length + ' of ' + S.single.length + ' sections single</div>';
+  h += '<div class="row" style="margin-top:10px"><button class="go" data-act="resolve">Auto-resolve conflicts</button></div>';
+  h += '<div class="hint">Resolve nudges departures a minute at a time — freight yields first on a meet — until the diagram is clean or it runs out of patience.</div>';
+  p.innerHTML = h;
+}
+function renderTT(){
+  var p = document.getElementById("pane-tt");
+  var dirs = [{ d: 1, t: "Down direction" }, { d: -1, t: "Up direction" }];
+  var h = "";
+  dirs.forEach(function(dd){
+    var list = S.services.filter(function(sv){ return sv.dir === dd.d; })
+                         .sort(function(a, b){ return a.dep - b.dep; });
+    if (!list.length) return;
+    h += '<h3>' + dd.t + '</h3><div class="tw"><table><thead><tr><th>Station</th>' +
+      list.map(function(sv){ return '<th style="color:' + CLS[sv.cls].color + '">' + esc(sv.name.split(" ")[0]) + '</th>'; }).join("") +
+      '</tr></thead><tbody>';
+    var order = [];
+    for (var i = 0; i < S.stations.length; i++) order.push(dd.d > 0 ? i : S.stations.length - 1 - i);
+    order.forEach(function(i){
+      h += '<tr><td>' + esc(S.stations[i].name) + '</td>' + list.map(function(sv){
+        var r = sv.sched.filter(function(r){ return r.i === i; })[0];
+        if (!r) return '<td style="color:#3f4c5e">·</td>';
+        if (!sv.stops[i]) return '<td style="color:#4f5f74">(' + fmtT(r.arr) + ')</td>';
+        return '<td>' + fmtT(r.dep) + '</td>';
+      }).join("") + '</tr>';
+    });
+    h += '</tbody></table></div>';
+  });
+  h += '<div class="hint">Times in brackets are passing times — the service does not call there. Export the CSV to take the whole thing away.</div>';
+  p.innerHTML = h;
+}
+function renderAll(){ renderSvc(); renderLine(); renderAn(); renderTT(); }
+/* ───────────────────────── interactions ───────────────────────── */
+document.querySelector(".tabs").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-t]"); if (!b) return;
+  document.querySelectorAll(".tabs button").forEach(function(x){ x.classList.toggle("on", x === b); });
+  document.querySelectorAll(".pane").forEach(function(x){ x.classList.remove("show"); });
+  document.getElementById("pane-" + b.dataset.t).classList.add("show");
+});
+document.querySelector("aside").addEventListener("click", function(e){
+  var b = e.target.closest("button"); 
+  if (b && b.dataset.act){
+    var act = b.dataset.act;
+    if (act === "del"){ S.services = S.services.filter(function(s){ return s.id !== +b.dataset.id; }); after(); return; }
+    if (act === "clone"){ cloneSvc(+b.dataset.id); return; }
+    if (act === "stop"){
+      var sv = byId(+b.dataset.id); sv.stops[+b.dataset.i] = !sv.stops[+b.dataset.i]; after(); return;
+    }
+    if (act === "single"){ S.single[+b.dataset.i] = !S.single[+b.dataset.i]; after(); return; }
+    if (act === "allsingle"){ S.single = S.single.map(function(){ return true; }); after(); return; }
+    if (act === "alldouble"){ S.single = S.single.map(function(){ return false; }); after(); return; }
+    if (act === "addsta"){
+      var last = S.stations[S.stations.length - 1];
+      S.stations.push({ name: "New Halt " + S.stations.length, km: +(last.km + 6).toFixed(1) });
+      S.single.push(S.single.length ? S.single[S.single.length - 1] : false);
+      S.services.forEach(function(s){ s.stops.push(true); });
+      after(); return;
+    }
+    if (act === "delsta"){
+      if (S.stations.length <= 2) return;
+      var i = +b.dataset.i;
+      S.stations.splice(i, 1);
+      S.single.splice(Math.min(i, S.single.length - 1), 1);
+      S.services.forEach(function(s){ s.stops.splice(i, 1); });
+      after(); return;
+    }
+    if (act === "preset"){ load(b.dataset.k); return; }
+    if (act === "resolve"){ doResolve(); return; }
+    return;
+  }
+  var cf = e.target.closest(".cf");
+  if (cf){
+    var t = +cf.dataset.t, span = view.t1 - view.t0;
+    view.t0 = t - span / 2; view.t1 = t + span / 2; draw(); return;
+  }
+  var card = e.target.closest(".svc");
+  if (card){ sel = +card.dataset.id; renderSvc(); draw(); }
+});
+document.querySelector("aside").addEventListener("input", function(e){
+  var el = e.target;
+  if (el.id === "hwR"){
+    S.headway = +el.value;
+    document.getElementById("hwV").textContent = S.headway + " min";
+    recalc(); draw();
+    renderAn(); save(); return;
+  }
+  if (el.id === "lineName"){ S.name = el.value; save(); return; }
+  if (el.dataset.f){
+    var sv = byId(+el.dataset.id); if (!sv) return;
+    var f = el.dataset.f;
+    if (f === "dep"){
+      var m = parseTime(el.value); if (m !== null) sv.dep = m;
+    } else if (f === "cls"){
+      sv.cls = el.value; sv.speed = CLS[sv.cls].speed; sv.dwell = CLS[sv.cls].dwell;
+    } else if (f === "dir"){ sv.dir = +el.value; }
+    else if (f === "name"){ sv.name = el.value.slice(0, 28); }
+    else sv[f] = Math.max(0, +el.value || 0);
+    recalc(); draw(); renderAn(); renderTT(); save();
+    if (f === "cls" || f === "dir") renderSvc();
+    return;
+  }
+  if (el.dataset.sf){
+    var i = +el.dataset.i;
+    if (el.dataset.sf === "km") S.stations[i].km = +el.value || 0;
+    else S.stations[i].name = el.value.slice(0, 24);
+    recalc(); draw(); renderAn(); renderTT(); save();
+    return;
+  }
+});
+function parseTime(v){
+  var m = /^(\d{1,2})[:.h]?(\d{2})?$/.exec(String(v).trim());
+  if (!m) return null;
+  var h = +m[1], mm = m[2] ? +m[2] : 0;
+  if (h > 23 || mm > 59) return null;
+  return h * 60 + mm;
+}
+function byId(id){ return S.services.filter(function(s){ return s.id === id; })[0]; }
+function cloneSvc(id){
+  var sv = byId(id); if (!sv) return;
+  var c = clone({ name: sv.name, cls: sv.cls, dir: sv.dir, dep: sv.dep, speed: sv.speed, dwell: sv.dwell, stops: sv.stops });
+  c.id = uid++; c.dep += 15;
+  c.name = bumpName(sv.name);
+  S.services.push(c); sel = c.id; after();
+}
+function bumpName(n){
+  var m = /^([A-Za-z]*)(\d+)(.*)$/.exec(n);
+  if (m) return m[1] + (+m[2] + 1) + m[3];
+  return n + " ‖";
+}
+function after(){ recalc(); draw(); renderAll(); save(); }
+document.getElementById("addSvc").addEventListener("click", function(){
+  var n = S.services.length;
+  var base = S.services[n - 1];
+  var sv = {
+    id: uid++, name: "S" + (n + 1) + " Local", cls: "local",
+    dir: base ? -base.dir : 1,
+    dep: base ? base.dep + 10 : 6 * 60,
+    speed: CLS.local.speed, dwell: CLS.local.dwell,
+    stops: S.stations.map(function(){ return true; })
+  };
+  S.services.push(sv); sel = sv.id; after();
+});
+document.getElementById("repeat").addEventListener("click", function(){
+  var sv = byId(sel) || S.services[0];
+  if (!sv){ return; }
+  var every = +prompt("Clockface: repeat " + sv.name + " every how many minutes?", "20");
+  if (!every || every < 2) return;
+  var count = +prompt("How many extra departures?", "4");
+  if (!count || count < 1) return;
+  count = Math.min(24, Math.round(count));
+  for (var k = 1; k <= count; k++){
+    var c = clone({ name: sv.name, cls: sv.cls, dir: sv.dir, dep: sv.dep, speed: sv.speed, dwell: sv.dwell, stops: sv.stops });
+    c.id = uid++; c.dep = sv.dep + every * k;
+    c.name = sv.name.replace(/\s*\d+$/, "") + " +" + (every * k);
+    S.services.push(c);
+  }
+  after(); fit();
+});
+function doResolve(){
+  var before = cfs.length;
+  var r = autoResolve();
+  draw(); renderAll(); save();
+  var cp = document.getElementById("pCf");
+  cp.className = r.left ? "pill bad" : "pill ok";
+  cp.innerHTML = r.left
+    ? "<b>" + r.left + "</b> left after " + r.moved + " nudges"
+    : "cleared " + before + " in " + r.moved + " nudges";
+}
+document.getElementById("resolve").addEventListener("click", doResolve);
+document.getElementById("zIn").addEventListener("click", function(){ zoom(1 / 1.3); });
+document.getElementById("zOut").addEventListener("click", function(){ zoom(1.3); });
+document.getElementById("zFit").addEventListener("click", fit);
+document.addEventListener("keydown", function(e){
+  if (/input|select|textarea/i.test(e.target.tagName)) return;
+  var sv = byId(sel);
+  if (!sv) return;
+  if (e.key === "ArrowLeft"){ sv.dep -= e.shiftKey ? 5 : 1; after(); e.preventDefault(); }
+  if (e.key === "ArrowRight"){ sv.dep += e.shiftKey ? 5 : 1; after(); e.preventDefault(); }
+  if (e.key === "Delete" || e.key === "Backspace"){ S.services = S.services.filter(function(s){ return s.id !== sel; }); sel = null; after(); }
+  if (e.key === "d" || e.key === "D"){ cloneSvc(sel); }
+});
+/* ───────────────────────── export ───────────────────────── */
+function dl(name, blob){
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  return blob.size;
+}
+function exportPNG(){
+  var scale = 2, c = document.createElement("canvas");
+  c.width = Math.round(W * scale); c.height = Math.round(H * scale);
+  var g = c.getContext("2d");
+  g.fillStyle = "#05070c"; g.fillRect(0, 0, c.width, c.height);
+  var oldCtx = ctx, oldDpr = dpr;
+  ctx = g; ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  draw();
+  ctx.fillStyle = "#5d6e85"; ctx.font = "600 10px system-ui,sans-serif";
+  ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+  ctx.fillText("Headway · " + S.name + " · " + S.services.length + " services", PAD.l, H - 4);
+  ctx = oldCtx; dpr = oldDpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw();
+  return new Promise(function(res){
+    c.toBlob(function(b){ res(dl(slug(S.name) + "-stringline.png", b)); }, "image/png");
+  });
+}
+function slug(s){ return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "line"; }
+function exportCSV(){
+  var rows = [];
+  rows.push(["Station", "km"].concat(S.services.map(function(sv){ return sv.name + " (" + (sv.dir > 0 ? "down" : "up") + ")"; })));
+  S.stations.forEach(function(st, i){
+    var r = [st.name, st.km];
+    S.services.forEach(function(sv){
+      var row = sv.sched.filter(function(x){ return x.i === i; })[0];
+      r.push(row ? (sv.stops[i] ? fmtT(row.dep) : "(" + fmtT(row.arr) + ")") : "");
+    });
+    rows.push(r);
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){ return /[",]/.test(String(c)) ? '"' + String(c).replace(/"/g, '""') + '"' : c; }).join(",");
+  }).join("\n");
+  return dl(slug(S.name) + "-timetable.csv", new Blob([csv], { type:"text/csv" }));
+}
+function planJSON(){
+  return JSON.stringify({
+    v: 1, name: S.name, preset: S.preset, headway: S.headway,
+    stations: S.stations, single: S.single,
+    services: S.services.map(function(sv){
+      return { name: sv.name, cls: sv.cls, dir: sv.dir, dep: sv.dep, speed: sv.speed, dwell: sv.dwell, stops: sv.stops.map(function(b){ return b ? 1 : 0; }) };
+    })
+  });
+}
+function exportJSON(){ return dl(slug(S.name) + "-plan.json", new Blob([planJSON()], { type:"application/json" })); }
+function shareLink(){
+  var h = "#p=" + b64(planJSON());
+  try { history.replaceState(null, "", location.pathname + location.search + h); } catch (err) {}
+  var url = location.href.split("#")[0] + h;
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).catch(function(){});
+  var cp = document.getElementById("pCf");
+  cp.className = "pill ok"; cp.innerHTML = "link copied · " + url.length + " chars";
+  setTimeout(updateHud, 2600);
+  return url;
+}
+function b64(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function unb64(s){
+  s = String(s).replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  return decodeURIComponent(escape(atob(s)));
+}
+document.getElementById("exp").addEventListener("change", function(e){
+  var v = e.target.value; e.target.value = "";
+  if (v === "png") exportPNG();
+  if (v === "csv") exportCSV();
+  if (v === "json") exportJSON();
+  if (v === "link") shareLink();
+});
+/* ───────────────────────── persistence ───────────────────────── */
+function save(){
+  try { localStorage.setItem(KEY, planJSON()); } catch (err) {}
+}
+function adopt(o){
+  if (!o || !o.stations || !o.services) return false;
+  S = {
+    preset: o.preset || "custom", name: o.name || "Custom line",
+    stations: o.stations.map(function(s){ return { name: String(s.name || "Halt"), km: +s.km || 0 }; }),
+    single: (o.single || []).map(Boolean),
+    headway: +o.headway || 4,
+    services: o.services.map(function(sv){
+      return { id: uid++, name: String(sv.name || "Service"), cls: CLS[sv.cls] ? sv.cls : "local",
+               dir: sv.dir < 0 ? -1 : 1, dep: +sv.dep || 360,
+               speed: +sv.speed || 70, dwell: +sv.dwell || 30,
+               stops: (sv.stops || []).map(Boolean) };
+    })
+  };
+  while (S.single.length < S.stations.length - 1) S.single.push(false);
+  S.services.forEach(function(sv){
+    while (sv.stops.length < S.stations.length) sv.stops.push(true);
+    sv.stops.length = S.stations.length;
+  });
+  return S.stations.length >= 2 && S.services.length >= 1;
+}
+function load(key){
+  S = newPlan(key);
+  document.getElementById("preset").value = key;
+  sel = S.services[0] ? S.services[0].id : null;
+  recalc(); renderAll(); fit(); save();
+}
+/* ───────────────────────── boot ───────────────────────── */
+var psel = document.getElementById("preset");
+Object.keys(PRESETS).forEach(function(k){
+  var o = document.createElement("option"); o.value = k; o.textContent = PRESETS[k].name; psel.appendChild(o);
+});
+psel.addEventListener("change", function(e){ load(e.target.value); });
+
+(function boot(){
+  var ok = false;
+  var m = /[#&]p=([A-Za-z0-9_\-]+)/.exec(location.hash || "");
+  if (m){ try { ok = adopt(JSON.parse(unb64(m[1]))); } catch (err) { ok = false; } }
+  if (!ok){
+    try { var raw = localStorage.getItem(KEY); if (raw) ok = adopt(JSON.parse(raw)); } catch (err) { ok = false; }
+  }
+  if (!ok) S = newPlan("valley");
+  psel.value = PRESETS[S.preset] ? S.preset : "";
+  sel = S.services[0] ? S.services[0].id : null;
+  recalc(); renderAll();
+  window.addEventListener("resize", resize);
+  resize(); fit();
+  window.__headway = { S: function(){ return S; }, cfs: function(){ return cfs; },
+                       exportPNG: exportPNG, exportCSV: exportCSV, exportJSON: exportJSON,
+                       shareLink: shareLink, resolve: doResolve, fit: fit, draw: draw };
+})();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Page Builds Itself — UI Spotlight Day 155</title>
+<meta name="description" content="A swarm of cursors draws a landing page back into existence: boxes dragged out with size badges, text typed with an I-beam, rules pulled from a ruler — then the flock chases your pointer.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#05070d;--ink:#e9eff8;--dim:#8396b1;--line:#1a2535;--acc:#38bdf8}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow:hidden;-webkit-text-size-adjust:100%}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:none}
+.back-link{position:fixed;left:14px;top:14px;z-index:9;display:inline-flex;align-items:center;gap:6px;
+  font-size:12.5px;font-weight:600;text-decoration:none;color:var(--ink);padding:8px 13px;border-radius:999px;
+  background:rgba(10,15,24,.72);border:1px solid #243246;backdrop-filter:blur(10px);transition:border-color .18s,transform .18s}
+.back-link:hover{border-color:var(--acc);transform:translateX(-2px)}
+.panel{position:fixed;right:14px;top:14px;z-index:9;width:206px;padding:13px;border-radius:16px;
+  background:rgba(10,15,24,.74);border:1px solid #223049;backdrop-filter:blur(14px);box-shadow:0 20px 50px -26px #000}
+.panel h2{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin-bottom:10px;font-weight:700}
+.rowb{display:flex;gap:5px;margin-bottom:9px}
+.rowb button{flex:1 1 0;font:inherit;font-size:11.5px;font-weight:700;color:var(--dim);background:#0e1724;
+  border:1px solid #1f2b3d;border-radius:8px;padding:6px 0;cursor:pointer;transition:.15s}
+.rowb button.on{color:#021018;background:linear-gradient(180deg,#7dd3fc,#38bdf8);border-color:#7dd3fc}
+.sl{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);margin-bottom:9px}
+.sl input{flex:1 1 0;min-width:0;accent-color:var(--acc)}
+.sl b{color:var(--ink);min-width:22px;text-align:right;font-variant-numeric:tabular-nums}
+.panel .go{width:100%;font:inherit;font-size:12px;font-weight:700;color:#021018;cursor:pointer;
+  background:linear-gradient(180deg,#7dd3fc,#38bdf8);border:1px solid #7dd3fc;border-radius:9px;padding:8px}
+.state{font-size:10.5px;color:#5f7187;margin-top:9px;line-height:1.5}
+.state b{color:var(--acc)}
+footer{position:fixed;left:0;right:0;bottom:0;z-index:9;text-align:center;font-size:10.5px;color:#54657d;
+  padding:9px;background:linear-gradient(180deg,transparent,rgba(5,7,13,.85))}
+footer a{color:#7f93ad}
+@media (max-width:720px){
+  .panel{right:8px;top:auto;bottom:40px;width:166px;padding:10px}
+  .back-link{left:8px;top:8px;padding:7px 11px}
+}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<canvas id="cv"></canvas>
+<div class="panel">
+  <h2>Swarm</h2>
+  <div class="rowb" id="spd"><button data-s="1">1×</button><button data-s="2" class="on">2×</button><button data-s="3">3×</button></div>
+  <label class="sl">cursors <input id="n" type="range" min="2" max="8" step="1" value="5"><b id="nv">5</b></label>
+  <label class="sl">guides <input id="g" type="range" min="0" max="1" step="1" value="1"><b id="gv">on</b></label>
+  <button class="go" id="replay">Replay build</button>
+  <div class="state" id="st">drawing…</div>
+</div>
+<footer>Inspired by <a href="https://github.com/DhvanilPatel/swarm-cursors" target="_blank" rel="noopener">DhvanilPatel/swarm-cursors</a> (after Joel Califa's Swarm) · UI Spotlight Day 155 · Drop #1</footer>
+<script>
+(function(){
+"use strict";
+var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+var W = 0, H = 0, dpr = 1, VW = 940, VH = 600, sc = 1, ox = 0, oy = 0;
+var speed = 2, nCur = 5, guides = 1;
+var mouse = { x: 0, y: 0, has: false };
+
+/* ── the blueprint: what the swarm will rebuild ───────────────── */
+function blueprint(){
+  var T = [], id = 0;
+  function rect(x, y, w, h, o){ o = o || {}; T.push({ k:"rect", id:id++, x:x, y:y, w:w, h:h,
+    fill:o.fill || "#101a2b", stroke:o.stroke || "#22324a", r:o.r == null ? 14 : o.r, after:o.after, grad:o.grad }); return id - 1; }
+  function text(x, y, s, o){ o = o || {}; T.push({ k:"text", id:id++, x:x, y:y, s:s,
+    size:o.size || 15, weight:o.weight || 600, color:o.color || "#dbe6f5", after:o.after, track:o.track || 0 }); return id - 1; }
+  function line(x1, y1, x2, y2, o){ o = o || {}; T.push({ k:"line", id:id++, x1:x1, y1:y1, x2:x2, y2:y2,
+    color:o.color || "#1f2d42", after:o.after }); return id - 1; }
+
+  var nav = rect(40, 28, 860, 56, { r:16 });
+  text(66, 62, "atlas", { size:17, weight:800, color:"#7dd3fc", after:nav });
+  text(190, 61, "work", { size:12.5, color:"#8aa0bd", after:nav });
+  text(250, 61, "studio", { size:12.5, color:"#8aa0bd", after:nav });
+  text(318, 61, "journal", { size:12.5, color:"#8aa0bd", after:nav });
+  var cta = rect(770, 42, 106, 28, { r:999, fill:"#1e3a52", stroke:"#2f5f80", after:nav });
+  text(794, 61, "get in touch", { size:10.5, weight:700, color:"#b9e2fb", after:cta });
+
+  var hero = rect(40, 110, 860, 228, { r:20, grad:1 });
+  text(78, 186, "Everything you see", { size:38, weight:800, color:"#eef4ff", after:hero });
+  text(78, 232, "was drawn by cursors.", { size:38, weight:800, color:"#7dd3fc", after:hero });
+  text(78, 272, "No frame of this page existed a moment ago — the swarm took a snapshot,", { size:12.5, color:"#8fa5c2", after:hero });
+  text(78, 292, "blanked the canvas and put every box back one drag at a time.", { size:12.5, color:"#8fa5c2", after:hero });
+  var b1 = rect(78, 306, 118, 30, { r:999, fill:"#38bdf8", stroke:"#7dd3fc", after:hero });
+  text(100, 326, "watch again", { size:11.5, weight:700, color:"#04161f", after:b1 });
+
+  line(40, 364, 900, 364, { color:"#1b2740" });
+
+  var cols = [40, 332, 624], ws = 276;
+  var titles = ["Snapshot", "Blank", "Rebuild"];
+  var copy = [
+    ["walk the DOM, keep", "boxes, text and rules"],
+    ["one layer hides the", "page, nothing is lost"],
+    ["each cursor runs one", "task until it is done"]
+  ];
+  cols.forEach(function(x, i){
+    var c = rect(x, 386, ws, 142, { r:18, after:i ? undefined : undefined });
+    text(x + 22, 420, String(i + 1).padStart(2, "0"), { size:11, weight:800, color:"#38bdf8", after:c });
+    text(x + 22, 450, titles[i], { size:19, weight:700, color:"#e6eefb", after:c });
+    text(x + 22, 478, copy[i][0], { size:12, color:"#8fa5c2", after:c });
+    text(x + 22, 496, copy[i][1], { size:12, color:"#8fa5c2", after:c });
+  });
+  line(40, 556, 900, 556, { color:"#1b2740" });
+  text(40, 578, "atlas studio — rebuilt live", { size:11, color:"#5f7490" });
+  return T;
+}
+var tasks = [], agents = [], done = false, tStart = 0;
+
+function reset(){
+  tasks = blueprint();
+  tasks.forEach(function(t){ t.state = "pending"; t.p = 0; });
+  agents = [];
+  var names = ["A", "B", "C", "D", "E", "F", "G", "H"];
+  for (var i = 0; i < nCur; i++){
+    agents.push({
+      name: names[i], hue: [198, 165, 38, 275, 320, 150, 20, 220][i],
+      x: VW / 2 + Math.cos(i / nCur * 6.283) * 80,
+      y: VH / 2 + Math.sin(i / nCur * 6.283) * 60,
+      vx: 0, vy: 0, task: null, phase: "idle", p: 0, wait: i * 6
+    });
+  }
+  done = false; tStart = performance.now();
+}
+function unlocked(t){
+  if (t.after == null) return true;
+  var p = tasks[t.after];
+  return !p || p.state === "done";
+}
+function nextTask(){
+  for (var i = 0; i < tasks.length; i++){
+    var t = tasks[i];
+    if (t.state === "pending" && unlocked(t)) return t;
+  }
+  return null;
+}
+/* ── simulation ───────────────────────────────────────────────── */
+function step(dt){
+  var sp = speed;
+  agents.forEach(function(a){
+    if (a.wait > 0){ a.wait -= dt * 60 * sp; return; }
+    if (!a.task){
+      var t = nextTask();
+      if (t){ t.state = "active"; a.task = t; a.phase = "fly"; a.p = 0; }
+      else { flock(a, dt, sp); return; }
+    }
+    var t2 = a.task, tx, ty;
+    if (a.phase === "fly"){
+      tx = t2.k === "rect" ? t2.x : t2.k === "line" ? t2.x1 : t2.x;
+      ty = t2.k === "rect" ? t2.y : t2.k === "line" ? t2.y1 : t2.y;
+      steer(a, tx, ty, dt, sp);
+      if (Math.hypot(a.x - tx, a.y - ty) < 7){ a.phase = "work"; a.p = 0; }
+    } else if (a.phase === "work"){
+      var dur = t2.k === "rect" ? Math.max(.42, (t2.w + t2.h) / 1400)
+              : t2.k === "text" ? Math.max(.3, t2.s.length * 0.028)
+              : .34;
+      a.p = Math.min(1, a.p + dt / dur * sp);
+      t2.p = a.p;
+      if (t2.k === "rect"){ lerpTo(a, t2.x + t2.w * ease(a.p), t2.y + t2.h * ease(a.p)); }
+      else if (t2.k === "text"){ lerpTo(a, t2.x + textW(t2) * a.p + 3, t2.y - t2.size * .33); }
+      else { lerpTo(a, t2.x1 + (t2.x2 - t2.x1) * ease(a.p), t2.y1 + (t2.y2 - t2.y1) * ease(a.p)); }
+      if (a.p >= 1){ t2.state = "done"; t2.p = 1; a.task = null; a.phase = "idle"; a.wait = 3 + Math.random() * 10; }
+    }
+  });
+  if (!done && tasks.every(function(t){ return t.state === "done"; })) done = true;
+}
+function ease(p){ return p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2; }
+function lerpTo(a, x, y){ a.x += (x - a.x) * .45; a.y += (y - a.y) * .45; }
+function steer(a, tx, ty, dt, sp){
+  var dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy) || 1;
+  var want = Math.min(d * 5.5, 760) * sp;
+  a.vx += (dx / d * want - a.vx) * Math.min(1, dt * 7);
+  a.vy += (dy / d * want - a.vy) * Math.min(1, dt * 7);
+  a.x += a.vx * dt; a.y += a.vy * dt;
+}
+function flock(a, dt, sp){
+  var tx = mouse.has ? mouse.x : VW / 2, ty = mouse.has ? mouse.y : VH / 2;
+  var sx = 0, sy = 0;
+  agents.forEach(function(o){
+    if (o === a) return;
+    var dx = a.x - o.x, dy = a.y - o.y, d = Math.hypot(dx, dy);
+    if (d < 46 && d > 0.01){ sx += dx / d * (46 - d); sy += dy / d * (46 - d); }
+  });
+  steer(a, tx + sx * 1.6, ty + sy * 1.6, dt, sp * .8);
+}
+/* ── rendering ────────────────────────────────────────────────── */
+function rr(x, y, w, h, r){
+  r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function textW(t){
+  ctx.font = t.weight + " " + t.size + "px system-ui,-apple-system,sans-serif";
+  return ctx.measureText(t.s).width;
+}
+function draw(now){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(ox, oy); ctx.scale(sc, sc);
+  // page plate
+  ctx.fillStyle = "#070b13"; rr(16, 8, VW - 32, VH - 4, 24); ctx.fill();
+  ctx.strokeStyle = "#141d2b"; ctx.lineWidth = 1; ctx.stroke();
+
+  tasks.forEach(function(t){
+    if (t.state === "pending") return;
+    var p = t.state === "done" ? 1 : t.p;
+    if (t.k === "rect"){
+      var w = t.w * (t.state === "done" ? 1 : ease(p)), h = t.h * (t.state === "done" ? 1 : ease(p));
+      if (t.grad){
+        var g = ctx.createLinearGradient(t.x, t.y, t.x + t.w, t.y + t.h);
+        g.addColorStop(0, "#132340"); g.addColorStop(.55, "#0e1a2d"); g.addColorStop(1, "#15283f");
+        ctx.fillStyle = g;
+      } else ctx.fillStyle = t.fill;
+      rr(t.x, t.y, w, h, t.r); ctx.fill();
+      ctx.strokeStyle = t.state === "done" ? t.stroke : "#4cc3f7";
+      ctx.lineWidth = t.state === "done" ? 1 : 1.4;
+      if (t.state !== "done") ctx.setLineDash([5, 4]);
+      ctx.stroke(); ctx.setLineDash([]);
+      if (t.state !== "done" && guides){
+        ctx.fillStyle = "#0c1726"; ctx.strokeStyle = "#2b4c6b";
+        var bx = t.x + w + 7, by = t.y + h - 9;
+        ctx.font = "700 10px system-ui,sans-serif";
+        var lbl = Math.round(w) + " × " + Math.round(h);
+        var bw = ctx.measureText(lbl).width + 12;
+        rr(bx, by, bw, 17, 5); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#9fdcfb"; ctx.fillText(lbl, bx + 6, by + 12);
+      }
+    } else if (t.k === "text"){
+      ctx.font = t.weight + " " + t.size + "px system-ui,-apple-system,sans-serif";
+      ctx.fillStyle = t.color; ctx.textBaseline = "alphabetic";
+      var n = t.state === "done" ? t.s.length : Math.round(t.s.length * p);
+      var shown = t.s.slice(0, n);
+      ctx.fillText(shown, t.x, t.y);
+      if (t.state !== "done"){
+        var cx = t.x + ctx.measureText(shown).width + 1;
+        ctx.fillStyle = "#7dd3fc";
+        if ((now / 420 | 0) % 2 === 0) ctx.fillRect(cx, t.y - t.size * .86, 1.6, t.size * 1.05);
+      }
+    } else {
+      ctx.strokeStyle = t.state === "done" ? t.color : "#4cc3f7";
+      ctx.lineWidth = t.state === "done" ? 1 : 1.6;
+      ctx.beginPath(); ctx.moveTo(t.x1, t.y1);
+      var e = t.state === "done" ? 1 : ease(p);
+      ctx.lineTo(t.x1 + (t.x2 - t.x1) * e, t.y1 + (t.y2 - t.y1) * e);
+      ctx.stroke();
+    }
+  });
+
+  // ruler guides for the task in flight
+  if (guides){
+    agents.forEach(function(a){
+      var t = a.task;
+      if (!t || a.phase !== "work" || t.k !== "rect") return;
+      ctx.strokeStyle = "rgba(248,113,113,.5)"; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.moveTo(16, t.y); ctx.lineTo(VW - 16, t.y);
+      ctx.moveTo(t.x, 8); ctx.lineTo(t.x, VH - 4);
+      ctx.stroke(); ctx.setLineDash([]);
+    });
+  }
+  // cursors
+  agents.forEach(function(a){ drawCursor(a); });
+  ctx.restore();
+}
+function drawCursor(a){
+  var col = "hsl(" + a.hue + " 92% 66%)";
+  ctx.save(); ctx.translate(a.x, a.y);
+  var kind = a.task ? (a.task.k === "text" ? "beam" : a.task.k === "line" ? "pen" : "arrow") : "arrow";
+  ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
+  ctx.fillStyle = col; ctx.strokeStyle = "#04080f"; ctx.lineWidth = 1.2;
+  if (kind === "beam"){
+    ctx.fillRect(-1, -9, 2, 18);
+    ctx.fillRect(-4, -10, 8, 2); ctx.fillRect(-4, 8, 8, 2);
+  } else if (kind === "pen"){
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(4, -12); ctx.lineTo(9, -7); ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(0, 15); ctx.lineTo(4.2, 11.4); ctx.lineTo(7.2, 17.4);
+    ctx.lineTo(10, 16); ctx.lineTo(7, 10.2); ctx.lineTo(12, 10); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.font = "700 9.5px system-ui,sans-serif";
+  var lbl = a.task ? (a.task.k === "rect" ? "box" : a.task.k === "text" ? "type" : "rule") : "idle";
+  var w = ctx.measureText(lbl).width + 10;
+  ctx.fillStyle = col; rr(13, 9, w, 14, 4); ctx.fill();
+  ctx.fillStyle = "#04121c"; ctx.fillText(lbl, 18, 19);
+  ctx.restore();
+}
+/* ── loop, layout, controls ───────────────────────────────────── */
+var last = 0;
+function frame(now){
+  var dt = Math.min(.05, (now - last) / 1000 || .016); last = now;
+  step(dt); draw(now);
+  var d = tasks.filter(function(t){ return t.state === "done"; }).length;
+  stEl.innerHTML = done
+    ? "<b>built</b> in " + ((performance.now() - tStart) / 1000).toFixed(1) + "s · the flock now follows your pointer"
+    : "<b>" + d + "</b> / " + tasks.length + " layers drawn";
+  requestAnimationFrame(frame);
+}
+var stEl = document.getElementById("st");
+function resize(){
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cv.style.width = W + "px"; cv.style.height = H + "px";
+  var reserve = W > 760 ? 250 : 20;                   // keep the page clear of the panel
+  sc = Math.min((W - 28 - reserve) / VW, (H - 70) / VH);
+  ox = Math.max(14, (W - reserve - VW * sc) / 2); oy = (H - VH * sc) / 2;
+}
+window.addEventListener("resize", resize);
+window.addEventListener("pointermove", function(e){
+  mouse.x = (e.clientX - ox) / sc; mouse.y = (e.clientY - oy) / sc; mouse.has = true;
+});
+document.getElementById("spd").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if (!b) return;
+  speed = +b.dataset.s;
+  this.querySelectorAll("button").forEach(function(x){ x.classList.toggle("on", x === b); });
+});
+document.getElementById("n").addEventListener("input", function(e){
+  nCur = +e.target.value; document.getElementById("nv").textContent = nCur; reset();
+});
+document.getElementById("g").addEventListener("input", function(e){
+  guides = +e.target.value; document.getElementById("gv").textContent = guides ? "on" : "off";
+});
+document.getElementById("replay").addEventListener("click", reset);
+resize(); reset(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
