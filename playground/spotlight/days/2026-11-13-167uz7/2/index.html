@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Three Rows That Never Land — UI Spotlight</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#070806;--ink:#f2efe8;--dim:#938d81;--acc:#34d399;--line:#1e2420}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  background:radial-gradient(1200px 700px at 50% 45%,#141712 0%,#070806 70%);
+  color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;overscroll-behavior:none
+}
+.back-link{
+  position:fixed;left:14px;top:14px;z-index:40;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:600;
+  background:rgba(12,14,12,.72);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);transition:.18s}
+.back-link:hover{background:rgba(26,30,26,.9);border-color:var(--acc)}
+.panel{
+  position:fixed;right:14px;top:14px;z-index:40;width:226px;padding:13px 14px;border-radius:15px;
+  background:rgba(12,14,12,.74);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);font-size:12px}
+.panel h3{margin:0 0 10px;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}
+.panel label{display:flex;justify-content:space-between;margin:9px 0 3px;color:var(--dim);font-size:11px}
+.panel label b{color:var(--acc);font:600 11px/1 ui-monospace,monospace}
+.panel input[type=range]{width:100%;accent-color:var(--acc);height:18px}
+.readout{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);color:var(--dim);font:11px/1.6 ui-monospace,monospace}
+.readout b{color:var(--acc)}
+@media (max-width:780px){.panel{display:none}}
+
+.stage{position:fixed;inset:0;display:grid;align-content:center;gap:var(--gap,18px);
+  touch-action:pan-y;cursor:grab;user-select:none}
+.stage.drag{cursor:grabbing}
+.row{
+  position:relative;overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 11%,#000 89%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 11%,#000 89%,transparent)}
+.track{display:flex;align-items:center;will-change:transform}
+.tile{
+  flex:0 0 auto;border-radius:14px;position:relative;overflow:hidden;
+  border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 50px -24px #000}
+.tile span{
+  position:absolute;left:12px;bottom:10px;font:600 10.5px/1 ui-monospace,monospace;letter-spacing:.09em;
+  color:rgba(255,255,255,.82);text-shadow:0 1px 6px rgba(0,0,0,.7)}
+.tile i{position:absolute;right:11px;top:10px;width:7px;height:7px;border-radius:50%;
+  background:rgba(255,255,255,.55);font-style:normal}
+
+.hud{position:fixed;left:0;right:0;bottom:0;z-index:30;padding:18px 20px 22px;text-align:center;
+  background:linear-gradient(transparent,rgba(7,8,6,.86) 55%);pointer-events:none}
+.hud h1{margin:0 0 5px;font-size:clamp(17px,2.6vw,24px);letter-spacing:-.02em;font-weight:700}
+.hud p{margin:0;color:var(--dim);font-size:12.5px}
+.hud p b{color:var(--acc);font-weight:600}
+.credit{position:fixed;left:0;right:0;bottom:4px;z-index:31;text-align:center;color:#5d6058;font-size:11px}
+.credit a{color:#7c8278}
+@media (prefers-reduced-motion:reduce){.row{mask-image:none;-webkit-mask-image:none}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h3>Drift</h3>
+  <label>Idle speed <b id="vSpeed">26</b></label>
+  <input type="range" id="rSpeed" min="0" max="90" step="1" value="26">
+  <label>Row overlap <b id="vGap">18</b></label>
+  <input type="range" id="rGap" min="-70" max="60" step="2" value="18">
+  <label>Drag spread <b id="vSpread">0.45</b></label>
+  <input type="range" id="rSpread" min="0" max="1" step="0.05" value="0.45">
+  <label>Momentum decay <b id="vDecay">0.94</b></label>
+  <input type="range" id="rDecay" min="0.80" max="0.99" step="0.01" value="0.94">
+  <div class="readout">period <b id="oPeriod">—</b><br>velocity <b id="oVel">0</b><br>drift <b id="oDrift">on</b></div>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<div class="hud">
+  <h1>Three rows, one stage, no end</h1>
+  <p>Drag anywhere · scroll · or let it <b>drift back</b> on its own after ¾ of a second</p>
+</div>
+<div class="credit">
+  Inspired by <a href="https://github.com/rudra-xi/ember-lace" target="_blank" rel="noopener">rudra-xi/ember-lace</a>
+  · UI Spotlight Day 156 · Drop #2
+</div>
+
+<script>
+"use strict";
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const stage=document.getElementById("stage");
+const $=id=>document.getElementById(id);
+
+/* three rows: back reads faint and small, front reads large and bright */
+const ROWS=[
+  {h:118, op:.34, dir:+1, speed:.55, weight:.55, scale:.94, hue:[150,190], rhythm:[0,46,0,14]},
+  {h:170, op:.62, dir:-1, speed:.82, weight:.80, scale:.98, hue:[ 28, 72], rhythm:[22,0,38,0,10]},
+  {h:226, op:1,   dir:+1, speed:1.0, weight:1.0, scale:1,   hue:[190,250], rhythm:[0,30,0,0,54]}
+];
+const SEQ=7, COPIES=4;
+
+function tile(i,row,ri){
+  const el=document.createElement("div");
+  el.className="tile";
+  const [h0,h1]=row.hue, hue=h0+((i*53)%100)/100*(h1-h0);
+  const w=Math.round(row.h*(1.05+((i*37)%100)/100*0.95));
+  el.style.width=w+"px"; el.style.height=row.h+"px";
+  el.style.background=
+    "linear-gradient("+(120+i*23)+"deg,hsl("+hue.toFixed(0)+" 58% 46%),hsl("+((hue+38)%360).toFixed(0)+" 62% 22%))";
+  el.style.marginRight=(18+(row.rhythm[i%row.rhythm.length]||0))+"px";
+  el.innerHTML='<i></i><span>'+String.fromCharCode(65+ri)+"-"+String(i+1).padStart(2,"0")+"</span>";
+  return el;
+}
+const rows=ROWS.map((row,ri)=>{
+  const wrap=document.createElement("div"); wrap.className="row";
+  wrap.style.height=row.h+"px"; wrap.style.opacity=row.op;
+  wrap.style.zIndex=ri+1; wrap.style.transform="scale("+row.scale+")";
+  const track=document.createElement("div"); track.className="track";
+  for(let c=0;c<COPIES;c++) for(let i=0;i<SEQ;i++) track.appendChild(tile(i,row,ri));
+  wrap.appendChild(track); stage.appendChild(wrap);
+  return {...row, wrap, track, x:Math.random()*400, period:1};
+});
+
+/* the loop period = distance between the same slot in two consecutive copies */
+function measure(){
+  for(const r of rows){
+    const a=r.track.children[0], b=r.track.children[SEQ];
+    r.period=Math.max(1, b.offsetLeft-a.offsetLeft);
+    r.x=((r.x%r.period)+r.period)%r.period;
+  }
+  $("oPeriod").textContent=Math.round(rows[2].period)+"px";
+}
+addEventListener("resize",()=>requestAnimationFrame(measure));
+requestAnimationFrame(measure);
+setTimeout(measure,300);                       // after fonts settle
+
+/* ---------- motion ---------- */
+let vel=0, lastTouch=0, drag=null, drift=1;
+const cfg={speed:26, spread:.45, decay:.94};
+
+function tick(now){
+  const dt=Math.min(0.05,(now-(tick.t||now))/1000); tick.t=now;
+  const idle=(now-lastTouch)>700;
+  drift += ((idle?1:0)-drift)*Math.min(1,dt*4.5);     // ~0.7s fade back in
+  if(!drag) vel*=Math.pow(cfg.decay, dt*60);
+  if(Math.abs(vel)<0.4) vel=0;
+
+  for(const r of rows){
+    const d = REDUCED ? 0 : r.dir*cfg.speed*r.speed*drift*dt;
+    const pull = vel*(1-(1-r.weight)*cfg.spread)*dt;
+    r.x = r.x - d - pull;
+    r.x = ((r.x % r.period) + r.period) % r.period;
+    r.track.style.transform="translate3d("+(-r.x).toFixed(2)+"px,0,0)";
+  }
+  $("oVel").textContent=vel.toFixed(0);
+  $("oDrift").textContent=drift>0.5?"on":"held";
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- drag with a fling ---------- */
+stage.addEventListener("pointerdown",e=>{
+  stage.setPointerCapture(e.pointerId);
+  drag={x:e.clientX,t:performance.now()}; vel=0; lastTouch=performance.now();
+  stage.classList.add("drag");
+});
+stage.addEventListener("pointermove",e=>{
+  if(!drag) return;
+  const now=performance.now(), dx=e.clientX-drag.x, dt=Math.max(8,now-drag.t);
+  for(const r of rows){
+    r.x -= dx*(1-(1-r.weight)*cfg.spread);
+    r.x = ((r.x % r.period) + r.period) % r.period;
+  }
+  vel = dx/dt*1000*0.55;                       // carry the throw into momentum
+  drag={x:e.clientX,t:now}; lastTouch=now;
+});
+function release(){ if(drag){ drag=null; stage.classList.remove("drag"); lastTouch=performance.now(); } }
+stage.addEventListener("pointerup",release);
+stage.addEventListener("pointercancel",release);
+addEventListener("wheel",e=>{
+  const d=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
+  vel -= d*2.2; lastTouch=performance.now();
+},{passive:true});
+
+/* ---------- tunables ---------- */
+$("rSpeed").oninput=e=>{ cfg.speed=+e.target.value; $("vSpeed").textContent=e.target.value; };
+$("rGap").oninput=e=>{ stage.style.setProperty("--gap",e.target.value+"px"); $("vGap").textContent=e.target.value; };
+$("rSpread").oninput=e=>{ cfg.spread=+e.target.value; $("vSpread").textContent=(+e.target.value).toFixed(2); };
+$("rDecay").oninput=e=>{ cfg.decay=+e.target.value; $("vDecay").textContent=(+e.target.value).toFixed(2); };
+stage.style.setProperty("--gap","18px");
+</script>
+</body>
+</html>

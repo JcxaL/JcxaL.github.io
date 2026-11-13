@@ -1,0 +1,1096 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Glowsmith — Neon Sign Workshop</title>
+<meta name="description" content="Bend glass tube, fill it with gas, wire up a flicker, and export your neon sign as a PNG.">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#07080d; --panel:#0e111a; --panel2:#141926; --line:#222a3b;
+  --ink:#e8ecf7; --dim:#8893ad; --acc:#ff3d81; --acc2:#38e8ff;
+  --r:12px; --h:52px;
+}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow:hidden; overscroll-behavior:none;
+}
+#app{display:flex;flex-direction:column;height:100%}
+
+/* ---------- top bar ---------- */
+header{
+  flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  padding:8px 10px;background:linear-gradient(#11151f,#0b0e16);
+  border-bottom:1px solid var(--line);z-index:6
+}
+.brand{display:flex;align-items:baseline;gap:8px;margin-right:auto;min-width:0}
+.brand b{font-size:15px;letter-spacing:.02em;white-space:nowrap}
+.brand b span{color:var(--acc);text-shadow:0 0 12px #ff3d8199}
+.brand i{font-style:normal;font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{
+  appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+  border-radius:10px;padding:8px 11px;font:600 12px/1 system-ui,sans-serif;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;transition:.14s;white-space:nowrap
+}
+.btn:hover{border-color:#3a455f;background:#1a2032}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.35;cursor:default}
+.btn.p{background:linear-gradient(#ff4a89,#e21f67);border-color:#ff6c9f;color:#fff;box-shadow:0 2px 14px #ff2e7a44}
+.btn.g{background:linear-gradient(#1ec8e6,#0e93ad);border-color:#49dcf5;color:#031}
+.icn{font-size:13px}
+
+/* ---------- stage ---------- */
+main{flex:1 1 auto;display:flex;min-height:0;position:relative}
+#stage{flex:1 1 auto;position:relative;min-width:0;overflow:hidden;background:#000}
+#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#hint{
+  position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+  background:#0b0e16cc;border:1px solid var(--line);border-radius:999px;
+  padding:7px 14px;font-size:11.5px;color:var(--dim);pointer-events:none;
+  backdrop-filter:blur(8px);transition:opacity .4s;max-width:92%;text-align:center
+}
+#toast{
+  position:absolute;left:50%;top:14px;transform:translate(-50%,-16px);
+  background:#0b0e16ee;border:1px solid #3a455f;border-radius:999px;padding:8px 16px;
+  font-size:12px;font-weight:600;opacity:0;pointer-events:none;transition:.26s;z-index:5
+}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- tool rail ---------- */
+#tools{
+  position:absolute;left:10px;top:10px;display:flex;flex-direction:column;gap:6px;
+  background:#0b0e16cc;border:1px solid var(--line);border-radius:14px;padding:6px;
+  backdrop-filter:blur(10px);z-index:4
+}
+.tool{
+  width:40px;height:40px;border-radius:10px;border:1px solid transparent;background:transparent;
+  color:var(--dim);cursor:pointer;display:grid;place-items:center;font-size:17px;transition:.14s
+}
+.tool:hover{background:#1a2032;color:var(--ink)}
+.tool.on{background:#20283c;border-color:#49dcf5;color:#8ef0ff;box-shadow:inset 0 0 14px #38e8ff22}
+
+/* ---------- panel ---------- */
+#panel{
+  flex:0 0 302px;background:var(--panel);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0;z-index:5
+}
+#tabs{display:flex;border-bottom:1px solid var(--line);flex:0 0 auto}
+#tabs button{
+  flex:1;appearance:none;background:transparent;border:0;border-bottom:2px solid transparent;
+  color:var(--dim);padding:10px 2px;font:600 11px/1 system-ui,sans-serif;cursor:pointer;letter-spacing:.04em
+}
+#tabs button.on{color:var(--ink);border-bottom-color:var(--acc)}
+#sheets{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:12px}
+.sheet{display:none}.sheet.on{display:block}
+.grp{margin-bottom:16px}
+.grp>label,.lbl{display:block;font:600 10.5px/1 system-ui,sans-serif;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--dim);margin-bottom:7px}
+.row{display:flex;gap:7px;align-items:center}
+.row.w>*{flex:1}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer
+}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:#273049}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;
+  border-radius:50%;background:#fff;box-shadow:0 0 0 3px #ffffff22}
+input[type=range]::-moz-range-track{height:4px;border-radius:3px;background:#273049}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff}
+.val{font:600 11px/1 ui-monospace,monospace;color:var(--acc2);min-width:34px;text-align:right}
+.swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.sw{position:relative;aspect-ratio:1;border-radius:9px;border:1.5px solid #ffffff14;cursor:pointer;
+  display:grid;place-items:center;transition:.14s}
+.sw:after{content:"";width:62%;height:62%;border-radius:50%;background:currentColor;
+  box-shadow:0 0 12px currentColor,0 0 26px currentColor}
+.sw.on{border-color:#fff;transform:scale(1.06)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{
+  appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--dim);
+  border-radius:999px;padding:7px 11px;font:600 11px/1 system-ui,sans-serif;cursor:pointer;transition:.14s
+}
+.chip:hover{color:var(--ink);border-color:#3a455f}
+.chip.on{background:#20283c;border-color:var(--acc);color:#ffd3e3}
+.lib{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.lib button{
+  aspect-ratio:1;background:#0a0d15;border:1px solid var(--line);border-radius:10px;cursor:pointer;
+  padding:4px;transition:.14s}
+.lib button:hover{border-color:var(--acc2);background:#101624}
+.lib svg{width:100%;height:100%;display:block;overflow:visible}
+textarea,input[type=text]{
+  width:100%;background:#0a0d15;border:1px solid var(--line);border-radius:10px;color:var(--ink);
+  padding:9px 10px;font:14px/1.3 system-ui,sans-serif;resize:none
+}
+textarea:focus,input[type=text]:focus{outline:0;border-color:var(--acc2)}
+.saves{display:flex;flex-direction:column;gap:6px}
+.save{display:flex;gap:6px;align-items:center;background:var(--panel2);border:1px solid var(--line);
+  border-radius:10px;padding:7px 9px}
+.save span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
+.save button{appearance:none;border:0;background:#20283c;color:var(--ink);border-radius:7px;
+  padding:5px 8px;font:600 11px/1 system-ui;cursor:pointer}
+.save button.d{background:#3a1b28;color:#ff9ab8}
+.note{font-size:11.5px;color:var(--dim);line-height:1.5}
+.meta{display:flex;justify-content:space-between;font:600 11px/1 ui-monospace,monospace;color:var(--dim);
+  border-top:1px solid var(--line);padding:9px 12px;flex:0 0 auto}
+.meta b{color:var(--acc2);font-weight:700}
+
+@media (max-width:860px){
+  main{flex-direction:column}
+  #panel{flex:0 0 auto;max-height:46%;border-left:0;border-top:1px solid var(--line)}
+  #tools{left:8px;top:8px;flex-direction:row;flex-wrap:wrap;max-width:calc(100% - 16px)}
+  .brand i{display:none}
+  header{padding:7px 8px;gap:6px}
+  .btn{padding:8px 9px}
+  #hint{bottom:8px;font-size:11px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="brand"><b>Glow<span>smith</span></b><i>neon sign workshop</i></div>
+  <button class="btn" id="bUndo" title="Undo (Z)"><span class="icn">↶</span></button>
+  <button class="btn" id="bRedo" title="Redo (Y)"><span class="icn">↷</span></button>
+  <button class="btn g" id="bPng" title="Export PNG"><span class="icn">⇩</span>PNG</button>
+  <button class="btn p" id="bShare" title="Copy share link"><span class="icn">🔗</span>Share</button>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="tools">
+      <button class="tool on" data-tool="draw" title="Bend tube (D)">✎</button>
+      <button class="tool" data-tool="text" title="Set type (T)">T</button>
+      <button class="tool" data-tool="stamp" title="Stamp shape (S)">✦</button>
+      <button class="tool" data-tool="move" title="Move / select (M)">✥</button>
+      <button class="tool" data-tool="erase" title="Cut tube (E)">⌫</button>
+    </div>
+    <div id="hint">Drag on the wall to bend a glass tube.</div>
+    <div id="toast"></div>
+  </div>
+  <aside id="panel">
+    <div id="tabs">
+      <button class="on" data-s="tube">Tube</button>
+      <button data-s="type">Type</button>
+      <button data-s="lib">Shapes</button>
+      <button data-s="scene">Scene</button>
+      <button data-s="saves">Saves</button>
+    </div>
+    <div id="sheets">
+
+      <section class="sheet on" data-s="tube">
+        <div class="grp"><label>Gas fill</label><div class="swatches" id="swatches"></div>
+          <div class="note" id="gasName" style="margin-top:7px"></div></div>
+        <div class="grp"><label>Tube bore</label>
+          <div class="row"><input type="range" id="rWidth" min="2" max="18" step="0.5"><i class="val" id="vWidth"></i></div></div>
+        <div class="grp"><label>Wiring</label><div class="chips" id="anims"></div></div>
+        <div class="grp"><label>Cycle speed</label>
+          <div class="row"><input type="range" id="rSpeed" min="0.2" max="4" step="0.1"><i class="val" id="vSpeed"></i></div></div>
+        <div class="grp"><div class="row w">
+          <button class="btn" id="bDupe">Duplicate</button>
+          <button class="btn" id="bDel">Delete</button></div></div>
+        <div class="note" id="selNote">Nothing selected — controls set the defaults for the next tube.</div>
+      </section>
+
+      <section class="sheet" data-s="type">
+        <div class="grp"><label>Sign copy</label>
+          <textarea id="tText" rows="2" spellcheck="false">OPEN
+LATE</textarea></div>
+        <div class="grp"><label>Cap height</label>
+          <div class="row"><input type="range" id="rTSize" min="20" max="160" step="2"><i class="val" id="vTSize"></i></div></div>
+        <div class="grp"><label>Letter gap</label>
+          <div class="row"><input type="range" id="rTTrack" min="-1" max="6" step="0.25"><i class="val" id="vTTrack"></i></div></div>
+        <div class="grp"><label>Slant</label>
+          <div class="row"><input type="range" id="rTSlant" min="-18" max="18" step="1"><i class="val" id="vTSlant"></i></div></div>
+        <div class="grp"><button class="btn p" id="bPlace" style="width:100%;justify-content:center">Bend this into glass</button></div>
+        <div class="note">A–Z, 0–9 and <b>! ? . , : - + '</b> are hand-drawn as single-stroke tube paths. With the <b>T</b> tool active, tap the wall to place the copy exactly there.</div>
+      </section>
+
+      <section class="sheet" data-s="lib">
+        <div class="grp"><label>Stock shapes</label><div class="lib" id="lib"></div></div>
+        <div class="grp"><label>Stamp size</label>
+          <div class="row"><input type="range" id="rStamp" min="40" max="320" step="4"><i class="val" id="vStamp"></i></div></div>
+        <div class="note">Pick a shape, then tap the wall with the <b>✦</b> tool to stamp it. Every stamp is real tube — recolour it, rewire it, drag it.</div>
+      </section>
+
+      <section class="sheet" data-s="scene">
+        <div class="grp"><label>Backing</label><div class="chips" id="boards"></div></div>
+        <div class="grp"><label>Glow bleed</label>
+          <div class="row"><input type="range" id="rGlow" min="0" max="2" step="0.05"><i class="val" id="vGlow"></i></div></div>
+        <div class="grp"><label>Room bloom</label>
+          <div class="row"><input type="range" id="rBloom" min="0" max="1" step="0.02"><i class="val" id="vBloom"></i></div></div>
+        <div class="grp"><label>Buzz (tube hum flicker)</label>
+          <div class="row"><input type="range" id="rBuzz" min="0" max="1" step="0.02"><i class="val" id="vBuzz"></i></div></div>
+        <div class="grp"><div class="row w">
+          <button class="btn" id="bDemo">Load demo sign</button>
+          <button class="btn" id="bClear">Strip wall</button></div></div>
+      </section>
+
+      <section class="sheet" data-s="saves">
+        <div class="grp"><label>Name this sign</label>
+          <div class="row"><input type="text" id="tName" placeholder="Late Night Diner" spellcheck="false">
+          <button class="btn g" id="bSave">Save</button></div></div>
+        <div class="grp"><label>Workshop shelf</label><div class="saves" id="saveList"></div></div>
+        <div class="note">Signs live in this browser via localStorage. <b>Share</b> packs the whole sign into the URL, so a link is a sign.</div>
+      </section>
+
+    </div>
+    <div class="meta"><span>tubes <b id="mTubes">0</b></span><span>pts <b id="mPts">0</b></span><span><b id="mFps">60</b> fps</span></div>
+  </aside>
+</main>
+</div>
+<script>
+"use strict";
+/* ============================================================
+   Glowsmith — Neon Sign Workshop
+   Canvas 2D · Pointer Events · localStorage · Blob export
+   ============================================================ */
+
+/* ---------- 1. gases, wiring, backings ---------- */
+const GASES = [
+  {k:"pink",  n:"Neon rose · 15mm",      c:"#ff2d78", w:"#ffd4e6"},
+  {k:"red",   n:"Pure neon red",         c:"#ff3b22", w:"#ffd9c6"},
+  {k:"amber", n:"Argon amber",           c:"#ffae1a", w:"#ffeec4"},
+  {k:"lime",  n:"Krypton lime",          c:"#9bff2e", w:"#eaffcf"},
+  {k:"green", n:"Mercury green",         c:"#20ff9a", w:"#cfffe9"},
+  {k:"cyan",  n:"Argon ice",             c:"#2ae8ff", w:"#d3f8ff"},
+  {k:"blue",  n:"Cobalt argon",          c:"#3d6dff", w:"#d6e0ff"},
+  {k:"violet",n:"Xenon violet",          c:"#9b5cff", w:"#e5d6ff"},
+  {k:"magenta",n:"Hot magenta",          c:"#ff39e0", w:"#ffd6fa"},
+  {k:"white", n:"Cold white",            c:"#eaf4ff", w:"#ffffff"}
+];
+const GAS = {}; GASES.forEach(g=>GAS[g.k]=g);
+const ANIMS = [
+  {k:"on",     n:"Always on"},
+  {k:"pulse",  n:"Breathe"},
+  {k:"blink",  n:"Blink"},
+  {k:"flicker",n:"Bad ballast"},
+  {k:"chase",  n:"Chase"},
+  {k:"sweep",  n:"Marquee sweep"}
+];
+const BOARDS = [
+  {k:"brick", n:"Brick wall"},
+  {k:"board", n:"Black board"},
+  {k:"glass", n:"Acrylic panel"},
+  {k:"night", n:"Night street"}
+];
+
+/* ---------- 2. single-stroke tube font (grid: 0..w wide, 0 cap -> 10 baseline) ---------- */
+/* token "x,y" = polyline point · token "e cx,cy,rx,ry,a0,a1" = elliptical arc (deg, y-down) */
+const FONT = {
+ "A":[5.0,["0,10 2.5,0 5,10"],["0.95,7 4.05,7"]],
+ "B":[5.4,["0,0 0,10"],["0,0 2.6,0 e2.6,2.5,2.5,2.5,-90,90 0,5"],["0,5 2.8,5 e2.8,7.5,2.5,2.5,-90,90 0,10"]],
+ "C":[5.8,["e2.9,5,2.9,5,-52,-308"]],
+ "D":[5.2,["0,0 0,10"],["0,0 1.6,0 e1.6,5,3.2,5,-90,90 0,10"]],
+ "E":[5.0,["5,0 0,0 0,10 5,10"],["0,5 4.1,5"]],
+ "F":[5.0,["5,0 0,0 0,10"],["0,5 4.1,5"]],
+ "G":[5.8,["e2.9,5,2.9,5,-52,-312 5.8,8.4 5.8,5.7 3.3,5.7"]],
+ "H":[5.0,["0,0 0,10"],["5,0 5,10"],["0,5 5,5"]],
+ "I":[2.6,["1.3,0 1.3,10"]],
+ "J":[4.6,["4.4,0 4.4,7 e2.2,7,2.2,3,0,180"]],
+ "K":[5.0,["0,0 0,10"],["4.8,0 0.2,5.5 5,10"]],
+ "L":[4.8,["0,0 0,10 4.8,10"]],
+ "M":[5.6,["0,10 0,0 2.8,5.6 5.6,0 5.6,10"]],
+ "N":[5.0,["0,10 0,0 5,10 5,0"]],
+ "O":[5.8,["e2.9,5,2.9,5,-90,270"]],
+ "P":[5.0,["0,10 0,0"],["0,0 2.4,0 e2.4,2.8,2.4,2.8,-90,90 0,5.6"]],
+ "Q":[6.2,["e2.9,5,2.9,5,-90,270"],["3.7,7.5 6.2,10.6"]],
+ "R":[5.2,["0,10 0,0"],["0,0 2.4,0 e2.4,2.8,2.4,2.8,-90,90 0,5.6"],["2.3,5.6 5.2,10"]],
+ "S":[5.2,["e2.7,2.6,2.5,2.5,-25,-270 e2.7,7.6,2.5,2.5,-90,155"]],
+ "T":[5.0,["0,0 5,0"],["2.5,0 2.5,10"]],
+ "U":[5.2,["0,0 0,6.6 e2.6,6.6,2.6,3.4,180,0 5.2,0"]],
+ "V":[5.2,["0,0 2.6,10 5.2,0"]],
+ "W":[6.8,["0,0 1.5,10 3.4,3.4 5.3,10 6.8,0"]],
+ "X":[5.0,["0,0 5,10"],["5,0 0,10"]],
+ "Y":[5.2,["0,0 2.6,5.2 5.2,0"],["2.6,5.2 2.6,10"]],
+ "Z":[5.0,["0,0 5,0 0,10 5,10"]],
+ "0":[5.2,["e2.6,5,2.6,5,-90,270"],["1.1,7.9 4.1,2.1"]],
+ "1":[3.6,["0.3,2 2,0.5 2,10"]],
+ "2":[5.2,["e2.6,2.8,2.6,2.8,-172,72 0.1,10 5.2,10"]],
+ "3":[4.8,["e2.4,2.7,2.4,2.7,-175,90 e2.4,7.7,2.4,2.3,-90,175"]],
+ "4":[5.0,["3.6,0 0,6.7 5,6.7"],["3.6,0 3.6,10"]],
+ "5":[5.2,["5,0 1,0 0.6,4.1 2.6,4 e2.6,7,2.6,3,-90,118"]],
+ "6":[5.2,["4.9,0.4 1.2,5.2"],["e2.6,7,2.6,3,-90,270"]],
+ "7":[5.0,["0,0 5,0 1.8,10"]],
+ "8":[4.8,["e2.4,2.6,2.4,2.6,-90,270"],["e2.4,7.4,2.4,2.6,-90,270"]],
+ "9":[5.2,["e2.6,3,2.6,3,-90,270"],["5.2,3 4.3,7.4 3.4,9.8"]],
+ "!":[2.0,["1,0 1,6.6"],["1,8.9 1,10"]],
+ "?":[3.8,["e1.9,2.4,1.9,2.4,-182,58 1.9,6.6"],["1.9,8.9 1.9,10"]],
+ ".":[2.0,["1,9.3 1,10"]],
+ ",":[2.0,["1.3,8.9 0.4,10.9"]],
+ ":":[2.0,["1,3.3 1,4"],["1,9.3 1,10"]],
+ "-":[3.6,["0,5 3.6,5"]],
+ "+":[4.0,["0,5 4,5"],["2,3 2,7"]],
+ "'":[2.0,["1,0 1,2.4"]],
+ "/":[4.0,["0,10 4,0"]],
+ "&":[5.6,["5.6,10 1.6,3.4 e1.6,1.7,1.7,1.7,90,-90 e2.3,6.6,2.3,3.4,-90,120"]],
+ " ":[3.0]
+};
+const DEG = Math.PI/180;
+function parseStroke(src){
+  const out=[], t=src.trim().split(/\s+/);
+  for(const tok of t){
+    if(tok[0]==="e"){
+      const a=tok.slice(1).split(",").map(Number);
+      const [cx,cy,rx,ry,a0,a1]=a;
+      const steps=Math.max(5,Math.ceil(Math.abs(a1-a0)/11));
+      for(let i=0;i<=steps;i++){
+        const th=(a0+(a1-a0)*i/steps)*DEG;
+        const p={x:cx+rx*Math.cos(th), y:cy+ry*Math.sin(th)};
+        if(out.length && Math.hypot(p.x-out[out.length-1].x,p.y-out[out.length-1].y)<1e-4) continue;
+        out.push(p);
+      }
+    }else{
+      const [x,y]=tok.split(",").map(Number);
+      out.push({x,y});
+    }
+  }
+  return out;
+}
+const GLYPHCACHE={};
+function glyph(ch){
+  if(GLYPHCACHE[ch]) return GLYPHCACHE[ch];
+  const def=FONT[ch]; if(!def) return null;
+  const g={w:def[0], strokes:def.slice(1).flat().map(src=>parseStroke(src))};
+  GLYPHCACHE[ch]=g; return g;
+}
+
+/* ---------- 3. stock shapes (unit box 0..10) ---------- */
+function ringPts(cx,cy,rx,ry,n,a0){
+  const p=[]; for(let i=0;i<=n;i++){const t=(a0||0)+i/n*Math.PI*2; p.push({x:cx+rx*Math.cos(t),y:cy+ry*Math.sin(t)});}
+  return p;
+}
+const SHAPES = {
+  heart:()=>{const p=[];for(let i=0;i<=72;i++){const t=-Math.PI+i/72*Math.PI*2;
+    const x=16*Math.pow(Math.sin(t),3), y=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));
+    p.push({x:5+x*0.3,y:5+y*0.33});}return [p];},
+  star:()=>{const p=[];for(let i=0;i<=10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?2.1:5;
+    p.push({x:5+r*Math.cos(a),y:5+r*Math.sin(a)});}return [p];},
+  bolt:()=>[[{x:6.2,y:0},{x:2.2,y:5.4},{x:4.8,y:5.4},{x:3.4,y:10},{x:8,y:4.2},{x:5.2,y:4.2},{x:6.2,y:0}]],
+  arrow:()=>[[{x:0,y:5},{x:8.4,y:5}],[{x:5.6,y:1.8},{x:8.8,y:5},{x:5.6,y:8.2}]],
+  wave:()=>{const p=[];for(let i=0;i<=60;i++){const x=i/60*10;p.push({x,y:5+2.6*Math.sin(x*1.15)});}return [p];},
+  moon:()=>{const a=[],b=[];for(let i=0;i<=44;i++){const t=-Math.PI/2.1+i/44*Math.PI*1.55;a.push({x:5+4.6*Math.cos(t),y:5+4.6*Math.sin(t)});}
+    for(let i=44;i>=0;i--){const t=-Math.PI/2.1+i/44*Math.PI*1.55;b.push({x:5+3.2*Math.cos(t)-1.3,y:5+4.0*Math.sin(t)});}
+    return [a.concat(b)];},
+  cup:()=>[[{x:1.2,y:1},{x:8.8,y:1},{x:7.6,y:6.4},{x:2.4,y:6.4},{x:1.2,y:1}],
+           [{x:5,y:6.4},{x:5,y:9}],[{x:2.6,y:9.3},{x:7.4,y:9.3}]],
+  note:()=>[[{x:3.4,y:8.4},{x:3.4,y:1.2},{x:8.4,y:0.2},{x:8.4,y:7.2}],
+            ...ringPts(2.1,8.4,1.4,1.1,22).length?[ringPts(2.1,8.4,1.4,1.1,22),ringPts(7.1,7.2,1.4,1.1,22)]:[]],
+  ring:()=>[ringPts(5,5,4.6,4.6,56)],
+  cross:()=>[[{x:5,y:0.4},{x:5,y:9.6}],[{x:0.4,y:5},{x:9.6,y:5}]],
+  smile:()=>{const p=[];for(let i=0;i<=34;i++){const t=0.25*Math.PI+i/34*0.5*Math.PI;p.push({x:5+4.4*Math.cos(t),y:4.2+4.4*Math.sin(t)});}
+    return [ringPts(5,5,4.8,4.8,56),p,[{x:3.3,y:3.6},{x:3.3,y:4.4}],[{x:6.7,y:3.6},{x:6.7,y:4.4}]];},
+  frame:()=>[[{x:.4,y:.4},{x:9.6,y:.4},{x:9.6,y:9.6},{x:.4,y:9.6},{x:.4,y:.4}]]
+};
+const SHAPE_KEYS = Object.keys(SHAPES);
+
+/* ---------- 4. geometry helpers ---------- */
+function smooth(pts){
+  if(pts.length<3) return pts.slice();
+  const out=[];
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||pts[i+1];
+    for(let j=0;j<6;j++){
+      const t=j/6, t2=t*t, t3=t2*t;
+      out.push({
+        x:0.5*((2*p1.x)+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+        y:0.5*((2*p1.y)+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3)
+      });
+    }
+  }
+  out.push(pts[pts.length-1]);
+  return out;
+}
+function simplify(pts,tol){
+  if(pts.length<3) return pts.slice();
+  const out=[pts[0]];
+  for(let i=1;i<pts.length-1;i++){
+    const a=out[out.length-1], b=pts[i];
+    if(Math.hypot(b.x-a.x,b.y-a.y)>=tol) out.push(b);
+  }
+  out.push(pts[pts.length-1]);
+  return out;
+}
+function bbox(pts){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const p of pts){ if(p.x<x0)x0=p.x; if(p.y<y0)y0=p.y; if(p.x>x1)x1=p.x; if(p.y>y1)y1=p.y; }
+  return {x0,y0,x1,y1,w:x1-x0,h:y1-y0};
+}
+function distToPoly(pts,x,y){
+  let best=1e9;
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i],b=pts[i+1], dx=b.x-a.x, dy=b.y-a.y;
+    const L=dx*dx+dy*dy;
+    let t=L?((x-a.x)*dx+(y-a.y)*dy)/L:0; t=t<0?0:t>1?1:t;
+    const d=Math.hypot(x-(a.x+dx*t), y-(a.y+dy*t));
+    if(d<best) best=d;
+  }
+  if(pts.length===1) best=Math.hypot(x-pts[0].x,y-pts[0].y);
+  return best;
+}
+function cumLen(pts){
+  const c=[0];
+  for(let i=1;i<pts.length;i++) c.push(c[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y));
+  return c;
+}
+function subPath(pts,c,from,to){
+  const total=c[c.length-1]; if(total<=0) return [];
+  const f=from*total, t=to*total, out=[];
+  for(let i=0;i<pts.length-1;i++){
+    const a=c[i], b=c[i+1];
+    if(b<f||a>t) continue;
+    const s=Math.max(f,a), e=Math.min(t,b), seg=b-a||1;
+    const lerp=(u)=>({x:pts[i].x+(pts[i+1].x-pts[i].x)*u, y:pts[i].y+(pts[i+1].y-pts[i].y)*u});
+    const p1=lerp((s-a)/seg), p2=lerp((e-a)/seg);
+    if(!out.length) out.push(p1);
+    out.push(p2);
+  }
+  return out;
+}
+
+/* ---------- 5. state ---------- */
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d",{alpha:false});
+let W=0,H=0,DPR=1;
+const D = {            // the design
+  board:"brick", glow:1, bloom:0.45, buzz:0.35,
+  tubes:[]             // {pts:[{x,y}], gas, w, anim, speed, seed}
+};
+const UI = {
+  tool:"draw", gas:"pink", w:7, anim:"on", speed:1,
+  shape:"heart", stamp:150, tsize:76, ttrack:1.5, tslant:0,
+  sel:-1
+};
+let hist=[], hpos=-1, drawing=null, dragging=null, t0=performance.now();
+let boardCv=document.createElement("canvas"), boardCtx=boardCv.getContext("2d");
+let staticDirty=true, boardDirty=true;
+
+function uid(){ return Math.random().toString(36).slice(2,8); }
+function newTube(pts){
+  return {id:uid(), pts, gas:UI.gas, w:UI.w, anim:UI.anim, speed:UI.speed, seed:Math.random()*1000};
+}
+
+/* ---------- 6. backing plates (procedural, no assets) ---------- */
+function rnd(seed){ let s=seed; return ()=>{ s=(s*1664525+1013904223)%4294967296; return s/4294967296; }; }
+function paintBoard(c,w,h){
+  const g=c.getContext("2d"); const R=rnd(99);
+  g.clearRect(0,0,w,h);
+  if(D.board==="brick"){
+    g.fillStyle="#1b1013"; g.fillRect(0,0,w,h);
+    const bh=Math.max(22,Math.round(h/16)), bw=bh*2.45;
+    for(let row=0, y=0; y<h+bh; row++, y+=bh){
+      const off=(row%2)?bw/2:0;
+      for(let x=-bw; x<w+bw; x+=bw){
+        const v=R();
+        g.fillStyle=`hsl(${8+v*12} ${16+v*14}% ${7+v*7}%)`;
+        g.fillRect(x+off+1.5, y+1.5, bw-3, bh-3);
+        g.fillStyle=`rgba(255,235,220,${0.014+v*0.022})`;
+        g.fillRect(x+off+1.5, y+1.5, bw-3, 1.5);
+      }
+    }
+    g.fillStyle="rgba(0,0,0,.30)"; g.fillRect(0,0,w,h);
+  } else if(D.board==="board"){
+    const lg=g.createLinearGradient(0,0,0,h);
+    lg.addColorStop(0,"#15161b"); lg.addColorStop(1,"#0a0b0f");
+    g.fillStyle=lg; g.fillRect(0,0,w,h);
+    g.strokeStyle="rgba(255,255,255,.05)"; g.lineWidth=2;
+    g.strokeRect(14,14,w-28,h-28);
+    [[26,26],[w-26,26],[26,h-26],[w-26,h-26]].forEach(([x,y])=>{
+      g.fillStyle="rgba(255,255,255,.12)"; g.beginPath(); g.arc(x,y,4,0,7); g.fill();
+      g.strokeStyle="rgba(0,0,0,.6)"; g.lineWidth=1.4;
+      g.beginPath(); g.moveTo(x-2.6,y); g.lineTo(x+2.6,y); g.stroke();
+    });
+  } else if(D.board==="glass"){
+    const lg=g.createLinearGradient(0,0,w,h);
+    lg.addColorStop(0,"#0b1016"); lg.addColorStop(.5,"#101922"); lg.addColorStop(1,"#080b10");
+    g.fillStyle=lg; g.fillRect(0,0,w,h);
+    for(let i=0;i<4;i++){
+      const y=h*(0.12+i*0.24), a=0.03+R()*0.04;
+      const sg=g.createLinearGradient(0,y-60,w,y+60);
+      sg.addColorStop(0,"rgba(255,255,255,0)");
+      sg.addColorStop(.5,`rgba(190,225,255,${a})`);
+      sg.addColorStop(1,"rgba(255,255,255,0)");
+      g.fillStyle=sg; g.save(); g.translate(0,0);
+      g.beginPath(); g.moveTo(0,y-70); g.lineTo(w,y-150); g.lineTo(w,y+40); g.lineTo(0,y+110); g.fill(); g.restore();
+    }
+  } else { // night street
+    const lg=g.createLinearGradient(0,0,0,h);
+    lg.addColorStop(0,"#070b16"); lg.addColorStop(1,"#02040a");
+    g.fillStyle=lg; g.fillRect(0,0,w,h);
+    for(let i=0;i<90;i++){
+      const x=R()*w, y=R()*h, ww=4+R()*10, hh=5+R()*12, a=0.05+R()*0.22;
+      g.fillStyle=`rgba(${190+R()*60|0},${150+R()*80|0},${90+R()*70|0},${a})`;
+      g.fillRect(x,y,ww,hh);
+    }
+    g.fillStyle="rgba(0,0,0,.42)"; g.fillRect(0,0,w,h);
+  }
+  // vignette
+  const vg=g.createRadialGradient(w/2,h/2,Math.min(w,h)*0.18,w/2,h/2,Math.max(w,h)*0.78);
+  vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,"rgba(0,0,0,.72)");
+  g.fillStyle=vg; g.fillRect(0,0,w,h);
+}
+
+/* ---------- 7. tube painting ----------
+   Two cheap layers instead of per-stroke shadowBlur:
+   · "core"  — crisp gas stroke + white filament, full resolution
+   · "glow"  — fat soft strokes into a 0.3-scale buffer, blurred once on composite
+----------------------------------------------------------------- */
+function strokePath(g,pts,width,cap){
+  if(!pts||pts.length<2) return;
+  g.lineWidth=width; g.lineCap=cap||"round"; g.lineJoin="round";
+  g.beginPath(); g.moveTo(pts[0].x,pts[0].y);
+  for(let i=1;i<pts.length;i++) g.lineTo(pts[i].x,pts[i].y);
+  g.stroke();
+}
+function paintSeg(g,pts,gas,w,b,mode){
+  if(!pts||pts.length<2||b<=0.005) return;
+  g.save(); g.globalCompositeOperation="lighter";
+  if(mode==="glow"){
+    g.strokeStyle=gas.c;
+    g.globalAlpha=Math.min(1,0.46*b*D.glow); strokePath(g,pts,w*1.9);
+    g.globalAlpha=Math.min(1,0.24*b*D.glow); strokePath(g,pts,w*4.4);
+  }else{
+    g.globalAlpha=Math.min(1,0.60*b); g.strokeStyle=gas.c; strokePath(g,pts,w*1.10);
+    g.globalAlpha=Math.min(1,0.95*b); g.strokeStyle=gas.w; strokePath(g,pts,Math.max(1,w*0.42));
+  }
+  g.restore();
+}
+function paintTube(g,t,bright,mode,phase){
+  const pts=t.pts; if(!pts||pts.length<2) return;
+  const gas=GAS[t.gas]||GAS.pink, w=Math.max(1.2,t.w);
+  if(mode==="core"&&bright<0.97){            // cold glass is still visible
+    g.save(); g.globalCompositeOperation="source-over";
+    g.strokeStyle="rgba(228,236,250,.09)"; strokePath(g,pts,w*0.9); g.restore();
+  }
+  if(t.anim==="chase"||t.anim==="sweep"){
+    const c=cumLen(pts);
+    paintSeg(g,pts,gas,w,0.15,mode);
+    const span=t.anim==="sweep"?0.34:0.16, heads=t.anim==="sweep"?1:2;
+    for(let k=0;k<heads;k++){
+      const s0=((phase||0)+k/heads)%1, s1=s0+span;
+      const segs = s1<=1 ? [[s0,s1]] : [[s0,1],[0,s1-1]];
+      for(const [s,e] of segs) paintSeg(g,subPath(pts,c,s,e),gas,w,1,mode);
+    }
+  }else{
+    paintSeg(g,pts,gas,w,bright,mode);
+  }
+}
+function brightness(t,time){
+  const s=t.speed||1, ph=(t.seed||0);
+  switch(t.anim){
+    case "pulse":  return 0.42+0.58*(0.5+0.5*Math.sin(time*1.7*s+ph));
+    case "blink":  return ((time*1.1*s+ph)%1)<0.52?1:0.06;
+    case "flicker":{
+      const n=Math.sin(time*31*s+ph)*0.5+Math.sin(time*13.7*s+ph*2)*0.5;
+      return Math.sin(time*2.1*s+ph*3)>0.86 ? 0.08+0.3*Math.abs(n) : 0.84+0.16*n;
+    }
+    default: return 1;
+  }
+}
+function tubePhase(t,time){ return (time*0.42*(t.speed||1)+(t.seed||0)*0.01)%1; }
+function isAnimated(t){ return t.anim!=="on"; }
+
+/* ---------- 8. compositing ---------- */
+const GS=0.3;                                     // glow-buffer scale
+const coreCv=document.createElement("canvas"), coreCtx=coreCv.getContext("2d");
+const glowCv=document.createElement("canvas"), glowCtx=glowCv.getContext("2d");
+const sCoreCv=document.createElement("canvas"), sCoreCtx=sCoreCv.getContext("2d");
+const sGlowCv=document.createElement("canvas"), sGlowCtx=sGlowCv.getContext("2d");
+const blurA=document.createElement("canvas"), blurACtx=blurA.getContext("2d");
+const blurB=document.createElement("canvas"), blurBCtx=blurB.getContext("2d");
+let canFilter=false;
+try{ coreCtx.filter="blur(2px)"; canFilter=(coreCtx.filter==="blur(2px)"); coreCtx.filter="none"; }
+catch(e){ canFilter=false; }
+
+function sizeAll(){
+  const r=cv.getBoundingClientRect();
+  W=Math.max(1,Math.round(r.width)); H=Math.max(1,Math.round(r.height));
+  DPR=Math.min(dprCap, window.devicePixelRatio||1);
+  const MAXPX=3.2e6;                       // keep the composite affordable on big screens
+  if(W*H*DPR*DPR>MAXPX) DPR=Math.max(1,Math.sqrt(MAXPX/(W*H)));
+  for(const c of [cv,boardCv,coreCv,sCoreCv]){ c.width=Math.round(W*DPR); c.height=Math.round(H*DPR); }
+  for(const g of [ctx,boardCtx,coreCtx,sCoreCtx]) g.setTransform(DPR,0,0,DPR,0,0);
+  for(const c of [glowCv,sGlowCv,blurA,blurB]){ c.width=Math.max(1,Math.round(W*GS)); c.height=Math.max(1,Math.round(H*GS)); }
+  for(const g of [glowCtx,sGlowCtx]) g.setTransform(GS,0,0,GS,0,0);
+  boardDirty=staticDirty=true;
+}
+function blurPass(g,c,src,r){
+  g.save(); g.setTransform(1,0,0,1,0,0);
+  g.clearRect(0,0,c.width,c.height);
+  if(canFilter) g.filter="blur("+r+"px)";
+  g.drawImage(src,0,0,c.width,c.height);
+  g.filter="none"; g.restore();
+}
+function wipe(g,c){ g.save(); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height); g.restore(); }
+function rebuildStatic(){
+  wipe(sCoreCtx,sCoreCv); wipe(sGlowCtx,sGlowCv);
+  for(const t of D.tubes){
+    if(isAnimated(t)) continue;
+    paintTube(sCoreCtx,t,1,"core",0);
+    paintTube(sGlowCtx,t,1,"glow",0);
+  }
+  staticDirty=false;
+}
+let fps=60, frames=0, fpsT=performance.now(), dprCap=2, dprDrops=0;
+function frame(now){
+  const time=(now-t0)/1000;
+  if(boardDirty){ paintBoard(boardCv,W,H); boardDirty=false; }
+  if(staticDirty) rebuildStatic();
+
+  wipe(coreCtx,coreCv); wipe(glowCtx,glowCv);
+  coreCtx.save(); coreCtx.setTransform(1,0,0,1,0,0); coreCtx.drawImage(sCoreCv,0,0); coreCtx.restore();
+  glowCtx.save(); glowCtx.setTransform(1,0,0,1,0,0); glowCtx.drawImage(sGlowCv,0,0); glowCtx.restore();
+  for(const t of D.tubes){
+    if(!isAnimated(t)) continue;
+    const b=brightness(t,time), ph=tubePhase(t,time);
+    paintTube(coreCtx,t,b,"core",ph);
+    paintTube(glowCtx,t,b,"glow",ph);
+  }
+  if(drawing&&drawing.pts.length>1){
+    paintTube(coreCtx,drawing,1,"core",0); paintTube(glowCtx,drawing,1,"glow",0);
+  }
+
+  // blur inside the small buffer, then upscale — far cheaper than blurring a full frame
+  blurPass(blurACtx,blurA,glowCv,3);
+  if(D.bloom>0.01) blurPass(blurBCtx,blurB,blurA,11);
+
+  const hum=Math.max(0,Math.min(1,1-D.buzz*(0.055+0.055*Math.sin(time*42)+0.03*Math.sin(time*97+1.3))));
+  ctx.save(); ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.globalCompositeOperation="source-over"; ctx.globalAlpha=1; ctx.filter="none";
+  ctx.drawImage(boardCv,0,0,W,H);
+  ctx.globalCompositeOperation="lighter";
+  ctx.globalAlpha=0.95*hum; ctx.drawImage(blurA,0,0,W,H);
+  if(D.bloom>0.01){ ctx.globalAlpha=D.bloom*1.35*hum; ctx.drawImage(blurB,0,0,W,H); }
+  ctx.globalAlpha=hum; ctx.drawImage(coreCv,0,0,W,H);
+
+  ctx.globalCompositeOperation="source-over"; ctx.globalAlpha=1;
+  const sel=D.tubes[UI.sel];
+  if(sel&&sel.pts.length){
+    const bb=bbox(sel.pts), pad=sel.w+12;
+    ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1; ctx.setLineDash([5,5]);
+    ctx.strokeRect(bb.x0-pad,bb.y0-pad,bb.w+pad*2,bb.h+pad*2); ctx.setLineDash([]);
+  }
+  ctx.restore();
+
+  frames++;
+  if(now-fpsT>650){
+    fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; $("mFps").textContent=fps;
+    // soft-landing: a slow device gets a smaller backing store rather than a stutter
+    if(fps<38 && dprDrops<2 && DPR>1.04 && now-t0>2200){
+      dprDrops++; dprCap=Math.max(1,DPR*0.72); sizeAll();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- 9. history ---------- */
+function snapshot(){ return JSON.stringify({board:D.board,glow:D.glow,bloom:D.bloom,buzz:D.buzz,tubes:D.tubes}); }
+function applySnapshot(s){
+  const o=JSON.parse(s);
+  D.board=o.board; D.glow=o.glow; D.bloom=o.bloom; D.buzz=o.buzz;
+  D.tubes=o.tubes.map(t=>({...t,pts:t.pts.map(p=>({x:p.x,y:p.y}))}));
+  UI.sel=-1; boardDirty=staticDirty=true; syncUI(); autosave();
+}
+function push(){
+  const s=snapshot();
+  if(hpos>=0 && hist[hpos]===s) return;
+  hist=hist.slice(0,hpos+1); hist.push(s);
+  if(hist.length>60) hist.shift();
+  hpos=hist.length-1; refreshHist(); autosave();
+}
+function refreshHist(){ $("bUndo").disabled=hpos<=0; $("bRedo").disabled=hpos>=hist.length-1; }
+function undo(){ if(hpos>0){ hpos--; applySnapshot(hist[hpos]); refreshHist(); } }
+function redo(){ if(hpos<hist.length-1){ hpos++; applySnapshot(hist[hpos]); refreshHist(); } }
+
+/* ---------- 10. persistence + share ---------- */
+const LS_CUR="glowsmith_v1_current", LS_SAVES="glowsmith_v1_saves";
+function autosave(){ try{ localStorage.setItem(LS_CUR,snapshot()); }catch(e){} }
+function round(n){ return Math.round(n*10)/10; }
+function packed(){
+  return {b:D.board,g:round(D.glow),l:round(D.bloom),z:round(D.buzz),
+    t:D.tubes.map(t=>({g:t.gas,w:round(t.w),a:t.anim,s:round(t.speed),
+      p:t.pts.map(p=>[Math.round(p.x),Math.round(p.y)])}))};
+}
+function unpack(o){
+  D.board=o.b||"brick"; D.glow=o.g??1; D.bloom=o.l??0.45; D.buzz=o.z??0.35;
+  D.tubes=(o.t||[]).map(t=>({id:uid(),gas:t.g||"pink",w:t.w||7,anim:t.a||"on",speed:t.s||1,
+    seed:Math.random()*1000, pts:(t.p||[]).map(p=>({x:p[0],y:p[1]}))}));
+  boardDirty=staticDirty=true;
+}
+function shareLink(){
+  const s=btoa(unescape(encodeURIComponent(JSON.stringify(packed()))));
+  return location.origin+location.pathname+"#s="+s;
+}
+function readHash(){
+  const m=location.hash.match(/#s=(.+)$/);
+  if(!m) return false;
+  try{ unpack(JSON.parse(decodeURIComponent(escape(atob(m[1]))))); return true; }
+  catch(e){ return false; }
+}
+function listSaves(){ try{ return JSON.parse(localStorage.getItem(LS_SAVES)||"[]"); }catch(e){ return []; } }
+function writeSaves(a){ try{ localStorage.setItem(LS_SAVES,JSON.stringify(a)); }catch(e){} }
+
+/* ---------- 11. building tubes ---------- */
+function addTube(t,quiet){ D.tubes.push(t); staticDirty=true; if(!quiet){ push(); } syncMeta(); return D.tubes.length-1; }
+function placeText(cx,cy){
+  const raw=$("tText").value.replace(/\t/g," ");
+  const lines=raw.split("\n").map(l=>l.toUpperCase()).filter(l=>l.length);
+  if(!lines.length){ toast("Type something first"); return; }
+  const made=textStrokes(lines,cx,cy,UI.tsize,UI.ttrack,UI.tslant).map(pts=>newTube(pts));
+  if(!made.length){ toast("No drawable glyphs"); return; }
+  made.forEach(t=>addTube(t,true));
+  UI.sel=-1; push(); toast(made.length+" glass strokes bent");
+}
+function stamp(cx,cy){
+  const strokes=SHAPES[UI.shape](); const S=UI.stamp/10;
+  const made=strokes.filter(s=>s&&s.length>1).map(s=>newTube(
+    s.map(p=>({x:cx+(p.x-5)*S, y:cy+(p.y-5)*S}))));
+  made.forEach(t=>addTube(t,true));
+  push(); toast(UI.shape+" stamped");
+}
+function hitTest(x,y){
+  let best=-1, bd=1e9;
+  for(let i=D.tubes.length-1;i>=0;i--){
+    const t=D.tubes[i], d=distToPoly(t.pts,x,y)-t.w*0.8;
+    if(d<bd){ bd=d; best=i; }
+  }
+  return bd<20?best:-1;
+}
+
+/* ---------- 12. export ---------- */
+function renderSign(S){
+  const ew=Math.max(1,Math.round(W*S)), eh=Math.max(1,Math.round(H*S));
+  const out=document.createElement("canvas"); out.width=ew; out.height=eh;
+  const g=out.getContext("2d");
+  paintBoard(out,ew,eh);
+  const core=document.createElement("canvas"); core.width=ew; core.height=eh;
+  const cg=core.getContext("2d"); cg.setTransform(S,0,0,S,0,0);
+  const glow=document.createElement("canvas");
+  glow.width=Math.max(1,Math.round(ew*GS)); glow.height=Math.max(1,Math.round(eh*GS));
+  const gg=glow.getContext("2d"); gg.setTransform(S*GS,0,0,S*GS,0,0);
+  const time=(performance.now()-t0)/1000;
+  for(const t of D.tubes){
+    const b=t.anim==="on"?1:Math.max(0.6,brightness(t,time));
+    paintTube(cg,t,b,"core",0.12); paintTube(gg,t,b,"glow",0.12);
+  }
+  const bA=document.createElement("canvas"); bA.width=glow.width; bA.height=glow.height;
+  blurPass(bA.getContext("2d"),bA,glow,3*S);
+  const bB=document.createElement("canvas"); bB.width=glow.width; bB.height=glow.height;
+  blurPass(bB.getContext("2d"),bB,bA,11*S);
+  g.globalCompositeOperation="lighter";
+  g.globalAlpha=0.95; g.drawImage(bA,0,0,ew,eh);
+  if(D.bloom>0.01){ g.globalAlpha=D.bloom*1.35; g.drawImage(bB,0,0,ew,eh); }
+  g.globalAlpha=1; g.drawImage(core,0,0,ew,eh);
+  return out;
+}
+function exportPNG(){
+  const c=renderSign(2);
+  const name="glowsmith-"+new Date().toISOString().slice(0,10)+"-"+uid()+".png";
+  if(c.toBlob){
+    c.toBlob(blob=>{
+      if(!blob||!blob.size){ toast("Export failed"); return; }
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a"); a.href=url; a.download=name; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),4000);
+      toast("PNG saved · "+Math.round(blob.size/1024)+" KB");
+    },"image/png");
+  }else{
+    const a=document.createElement("a"); a.href=c.toDataURL("image/png"); a.download=name; a.click();
+    toast("PNG saved");
+  }
+  return c;
+}
+
+/* ---------- 13. UI wiring ---------- */
+const $=id=>document.getElementById(id);
+function toast(msg){
+  const el=$("toast"); el.textContent=msg; el.classList.add("on");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove("on"),1700);
+}
+const HINTS={
+  draw:"Drag on the wall to bend a glass tube.",
+  text:"Tap the wall to set your copy there — edit it in the Type tab.",
+  stamp:"Tap the wall to stamp the shape you picked in Shapes.",
+  move:"Tap a tube to select it, then drag to reposition.",
+  erase:"Tap a tube to cut it out."
+};
+function setTool(t){
+  UI.tool=t;
+  document.querySelectorAll(".tool").forEach(b=>b.classList.toggle("on",b.dataset.tool===t));
+  $("hint").textContent=HINTS[t]; $("hint").style.opacity=1;
+  clearTimeout(setTool._t); setTool._t=setTimeout(()=>$("hint").style.opacity=0.0,3600);
+  if(t!=="move") UI.sel=-1;
+  if(t==="text") showSheet("type"); if(t==="stamp") showSheet("lib");
+  syncUI();
+}
+function showSheet(s){
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.s===s));
+  document.querySelectorAll(".sheet").forEach(x=>x.classList.toggle("on",x.dataset.s===s));
+}
+// swatches
+GASES.forEach(g=>{
+  const b=document.createElement("button");
+  b.className="sw"; b.style.color=g.c; b.title=g.n; b.dataset.k=g.k;
+  b.onclick=()=>{ UI.gas=g.k; applyToSel({gas:g.k}); syncUI(); };
+  $("swatches").appendChild(b);
+});
+// anim chips
+ANIMS.forEach(a=>{
+  const b=document.createElement("button");
+  b.className="chip"; b.textContent=a.n; b.dataset.k=a.k;
+  b.onclick=()=>{ UI.anim=a.k; applyToSel({anim:a.k}); syncUI(); };
+  $("anims").appendChild(b);
+});
+// board chips
+BOARDS.forEach(bd=>{
+  const b=document.createElement("button");
+  b.className="chip"; b.textContent=bd.n; b.dataset.k=bd.k;
+  b.onclick=()=>{ D.board=bd.k; boardDirty=true; push(); syncUI(); };
+  $("boards").appendChild(b);
+});
+// shape library previews
+SHAPE_KEYS.forEach(k=>{
+  const b=document.createElement("button"); b.dataset.k=k; b.title=k;
+  const strokes=SHAPES[k]();
+  const paths=strokes.map(s=>'<polyline points="'+s.map(p=>p.x.toFixed(2)+","+p.y.toFixed(2)).join(" ")+
+    '" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"/>').join("");
+  b.innerHTML='<svg viewBox="-1 -1 12 12" style="color:'+GAS[UI.gas].c+'">'+paths+'</svg>';
+  b.onclick=()=>{ UI.shape=k; setTool("stamp"); syncUI(); };
+  $("lib").appendChild(b);
+});
+function applyToSel(patch){
+  const t=D.tubes[UI.sel];
+  if(!t) return;
+  Object.assign(t,patch);
+  staticDirty=true; push();
+}
+function syncMeta(){
+  $("mTubes").textContent=D.tubes.length;
+  $("mPts").textContent=D.tubes.reduce((a,t)=>a+t.pts.length,0);
+}
+function syncUI(){
+  const sel=D.tubes[UI.sel];
+  const gas=sel?sel.gas:UI.gas, w=sel?sel.w:UI.w, an=sel?sel.anim:UI.anim, sp=sel?sel.speed:UI.speed;
+  document.querySelectorAll(".sw").forEach(b=>b.classList.toggle("on",b.dataset.k===gas));
+  $("gasName").textContent=(GAS[gas]||GAS.pink).n;
+  document.querySelectorAll("#anims .chip").forEach(b=>b.classList.toggle("on",b.dataset.k===an));
+  document.querySelectorAll("#boards .chip").forEach(b=>b.classList.toggle("on",b.dataset.k===D.board));
+  document.querySelectorAll("#lib button").forEach(b=>{
+    b.style.borderColor = b.dataset.k===UI.shape ? GAS[UI.gas].c : "";
+    const svg=b.querySelector("svg"); if(svg) svg.style.color=GAS[gas].c;
+  });
+  $("rWidth").value=w; $("vWidth").textContent=w+"mm";
+  $("rSpeed").value=sp; $("vSpeed").textContent=sp.toFixed(1)+"×";
+  $("rGlow").value=D.glow; $("vGlow").textContent=Math.round(D.glow*100)+"%";
+  $("rBloom").value=D.bloom; $("vBloom").textContent=Math.round(D.bloom*100)+"%";
+  $("rBuzz").value=D.buzz; $("vBuzz").textContent=Math.round(D.buzz*100)+"%";
+  $("rTSize").value=UI.tsize; $("vTSize").textContent=UI.tsize+"px";
+  $("rTTrack").value=UI.ttrack; $("vTTrack").textContent=UI.ttrack.toFixed(2);
+  $("rTSlant").value=UI.tslant; $("vTSlant").textContent=UI.tslant+"°";
+  $("rStamp").value=UI.stamp; $("vStamp").textContent=UI.stamp+"px";
+  $("selNote").textContent = sel
+    ? "Editing one tube — "+(GAS[sel.gas]||GAS.pink).n+", "+sel.pts.length+" points."
+    : "Nothing selected — controls set the defaults for the next tube.";
+  $("bDel").disabled=!sel; $("bDupe").disabled=!sel;
+  syncMeta();
+}
+// sliders
+$("rWidth").oninput=e=>{ UI.w=+e.target.value; const t=D.tubes[UI.sel]; if(t){t.w=UI.w;staticDirty=true;} syncUI(); };
+$("rWidth").onchange=()=>push();
+$("rSpeed").oninput=e=>{ UI.speed=+e.target.value; const t=D.tubes[UI.sel]; if(t){t.speed=UI.speed;staticDirty=true;} syncUI(); };
+$("rSpeed").onchange=()=>push();
+$("rGlow").oninput=e=>{ D.glow=+e.target.value; staticDirty=true; syncUI(); };
+$("rGlow").onchange=()=>push();
+$("rBloom").oninput=e=>{ D.bloom=+e.target.value; syncUI(); };
+$("rBloom").onchange=()=>push();
+$("rBuzz").oninput=e=>{ D.buzz=+e.target.value; syncUI(); };
+$("rBuzz").onchange=()=>push();
+$("rTSize").oninput=e=>{ UI.tsize=+e.target.value; syncUI(); };
+$("rTTrack").oninput=e=>{ UI.ttrack=+e.target.value; syncUI(); };
+$("rTSlant").oninput=e=>{ UI.tslant=+e.target.value; syncUI(); };
+$("rStamp").oninput=e=>{ UI.stamp=+e.target.value; syncUI(); };
+// buttons
+document.querySelectorAll(".tool").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>showSheet(b.dataset.s));
+$("bUndo").onclick=undo; $("bRedo").onclick=redo;
+$("bPng").onclick=()=>exportPNG();
+$("bShare").onclick=async()=>{
+  const url=shareLink();
+  history.replaceState(null,"","#s="+url.split("#s=")[1]);
+  try{ await navigator.clipboard.writeText(url); toast("Share link copied ("+url.length+" chars)"); }
+  catch(e){ toast("Link is in the address bar"); }
+};
+$("bPlace").onclick=()=>{ placeText(W/2,H/2); };
+$("bDel").onclick=()=>{ if(D.tubes[UI.sel]){ D.tubes.splice(UI.sel,1); UI.sel=-1; staticDirty=true; push(); syncUI(); } };
+$("bDupe").onclick=()=>{
+  const t=D.tubes[UI.sel]; if(!t) return;
+  const c={...t,id:uid(),seed:Math.random()*1000,pts:t.pts.map(p=>({x:p.x+18,y:p.y+18}))};
+  UI.sel=addTube(c); syncUI();
+};
+$("bClear").onclick=()=>{ D.tubes=[]; UI.sel=-1; staticDirty=true; push(); syncUI(); toast("Wall stripped"); };
+$("bDemo").onclick=()=>{ loadDemo(); push(); toast("Demo sign loaded"); };
+$("bSave").onclick=()=>{
+  const name=($("tName").value||"Sign "+(listSaves().length+1)).slice(0,42);
+  const a=listSaves(); a.unshift({name,at:Date.now(),data:packed()});
+  writeSaves(a.slice(0,24)); $("tName").value=""; renderSaves(); toast("Saved to shelf");
+};
+function renderSaves(){
+  const a=listSaves(), box=$("saveList"); box.innerHTML="";
+  if(!a.length){ box.innerHTML='<div class="note">Shelf is empty. Name a sign and hit Save.</div>'; return; }
+  a.forEach((s,i)=>{
+    const row=document.createElement("div"); row.className="save";
+    const label=document.createElement("span");
+    label.textContent=s.name+" · "+(s.data.t?s.data.t.length:0)+" tubes";
+    const load=document.createElement("button"); load.textContent="Load";
+    load.onclick=()=>{ unpack(s.data); UI.sel=-1; push(); syncUI(); toast("Loaded “"+s.name+"”"); };
+    const del=document.createElement("button"); del.className="d"; del.textContent="✕";
+    del.onclick=()=>{ const b=listSaves(); b.splice(i,1); writeSaves(b); renderSaves(); };
+    row.append(label,load,del); box.appendChild(row);
+  });
+}
+
+/* ---------- 14. shared text layout ---------- */
+function textStrokes(lines,cx,cy,size,track,slant){
+  const S=size/10, lead=size*1.45, sl=Math.tan(slant*DEG), out=[];
+  const widths=lines.map(l=>{
+    let w=0; for(const ch of l){ const g=glyph(ch)||glyph(" "); w+=g.w+track; }
+    return Math.max(0,(w-track))*S;
+  });
+  const totalH=lines.length*lead-(lead-size);
+  const y0=cy-totalH/2;
+  lines.forEach((line,li)=>{
+    let pen=cx-widths[li]/2;
+    const baseY=y0+li*lead;
+    for(const ch of line){
+      const g=glyph(ch)||glyph(" ");
+      for(const st of (g.strokes||[])){
+        const pts=st.map(p=>{
+          const yy=p.y*S;
+          return {x:pen+p.x*S-(yy-size/2)*sl, y:baseY+yy};
+        });
+        if(pts.length>1) out.push(pts);
+      }
+      pen+=(g.w+track)*S;
+    }
+  });
+  return out;
+}
+
+/* ---------- 15. demo sign ---------- */
+function loadDemo(){
+  D.tubes=[]; D.board="brick"; D.glow=1.05; D.bloom=0.52; D.buzz=0.3;
+  boardDirty=staticDirty=true; UI.sel=-1;
+  const size=Math.max(30,Math.min(104,Math.round(Math.min(W*0.115,H*0.2))));
+  const bore=Math.max(4,+(size*0.082).toFixed(1));
+  const cx=W/2, cy=H*0.40;
+  textStrokes(["OPEN","LATE"],cx,cy,size,1.4,0).forEach(pts=>{
+    const top=pts.reduce((a,p)=>a+p.y,0)/pts.length < cy;   // colour by line
+    D.tubes.push({id:uid(),gas:top?"pink":"cyan",w:bore,anim:"on",speed:1,seed:Math.random()*900,pts});
+  });
+  // sweeping rule under the copy
+  const ruleY=cy+size*1.75, half=Math.min(W*0.36,size*4.1);
+  D.tubes.push({id:uid(),gas:"amber",w:Math.max(3,bore*0.7),anim:"sweep",speed:1.4,seed:12,
+    pts:[{x:cx-half,y:ruleY},{x:cx+half,y:ruleY}]});
+  // a stamped heart, breathing
+  const hs=size*1.25;
+  D.tubes.push({id:uid(),gas:"magenta",w:Math.max(3,bore*0.85),anim:"pulse",speed:1.1,seed:44,
+    pts:SHAPES.heart()[0].map(p=>({x:cx+half*0.0+(p.x-5)*hs/10, y:ruleY+hs*0.95+(p.y-5)*hs/10}))});
+  // two rings flanking the heart — one chasing, one with a tired ballast
+  [[-1,"violet","chase"],[1,"lime","flicker"]].forEach(([dir,gk,an],i)=>{
+    const r=Math.min(size*0.46, half*0.3), ox=cx+dir*Math.min(half*0.62,W/2-r-14), oy=ruleY+hs*0.95;
+    if(ox-r<8||ox+r>W-8||oy+r>H-8) return;
+    D.tubes.push({id:uid(),gas:gk,w:Math.max(3,bore*0.62),anim:an,speed:1.2,seed:70+i*30,
+      pts:ringPts(ox,oy,r,r,40)});
+  });
+  staticDirty=true; syncUI(); autosave();
+}
+
+/* ---------- 16. pointer interaction ---------- */
+function pos(e){ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+cv.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  const p=pos(e);
+  if(UI.tool==="draw"){ drawing=newTube([p]); }
+  else if(UI.tool==="text"){ placeText(p.x,p.y); }
+  else if(UI.tool==="stamp"){ stamp(p.x,p.y); }
+  else if(UI.tool==="erase"){
+    const i=hitTest(p.x,p.y);
+    if(i>=0){ D.tubes.splice(i,1); UI.sel=-1; staticDirty=true; push(); syncUI(); toast("Tube cut"); }
+  }
+  else if(UI.tool==="move"){
+    const i=hitTest(p.x,p.y); UI.sel=i;
+    dragging = i>=0 ? {i,last:p,moved:false} : null;
+    syncUI();
+  }
+});
+cv.addEventListener("pointermove",e=>{
+  if(!drawing&&!dragging) return;
+  e.preventDefault();
+  const p=pos(e);
+  if(drawing){
+    const l=drawing.pts[drawing.pts.length-1];
+    if(Math.hypot(p.x-l.x,p.y-l.y)>=5) drawing.pts.push(p);
+  }else if(dragging){
+    const t=D.tubes[dragging.i]; if(!t){ dragging=null; return; }
+    const dx=p.x-dragging.last.x, dy=p.y-dragging.last.y;
+    for(const q of t.pts){ q.x+=dx; q.y+=dy; }
+    dragging.last=p; dragging.moved=true; staticDirty=true;
+  }
+});
+function endPointer(){
+  if(drawing){
+    let pts=simplify(drawing.pts,4);
+    if(pts.length>=3) pts=smooth(pts);
+    if(pts.length>=2){ addTube(newTube(pts)); }
+    else { // a tap makes a glass bead
+      const c=drawing.pts[0], r=Math.max(5,UI.w*1.15);
+      addTube(newTube(ringPts(c.x,c.y,r,r,16)));
+    }
+    drawing=null; syncUI();
+  }
+  if(dragging){ if(dragging.moved) push(); dragging=null; }
+}
+cv.addEventListener("pointerup",endPointer);
+cv.addEventListener("pointercancel",endPointer);
+cv.addEventListener("pointerleave",()=>{ if(drawing) endPointer(); });
+
+/* ---------- 17. keyboard ---------- */
+addEventListener("keydown",e=>{
+  const tag=(e.target.tagName||"").toLowerCase();
+  if(tag==="input"||tag==="textarea") return;
+  const k=e.key.toLowerCase();
+  if(k==="d") setTool("draw");
+  else if(k==="t") setTool("text");
+  else if(k==="s") setTool("stamp");
+  else if(k==="m") setTool("move");
+  else if(k==="e") setTool("erase");
+  else if(k==="z"){ e.preventDefault(); e.shiftKey?redo():undo(); }
+  else if(k==="y"){ e.preventDefault(); redo(); }
+  else if(k==="escape"){ UI.sel=-1; syncUI(); }
+  else if(k==="backspace"||k==="delete"){ e.preventDefault(); $("bDel").click(); }
+  else return;
+});
+
+/* ---------- 18. boot ---------- */
+let rsz;
+addEventListener("resize",()=>{ clearTimeout(rsz); rsz=setTimeout(sizeAll,120); });
+if(window.ResizeObserver) new ResizeObserver(()=>{ clearTimeout(rsz); rsz=setTimeout(sizeAll,120); })
+  .observe(document.getElementById("stage"));
+
+function init(){
+  sizeAll(); renderSaves();
+  let loaded=false;
+  if(readHash()){ loaded=true; toast("Sign loaded from link"); }
+  else{
+    const s=localStorage.getItem(LS_CUR);
+    if(s){ try{ applySnapshot(s); loaded=D.tubes.length>0; }catch(e){ loaded=false; } }
+  }
+  if(!loaded) loadDemo();
+  hist=[snapshot()]; hpos=0; refreshHist();
+  setTool("draw"); showSheet("tube"); syncUI();
+  requestAnimationFrame(frame);
+}
+init();
+</script>
+</body>
+</html>
