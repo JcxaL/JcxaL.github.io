@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Heliograph — Sundial Workbench</title>
+<meta name="description" content="Design a working sundial for any latitude: four dial types, real solar geometry, declination curves, and a printable SVG template.">
+<style>
+  :root{
+    --bg:#07080c; --bg2:#0d1017; --ink:#eef1f6; --dim:#9aa3b4;
+    --brass:#f5c15a; --brass2:#c9922f; --sky:#7fd4ff; --warm:#ff8f6b;
+    --mint:#8af0c0; --violet:#b79bff; --line:rgba(255,255,255,.1);
+    --panel:rgba(12,15,22,.82);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  canvas.drag{cursor:grabbing}
+
+  #hdr{position:fixed;top:0;left:0;right:0;padding:12px 340px 12px 14px;display:flex;gap:14px;
+    align-items:flex-start;justify-content:space-between;pointer-events:none;z-index:5}
+  .brand{font-weight:700;letter-spacing:.2px;font-size:16px;display:flex;align-items:center;gap:9px;
+    text-shadow:0 2px 14px #000}
+  .brand em{font-style:normal;font-weight:500;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim)}
+  .sun{width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff3cf,var(--brass) 55%,#a4701b);
+    box-shadow:0 0 16px rgba(245,193,90,.75)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:62vw}
+  .chip{background:rgba(10,13,20,.72);border:1px solid var(--line);border-radius:999px;
+    padding:4px 10px;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--dim);
+    backdrop-filter:blur(8px)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.warn{color:#ffd0c2;border-color:rgba(255,143,107,.45)}
+
+  #panel{position:fixed;z-index:6;top:0;right:0;width:324px;height:100%;overflow-y:auto;
+    padding:60px 16px 26px;background:var(--panel);backdrop-filter:blur(16px) saturate(130%);
+    border-left:1px solid var(--line);scrollbar-width:thin}
+  #panel section{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+  #panel section:last-child{border:0}
+  h3{margin:0 0 9px;font-size:10.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--brass)}
+  label{display:block;margin:9px 0;font-size:11.5px;color:var(--dim);position:relative}
+  label output{position:absolute;right:0;top:0;color:var(--ink);font-weight:600;
+    font-variant-numeric:tabular-nums;font-size:11.5px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;margin:3px 0 0;background:none}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;
+    background:linear-gradient(90deg,var(--brass2),rgba(255,255,255,.16))}
+  input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:rgba(255,255,255,.18)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;margin-top:-6px;
+    border-radius:50%;background:var(--brass);border:2px solid #15110a;box-shadow:0 0 10px rgba(245,193,90,.5)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:2px solid #15110a;border-radius:50%;
+    background:var(--brass)}
+  select{width:100%;margin-top:4px;background:#0f1320;color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:7px 8px;font:inherit;font-size:12px}
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .seg button{padding:9px 6px;font:inherit;font-size:12px;font-weight:600;color:var(--dim);
+    background:#10141f;border:1px solid var(--line);border-radius:9px;cursor:pointer;transition:.16s}
+  .seg button:hover{color:var(--ink);border-color:rgba(245,193,90,.4)}
+  .seg button.on{color:#120d04;background:linear-gradient(180deg,#ffd77e,var(--brass2));
+    border-color:#ffd77e;box-shadow:0 3px 16px rgba(245,193,90,.3)}
+  .row{display:flex;gap:6px;flex-wrap:wrap}
+  .row button{flex:1 1 68px;padding:8px 6px;font:inherit;font-size:11.5px;font-weight:600;color:var(--ink);
+    background:#131824;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:.16s}
+  .row button:hover{border-color:rgba(127,212,255,.5);color:var(--sky)}
+  .row button.on{color:#02121a;background:linear-gradient(180deg,#b9e9ff,var(--sky));border-color:#b9e9ff}
+  .toggles{display:grid;gap:5px}
+  .tg{display:flex;align-items:center;gap:9px;margin:0;cursor:pointer;color:var(--ink);font-size:12px}
+  .tg input{appearance:none;-webkit-appearance:none;width:34px;height:19px;border-radius:999px;margin:0;
+    background:#1b2131;border:1px solid var(--line);position:relative;cursor:pointer;transition:.18s;flex:0 0 auto}
+  .tg input::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+    background:var(--dim);transition:.18s cubic-bezier(.3,1.5,.5,1)}
+  .tg input:checked{background:rgba(245,193,90,.3);border-color:rgba(245,193,90,.6)}
+  .tg input:checked::after{transform:translateX(15px);background:var(--brass)}
+  .hint{margin:8px 0 0;font-size:11px;line-height:1.5;color:#7d8699}
+  .hint b{color:var(--brass);font-weight:600}
+
+  #sheetBtn{display:none}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,24px);z-index:9;
+    background:rgba(10,13,20,.94);border:1px solid rgba(245,193,90,.45);color:var(--ink);
+    padding:10px 16px;border-radius:999px;font-size:12.5px;font-weight:600;opacity:0;
+    transition:.26s;pointer-events:none;backdrop-filter:blur(10px);max-width:86vw;text-align:center}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #keys{position:fixed;left:14px;bottom:12px;z-index:5;font-size:10.5px;
+    color:#6a7385;pointer-events:none;letter-spacing:.02em}
+  #keys kbd{background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:4px;
+    padding:1px 5px;font:inherit;font-size:10px;color:#9aa3b4}
+
+  @media (max-width:860px){
+    #panel{top:auto;bottom:0;left:0;width:100%;height:58vh;border-left:0;
+      border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:26px 14px 26px;
+      transform:translateY(calc(100% - 46px));transition:transform .32s cubic-bezier(.3,1.1,.4,1)}
+    #panel.open{transform:translateY(0)}
+    .grab{position:absolute;top:0;left:0;right:0;height:44px;display:flex;align-items:center;
+      justify-content:center;cursor:pointer}
+    .grab::after{content:"";width:46px;height:4px;border-radius:4px;background:rgba(255,255,255,.3)}
+    .chips{max-width:100%;justify-content:flex-start}
+    #hdr{padding-right:14px}
+    #toast{bottom:62px}
+    #hdr{flex-direction:column;gap:8px}
+    .brand{font-size:15px}
+    #keys{display:none}
+    .seg{grid-template-columns:1fr 1fr}
+  }
+  @media (min-width:861px){ .grab{display:none} }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<header id="hdr">
+  <div class="brand"><span class="sun"></span>Heliograph<em>sundial workbench</em></div>
+  <div class="chips" id="readout"></div>
+</header>
+
+<aside id="panel">
+  <div class="grab" id="grab"></div>
+
+  <section>
+    <h3>Dial type</h3>
+    <div class="seg" id="typeSeg">
+      <button data-type="horizontal" class="on">Horizontal</button>
+      <button data-type="vertical">Vertical</button>
+      <button data-type="equatorial">Equatorial</button>
+      <button data-type="analemmatic">Analemmatic</button>
+    </div>
+    <p class="hint" id="typeHint"></p>
+  </section>
+
+  <section>
+    <h3>Site</h3>
+    <label>Preset
+      <select id="city"></select>
+    </label>
+    <label>Latitude <output id="latOut"></output>
+      <input id="lat" type="range" min="-66" max="66" step="0.5">
+    </label>
+    <label>Longitude <output id="lonOut"></output>
+      <input id="lon" type="range" min="-180" max="180" step="0.5">
+    </label>
+    <label>UTC offset <output id="tzOut"></output>
+      <input id="tz" type="range" min="-12" max="14" step="0.5">
+    </label>
+  </section>
+
+  <section>
+    <h3>Time machine</h3>
+    <label>Clock <output id="timeOut"></output>
+      <input id="time" type="range" min="0" max="24" step="0.00833">
+    </label>
+    <label>Date <output id="dayOut"></output>
+      <input id="day" type="range" min="1" max="365" step="1">
+    </label>
+    <div class="row">
+      <button id="playDay">▶ Day</button>
+      <button id="playYear">▶ Year</button>
+      <button id="stopBtn">■ Stop</button>
+      <button id="nowBtn">Now</button>
+    </div>
+  </section>
+
+  <section>
+    <h3>Markings</h3>
+    <div class="toggles">
+      <label class="tg"><input type="checkbox" id="tHours" checked><span>Hour lines &amp; numerals</span></label>
+      <label class="tg"><input type="checkbox" id="tDec" checked><span>Declination curves</span></label>
+      <label class="tg"><input type="checkbox" id="tAna"><span>Analemma trace (this hour, all year)</span></label>
+      <label class="tg"><input type="checkbox" id="tPath" checked><span>Sun path for the day</span></label>
+      <label class="tg"><input type="checkbox" id="tEoT" checked><span>Equation of time correction</span></label>
+    </div>
+    <label>Nodus height on the style <output id="nodOut"></output>
+      <input id="nod" type="range" min="0.25" max="0.95" step="0.01">
+    </label>
+  </section>
+
+  <section>
+    <h3>Take it home</h3>
+    <div class="row">
+      <button id="pngBtn">PNG view</button>
+      <button id="svgBtn">SVG template</button>
+      <button id="shareBtn">Copy link</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <p class="hint">The SVG is a <b>true-scale dial face</b> plus a gnomon cutting template with the
+      correct style angle — print at 100% and it keeps time at your latitude.</p>
+  </section>
+</aside>
+
+<div id="keys"><kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>space</kbd> play ·
+  <kbd>←→</kbd> time · <kbd>↑↓</kbd> date · <kbd>1–4</kbd> dial</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+(function(){
+/* ─────────────────────────── vector helpers ─────────────────────────── */
+const D2R = Math.PI/180, R2D = 180/Math.PI, TAU = Math.PI*2;
+const AXIAL = 23.4397*D2R;                      // Earth's obliquity
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const len=a=>Math.hypot(a[0],a[1],a[2]);
+const neg=a=>[-a[0],-a[1],-a[2]];
+const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+/* World frame: +X east, +Y up, +Z south (so north is −Z). */
+
+/* ─────────────────────────── state ─────────────────────────── */
+const CITIES = [
+  {n:"New York, US",       lat:40.71,  lon:-74.01,  tz:-5},
+  {n:"London, UK",         lat:51.51,  lon:-0.13,   tz:0},
+  {n:"Reykjavík, IS",      lat:64.15,  lon:-21.94,  tz:0},
+  {n:"Cairo, EG",          lat:30.04,  lon:31.24,   tz:2},
+  {n:"Delhi, IN",          lat:28.61,  lon:77.21,   tz:5.5},
+  {n:"Singapore",          lat:1.35,   lon:103.82,  tz:8},
+  {n:"Tokyo, JP",          lat:35.68,  lon:139.65,  tz:9},
+  {n:"Sydney, AU",         lat:-33.87, lon:151.21,  tz:10},
+  {n:"Santiago, CL",       lat:-33.45, lon:-70.67,  tz:-4},
+  {n:"Cape Town, ZA",      lat:-33.92, lon:18.42,   tz:2},
+  {n:"Nairobi, KE",        lat:-1.29,  lon:36.82,   tz:3},
+  {n:"San Francisco, US",  lat:37.77,  lon:-122.42, tz:-8}
+];
+const DEFAULTS = {
+  type:"horizontal", lat:40.71, lon:-74.01, tz:-5,
+  day:172, time:14.25, nod:0.62,
+  hours:true, dec:true, ana:false, path:true, eot:true,
+  yaw:-0.52, pitch:0.62, dist:3.55
+};
+const S = Object.assign({}, DEFAULTS);
+let playing = null;                            // null | 'day' | 'year'
+const STORE = "heliograph_v1";
+
+/* ─────────────────────────── solar model ─────────────────────────── */
+/* NOAA / Spencer low-precision series — plenty accurate for a dial. */
+function solarTerms(dayOfYear){
+  const g = TAU*(dayOfYear-1)/365;
+  const dec = 0.006918 - 0.399912*Math.cos(g) + 0.070257*Math.sin(g)
+            - 0.006758*Math.cos(2*g) + 0.000907*Math.sin(2*g)
+            - 0.002697*Math.cos(3*g) + 0.001480*Math.sin(3*g);     // radians
+  const eqt = 229.18*(0.000075 + 0.001868*Math.cos(g) - 0.032077*Math.sin(g)
+            - 0.014615*Math.cos(2*g) - 0.040849*Math.sin(2*g));    // minutes
+  return {dec, eqt};
+}
+function effLat(){ const l = S.lat; return Math.abs(l) < 3 ? (l < 0 ? -3 : 3) : l; }
+/* clock hours → true solar hours */
+function solarHours(clock, eqt){
+  if(!S.eot) return clock;
+  return clock + eqt/60 + (S.lon - 15*S.tz)/15;
+}
+function clockFromSolar(sol, eqt){
+  if(!S.eot) return sol;
+  return sol - eqt/60 - (S.lon - 15*S.tz)/15;
+}
+/* hour angle (radians, 0 = local solar noon, + = afternoon) */
+function hourAngle(clock, eqt){ return (solarHours(clock, eqt) - 12) * 15 * D2R; }
+
+function sunAt(H, dec, latR){
+  const sinAlt = Math.sin(latR)*Math.sin(dec) + Math.cos(latR)*Math.cos(dec)*Math.cos(H);
+  const alt = Math.asin(clamp(sinAlt,-1,1));
+  const ca = Math.cos(alt), cl = Math.cos(latR);
+  let az;
+  if(Math.abs(ca) < 1e-7 || Math.abs(cl) < 1e-7){ az = H > 0 ? Math.PI*1.5 : Math.PI*0.5; }
+  else {
+    const cosAz = clamp((Math.sin(dec) - Math.sin(alt)*Math.sin(latR)) / (ca*cl), -1, 1);
+    az = Math.acos(cosAz);                     // 0 = north, measured toward east
+    if(H > 0) az = TAU - az;                   // afternoon → western half
+  }
+  return {alt, az, v:[Math.cos(alt)*Math.sin(az), Math.sin(alt), -Math.cos(alt)*Math.cos(az)]};
+}
+function daylight(latR, dec){
+  const c = -Math.tan(latR)*Math.tan(dec);
+  if(c <= -1) return {midnightSun:true};
+  if(c >=  1) return {polarNight:true};
+  return {H0: Math.acos(c)};                   // radians
+}
+
+/* ─────────────────────────── dial geometry ─────────────────────────── */
+const PLATE_R = 1;
+function dialGeometry(){
+  const latR = effLat()*D2R;
+  const {dec, eqt} = solarTerms(S.day);
+  const P = [0, Math.sin(latR), -Math.cos(latR)];        // toward north celestial pole
+  let n, target, wall = false;
+  if(S.type === "vertical"){
+    n = [0,0, effLat() >= 0 ? 1 : -1];                   // face looks toward the equator
+    target = [0,-0.42,0]; wall = true;
+  } else if(S.type === "equatorial"){
+    n = dec >= 0 ? P.slice() : neg(P);
+    target = [0,0,0];
+  } else {
+    n = [0,1,0]; target = [0,0,0];
+  }
+  const style = dot(P,n) > 0 ? P.slice() : neg(P);       // the lit half of the axis
+  return {latR, dec, eqt, P, n, style, target, wall};
+}
+/* Shadow of a point p (world) on the dial plane through origin with normal n. */
+function shadowOf(p, sunV, n){
+  const sn = dot(sunV, n);
+  if(sn <= 1e-4) return null;
+  return sub(p, mul(sunV, dot(p,n)/sn));
+}
+/* Direction of the hour line for hour angle H. Provably independent of the
+   declination used to derive it, so any lit sample works. */
+function hourDir(H, G){
+  for(const d of [0, AXIAL*0.98, -AXIAL*0.98]){
+    const s = sunAt(H, d, G.latR);
+    if(s.alt > 0.5*D2R && dot(s.v, G.n) > 0.02){
+      const dir = sub(G.style, mul(s.v, dot(G.style,G.n)/dot(s.v,G.n)));
+      if(len(dir) > 1e-5) return norm(dir);
+    }
+  }
+  return null;
+}
+/* Analemmatic dial: hour points on an ellipse, gnomon walks a date scale. */
+const ANA_M = 0.82, ANA_H = 0.5;
+function anaHourPoint(H, G){
+  return [ANA_M*Math.sin(H), 0, -ANA_M*Math.sin(G.latR)*Math.cos(H)];
+}
+function anaGnomonBase(G){
+  return [0, 0, -ANA_M*Math.cos(G.latR)*Math.tan(G.dec)];
+}
+
+/* ─────────────────────────── camera ─────────────────────────── */
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let W = 0, Hh = 0, DPR = 1;
+const cam = {pos:[0,0,0], right:[1,0,0], up:[0,1,0], fwd:[0,0,1], f:1, cx:0, cy:0};
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.clientWidth; Hh = cv.clientHeight;
+  cv.width = Math.max(1, Math.round(W*DPR));
+  cv.height = Math.max(1, Math.round(Hh*DPR));
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  draw();
+}
+function setCamera(G){
+  const wide = window.innerWidth > 860;
+  const panelW = wide ? 324 : 0;
+  const sheetOpen = !wide && el.panel.classList.contains("open");
+  cam.cx = (W - panelW)/2;
+  cam.cy = wide ? Hh/2 : Hh*(sheetOpen ? 0.24 : 0.37);
+  cam.f = wide ? Math.min(W - panelW, Hh)*0.84 : Math.min(W*1.25, Hh*0.74);
+  const t = G.target;
+  const cp = Math.cos(S.pitch), sp = Math.sin(S.pitch);
+  cam.pos = add(t, mul([cp*Math.sin(S.yaw), sp, cp*Math.cos(S.yaw)], S.dist));
+  cam.fwd = norm(sub(t, cam.pos));
+  cam.right = norm(cross(cam.fwd, [0,1,0]));
+  cam.up = cross(cam.right, cam.fwd);
+}
+function proj(p){
+  const d = sub(p, cam.pos);
+  const z = dot(d, cam.fwd);
+  if(z <= 0.05) return null;
+  return [cam.cx + cam.f*dot(d, cam.right)/z, cam.cy - cam.f*dot(d, cam.up)/z, z];
+}
+function strokePath(pts, close){
+  let started = false, any = false;
+  for(const p of pts){
+    const q = proj(p);
+    if(!q){ started = false; continue; }
+    if(!started){ ctx.moveTo(q[0], q[1]); started = true; } else ctx.lineTo(q[0], q[1]);
+    any = true;
+  }
+  if(close && any) ctx.closePath();
+  return any;
+}
+function seg(a, b){
+  const p = proj(a), q = proj(b);
+  if(!p || !q) return;
+  ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+}
+function label(p, text, color, size, align){
+  const q = proj(p);
+  if(!q) return;
+  ctx.fillStyle = color;
+  ctx.font = (size||11) + "px system-ui,sans-serif";
+  ctx.textAlign = align || "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, q[0], q[1]);
+}
+function discPts(center, n, radius, steps){
+  const u = norm(Math.abs(n[1]) > 0.98 ? cross(n,[0,0,1]) : cross(n,[0,1,0]));
+  const v = cross(n, u);
+  const out = [];
+  for(let i=0;i<=steps;i++){
+    const a = i/steps*TAU;
+    out.push(add(center, add(mul(u, Math.cos(a)*radius), mul(v, Math.sin(a)*radius))));
+  }
+  return out;
+}
+
+/* ─────────────────────────── drawing ─────────────────────────── */
+let needsDraw = true, lastT = 0, platePts = null;
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const CUM = [0,31,59,90,120,151,181,212,243,273,304,334,365];
+function monthDay(doy){
+  let m = 0;
+  while(m < 11 && doy > CUM[m+1]) m++;
+  return {m, d: doy - CUM[m]};
+}
+function dateLabel(doy){ const x = monthDay(doy); return MONTHS[x.m] + " " + x.d; }
+function hm(h){
+  if(!isFinite(h)) return "—";
+  let t = ((h % 24) + 24) % 24;
+  const hh = Math.floor(t), mm = Math.round((t - hh)*60);
+  return (mm === 60 ? (hh+1)%24 : hh).toString().padStart(2,"0") + ":" + (mm%60).toString().padStart(2,"0");
+}
+
+function draw(){
+  needsDraw = false;
+  const G = dialGeometry();
+  setCamera(G);
+
+  /* sky */
+  const H = hourAngle(S.time, G.eqt);
+  const sun = sunAt(H, G.dec, G.latR);
+  const dayness = clamp((sun.alt*R2D + 6)/18, 0, 1);
+  const sky = ctx.createLinearGradient(0,0,0,Hh);
+  sky.addColorStop(0, mixHex("#05060b", "#12243b", dayness));
+  sky.addColorStop(0.62, mixHex("#07080c", "#1b2b3c", dayness));
+  sky.addColorStop(1, mixHex("#0a0b10", "#2a2a2f", dayness*0.8));
+  ctx.fillStyle = sky; ctx.fillRect(0,0,W,Hh);
+
+  /* ground */
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,.055)";
+  ctx.beginPath();
+  for(let r=0.5;r<=2.5;r+=0.5) strokePath(discPts([0,0,0],[0,1,0],r,72), true);
+  for(let i=0;i<12;i++){
+    const a = i/12*TAU;
+    seg([Math.sin(a)*0.5,0,Math.cos(a)*0.5],[Math.sin(a)*2.5,0,Math.cos(a)*2.5]);
+  }
+  ctx.stroke();
+  const compass = [["N",[0,0,-2.72]],["E",[2.72,0,0]],["S",[0,0,2.72]],["W",[-2.72,0,0]]];
+  for(const [t,p] of compass) label(p, t, t==="N" ? "rgba(255,143,107,.9)" : "rgba(255,255,255,.3)", 12);
+
+  /* optional wall for the vertical dial */
+  if(G.wall){
+    const z = 0.02 * (effLat() >= 0 ? 1 : -1);
+    const quad = [[-1.5,1.05,z],[1.5,1.05,z],[1.5,-1.25,z],[-1.5,-1.25,z]];
+    ctx.beginPath();
+    if(strokePath(quad, true)){
+      ctx.fillStyle = "rgba(255,255,255,.035)"; ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,.09)"; ctx.stroke();
+    }
+  }
+
+  /* dial plate */
+  const plateCenter = (S.type === "vertical") ? [0,-0.42,0] : [0,0,0];
+  const plate = (S.type === "vertical")
+    ? halfDiscPts(G, PLATE_R)
+    : discPts([0,0,0], G.n, PLATE_R, 84);
+  platePts = plate;
+  ctx.beginPath();
+  if(strokePath(plate, true)){
+    const c = proj(plateCenter);
+    let fill;
+    if(c){
+      fill = ctx.createRadialGradient(c[0], c[1], 4, c[0], c[1], Math.max(40, cam.f/S.dist));
+      fill.addColorStop(0, "rgba(46,39,26,.96)");
+      fill.addColorStop(1, "rgba(16,16,22,.95)");
+    } else fill = "rgba(24,22,26,.95)";
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = "rgba(245,193,90,.55)"; ctx.lineWidth = 1.6; ctx.stroke();
+  }
+
+  if(S.type === "analemmatic") drawAnalemmatic(G, sun);
+  else drawClassic(G, sun);
+
+  /* sun path for the day */
+  if(S.path){
+    const dl = daylight(G.latR, G.dec);
+    if(!dl.polarNight){
+      const h0 = dl.midnightSun ? Math.PI : dl.H0;
+      const pts = [];
+      for(let i=0;i<=96;i++){
+        const hh = -h0 + (2*h0)*i/96;
+        const s = sunAt(hh, G.dec, G.latR);
+        if(s.alt > -0.01) pts.push(mul(s.v, 2.35));
+      }
+      ctx.beginPath(); ctx.setLineDash([4,5]); ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(127,212,255,.42)";
+      strokePath(pts, false); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  /* the sun itself */
+  if(sun.alt > 0){
+    const sp = mul(sun.v, 2.35), q = proj(sp);
+    if(q){
+      const g = ctx.createRadialGradient(q[0],q[1],0,q[0],q[1],26);
+      g.addColorStop(0,"rgba(255,246,214,.98)");
+      g.addColorStop(.28,"rgba(245,193,90,.85)");
+      g.addColorStop(1,"rgba(245,193,90,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q[0],q[1],26,0,TAU); ctx.fill();
+      ctx.fillStyle = "#fff6d6"; ctx.beginPath(); ctx.arc(q[0],q[1],4.6,0,TAU); ctx.fill();
+    }
+  }
+
+  updateReadout(G, sun);
+}
+
+function halfDiscPts(G, r){
+  /* vertical dial: a half disc hanging below the gnomon root at the origin */
+  const east = [1,0,0], down = [0,-1,0];
+  const out = [add(mul(east, r), [0,0,0])];
+  for(let i=0;i<=60;i++){
+    const a = i/60*Math.PI;
+    out.push(add(mul(east, Math.cos(a)*r), mul(down, Math.sin(a)*r)));
+  }
+  return out;
+}
+
+function drawClassic(G, sun){
+  const r = PLATE_R;
+  /* hour lines */
+  if(S.hours){
+    for(let k=-8; k<=8; k++){
+      const H = k*15*D2R;
+      const dir = hourDir(H, G);
+      if(!dir) continue;
+      const end = mul(dir, r*0.97);
+      ctx.beginPath(); seg([0,0,0], end);
+      ctx.lineWidth = k === 0 ? 2 : 1.1;
+      ctx.strokeStyle = k === 0 ? "rgba(255,143,107,.85)" : "rgba(245,193,90,.5)";
+      ctx.stroke();
+      const hourNum = ((12 + k - 1) % 12) + 1;
+      label(mul(dir, r*1.08), String(hourNum),
+            k === 0 ? "rgba(255,186,160,.95)" : "rgba(245,193,90,.8)", 12);
+    }
+    /* half-hour ticks */
+    ctx.beginPath(); ctx.lineWidth = 0.9; ctx.strokeStyle = "rgba(245,193,90,.22)";
+    for(let k=-8;k<=8;k++){
+      const dir = hourDir((k+0.5)*15*D2R, G);
+      if(dir) seg(mul(dir, r*0.78), mul(dir, r*0.95));
+    }
+    ctx.stroke();
+  }
+
+  /* declination curves traced by the nodus */
+  if(S.dec){
+    const sets = [
+      {d: AXIAL,  c:"rgba(138,240,192,.6)",  t:"Jun solstice"},
+      {d: 0,      c:"rgba(255,255,255,.42)", t:"equinox"},
+      {d:-AXIAL,  c:"rgba(183,155,255,.6)",  t:"Dec solstice"}
+    ];
+    for(const st of sets){
+      const pts = [];
+      for(let k=-150;k<=150;k++){
+        const H = k*D2R;
+        const s = sunAt(H, st.d, G.latR);
+        if(s.alt <= 0.3*D2R) { pts.push(null); continue; }
+        const q = shadowOf(mul(G.style, S.nod), s.v, G.n);
+        if(!q || len(q) > r*0.99){ pts.push(null); continue; }
+        pts.push(q);
+      }
+      ctx.beginPath(); ctx.lineWidth = st.d === 0 ? 1.4 : 1.2; ctx.strokeStyle = st.c;
+      if(st.d === 0) ctx.setLineDash([]); else ctx.setLineDash([6,4]);
+      let run = [];
+      for(const p of pts){
+        if(p) run.push(p);
+        else { if(run.length > 1) strokePath(run, false); run = []; }
+      }
+      if(run.length > 1) strokePath(run, false);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  /* analemma: where the nodus shadow sits at this clock hour, every day of the year */
+  if(S.ana){
+    const pts = [];
+    for(let d=1;d<=366;d++){
+      const day = ((d-1)%365)+1;
+      const t = solarTerms(day);
+      const H = (solarHours(S.time, t.eqt) - 12)*15*D2R;
+      const s = sunAt(H, t.dec, G.latR);
+      if(s.alt <= 0.5*D2R){ pts.push(null); continue; }
+      const q = shadowOf(mul(G.style, S.nod), s.v, G.n);
+      pts.push(q && len(q) <= r*0.99 ? q : null);
+    }
+    ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(127,212,255,.8)";
+    let run = [];
+    for(const p of pts){ if(p) run.push(p); else { if(run.length>1) strokePath(run,false); run=[]; } }
+    if(run.length>1) strokePath(run,false);
+    ctx.stroke();
+  }
+
+  /* cast shadow */
+  const lit = sun.alt > 0 && dot(sun.v, G.n) > 1e-3;
+  if(lit){
+    const tri = gnomonTriangle(G);
+    const shade = tri.map(p => shadowOf(p, sun.v, G.n)).filter(Boolean);
+    if(shade.length === tri.length){
+      ctx.save();
+      ctx.beginPath();
+      if(strokePath(platePts || [], true)) ctx.clip();   /* the shadow stops at the rim */
+      ctx.beginPath();
+      if(strokePath(shade, true)){
+        ctx.fillStyle = "rgba(6,8,14,.72)"; ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.lineWidth = 1; ctx.stroke();
+      }
+      ctx.restore();
+    }
+    /* style shadow + nodus */
+    const far = shadowOf(mul(G.style, 1.0), sun.v, G.n);
+    if(far){
+      const l = Math.min(len(far), r*0.985);
+      const dir = norm(far);
+      ctx.beginPath(); seg([0,0,0], mul(dir, l));
+      ctx.lineWidth = 2.4; ctx.strokeStyle = "rgba(10,12,18,.9)"; ctx.stroke();
+      ctx.beginPath(); seg([0,0,0], mul(dir, l));
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,143,107,.75)"; ctx.stroke();
+    }
+    const nq = shadowOf(mul(G.style, S.nod), sun.v, G.n);
+    if(nq && len(nq) <= r){
+      const q = proj(nq);
+      if(q){
+        ctx.fillStyle = "#ff8f6b"; ctx.beginPath(); ctx.arc(q[0],q[1],4,0,TAU); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = 1; ctx.stroke();
+      }
+    }
+  }
+
+  /* gnomon */
+  const tri = gnomonTriangle(G);
+  ctx.beginPath();
+  if(strokePath(tri, true)){
+    const grd = ctx.createLinearGradient(0,0,0,Hh);
+    grd.addColorStop(0,"rgba(255,224,160,.92)");
+    grd.addColorStop(1,"rgba(170,118,36,.92)");
+    ctx.fillStyle = grd; ctx.fill();
+    ctx.strokeStyle = "#ffe3a6"; ctx.lineWidth = 1.4; ctx.stroke();
+  }
+  /* the style edge, highlighted */
+  ctx.beginPath(); seg([0,0,0], mul(G.style, S.type === "equatorial" ? 0.72 : 1));
+  ctx.lineWidth = 2.2; ctx.strokeStyle = "#fff3cf"; ctx.stroke();
+}
+
+function gnomonTriangle(G){
+  const latR = G.latR, L = 1;
+  if(S.type === "equatorial"){
+    /* a slim rod along the axis, drawn as a narrow triangle for solidity */
+    const tip = mul(G.style, 0.72);
+    const u = norm(cross(G.n, [0,1,0]));
+    return [mul(u,0.02), tip, mul(u,-0.02)];
+  }
+  if(S.type === "vertical"){
+    const drop = [0, -L*Math.abs(Math.sin(latR)), 0];
+    const tip = mul(G.style, L);
+    return [[0,0,0], drop, tip];
+  }
+  const run = [0, 0, -L*Math.cos(latR)*(effLat() >= 0 ? 1 : -1)];
+  const tip = mul(G.style, L);
+  return [[0,0,0], run, tip];
+}
+
+function drawAnalemmatic(G, sun){
+  const r = PLATE_R;
+  /* hour ellipse */
+  const ell = [];
+  for(let i=0;i<=120;i++){ ell.push(anaHourPoint(i/120*TAU, G)); }
+  ctx.beginPath(); ctx.lineWidth = 1.4; ctx.strokeStyle = "rgba(245,193,90,.5)";
+  strokePath(ell, true); ctx.stroke();
+
+  if(S.hours){
+    for(let k=-7;k<=7;k++){
+      const H = k*15*D2R;
+      const p = anaHourPoint(H, G);
+      const q = proj(p);
+      if(!q) continue;
+      ctx.fillStyle = k === 0 ? "#ff8f6b" : "rgba(245,193,90,.9)";
+      ctx.beginPath(); ctx.arc(q[0],q[1], k === 0 ? 4.2 : 3, 0, TAU); ctx.fill();
+      const out = mul(norm([p[0], 0, p[2]*1.0]), 0.12);
+      label(add(p, out.every(isFinite) ? out : [0,0,0]),
+            String(((12+k-1)%12)+1), "rgba(245,193,90,.85)", 11.5);
+    }
+  }
+
+  /* date scale: the gnomon walks this line through the year */
+  const zMax = ANA_M*Math.cos(G.latR)*Math.tan(AXIAL);
+  ctx.beginPath(); ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(138,240,192,.5)";
+  seg([0,0,-zMax],[0,0,zMax]); ctx.stroke();
+  const NAMED = [0,3,6,9];
+  for(let m=0;m<12;m++){
+    const z = -ANA_M*Math.cos(G.latR)*Math.tan(solarTerms(CUM[m] + 1).dec);
+    const named = NAMED.includes(m);
+    ctx.beginPath(); ctx.lineWidth = named ? 1.6 : 1;
+    ctx.strokeStyle = named ? "rgba(138,240,192,.85)" : "rgba(138,240,192,.4)";
+    const w = named ? 0.075 : 0.045;
+    seg([-w,0,z],[w,0,z]); ctx.stroke();
+    if(named){
+      const left = (m === 3 || m === 6);
+      label([(left ? -1 : 1)*(w + 0.055), 0, z], MONTHS[m],
+            "rgba(138,240,192,.8)", 10.5, left ? "right" : "left");
+    }
+  }
+
+  /* gnomon on today's mark, plus its shadow */
+  const base = anaGnomonBase(G);
+  const tip = add(base, [0, ANA_H, 0]);
+  if(sun.alt > 0){
+    const sq = shadowOf(tip, sun.v, [0,1,0]);
+    if(sq){
+      const dir = norm(sub(sq, base));
+      const far = add(base, mul(dir, Math.max(len(sub(sq,base)), ANA_M*1.25)));
+      ctx.beginPath(); seg(base, far);
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(8,10,16,.85)"; ctx.stroke();
+      ctx.beginPath(); seg(base, far);
+      ctx.lineWidth = 1.1; ctx.strokeStyle = "rgba(255,143,107,.85)"; ctx.stroke();
+    }
+  }
+  const bq = proj(base), tq = proj(tip);
+  if(bq && tq){
+    ctx.beginPath(); ctx.moveTo(bq[0],bq[1]); ctx.lineTo(tq[0],tq[1]);
+    ctx.lineWidth = 5; ctx.strokeStyle = "rgba(170,118,36,.95)"; ctx.lineCap = "round"; ctx.stroke();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#ffe3a6"; ctx.stroke();
+    ctx.lineCap = "butt";
+    ctx.fillStyle = "#fff3cf"; ctx.beginPath(); ctx.arc(tq[0],tq[1],3.2,0,TAU); ctx.fill();
+  }
+  label(add(base,[-0.14,0,0]), dateLabel(S.day), "#bdfbe0", 11, "right");
+}
+
+function mixHex(a, b, t){
+  const pa = [parseInt(a.slice(1,3),16),parseInt(a.slice(3,5),16),parseInt(a.slice(5,7),16)];
+  const pb = [parseInt(b.slice(1,3),16),parseInt(b.slice(3,5),16),parseInt(b.slice(5,7),16)];
+  return "rgb(" + pa.map((v,i)=>Math.round(lerp(v,pb[i],t))).join(",") + ")";
+}
+
+/* ─────────────────────────── readouts ─────────────────────────── */
+const readoutEl = document.getElementById("readout");
+function updateReadout(G, sun){
+  const dl = daylight(G.latR, G.dec);
+  let rise = "—", set = "—";
+  if(dl.midnightSun){ rise = set = "midnight sun"; }
+  else if(dl.polarNight){ rise = set = "polar night"; }
+  else {
+    rise = hm(clockFromSolar(12 - dl.H0*R2D/15, G.eqt));
+    set  = hm(clockFromSolar(12 + dl.H0*R2D/15, G.eqt));
+  }
+  const noon = hm(clockFromSolar(12, G.eqt));
+  const shadowRatio = sun.alt > 0.5*D2R ? (1/Math.tan(sun.alt)).toFixed(2) + "×" : "—";
+  const lit = sun.alt > 0 && dot(sun.v, G.n) > 1e-3;
+  const chips = [
+    ["Sun", (sun.alt*R2D).toFixed(1) + "° alt · " + (sun.az*R2D).toFixed(0) + "° az"],
+    ["Solar", hm(solarHours(S.time, G.eqt))],
+    ["EoT", (G.eqt >= 0 ? "+" : "") + G.eqt.toFixed(1) + " min"],
+    ["Decl", (G.dec*R2D >= 0 ? "+" : "") + (G.dec*R2D).toFixed(2) + "°"],
+    ["Rise/Set", rise + " / " + set],
+    ["Noon", noon],
+    ["Shadow", shadowRatio]
+  ];
+  let html = chips.map(c => '<span class="chip">' + c[0] + ' <b>' + c[1] + '</b></span>').join("");
+  if(!lit){
+    const why = sun.alt <= 0 ? "sun below the horizon" : "sun behind the dial face";
+    html += '<span class="chip warn">no shadow — <b>' + why + '</b></span>';
+  }
+  if(S.type === "equatorial"){
+    html += '<span class="chip">Lit face <b>' + (G.dec >= 0 ? "upper (summer)" : "lower (winter)") + '</b></span>';
+  }
+  readoutEl.innerHTML = html;
+}
+
+/* ─────────────────────────── SVG template export ─────────────────────────── */
+function plateBasis(G){
+  if(S.type === "vertical"){
+    return {u:[(effLat() >= 0 ? 1 : -1),0,0], v:[0,1,0]};
+  }
+  if(S.type === "equatorial"){
+    const u = norm(cross(G.n, [0,1,0]));
+    return {u, v:cross(u, G.n)};
+  }
+  return {u:[1,0,0], v:[0,0,-1]};               // east, north
+}
+function buildSVG(){
+  const G = dialGeometry();
+  const B = plateBasis(G);
+  const R = 82;                                  // mm
+  const cx = 105, cy = S.type === "vertical" ? 36 : 100;
+  const to2 = p => [cx + dot(p, B.u)*R, cy - dot(p, B.v)*R];
+  const fmt = n => (Math.round(n*100)/100).toString();
+  const o = [];
+  o.push('<?xml version="1.0" encoding="UTF-8"?>');
+  o.push('<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="290mm" viewBox="0 0 210 290">');
+  o.push('<rect width="210" height="290" fill="#ffffff"/>');
+  o.push('<g fill="none" stroke="#111" stroke-width="0.3" stroke-linecap="round">');
+
+  const typeName = {horizontal:"Horizontal", vertical:"Vertical (equator-facing)",
+                    equatorial:"Equatorial", analemmatic:"Analemmatic"}[S.type];
+  if(S.type === "analemmatic"){
+    const M = ANA_M*R, mi = M*Math.abs(Math.sin(G.latR));
+    o.push('<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+fmt(M)+'" ry="'+fmt(mi)+'" stroke="#111" stroke-width="0.4"/>');
+    for(let k=-7;k<=7;k++){
+      const H = k*15*D2R;
+      const p = anaHourPoint(H, G);
+      const q = to2(p);
+      if(Math.abs(Math.sin(H)) > 1.001) continue;
+      o.push('<circle cx="'+fmt(q[0])+'" cy="'+fmt(q[1])+'" r="'+(k===0?1.5:1.1)+'" fill="#111" stroke="none"/>');
+      const off = (dot(p, B.v) >= 0 ? -1 : 1) * 5.5;
+      o.push('<text x="'+fmt(q[0])+'" y="'+fmt(q[1]+off)+'" font-family="Helvetica,Arial" font-size="4.2" '+
+             'text-anchor="middle" fill="#111" stroke="none">'+(((12+k-1)%12)+1)+'</text>');
+    }
+    const zMax = ANA_M*Math.cos(G.latR)*Math.tan(AXIAL);
+    const a = to2([0,0,-zMax]), b = to2([0,0,zMax]);
+    o.push('<line x1="'+fmt(a[0])+'" y1="'+fmt(a[1])+'" x2="'+fmt(b[0])+'" y2="'+fmt(b[1])+'" stroke-width="0.4"/>');
+    for(let m=0;m<12;m++){
+      for(const dd of [1, 15]){
+        const doy = CUM[m] + dd;
+        const t = solarTerms(doy);
+        const z = -ANA_M*Math.cos(G.latR)*Math.tan(t.dec);
+        const q = to2([0,0,z]);
+        const w = dd === 1 ? 3 : 1.8;
+        o.push('<line x1="'+fmt(q[0]-w)+'" y1="'+fmt(q[1])+'" x2="'+fmt(q[0]+w)+'" y2="'+fmt(q[1])+'"/>');
+        if(dd === 1){
+          const right = (m % 2 === 0);
+          o.push('<text x="'+fmt(q[0] + (right ? 4.5 : -4.5))+'" y="'+fmt(q[1]+1.3)+'" '+
+            'font-family="Helvetica,Arial" font-size="3.4" text-anchor="'+(right ? 'start' : 'end')+
+            '" fill="#111" stroke="none">'+MONTHS[m]+'</text>');
+        }
+      }
+    }
+    o.push('<text x="'+cx+'" y="'+fmt(cy+mi+16)+'" font-family="Helvetica,Arial" font-size="4" '+
+           'text-anchor="middle" fill="#111" stroke="none">Stand upright on today’s date mark. '+
+           'Your shadow crosses the ellipse at the hour.</text>');
+  } else {
+    /* plate outline */
+    if(S.type === "vertical"){
+      o.push('<path d="M '+fmt(cx-R)+' '+fmt(cy)+' A '+R+' '+R+' 0 0 0 '+fmt(cx+R)+' '+fmt(cy)+'" stroke-width="0.4"/>');
+      o.push('<line x1="'+fmt(cx-R)+'" y1="'+fmt(cy)+'" x2="'+fmt(cx+R)+'" y2="'+fmt(cy)+'" stroke-width="0.4"/>');
+    } else {
+      o.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" stroke-width="0.4"/>');
+    }
+    o.push('<circle cx="'+cx+'" cy="'+cy+'" r="1" fill="#111" stroke="none"/>');
+    /* hour lines */
+    for(let k=-8;k<=8;k++){
+      for(const half of [0, 0.5]){
+        const H = (k+half)*15*D2R;
+        const dir = hourDir(H, G);
+        if(!dir) continue;
+        const inner = half ? 0.72 : 0;
+        const a = to2(mul(dir, inner)), b = to2(mul(dir, 0.985));
+        o.push('<line x1="'+fmt(a[0])+'" y1="'+fmt(a[1])+'" x2="'+fmt(b[0])+'" y2="'+fmt(b[1])+
+               '" stroke-width="'+(half ? 0.2 : (k===0 ? 0.6 : 0.35))+'"/>');
+        if(!half){
+          const t = to2(mul(dir, 1.055));
+          o.push('<text x="'+fmt(t[0])+'" y="'+fmt(t[1]+1.6)+'" font-family="Helvetica,Arial" '+
+                 'font-size="5" text-anchor="middle" fill="#111" stroke="none">'+(((12+k-1)%12)+1)+'</text>');
+        }
+      }
+    }
+    /* declination curves */
+    for(const st of [{d:AXIAL,t:"Jun 21"},{d:0,t:"Mar 20 / Sep 22"},{d:-AXIAL,t:"Dec 21"}]){
+      let dsh = "", open = false;
+      for(let k=-150;k<=150;k++){
+        const s = sunAt(k*D2R, st.d, G.latR);
+        let ok = s.alt > 0.3*D2R;
+        let q = null;
+        if(ok){
+          const w = shadowOf(mul(G.style, S.nod), s.v, G.n);
+          if(w && len(w) <= 0.985) q = to2(w); else ok = false;
+        }
+        if(ok){ dsh += (open ? " L " : " M ") + fmt(q[0]) + " " + fmt(q[1]); open = true; }
+        else open = false;
+      }
+      if(dsh) o.push('<path d="'+dsh.trim()+'" stroke-width="0.25" stroke-dasharray="'+
+        (st.d === 0 ? "none" : "2 1.4")+'"/>');
+    }
+  }
+  o.push('</g>');
+
+  /* gnomon template + notes */
+  const lat = effLat(), aLat = Math.abs(lat);
+  const gy = 202;
+  o.push('<g stroke="#111" fill="none" stroke-width="0.4">');
+  if(S.type === "horizontal" || S.type === "vertical"){
+    const L = 62;
+    const ang = (S.type === "horizontal" ? aLat : 90 - aLat) * D2R;  // angle at the root
+    const run = L*Math.cos(ang), rise = L*Math.sin(ang);
+    const ox = 22, oy = gy + 70;
+    o.push('<path d="M '+ox+' '+oy+' L '+fmt(ox+run)+' '+fmt(oy)+' L '+fmt(ox+run)+' '+fmt(oy-rise)+' Z"/>');
+    o.push('<path d="M '+fmt(ox+10)+' '+oy+' A 10 10 0 0 0 '+fmt(ox+10*Math.cos(ang))+' '+
+           fmt(oy-10*Math.sin(ang))+'" stroke-width="0.25"/>');
+    o.push('<text x="'+fmt(ox+13)+'" y="'+fmt(oy-3.5)+'" font-family="Helvetica,Arial" font-size="4" '+
+           'fill="#111" stroke="none">'+fmt(ang*R2D)+'°</text>');
+    o.push('<text x="'+ox+'" y="'+fmt(oy+7)+'" font-family="Helvetica,Arial" font-size="4" '+
+           'fill="#111" stroke="none">Gnomon: cut out, stand it on the '+
+           (S.type === "horizontal" ? "noon line, tall end toward the "+(lat>=0?"north":"south") : "vertical centre line")+
+           '. Style angle '+fmt(ang*R2D)+'°.</text>');
+  } else if(S.type === "equatorial"){
+    const ox = 22, oy = gy + 64;
+    o.push('<line x1="'+ox+'" y1="'+oy+'" x2="'+fmt(ox+70)+'" y2="'+oy+'"/>');
+    o.push('<line x1="'+fmt(ox+35)+'" y1="'+fmt(oy-26)+'" x2="'+fmt(ox+35)+'" y2="'+fmt(oy+4)+'"/>');
+    o.push('<text x="'+ox+'" y="'+fmt(oy+11)+'" font-family="Helvetica,Arial" font-size="4" '+
+           'fill="#111" stroke="none">Rod perpendicular to the plate. Tilt the plate '+
+           fmt(90-aLat)+'° from horizontal, high edge toward the '+(lat>=0?"south":"north")+'.</text>');
+  } else {
+    const ox = 22, oy = gy + 60;
+    o.push('<text x="'+ox+'" y="'+oy+'" font-family="Helvetica,Arial" font-size="4" fill="#111" stroke="none">'+
+           'No fixed gnomon: any upright object (or a person) standing on the date mark casts the hour.</text>');
+  }
+  o.push('</g>');
+
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  o.push('<g font-family="Helvetica,Arial" fill="#111">');
+  o.push('<text x="22" y="'+gy+'" font-size="7" font-weight="bold">'+esc(typeName)+' sundial</text>');
+  o.push('<text x="22" y="'+(gy+8)+'" font-size="4.2">Latitude '+fmt(lat)+'° · longitude '+
+         fmt(S.lon)+'° · UTC'+(S.tz>=0?"+":"")+S.tz+
+         ' · dial radius '+R+' mm · print at 100%</text>');
+  o.push('<text x="22" y="'+(gy+14)+'" font-size="4.2">Hour lines read <tspan font-style="italic">apparent solar time</tspan>. '+
+         'Clock time = solar time '+(S.lon-15*S.tz>=0?"−":"+")+' '+
+         fmt(Math.abs((S.lon-15*S.tz)*4))+' min (longitude) − equation of time.</text>');
+  o.push('<text x="22" y="'+(gy+20)+'" font-size="4.2">'+ (S.type === "analemmatic"
+         ? 'Hour points sit on an ellipse '+fmt(ANA_M*R*2)+' mm wide; the date scale runs north\u2013south through the centre. Drawn by Heliograph.'
+         : 'Nodus at '+fmt(S.nod*100)+'% of the style; its shadow follows the dashed date curves. Drawn by Heliograph.')+'</text>');
+  o.push('</g></svg>');
+  return o.join("\n");
+}
+
+/* ─────────────────────────── persistence & sharing ─────────────────────────── */
+const KEYS = ["type","lat","lon","tz","day","time","nod","hours","dec","ana","path","eot","yaw","pitch","dist"];
+function snapshot(){ const o={}; for(const k of KEYS) o[k]=S[k]; return o; }
+function save(){
+  try{ localStorage.setItem(STORE, JSON.stringify(snapshot())); }catch(e){}
+}
+function load(){
+  let got = false;
+  try{
+    const raw = localStorage.getItem(STORE);
+    if(raw){ const o = JSON.parse(raw); applyObj(o); got = true; }
+  }catch(e){}
+  try{
+    if(location.hash.length > 2){
+      const o = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
+      applyObj(o); got = true;
+    }
+  }catch(e){}
+  return got;
+}
+function applyObj(o){
+  if(!o || typeof o !== "object") return;
+  for(const k of KEYS){
+    if(!(k in o)) continue;
+    const v = o[k];
+    if(typeof S[k] === "boolean"){ S[k] = !!v; }
+    else if(typeof S[k] === "number"){ if(typeof v === "number" && isFinite(v)) S[k] = v; }
+    else if(typeof v === "string" && ["horizontal","vertical","equatorial","analemmatic"].includes(v)) S[k] = v;
+  }
+  S.lat = clamp(S.lat,-66,66); S.lon = clamp(S.lon,-180,180); S.tz = clamp(S.tz,-12,14);
+  S.day = clamp(Math.round(S.day),1,365); S.time = clamp(S.time,0,24);
+  S.nod = clamp(S.nod,0.25,0.95);
+  S.pitch = clamp(S.pitch, 0.1, 1.45); S.dist = clamp(S.dist, 2.0, 9);
+}
+function shareLink(){
+  const b = btoa(unescape(encodeURIComponent(JSON.stringify(snapshot()))));
+  return location.origin + location.pathname + "#" + b;
+}
+
+/* ─────────────────────────── UI wiring ─────────────────────────── */
+const $ = id => document.getElementById(id);
+const el = {
+  city:$("city"), lat:$("lat"), lon:$("lon"), tz:$("tz"), time:$("time"), day:$("day"), nod:$("nod"),
+  latOut:$("latOut"), lonOut:$("lonOut"), tzOut:$("tzOut"), timeOut:$("timeOut"),
+  dayOut:$("dayOut"), nodOut:$("nodOut"),
+  tHours:$("tHours"), tDec:$("tDec"), tAna:$("tAna"), tPath:$("tPath"), tEoT:$("tEoT"),
+  typeSeg:$("typeSeg"), typeHint:$("typeHint"), panel:$("panel"), grab:$("grab"),
+  toast:$("toast")
+};
+CITIES.forEach((c,i) => {
+  const op = document.createElement("option");
+  op.value = String(i); op.textContent = c.n; el.city.appendChild(op);
+});
+const customOpt = document.createElement("option");
+customOpt.value = "custom"; customOpt.textContent = "Custom site";
+el.city.appendChild(customOpt);
+
+/* Each dial sits in a different plane, so each gets a viewpoint that faces it. */
+function setViewFor(type){
+  const latR = Math.abs(effLat())*D2R;
+  if(type === "equatorial"){
+    S.pitch = clamp(latR + 0.1, 0.25, 1.35);
+    S.yaw = effLat() >= 0 ? 2.85 : 0.29;
+    S.dist = 3.3;
+  } else if(type === "vertical"){
+    S.pitch = 0.30; S.yaw = effLat() >= 0 ? 0.26 : Math.PI - 0.26; S.dist = 3.3;
+  } else if(type === "analemmatic"){
+    S.pitch = 0.78; S.yaw = -0.45; S.dist = 3.5;
+  } else {
+    S.pitch = 0.62; S.yaw = -0.52; S.dist = 3.55;
+  }
+}
+
+const HINTS = {
+  horizontal:"A flat plate with a gnomon tilted to your latitude. The classic garden dial — hour lines crowd toward the noon line as you move away from the pole.",
+  vertical:"Mounted on an equator-facing wall. The style points down and out; morning and afternoon hours spread across the wall.",
+  equatorial:"Plate parallel to the celestial equator, rod through it. The only dial whose hours are exactly 15° apart — and it goes blank at the equinox.",
+  analemmatic:"No fixed gnomon: an upright marker moves along a date scale and the hour marks sit on an ellipse. This is the human-sundial pattern you see in parks."
+};
+function syncUI(){
+  el.lat.value = S.lat; el.lon.value = S.lon; el.tz.value = S.tz;
+  el.time.value = S.time; el.day.value = S.day; el.nod.value = S.nod;
+  el.latOut.value = Math.abs(S.lat).toFixed(1) + "° " + (S.lat >= 0 ? "N" : "S");
+  el.lonOut.value = Math.abs(S.lon).toFixed(1) + "° " + (S.lon >= 0 ? "E" : "W");
+  el.tzOut.value = "UTC" + (S.tz >= 0 ? "+" : "") + S.tz;
+  el.timeOut.value = hm(S.time);
+  el.dayOut.value = dateLabel(S.day);
+  el.nodOut.value = Math.round(S.nod*100) + "%";
+  el.tHours.checked = S.hours; el.tDec.checked = S.dec; el.tAna.checked = S.ana;
+  el.tPath.checked = S.path; el.tEoT.checked = S.eot;
+  for(const b of el.typeSeg.children) b.classList.toggle("on", b.dataset.type === S.type);
+  el.typeHint.textContent = HINTS[S.type];
+  const idx = CITIES.findIndex(c => Math.abs(c.lat-S.lat)<0.02 && Math.abs(c.lon-S.lon)<0.02 && c.tz===S.tz);
+  el.city.value = idx >= 0 ? String(idx) : "custom";
+  $("playDay").classList.toggle("on", playing === "day");
+  $("playYear").classList.toggle("on", playing === "year");
+}
+function touch(){ needsDraw = true; syncUI(); save(); }
+
+el.typeSeg.addEventListener("click", e => {
+  const b = e.target.closest("button[data-type]");
+  if(!b) return;
+  S.type = b.dataset.type;
+  if(S.type === "analemmatic") S.ana = false;
+  setViewFor(S.type);
+  touch();
+});
+el.city.addEventListener("change", () => {
+  const v = el.city.value;
+  if(v === "custom") return;
+  const c = CITIES[+v];
+  S.lat = c.lat; S.lon = c.lon; S.tz = c.tz; touch();
+});
+const bindRange = (node, key, fn) => node.addEventListener("input", () => {
+  S[key] = parseFloat(node.value);
+  if(fn) fn();
+  touch();
+});
+bindRange(el.lat, "lat"); bindRange(el.lon, "lon"); bindRange(el.tz, "tz");
+bindRange(el.time, "time", () => { if(playing === "day") playing = null; });
+bindRange(el.day, "day", () => { if(playing === "year") playing = null; });
+bindRange(el.nod, "nod");
+const bindTog = (node, key) => node.addEventListener("change", () => { S[key] = node.checked; touch(); });
+bindTog(el.tHours,"hours"); bindTog(el.tDec,"dec"); bindTog(el.tAna,"ana");
+bindTog(el.tPath,"path"); bindTog(el.tEoT,"eot");
+
+$("playDay").addEventListener("click", () => { playing = playing === "day" ? null : "day"; touch(); });
+$("playYear").addEventListener("click", () => { playing = playing === "year" ? null : "year"; touch(); });
+$("stopBtn").addEventListener("click", () => { playing = null; touch(); });
+$("nowBtn").addEventListener("click", () => {
+  const d = new Date();
+  const start = Date.UTC(d.getFullYear(),0,1);
+  S.day = clamp(Math.floor((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - start)/86400000)+1,1,365);
+  S.time = d.getHours() + d.getMinutes()/60;
+  S.tz = clamp(-d.getTimezoneOffset()/60, -12, 14);
+  playing = null; touch(); toast("Set to your clock and today's date");
+});
+$("resetBtn").addEventListener("click", () => {
+  Object.assign(S, DEFAULTS); setViewFor(S.type); playing = "day";
+  try{ localStorage.removeItem(STORE); }catch(e){}
+  if(location.hash) history.replaceState(null,"",location.pathname);
+  touch(); toast("Back to the default dial");
+});
+
+let toastT = 0;
+function toast(msg){
+  el.toast.textContent = msg;
+  el.toast.classList.add("show");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.toast.classList.remove("show"), 2300);
+}
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return blob.size;
+}
+function fileStem(){
+  return "heliograph-" + S.type + "-" + Math.round(Math.abs(S.lat)) + (S.lat>=0?"N":"S");
+}
+$("pngBtn").addEventListener("click", () => {
+  draw();
+  cv.toBlob(b => {
+    if(!b || !b.size){ toast("PNG export failed"); return; }
+    download(b, fileStem() + ".png");
+    toast("Saved " + Math.round(b.size/1024) + " KB PNG");
+  }, "image/png");
+});
+$("svgBtn").addEventListener("click", () => {
+  const svg = buildSVG();
+  const b = new Blob([svg], {type:"image/svg+xml"});
+  download(b, fileStem() + "-template.svg");
+  toast("Dial template: " + Math.round(b.size/1024) + " KB SVG — print at 100%");
+});
+$("shareBtn").addEventListener("click", async () => {
+  const link = shareLink();
+  history.replaceState(null, "", "#" + link.split("#")[1]);
+  try{
+    await navigator.clipboard.writeText(link);
+    toast("Link copied — the whole dial travels in the URL");
+  }catch(e){
+    toast("Link is in the address bar");
+  }
+});
+
+/* bottom sheet on phones */
+el.grab.addEventListener("click", () => { el.panel.classList.toggle("open"); needsDraw = true; });
+
+/* ─────────────────────────── pointer orbit ─────────────────────────── */
+const pointers = new Map();
+let pinchBase = 0, pinchDist0 = 0;
+cv.addEventListener("pointerdown", e => {
+  cv.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  cv.classList.add("drag");
+  if(pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    pinchDist0 = Math.hypot(a.x-b.x, a.y-b.y) || 1;
+    pinchBase = S.dist;
+  }
+});
+cv.addEventListener("pointermove", e => {
+  const p = pointers.get(e.pointerId);
+  if(!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if(pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y) || 1;
+    S.dist = clamp(pinchBase * pinchDist0 / d, 2.0, 9);
+  } else {
+    S.yaw -= dx*0.006;
+    S.pitch = clamp(S.pitch + dy*0.005, 0.1, 1.45);
+  }
+  needsDraw = true;
+});
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(!pointers.size){ cv.classList.remove("drag"); save(); }
+}
+cv.addEventListener("pointerup", endPointer);
+cv.addEventListener("pointercancel", endPointer);
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  S.dist = clamp(S.dist * (1 + Math.sign(e.deltaY)*0.09), 2.0, 9);
+  needsDraw = true;
+}, {passive:false});
+
+window.addEventListener("keydown", e => {
+  if(e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  const types = ["horizontal","vertical","equatorial","analemmatic"];
+  if(e.key === " "){ e.preventDefault(); playing = playing ? null : "day"; touch(); return; }
+  if(e.key === "ArrowLeft" || e.key === "ArrowRight"){
+    e.preventDefault(); playing = null;
+    S.time = (S.time + (e.key === "ArrowRight" ? 0.25 : -0.25) + 24) % 24; touch(); return;
+  }
+  if(e.key === "ArrowUp" || e.key === "ArrowDown"){
+    e.preventDefault(); playing = null;
+    S.day = ((S.day - 1 + (e.key === "ArrowUp" ? 1 : -1) + 365) % 365) + 1; touch(); return;
+  }
+  if(/^[1-4]$/.test(e.key)){ S.type = types[+e.key - 1]; setViewFor(S.type); touch(); return; }
+  if(e.key.toLowerCase() === "e"){ $("pngBtn").click(); }
+});
+
+/* ─────────────────────────── loop ─────────────────────────── */
+function frame(t){
+  const dt = Math.min(0.05, (t - lastT)/1000 || 0.016);
+  lastT = t;
+  if(playing === "day"){ S.time = (S.time + dt*1.35) % 24; needsDraw = true; syncUI(); }
+  else if(playing === "year"){
+    S.day += dt*26;
+    if(S.day > 365) S.day -= 365;
+    needsDraw = true; syncUI();
+  }
+  if(needsDraw) draw();
+  requestAnimationFrame(frame);
+}
+
+/* ─────────────────────────── boot ─────────────────────────── */
+window.addEventListener("resize", resize);
+const restored = load();
+if(!restored) playing = "day";
+syncUI();
+resize();
+requestAnimationFrame(frame);
+if(!restored) setTimeout(() => toast("Drag to orbit · the shadow is running — pick a dial, a city, a date"), 700);
+
+/* a tiny self-check surface for headless testing */
+window.__heliograph = {S, solarTerms, sunAt, hourDir, dialGeometry, buildSVG, shareLink,
+  shadowOf, daylight, solarHours, anaHourPoint, anaGnomonBase, setType(t){S.type=t;touch();draw();}};
+})();
+</script>
+</body>
+</html>
