@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drop 2 — HTML on Circles</title>
+<style>
+  *{box-sizing:border-box}
+  :root{
+    --bg:#06100c; --ink:#e6fff4; --dim:#86a899; --line:rgba(255,255,255,.12);
+    --glass:rgba(10,24,19,.74); --accent:#34d399; --accent2:#7dd3fc;
+    /* the layout system's own variables */
+    --o-reach:38; --o-range:360deg; --o-from:0deg; --o-dir:1; --o-size:62px; --o-upright:1;
+  }
+  html,body{margin:0;min-height:100%;overflow-x:hidden}
+  body{
+    background:radial-gradient(1100px 700px at 50% -8%,rgba(52,211,153,.14),transparent 60%),var(--bg);
+    color:var(--ink);font:500 14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:72px 16px 92px;gap:22px;
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:30;text-decoration:none;color:var(--ink);
+    border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);border-radius:999px;padding:8px 14px;font:600 12px/1 system-ui,sans-serif
+  }
+  h1{margin:0;font-size:clamp(20px,3.6vw,30px);text-align:center;letter-spacing:-.01em}
+  h1 span{background:linear-gradient(92deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{margin:0;max-width:64ch;text-align:center;color:var(--dim);font-size:13.5px}
+  .lede code{color:var(--accent);font-family:ui-monospace,monospace;font-size:12.5px}
+
+  .board{display:grid;gap:18px;width:min(1080px,100%);grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .cell{
+    position:relative;border:1px solid var(--line);border-radius:18px;padding:16px;
+    background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+    box-shadow:0 20px 44px rgba(0,0,0,.4)
+  }
+  .cell h2{margin:0 0 2px;font-size:13px;letter-spacing:.01em}
+  .cell p{margin:0 0 10px;font-size:11.5px;color:var(--dim)}
+
+  /* ================= the radial layout system ================= */
+  .bigbang{position:relative;width:100%;aspect-ratio:1/1;max-height:340px;margin:0 auto;display:grid;place-items:center;
+    container-type:size}
+  .orbit{
+    position:absolute;inset:0;
+    --step:calc(var(--o-range) / var(--count-div));
+    /* the reach is read from the ring's container, not from the satellite's own box */
+    --reach:calc(var(--o-reach) * 1cqmin);
+  }
+  .orbit.lanes::before{
+    content:"";position:absolute;left:50%;top:50%;width:calc(var(--reach)*2);height:calc(var(--reach)*2);
+    transform:translate(-50%,-50%);border-radius:50%;border:1px dashed rgba(125,211,252,.4)
+  }
+  .sat{
+    position:absolute;left:50%;top:50%;width:var(--o-size);height:var(--o-size);margin:calc(var(--o-size)/-2);
+    display:grid;place-items:center;
+    --a:calc(var(--o-from) + var(--o-dir) * var(--i) * var(--step));
+    transform:rotate(var(--a)) translateY(calc(-1 * var(--reach))) rotate(calc(-1 * var(--a) * var(--o-upright)));
+    transition:transform .45s cubic-bezier(.22,1.1,.3,1)
+  }
+  /* ============================================================ */
+
+  .dot{
+    width:100%;height:100%;border-radius:16px;display:grid;place-items:center;cursor:pointer;
+    border:1px solid rgba(52,211,153,.4);background:rgba(52,211,153,.12);color:#d8fff0;
+    font:600 11px/1 system-ui,sans-serif;transition:transform .2s,background .2s,box-shadow .2s
+  }
+  .dot:hover{transform:scale(1.14);background:rgba(52,211,153,.3);box-shadow:0 0 24px rgba(52,211,153,.4)}
+  .dot b{font-size:17px;display:block;margin-bottom:2px}
+  .hub{
+    width:86px;height:86px;border-radius:50%;display:grid;place-items:center;text-align:center;
+    border:1px solid var(--line);background:rgba(255,255,255,.06);font:700 10px/1.3 ui-monospace,monospace;
+    letter-spacing:.1em;color:var(--dim);z-index:2
+  }
+  .arcs{position:absolute;inset:0;pointer-events:none;overflow:visible}
+  .arcs text{font:600 9.5px/1 ui-monospace,monospace;letter-spacing:.22em;fill:rgba(125,211,252,.75)}
+
+  /* gauge */
+  .tick{width:2px;height:12px;border-radius:2px;background:rgba(255,255,255,.26)}
+  .tick.hot{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+  .needle{
+    position:absolute;left:50%;top:50%;width:3px;height:36%;margin-left:-1.5px;transform-origin:50% 100%;
+    translate:0 -100%;border-radius:3px;background:linear-gradient(180deg,#fff,var(--accent));
+    transition:rotate .5s cubic-bezier(.3,1.4,.4,1);z-index:2
+  }
+  .readnum{position:absolute;left:50%;top:60%;transform:translateX(-50%);font:700 26px/1 ui-monospace,monospace;color:#fff}
+  .readnum small{display:block;font:600 9px/1 ui-monospace,monospace;letter-spacing:.2em;color:var(--dim);margin-top:5px;text-align:center}
+
+  /* nested */
+  .moon{
+    width:22px;height:22px;border-radius:8px;border:1px solid rgba(125,211,252,.5);
+    background:rgba(125,211,252,.18)
+  }
+  .spin{animation:spin 26s linear infinite}
+  .spin .planet{animation:spin 26s linear infinite reverse}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .planet{
+    width:100%;height:100%;border-radius:50%;position:relative;display:grid;place-items:center;
+    border:1px solid rgba(52,211,153,.4);background:rgba(52,211,153,.1);font:700 10px/1 ui-monospace,monospace;color:#bfffe6
+  }
+
+  /* panel */
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:30;width:238px;padding:13px;border-radius:16px;
+    border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);box-shadow:0 18px 44px rgba(0,0,0,.45)
+  }
+  .panel h3{margin:0 0 8px;font:700 10px/1 system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .ctl{display:flex;align-items:center;gap:9px;margin:8px 0}
+  .ctl label{flex:0 0 58px;font:500 11px/1.3 ui-monospace,monospace;color:var(--dim)}
+  .ctl output{flex:0 0 42px;text-align:right;font:600 11px/1 ui-monospace,monospace;color:var(--accent)}
+  input[type=range]{flex:1;min-width:0;appearance:none;height:20px;background:transparent;margin:0;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(255,255,255,.18)}
+  input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:var(--accent);border:none}
+  input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.18)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;background:var(--accent)}
+  .btnrow{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .btn{
+    flex:1 1 auto;appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);
+    border-radius:9px;padding:8px 8px;font:600 11px/1 system-ui,sans-serif;cursor:pointer;white-space:nowrap
+  }
+  .btn.on{background:rgba(52,211,153,.22);border-color:rgba(52,211,153,.6)}
+  .note{margin:9px 0 0;font-size:10.5px;color:var(--dim);line-height:1.45}
+  code.k{font-family:ui-monospace,monospace;color:var(--accent2);font-size:10.5px}
+
+  footer{
+    position:fixed;left:0;right:0;bottom:0;padding:10px 16px;text-align:center;
+    font:500 11px/1.4 system-ui,sans-serif;color:var(--dim);
+    background:linear-gradient(0deg,rgba(6,16,12,.94),transparent)
+  }
+  footer a{color:var(--dim)}
+  @media (min-width:901px){ body{padding-right:282px} }
+  @media (max-width:900px){ .panel{position:static;width:min(1080px,100%)} body{padding:66px 14px 84px} }
+  @media (prefers-reduced-motion:reduce){ .spin{animation:none} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>HTML, arranged on <span>circles</span></h1>
+<p class="lede">No wrapper per item, no trigonometry in JavaScript. Each satellite gets one index, and the ring turns it into a position: <code>rotate(a) translateY(-reach) rotate(-a)</code>. Change <code>--o-range</code> and a full dial becomes a quarter arc; change <code>--o-reach</code> and the whole ring breathes.</p>
+
+<div class="board">
+  <div class="cell">
+    <h2>Radial menu</h2>
+    <p>Eight satellites on one ring, labels curved along the lane.</p>
+    <div class="bigbang">
+      <svg class="arcs" viewBox="0 0 320 320" aria-hidden="true">
+        <defs><path id="lane" fill="none" d="M 160 160 m -122 0 a 122 122 0 1 1 244 0 a 122 122 0 1 1 -244 0"/></defs>
+        <text><textPath href="#lane" startOffset="2%">ORBIT · LANE · SATELLITES · CAPSULE · GRAVITY SPOT ·</textPath></text>
+      </svg>
+      <div class="orbit lanes" id="menu"></div>
+      <div class="hub">GRAVITY<br>SPOT</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <h2>Dial</h2>
+    <p>The same ring, with <code class="k">--o-range: 270deg</code> and ticks as satellites.</p>
+    <div class="bigbang">
+      <div class="orbit" id="gauge" style="--o-range:270deg;--o-from:-135deg;--o-size:14px;--o-reach:40;--o-upright:0"></div>
+      <div class="needle" id="needle"></div>
+      <div class="readnum" id="num">62<small>SIGNAL</small></div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <h2>Nested universe</h2>
+    <p>A ring inside a satellite — the system composes with itself.</p>
+    <div class="bigbang">
+      <div class="orbit spin" id="outer" style="--o-size:54px;--o-reach:34;--o-upright:1"></div>
+      <div class="hub" style="width:64px;height:64px">CORE</div>
+    </div>
+  </div>
+</div>
+
+<section class="panel">
+  <h3>Ring variables</h3>
+  <div class="ctl"><label for="reach">--reach</label><input id="reach" type="range" min="18" max="46" step="1" value="38"><output id="reacho">38cq</output></div>
+  <div class="ctl"><label for="range">--range</label><input id="range" type="range" min="60" max="360" step="10" value="360"><output id="rangeo">360°</output></div>
+  <div class="ctl"><label for="from">--from</label><input id="from" type="range" min="-180" max="180" step="5" value="0"><output id="fromo">0°</output></div>
+  <div class="ctl"><label for="count">--count</label><input id="count" type="range" min="3" max="14" step="1" value="8"><output id="counto">8</output></div>
+  <div class="ctl"><label for="size">--size</label><input id="size" type="range" min="34" max="86" step="2" value="62"><output id="sizeo">62px</output></div>
+  <div class="btnrow">
+    <button class="btn on" id="dir">Clockwise</button>
+    <button class="btn on" id="upright">Upright</button>
+    <button class="btn on" id="lanes">Lanes</button>
+  </div>
+  <h3 style="margin-top:12px">Dial value</h3>
+  <div class="ctl"><label for="val">signal</label><input id="val" type="range" min="0" max="100" step="1" value="62"><output id="valo">62</output></div>
+  <p class="note">A full ring divides by <code class="k">--count</code>; an arc divides by <code class="k">--count - 1</code> so the last item lands exactly on the end of the sweep.</p>
+</section>
+
+<footer>Inspired by <a href="https://github.com/zumerlab/orbit">zumerlab/orbit</a> · UI Spotlight Day 158 · Drop #2</footer>
+
+<script>
+(function(){
+'use strict';
+var root=document.documentElement;
+var menu=document.getElementById('menu'), gauge=document.getElementById('gauge'), outer=document.getElementById('outer');
+var ICONS=['◎','◍','◈','✦','❖','⬡','◐','⬢','✧','◉','⬣','◆','❂','✸'];
+
+/* a ring is just: give every child its index, and tell the ring how many lanes to divide by */
+function populate(el,n,make){
+  el.innerHTML='';
+  for(var i=0;i<n;i++){
+    var s=document.createElement('div');
+    s.className='sat'; s.style.setProperty('--i',i);
+    s.appendChild(make(i,n));
+    el.appendChild(s);
+  }
+  setDivisor(el,n);
+}
+function setDivisor(el,n){
+  // a closed ring shares the full sweep between n items; an open arc puts the
+  // last item on the far end, so it divides by n-1
+  var range=parseFloat(getComputedStyle(el).getPropertyValue('--o-range'))||360;
+  el.style.setProperty('--count-div', (range>=359.5? n : Math.max(1,n-1)));
+}
+
+function makeDot(i){
+  var d=document.createElement('button');
+  d.className='dot'; d.type='button';
+  d.innerHTML='<b>'+ICONS[i%ICONS.length]+'</b>'+String(i+1).padStart(2,'0');
+  return d;
+}
+function makeTick(i,n){
+  var t=document.createElement('div');
+  t.className='tick'; t.dataset.i=i;
+  return t;
+}
+function makePlanet(i){
+  var p=document.createElement('div');
+  p.className='planet';
+  p.textContent=String.fromCharCode(65+i);
+  if(i===1){
+    var ring=document.createElement('div');
+    ring.className='orbit'; ring.style.cssText='--o-size:22px;--reach:26px;--o-range:360deg;--o-from:0deg;--o-upright:0;inset:-26px';
+    ring.style.setProperty('--count-div',4);
+    for(var k=0;k<4;k++){
+      var s=document.createElement('div'); s.className='sat'; s.style.setProperty('--i',k);
+      var m=document.createElement('div'); m.className='moon'; s.appendChild(m); ring.appendChild(s);
+    }
+    p.appendChild(ring);
+  }
+  return p;
+}
+
+/* ---------- controls ---------- */
+function slider(id,prop,unit,fn,bare){
+  var el=document.getElementById(id), out=document.getElementById(id+'o');
+  function apply(){
+    var v=el.value;
+    out.textContent=v+(unit||'');
+    if(prop) root.style.setProperty(prop, bare? v : v+(unit==='°'?'deg':(unit||'')));
+    if(fn) fn(+v);
+  }
+  el.addEventListener('input',apply); apply();
+}
+slider('reach','--o-reach','cq',null,true);
+slider('range','--o-range','°',function(){ setDivisor(menu,+document.getElementById('count').value); });
+slider('from','--o-from','°');
+slider('size','--o-size','px');
+slider('count',null,'',function(n){ populate(menu,n,makeDot); });
+
+var dirBtn=document.getElementById('dir'), upBtn=document.getElementById('upright'), lanesBtn=document.getElementById('lanes');
+dirBtn.addEventListener('click',function(){
+  var cw=dirBtn.classList.toggle('on');
+  dirBtn.textContent=cw?'Clockwise':'Counter-cw';
+  root.style.setProperty('--o-dir',cw?1:-1);
+});
+upBtn.addEventListener('click',function(){
+  var up=upBtn.classList.toggle('on');
+  upBtn.textContent=up?'Upright':'Face out';
+  root.style.setProperty('--o-upright',up?1:0);
+});
+lanesBtn.addEventListener('click',function(){
+  menu.classList.toggle('lanes',lanesBtn.classList.toggle('on'));
+});
+
+/* ---------- the dial ---------- */
+var TICKS=28;
+populate(gauge,TICKS,makeTick);
+var needle=document.getElementById('needle'), num=document.getElementById('num');
+function setValue(v){
+  var a=-135+270*(v/100);
+  needle.style.rotate=a+'deg';
+  num.firstChild.nodeValue=v;
+  var lit=Math.round(v/100*(TICKS-1));
+  Array.prototype.forEach.call(gauge.children,function(s,i){
+    s.firstChild.classList.toggle('hot',i<=lit);
+  });
+}
+slider('val',null,'',setValue);
+
+/* ---------- the nested universe ---------- */
+populate(outer,6,makePlanet);
+
+window.__drop2={populate:populate,setValue:setValue,
+  probe:function(){
+    var sats=menu.querySelectorAll('.sat'), pts=[];
+    sats.forEach(function(s){ var r=s.getBoundingClientRect(); pts.push([Math.round(r.x+r.width/2),Math.round(r.y+r.height/2)]); });
+    return pts;
+  }};
+})();
+</script>
+</body>
+</html>
