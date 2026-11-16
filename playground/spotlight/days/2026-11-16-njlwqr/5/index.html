@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Behaviour Inside, Looks Outside — UI Spotlight Day 159</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#0a0812; --card:#15112230; --line:#2a2142; --ink:#eee9fb; --dim:#a79cc4; --violet:#a78bfa;
+  }
+  html,body{margin:0;min-height:100%}
+  body{
+    background:radial-gradient(900px 600px at 78% -6%,#241a44 0%,transparent 60%),var(--bg);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:78px 20px 80px
+  }
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:30;text-decoration:none;color:var(--ink);
+    background:rgba(21,17,34,.76);border:1px solid var(--line);backdrop-filter:blur(10px);
+    padding:8px 14px;border-radius:999px;font-size:13px;font-weight:550
+  }
+  .back-link:hover{border-color:var(--violet)}
+  header{text-align:center;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:clamp(21px,4.2vw,32px);letter-spacing:-.02em}
+  .sub{margin:0 auto;max-width:66ch;color:var(--dim);font-size:13.5px}
+  code{background:#1b1530;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px;color:#d8cdfb}
+
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:30;width:214px;
+    background:rgba(21,17,34,.88);border:1px solid var(--line);border-radius:14px;padding:12px;
+    backdrop-filter:blur(12px);box-shadow:0 16px 40px rgba(0,0,0,.5)
+  }
+  .panel h2{margin:0 0 9px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .panel label{display:block;font-size:12px;color:var(--dim);margin-bottom:9px}
+  .panel label b{float:right;color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:9px;background:#2f2550}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;background:var(--violet)}
+  input[type=range]::-moz-range-track{height:4px;border-radius:9px;background:#2f2550}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:0;border-radius:50%;background:var(--violet)}
+  .formout{
+    margin-top:4px;background:#120e21;border:1px solid var(--line);border-radius:9px;padding:8px;
+    font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9bdf0;white-space:pre-wrap;word-break:break-all
+  }
+
+  .cols{
+    display:grid;gap:16px;max-width:1120px;margin:0 auto;
+    grid-template-columns:repeat(auto-fit,minmax(272px,1fr))
+  }
+  .skin{
+    background:linear-gradient(180deg,#171130,#0d0a18);border:1px solid var(--line);
+    border-radius:18px;padding:16px;display:grid;gap:15px;align-content:start
+  }
+  .skin > h3{
+    margin:0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+    display:flex;justify-content:space-between;align-items:center
+  }
+  .skin > h3 em{font-style:normal;font-size:10px;color:#6f6490;text-transform:none;letter-spacing:0}
+  .field{display:grid;gap:7px}
+  .field > span{font-size:11.5px;color:#8d81b0}
+
+  /* =========================================================
+     Three skins. Same markup in each column — only these rules differ.
+     Everything is reached through ::part() and :state().
+     ========================================================= */
+
+  /* ---- skin A: untouched (what the element ships as) ---- */
+
+  /* ---- skin B: "pill" ---- */
+  .pill spot-switch::part(track){
+    width:52px;height:30px;border-radius:999px;background:#2b2347;
+    border:1px solid #3b3066;transition:background .22s
+  }
+  .pill spot-switch:state(checked)::part(track),
+  .pill spot-switch[data-checked]::part(track){background:linear-gradient(90deg,#7c3aed,#a78bfa)}
+  .pill spot-switch::part(thumb){
+    width:24px;height:24px;border-radius:50%;background:#efe9ff;
+    transform:translateX(3px);transition:transform .24s cubic-bezier(.2,1,.3,1.3)
+  }
+  .pill spot-switch:state(checked)::part(thumb),
+  .pill spot-switch[data-checked]::part(thumb){transform:translateX(25px)}
+  .pill spot-switch::part(label){font-size:13.5px}
+  .pill spot-stepper::part(button){
+    width:32px;height:32px;border-radius:999px;border:1px solid #3b3066;background:#211a3c;color:#e9e3ff;font-size:15px
+  }
+  .pill spot-stepper::part(button):hover{border-color:var(--violet)}
+  .pill spot-stepper::part(value){
+    min-width:54px;text-align:center;font-variant-numeric:tabular-nums;font-size:15px;font-weight:650
+  }
+  .pill spot-stepper:state(at-max)::part(up),
+  .pill spot-stepper:state(at-min)::part(down){opacity:.3;cursor:not-allowed}
+  .pill spot-rating::part(star){font-size:23px;color:#3b3066;transition:transform .16s,color .16s}
+  .pill spot-rating::part(star):hover{transform:scale(1.22)}
+  .pill spot-rating::part(star-on){color:#fbbf24}
+
+  /* ---- skin C: "brutal" ---- */
+  .brutal spot-switch::part(track){
+    width:56px;height:28px;border-radius:0;background:#efe9ff;border:2px solid #000;
+    box-shadow:4px 4px 0 #000
+  }
+  .brutal spot-switch:state(checked)::part(track),
+  .brutal spot-switch[data-checked]::part(track){background:#4ade80}
+  .brutal spot-switch::part(thumb){
+    width:20px;height:20px;border-radius:0;background:#000;transform:translateX(2px);transition:transform .12s steps(4)
+  }
+  .brutal spot-switch:state(checked)::part(thumb),
+  .brutal spot-switch[data-checked]::part(thumb){transform:translateX(30px)}
+  .brutal spot-switch::part(label){font-size:13px;text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .brutal spot-stepper::part(button){
+    width:34px;height:30px;border-radius:0;border:2px solid #000;background:#fde68a;color:#000;
+    font-weight:800;box-shadow:3px 3px 0 #000
+  }
+  .brutal spot-stepper::part(button):active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000}
+  .brutal spot-stepper::part(value){
+    min-width:54px;text-align:center;font-weight:800;font-size:16px;background:#efe9ff;color:#000;
+    border:2px solid #000;padding:2px 0
+  }
+  .brutal spot-stepper:state(at-max)::part(up),
+  .brutal spot-stepper:state(at-min)::part(down){background:#cbc3e0;box-shadow:none}
+  .brutal spot-rating::part(star){font-size:22px;color:#2b2347}
+  .brutal spot-rating::part(star-on){color:#f472b6;text-shadow:2px 2px 0 #000}
+
+  .snippet{
+    max-width:1120px;margin:20px auto 0;background:#0e0b1a;border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;color:#bdb0e8;overflow:auto
+  }
+  .snippet b{color:#f0abfc;font-weight:600}
+  .snippet i{color:#6f6490;font-style:normal}
+
+  footer{
+    position:fixed;left:0;right:0;bottom:0;padding:9px 14px;text-align:center;font-size:11.5px;
+    color:#6f6490;background:linear-gradient(180deg,transparent,rgba(10,8,18,.92) 45%)
+  }
+  footer a{color:#a79cc4}
+  @media (max-width:880px){
+    .panel{position:static;width:auto;max-width:430px;margin:0 auto 18px}
+    body{padding-top:62px}
+  }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h2>Shared knobs</h2>
+  <label>Element scale <b id="vScale">1.00</b>
+    <input type="range" id="rScale" min="0.8" max="1.5" step="0.05" value="1"></label>
+  <label>Stepper max <b id="vMax">8</b>
+    <input type="range" id="rMax" min="3" max="12" step="1" value="8"></label>
+  <div style="font-size:11px;color:var(--dim)">Live FormData from column 2</div>
+  <div class="formout" id="formOut">—</div>
+</div>
+
+<header>
+  <h1>Behaviour Inside, Looks Outside</h1>
+  <p class="sub">Three custom elements that ship <em>only</em> behaviour — keyboard handling, ARIA, form
+  participation — and no stylesheet at all. Every pixel below comes from outside the element, through
+  <code>::part()</code> and <code>:state()</code>. Same markup in all three columns.</p>
+</header>
+
+<div class="cols">
+  <section class="skin bare">
+    <h3>Column 1 — unstyled <em>no ::part rules</em></h3>
+    <div class="field"><span>spot-switch</span>
+      <spot-switch label="Ship on Friday" name="ship" checked></spot-switch></div>
+    <div class="field"><span>spot-stepper</span>
+      <spot-stepper name="seats" value="2" min="0" max="8"></spot-stepper></div>
+    <div class="field"><span>spot-rating</span>
+      <spot-rating name="score" value="3"></spot-rating></div>
+  </section>
+
+  <section class="skin pill">
+    <h3>Column 2 — pill skin <em>form-associated</em></h3>
+    <form id="demoForm">
+      <div class="field"><span>spot-switch</span>
+        <spot-switch label="Ship on Friday" name="ship" checked></spot-switch></div>
+      <div class="field" style="margin-top:15px"><span>spot-stepper</span>
+        <spot-stepper name="seats" value="2" min="0" max="8"></spot-stepper></div>
+      <div class="field" style="margin-top:15px"><span>spot-rating</span>
+        <spot-rating name="score" value="3"></spot-rating></div>
+    </form>
+  </section>
+
+  <section class="skin brutal">
+    <h3>Column 3 — brutal skin <em>same elements</em></h3>
+    <div class="field"><span>spot-switch</span>
+      <spot-switch label="Ship on Friday"></spot-switch></div>
+    <div class="field"><span>spot-stepper</span>
+      <spot-stepper name="seats" value="5" min="0" max="8"></spot-stepper></div>
+    <div class="field"><span>spot-rating</span>
+      <spot-rating name="score" value="5"></spot-rating></div>
+  </section>
+</div>
+
+<pre class="snippet"><i>/* the entire pill switch — the element itself has no CSS */</i>
+.pill spot-switch::<b>part</b>(track){ width:52px; height:30px; border-radius:999px; background:#2b2347 }
+.pill spot-switch:<b>state</b>(checked)::<b>part</b>(track){ background:linear-gradient(90deg,#7c3aed,#a78bfa) }
+.pill spot-switch:<b>state</b>(checked)::<b>part</b>(thumb){ transform:translateX(25px) }
+<i>/* the stepper disables itself by state, not by a class you remember to set */</i>
+.pill spot-stepper:<b>state</b>(at-max)::<b>part</b>(up){ opacity:.3 }</pre>
+
+<footer>Inspired by <a href="https://github.com/ynotdraw/slab-elements" target="_blank" rel="noopener">ynotdraw/slab-elements</a> · UI Spotlight Day 159 · Drop #5</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* custom states, with an attribute mirror for engines without :state() */
+  function states(el, internals){
+    const set = internals && internals.states;
+    return {
+      toggle(name, on){
+        try{
+          if(set){ on ? set.add(name) : set.delete(name); }
+        }catch(e){ /* older CustomStateSet wanted --dashed tokens */ }
+        el.toggleAttribute("data-" + name, !!on);
+      }
+    };
+  }
+
+  /* ---------------------------------------------------------- switch */
+  class SpotSwitch extends HTMLElement{
+    static formAssociated = true;
+    static observedAttributes = ["checked","label","disabled"];
+    constructor(){
+      super();
+      this._internals = this.attachInternals ? this.attachInternals() : null;
+      this._st = states(this, this._internals);
+      const r = this.attachShadow({ mode:"open" });
+      r.innerHTML = `<style>
+        :host{display:inline-flex}
+        button{all:unset;display:inline-flex;align-items:center;gap:10px;cursor:pointer}
+        [part=track]{display:inline-flex;align-items:center;flex:none}
+      </style>
+      <button type="button" part="control" role="switch" aria-checked="false">
+        <span part="track"><span part="thumb"></span></span>
+        <span part="label"></span>
+      </button>`;
+      this._btn = r.querySelector("button");
+      this._btn.addEventListener("click", ()=>{ if(!this.disabled) this.checked = !this.checked; });
+    }
+    connectedCallback(){ this._sync(); }
+    attributeChangedCallback(){ this._sync(); }
+    get checked(){ return this.hasAttribute("checked"); }
+    set checked(v){ this.toggleAttribute("checked", !!v); this._fire(); }
+    get disabled(){ return this.hasAttribute("disabled"); }
+    _fire(){ this.dispatchEvent(new Event("change", { bubbles:true })); }
+    _sync(){
+      const on = this.checked;
+      this._btn.setAttribute("aria-checked", String(on));
+      this.shadowRoot.querySelector("[part=label]").textContent = this.getAttribute("label") || "";
+      this._st.toggle("checked", on);
+      this._st.toggle("disabled", this.disabled);
+      if(this._internals && this._internals.setFormValue)
+        this._internals.setFormValue(on ? (this.getAttribute("value") || "on") : null);
+    }
+  }
+  customElements.define("spot-switch", SpotSwitch);
+
+  /* ---------------------------------------------------------- stepper */
+  class SpotStepper extends HTMLElement{
+    static formAssociated = true;
+    static observedAttributes = ["value","min","max"];
+    constructor(){
+      super();
+      this._internals = this.attachInternals ? this.attachInternals() : null;
+      this._st = states(this, this._internals);
+      const r = this.attachShadow({ mode:"open" });
+      r.innerHTML = `<style>
+        :host{display:inline-flex}
+        [part=group]{display:inline-flex;align-items:center;gap:8px}
+        button{all:unset;cursor:pointer;display:grid;place-items:center;text-align:center}
+        [part=value]{display:inline-block}
+      </style>
+      <span part="group" role="group">
+        <button type="button" part="button down" aria-label="decrease">−</button>
+        <output part="value" aria-live="polite">0</output>
+        <button type="button" part="button up" aria-label="increase">+</button>
+      </span>`;
+      r.querySelector("[part~=down]").addEventListener("click", ()=>this._bump(-1));
+      r.querySelector("[part~=up]").addEventListener("click", ()=>this._bump(1));
+      this.tabIndex = 0;
+      this.addEventListener("keydown", e=>{
+        if(e.key === "ArrowUp" || e.key === "ArrowRight"){ e.preventDefault(); this._bump(1); }
+        if(e.key === "ArrowDown" || e.key === "ArrowLeft"){ e.preventDefault(); this._bump(-1); }
+      });
+    }
+    connectedCallback(){ this._sync(); }
+    attributeChangedCallback(){ this._sync(); }
+    get value(){ return +(this.getAttribute("value") || 0); }
+    set value(v){ this.setAttribute("value", String(v)); }
+    get min(){ return +(this.getAttribute("min") || 0); }
+    get max(){ return +(this.getAttribute("max") || 10); }
+    _bump(d){
+      const next = Math.max(this.min, Math.min(this.max, this.value + d));
+      if(next === this.value) return;
+      this.value = next;
+      this.dispatchEvent(new Event("change", { bubbles:true }));
+    }
+    _sync(){
+      const v = Math.max(this.min, Math.min(this.max, this.value));
+      this.shadowRoot.querySelector("[part~=value]").textContent = v;
+      this._st.toggle("at-min", v <= this.min);
+      this._st.toggle("at-max", v >= this.max);
+      if(this._internals && this._internals.setFormValue) this._internals.setFormValue(String(v));
+    }
+  }
+  customElements.define("spot-stepper", SpotStepper);
+
+  /* ---------------------------------------------------------- rating */
+  class SpotRating extends HTMLElement{
+    static formAssociated = true;
+    static observedAttributes = ["value","max"];
+    constructor(){
+      super();
+      this._internals = this.attachInternals ? this.attachInternals() : null;
+      this._st = states(this, this._internals);
+      const r = this.attachShadow({ mode:"open" });
+      r.innerHTML = `<style>
+        :host{display:inline-flex}
+        [part=group]{display:inline-flex;gap:4px}
+        button{all:unset;cursor:pointer;line-height:1}
+      </style>
+      <span part="group" role="radiogroup"></span>`;
+      this.tabIndex = 0;
+      this.addEventListener("keydown", e=>{
+        if(e.key === "ArrowRight"){ e.preventDefault(); this._set(this.value + 1); }
+        if(e.key === "ArrowLeft"){ e.preventDefault(); this._set(this.value - 1); }
+      });
+    }
+    connectedCallback(){ this._sync(); }
+    attributeChangedCallback(){ this._sync(); }
+    get value(){ return +(this.getAttribute("value") || 0); }
+    get max(){ return +(this.getAttribute("max") || 5); }
+    _set(v){
+      const n = Math.max(0, Math.min(this.max, v));
+      if(n === this.value) return;
+      this.setAttribute("value", String(n));
+      this.dispatchEvent(new Event("change", { bubbles:true }));
+    }
+    _sync(){
+      const g = this.shadowRoot.querySelector("[part=group]");
+      const v = this.value;
+      g.innerHTML = Array.from({length:this.max}, (_,i)=>
+        `<button type="button" part="star${i < v ? " star-on" : ""}" role="radio"
+           aria-checked="${i < v}" aria-label="${i+1} of ${this.max}">${i < v ? "★" : "☆"}</button>`
+      ).join("");
+      g.querySelectorAll("button").forEach((b,i)=> b.addEventListener("click", ()=>this._set(i+1)));
+      this._st.toggle("rated", v > 0);
+      if(this._internals && this._internals.setFormValue) this._internals.setFormValue(String(v));
+    }
+  }
+  customElements.define("spot-rating", SpotRating);
+
+  /* ---------------------------------------------------------- page glue */
+  const form = document.getElementById("demoForm");
+  const out = document.getElementById("formOut");
+  function readForm(){
+    try{
+      const fd = new FormData(form);
+      const lines = [...fd.entries()].map(([k,v])=>`${k} = ${v}`);
+      out.textContent = lines.length ? lines.join("\n") : "(no form values)";
+    }catch(e){ out.textContent = "FormData unavailable"; }
+  }
+  form.addEventListener("change", readForm);
+  readForm();
+
+  const rScale = document.getElementById("rScale");
+  rScale.addEventListener("input", ()=>{
+    document.querySelectorAll(".skin").forEach(s=>{
+      s.style.setProperty("zoom", "");
+      s.style.fontSize = (15 * rScale.value).toFixed(1) + "px";
+      s.querySelectorAll("spot-switch,spot-stepper,spot-rating").forEach(el=>{
+        el.style.transform = `scale(${(+rScale.value).toFixed(2)})`;
+        el.style.transformOrigin = "left center";
+      });
+    });
+    document.getElementById("vScale").textContent = (+rScale.value).toFixed(2);
+  });
+  const rMax = document.getElementById("rMax");
+  rMax.addEventListener("input", ()=>{
+    document.querySelectorAll("spot-stepper").forEach(s=> s.setAttribute("max", rMax.value));
+    document.getElementById("vMax").textContent = rMax.value;
+    readForm();
+  });
+
+  window.__parts = { readForm };
+})();
+</script>
+</body>
+</html>

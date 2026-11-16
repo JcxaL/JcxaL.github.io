@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Genepool — Natural Selection Lab</title>
+<meta name="description" content="Paint a world, release founder species, and watch natural selection rewrite their genomes. Charts, inspector, saves and exports.">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#06100c; --bg2:#0a160f; --panel:#0d1c14; --panel2:#112418;
+    --line:#1d3a28; --line2:#275036;
+    --ink:#e8f5ec; --dim:#8fae9d; --dimmer:#5e7d6c;
+    --green:#4ade80; --cyan:#38bdf8; --red:#f87171; --amber:#fbbf24; --violet:#a78bfa;
+    --r:14px;
+  }
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1200px 700px at 12% -10%, #10311f 0%, transparent 60%),
+      radial-gradient(900px 600px at 100% 0%, #0b2330 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+    overflow:hidden;
+    overscroll-behavior:none;
+  }
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+
+  #app{display:flex;flex-direction:column;height:100%;height:100dvh}
+
+  /* ---------- header ---------- */
+  header{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:8px 12px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(13,28,20,.96),rgba(10,22,15,.82));
+    backdrop-filter:blur(10px);
+  }
+  .brand{display:flex;align-items:baseline;gap:8px;margin-right:2px}
+  .brand b{font-size:16px;letter-spacing:.2px}
+  .brand span{font-size:11px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
+  .spacer{flex:1 1 auto}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{
+    display:flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;
+    background:#0b1a12;border:1px solid var(--line);font-variant-numeric:tabular-nums;
+    font-size:12px;color:var(--dim);white-space:nowrap
+  }
+  .chip b{color:var(--ink);font-weight:600}
+  .chip i{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block}
+  .chip i.carn{background:var(--red)}
+  .bar{display:flex;gap:6px;flex-wrap:wrap}
+  .btn{
+    border:1px solid var(--line);background:#102318;border-radius:10px;
+    padding:7px 11px;font-size:13px;font-weight:550;
+    transition:transform .12s cubic-bezier(.2,.9,.3,1.3),background .15s,border-color .15s;
+  }
+  .btn:hover{background:#17341f;border-color:var(--line2)}
+  .btn:active{transform:scale(.95)}
+  .btn.primary{background:linear-gradient(180deg,#2f8d57,#1f6b40);border-color:#3fae6b;color:#f2fff6}
+  .btn.primary:hover{background:linear-gradient(180deg,#38a564,#24794a)}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:5px 8px;font-size:12px;border-radius:8px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0b1a12}
+  .seg button{border:0;background:transparent;padding:7px 10px;font-size:12px;color:var(--dim)}
+  .seg button[aria-pressed="true"]{background:#1d4530;color:#dcffe8}
+
+  /* ---------- main ---------- */
+  main{flex:1 1 auto;display:flex;min-height:0}
+  .stage{position:relative;flex:1 1 auto;min-width:0;min-height:0}
+  canvas#world{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .stage .overlay{position:absolute;inset:0;pointer-events:none}
+  .legend{
+    position:absolute;left:10px;bottom:10px;display:flex;gap:8px;flex-wrap:wrap;
+    pointer-events:none
+  }
+  .legend span{
+    display:flex;align-items:center;gap:6px;font-size:11px;color:#cfe8da;
+    background:rgba(6,16,11,.62);border:1px solid var(--line);border-radius:999px;padding:3px 8px;
+    backdrop-filter:blur(6px)
+  }
+  .legend s{width:8px;height:8px;border-radius:50%;text-decoration:none;display:inline-block}
+  .brushring{
+    position:absolute;border:1.5px dashed rgba(255,255,255,.55);border-radius:50%;
+    pointer-events:none;display:none;transform:translate(-50%,-50%)
+  }
+  .paused{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(6,16,11,.7);border:1px solid var(--line);border-radius:999px;
+    padding:4px 12px;font-size:12px;color:var(--amber);letter-spacing:.06em;display:none;
+    backdrop-filter:blur(6px)
+  }
+
+  /* ---------- panel ---------- */
+  aside{
+    width:324px;flex:0 0 324px;border-left:1px solid var(--line);
+    background:linear-gradient(180deg,var(--panel),#091510);
+    display:flex;flex-direction:column;min-height:0
+  }
+  .tabs{display:flex;border-bottom:1px solid var(--line);background:#0a1710}
+  .tabs button{
+    flex:1 1 0;border:0;background:transparent;color:var(--dimmer);
+    padding:10px 2px 9px;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+    border-bottom:2px solid transparent
+  }
+  .tabs button[aria-selected="true"]{color:var(--green);border-bottom-color:var(--green);background:#0e2016}
+  .tabwrap{flex:1 1 auto;overflow:auto;padding:12px;-webkit-overflow-scrolling:touch}
+  .tabpane{display:none;animation:fade .18s ease}
+  .tabpane.on{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  h3{margin:0 0 8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:650}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:11px;margin-bottom:11px}
+  .row{display:flex;align-items:center;gap:8px}
+  .row+.row{margin-top:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+
+  label.sl{display:block;margin:0 0 9px}
+  label.sl span{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:3px}
+  label.sl span b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:20px;background:transparent;margin:0
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:#1b3827}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:16px;height:16px;margin-top:-5.5px;border-radius:50%;
+    background:var(--green);border:2px solid #07130d;box-shadow:0 0 0 1px #3fae6b
+  }
+  input[type=range]::-moz-range-track{height:5px;border-radius:999px;background:#1b3827}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border:2px solid #07130d;border-radius:50%;background:var(--green)}
+  input[type=text],input[type=number],select{
+    width:100%;background:#0a1711;border:1px solid var(--line);border-radius:9px;padding:7px 9px;font-size:13px
+  }
+  .swatches{display:flex;gap:6px;flex-wrap:wrap}
+  .sw{width:26px;height:26px;border-radius:8px;border:2px solid transparent;padding:0}
+  .sw[aria-pressed="true"]{border-color:#fff}
+
+  .scenarios{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .scen{
+    text-align:left;border:1px solid var(--line);background:#0e2016;border-radius:11px;padding:8px 9px;
+    transition:transform .12s,border-color .15s
+  }
+  .scen:hover{border-color:var(--green);transform:translateY(-1px)}
+  .scen b{display:block;font-size:12.5px}
+  .scen small{color:var(--dimmer);font-size:10.5px;line-height:1.3;display:block}
+
+  .genebars{display:grid;gap:7px}
+  .gb{display:grid;grid-template-columns:62px 1fr 42px;align-items:center;gap:7px;font-size:11.5px;color:var(--dim)}
+  .gb .track{height:7px;border-radius:999px;background:#17301f;overflow:hidden}
+  .gb .fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2f8d57,#4ade80);transition:width .25s}
+  .gb b{color:var(--ink);text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+
+  canvas.chart{display:block;width:100%;height:132px;background:#09140e;border:1px solid var(--line);border-radius:11px}
+  .slots{display:grid;gap:6px}
+  .slot{display:flex;align-items:center;gap:7px;background:#0e2016;border:1px solid var(--line);border-radius:10px;padding:7px 9px}
+  .slot b{font-size:12.5px;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .slot small{color:var(--dimmer);font-size:10.5px}
+  .empty{color:var(--dimmer);font-size:12px;text-align:center;padding:10px 0}
+  .hint{font-size:11.5px;color:var(--dimmer);line-height:1.45;margin:6px 0 0}
+  .kbd{display:inline-block;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:0 4px;font-size:11px;color:var(--dim);background:#0c1d14}
+
+  #toast{
+    position:fixed;left:50%;bottom:22px;transform:translate(-50%,24px);
+    background:#0e2016;border:1px solid var(--green);color:#dcffe8;
+    padding:9px 15px;border-radius:999px;font-size:13px;box-shadow:0 10px 34px rgba(0,0,0,.55);
+    opacity:0;pointer-events:none;transition:opacity .22s,transform .22s cubic-bezier(.2,.9,.3,1.3);z-index:50
+  }
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+
+  .mobtabs{display:none}
+
+  @media (max-width:900px){
+    main{flex-direction:column}
+    .stage{flex:1 1 auto;min-height:44vh}
+    aside{
+      width:100%;flex:0 0 46vh;border-left:0;border-top:1px solid var(--line)
+    }
+    .brand span{display:none}
+    header{padding:7px 9px;gap:7px}
+    .chip{font-size:11px;padding:3px 7px}
+    canvas.chart{height:112px}
+  }
+  @media (max-width:560px){
+    .brand b{font-size:14px}
+    .btn{padding:6px 9px;font-size:12px}
+    .chips .opt{display:none}
+  }
+  @media (pointer:coarse){ canvas#world{cursor:default} }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>Genepool</b><span>Natural Selection Lab</span></div>
+    <div class="chips">
+      <div class="chip"><i></i>Herb <b id="cHerb">0</b></div>
+      <div class="chip"><i class="carn"></i>Carn <b id="cCarn">0</b></div>
+      <div class="chip opt">Gen <b id="cGen">0</b></div>
+      <div class="chip opt">Tick <b id="cTick">0</b></div>
+      <div class="chip opt">FPS <b id="cFps">0</b></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="bar">
+      <button class="btn primary" id="bPlay">Pause</button>
+      <button class="btn" id="bStep">Step</button>
+      <div class="seg" id="segSpeed">
+        <button data-sp="1" aria-pressed="true">1×</button>
+        <button data-sp="4" aria-pressed="false">4×</button>
+        <button data-sp="12" aria-pressed="false">12×</button>
+      </div>
+      <button class="btn ghost" id="bReset">Reset</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="stage" id="stage">
+      <canvas id="world"></canvas>
+      <div class="overlay">
+        <div class="paused" id="pausedTag">PAUSED</div>
+        <div class="legend">
+          <span><s style="background:#4ade80"></s>herbivore</span>
+          <span><s style="background:#f87171"></s>carnivore</span>
+          <span><s style="background:#2f6b45"></s>plants</span>
+          <span><s style="background:#1d4e6b"></s>water</span>
+        </div>
+      </div>
+      <div class="brushring" id="brushRing"></div>
+    </div>
+
+    <aside>
+      <nav class="tabs" role="tablist">
+        <button role="tab" aria-selected="true"  data-tab="release">Release</button>
+        <button role="tab" aria-selected="false" data-tab="world">World</button>
+        <button role="tab" aria-selected="false" data-tab="charts">Charts</button>
+        <button role="tab" aria-selected="false" data-tab="inspect">Inspect</button>
+        <button role="tab" aria-selected="false" data-tab="data">Data</button>
+      </nav>
+
+      <div class="tabwrap">
+        <!-- RELEASE -->
+        <section class="tabpane on" id="tab-release">
+          <div class="card">
+            <h3>Founder genome</h3>
+            <label class="sl"><span>Body size<b id="vSize">1.00</b></span>
+              <input type="range" id="gSize" min="0.4" max="2.2" step="0.05" value="1"></label>
+            <label class="sl"><span>Speed<b id="vSpeed">1.00</b></span>
+              <input type="range" id="gSpeed" min="0.2" max="2.4" step="0.05" value="1"></label>
+            <label class="sl"><span>Sense radius<b id="vSense">10</b></span>
+              <input type="range" id="gSense" min="2" max="30" step="1" value="10"></label>
+            <label class="sl"><span>Diet (plants → meat)<b id="vDiet">0%</b></span>
+              <input type="range" id="gDiet" min="0" max="1" step="0.02" value="0"></label>
+            <label class="sl"><span>Fecundity<b id="vFec">1.00</b></span>
+              <input type="range" id="gFec" min="0.5" max="1.8" step="0.05" value="1"></label>
+            <div class="row">
+              <button class="btn primary" id="bRelease" style="flex:1">Release 24</button>
+              <button class="btn" id="bRandomG">Randomise</button>
+            </div>
+            <p class="hint">Click the world to drop a colony exactly where you point. Offspring mutate — selection does the rest.</p>
+          </div>
+
+          <div class="card">
+            <h3>Evolution rules</h3>
+            <label class="sl"><span>Mutation rate<b id="vMut">6%</b></span>
+              <input type="range" id="sMut" min="0" max="0.25" step="0.005" value="0.06"></label>
+            <label class="sl"><span>Plant regrowth<b id="vGrow">1.00×</b></span>
+              <input type="range" id="sGrow" min="0.1" max="3" step="0.05" value="1"></label>
+            <label class="sl"><span>Population ceiling<b id="vCap">600</b></span>
+              <input type="range" id="sCap" min="120" max="900" step="20" value="600"></label>
+          </div>
+
+          <div class="card">
+            <h3>Scenarios</h3>
+            <div class="scenarios" id="scenList"></div>
+          </div>
+        </section>
+
+        <!-- WORLD -->
+        <section class="tabpane" id="tab-world">
+          <div class="card">
+            <h3>Terrain brush</h3>
+            <div class="grid2" id="brushList"></div>
+            <label class="sl" style="margin-top:10px"><span>Brush radius<b id="vBrush">6</b></span>
+              <input type="range" id="sBrush" min="1" max="22" step="1" value="6"></label>
+            <p class="hint">With a brush armed, drag on the world to paint. Pick <b>Colony</b> to seed creatures by hand, or <b>Off</b> to go back to selecting.</p>
+          </div>
+          <div class="card">
+            <h3>Generate terrain</h3>
+            <div class="grid2">
+              <button class="btn sm" data-gen="uniform">Uniform</button>
+              <button class="btn sm" data-gen="patches">Patches</button>
+              <button class="btn sm" data-gen="island">Island</button>
+              <button class="btn sm" data-gen="rivers">Rivers</button>
+              <button class="btn sm" data-gen="archipelago">Archipelago</button>
+              <button class="btn sm" data-gen="desert">Desert belt</button>
+            </div>
+            <div class="row" style="margin-top:9px">
+              <input type="text" id="iSeed" value="genepool" aria-label="World seed">
+              <button class="btn sm" id="bSeed">Re-seed</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>View</h3>
+            <div class="grid2">
+              <button class="btn sm" id="tFert" aria-pressed="false">Fertility tint</button>
+              <button class="btn sm" id="tTrail" aria-pressed="false">Motion trails</button>
+              <button class="btn sm" id="tSense" aria-pressed="false">Sense rings</button>
+              <button class="btn sm" id="tTargets" aria-pressed="false">Target lines</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- CHARTS -->
+        <section class="tabpane" id="tab-charts">
+          <div class="card">
+            <h3>Population &amp; biomass</h3>
+            <canvas class="chart" id="chPop"></canvas>
+            <p class="hint">Green area = herbivores, red = carnivores, pale line = plant biomass.</p>
+          </div>
+          <div class="card">
+            <h3>Trait distribution</h3>
+            <select id="selGene" aria-label="Gene to histogram">
+              <option value="size">Body size</option>
+              <option value="speed" selected>Speed</option>
+              <option value="sense">Sense radius</option>
+              <option value="diet">Diet</option>
+              <option value="fec">Fecundity</option>
+            </select>
+            <canvas class="chart" id="chHist" style="margin-top:9px"></canvas>
+          </div>
+          <div class="card">
+            <h3>Population averages</h3>
+            <div class="genebars" id="avgBars"></div>
+          </div>
+        </section>
+
+        <!-- INSPECT -->
+        <section class="tabpane" id="tab-inspect">
+          <div class="card" id="inspCard">
+            <h3>Inspector</h3>
+            <div id="inspEmpty" class="empty">Tap a creature in the world to read its genome.</div>
+            <div id="inspBody" style="display:none">
+              <div class="row" style="justify-content:space-between">
+                <b id="inspName" style="font-size:15px">—</b>
+                <span class="chip"><span id="inspDiet">herbivore</span></span>
+              </div>
+              <div class="grid3" style="margin:10px 0">
+                <div class="chip" style="justify-content:center">Gen <b id="inspGen">0</b></div>
+                <div class="chip" style="justify-content:center">Age <b id="inspAge">0</b></div>
+                <div class="chip" style="justify-content:center">Energy <b id="inspE">0</b></div>
+              </div>
+              <div class="genebars" id="inspBars"></div>
+              <div class="row" style="margin-top:11px">
+                <button class="btn sm" id="bClone" style="flex:1">Clone 12 of these</button>
+                <button class="btn sm" id="bAdoptGenes">Copy to founder</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Lineage log</h3>
+            <div id="lineLog" class="hint">Births and extinctions appear here.</div>
+          </div>
+        </section>
+
+        <!-- DATA -->
+        <section class="tabpane" id="tab-data">
+          <div class="card">
+            <h3>Save slots</h3>
+            <div class="row">
+              <input type="text" id="slotName" placeholder="Name this world" maxlength="28">
+              <button class="btn sm" id="bSave">Save</button>
+            </div>
+            <div class="slots" id="slotList" style="margin-top:9px"></div>
+          </div>
+          <div class="card">
+            <h3>Export</h3>
+            <div class="grid2">
+              <button class="btn sm" id="bCsv">History CSV</button>
+              <button class="btn sm" id="bJson">World JSON</button>
+              <button class="btn sm" id="bPng">Snapshot PNG</button>
+              <button class="btn sm" id="bShare">Copy share link</button>
+            </div>
+            <p class="hint">CSV holds every sampled tick (population, biomass, mean traits). The share link carries the seed, terrain recipe and founder genome.</p>
+          </div>
+          <div class="card">
+            <h3>Keys</h3>
+            <p class="hint">
+              <span class="kbd">space</span> play/pause &nbsp; <span class="kbd">s</span> step &nbsp;
+              <span class="kbd">1</span><span class="kbd">2</span><span class="kbd">3</span> speed &nbsp;
+              <span class="kbd">r</span> reset &nbsp; <span class="kbd">c</span> release colony at cursor &nbsp;
+              <span class="kbd">p</span> snapshot
+            </p>
+          </div>
+        </section>
+      </div>
+    </aside>
+  </main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ========================================================= utilities */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+const lerp = (a,b,t) => a+(b-a)*t;
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s){
+  let h = 2166136261;
+  for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+let rnd = mulberry32(hashStr("genepool"));
+const rr = (a,b) => a + rnd()*(b-a);
+
+function toast(msg){
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("on");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("on"), 2000);
+}
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  return blob.size;
+}
+
+/* ========================================================= world model */
+const GW = 150, GH = 96, NC = GW*GH;
+const world = {
+  fert:  new Float32Array(NC),
+  plant: new Float32Array(NC),
+  water: new Uint8Array(NC),
+  recipe: "patches",
+  seed: "genepool"
+};
+const sim = {
+  running: true, speed: 1, tick: 0,
+  mut: 0.06, grow: 1, cap: 600,
+  creatures: [], nextId: 1, generation: 0,
+  history: [], births: 0, deaths: 0,
+  log: []
+};
+const view = { fert:false, trails:false, sense:false, targets:false, selected:null };
+const founder = { size:1, speed:1, sense:10, diet:0, fec:1 };
+
+const GENES = [
+  { k:"size",  label:"Body size", min:0.35, max:2.4 },
+  { k:"speed", label:"Speed",     min:0.15, max:2.6 },
+  { k:"sense", label:"Sense",     min:1.5,  max:34  },
+  { k:"diet",  label:"Diet",      min:0,    max:1   },
+  { k:"fec",   label:"Fecundity", min:0.45, max:2   }
+];
+
+function idx(cx,cy){ return cy*GW + cx; }
+
+/* static per-cell texture so the plant layer reads as ground, not a gradient */
+const grain = new Float32Array(NC);
+(function(){
+  const g = mulberry32(0x9e3779b9);
+  for(let i=0;i<NC;i++) grain[i] = 0.82 + g()*0.34;
+})();
+
+/* ---- terrain generation ---- */
+function genTerrain(recipe){
+  world.recipe = recipe;
+  rnd = mulberry32(hashStr(world.seed + "|" + recipe));
+  world.fert.fill(0); world.water.fill(0);
+
+  const blobs = [];
+  const nb = recipe==="patches" ? 26 : recipe==="desert" ? 14 : 18;
+  for(let i=0;i<nb;i++) blobs.push({x:rr(0,GW), y:rr(0,GH), r:rr(8,26), a:rr(.45,1)});
+
+  for(let y=0;y<GH;y++){
+    for(let x=0;x<GW;x++){
+      const i = idx(x,y);
+      let f = 0;
+      if(recipe==="uniform"){
+        f = 0.82 + 0.18*Math.sin(x*0.07)*Math.cos(y*0.09);
+      } else if(recipe==="patches"){
+        for(const b of blobs){
+          const d = Math.hypot(x-b.x, y-b.y);
+          if(d < b.r) f += b.a*(1 - d/b.r);
+        }
+        f = clamp(f,0,1);
+      } else if(recipe==="island"){
+        const dx = (x-GW/2)/(GW*0.46), dy = (y-GH/2)/(GH*0.46);
+        const d = Math.hypot(dx,dy);
+        f = clamp(1.25 - d*1.35, 0, 1);
+        if(d > 0.92) world.water[i] = 1;
+      } else if(recipe==="rivers"){
+        f = 0.75 + 0.25*Math.sin(x*0.05 + Math.cos(y*0.04)*2);
+        const r1 = Math.abs(Math.sin(x*0.06)*14 + GH*0.35 - y);
+        const r2 = Math.abs(Math.cos(x*0.045)*10 + GH*0.72 - y);
+        if(r1 < 2.0 || r2 < 1.6) world.water[i] = 1;
+        else if(r1 < 7 || r2 < 6) f = clamp(f+0.3,0,1);
+      } else if(recipe==="archipelago"){
+        let v = 0;
+        for(const b of blobs){
+          const d = Math.hypot(x-b.x, y-b.y);
+          if(d < b.r) v = Math.max(v, 1 - d/b.r);
+        }
+        if(v < 0.26) world.water[i] = 1; else f = clamp(v*1.3, 0, 1);
+      } else if(recipe==="desert"){
+        const band = Math.abs(y - GH/2) / (GH/2);
+        f = clamp(band*1.25 - 0.1, 0, 1);
+        for(const b of blobs){
+          const d = Math.hypot(x-b.x, y-b.y);
+          if(d < b.r*0.5) f = Math.max(f, 0.9*(1-d/(b.r*0.5)));
+        }
+      }
+      world.fert[i] = world.water[i] ? 0 : clamp(f, 0.02, 1);
+      world.plant[i] = world.water[i] ? 0 : world.fert[i]*rr(0.3,0.9);
+    }
+  }
+}
+
+/* ---- creatures ---- */
+function mkGenome(base, mut){
+  const g = {};
+  for(const gene of GENES){
+    let v = base[gene.k];
+    if(mut > 0){
+      const span = gene.max - gene.min;
+      v += (rnd()*2-1) * mut * span * 0.6;
+    }
+    g[gene.k] = clamp(v, gene.min, gene.max);
+  }
+  return g;
+}
+function hueOf(g){ return lerp(128, 6, Math.pow(g.diet, 0.8)); }
+
+function spawn(cx, cy, genome, gen){
+  if(sim.creatures.length >= sim.cap) return null;
+  const c = {
+    id: sim.nextId++,
+    x: cx, y: cy,
+    dir: rnd()*Math.PI*2,
+    g: genome,
+    energy: 9 * genome.size,
+    age: 0,
+    gen: gen|0,
+    kids: 0,
+    tx: -1, ty: -1,
+    hue: hueOf(genome),
+    alive: true
+  };
+  sim.creatures.push(c);
+  return c;
+}
+function releaseColony(cx, cy, n, base){
+  let made = 0;
+  for(let i=0;i<n;i++){
+    const a = rnd()*Math.PI*2, r = rnd()*7;
+    const x = clamp(cx + Math.cos(a)*r, 1, GW-2);
+    const y = clamp(cy + Math.sin(a)*r, 1, GH-2);
+    if(world.water[idx(x|0,y|0)]) continue;
+    if(spawn(x, y, mkGenome(base, 0.04), 0)) made++;
+  }
+  if(made) pushLog(`Released ${made} founders · diet ${(base.diet*100)|0}% meat`);
+  return made;
+}
+function pushLog(s){
+  sim.log.unshift(`t${sim.tick} · ${s}`);
+  if(sim.log.length > 14) sim.log.pop();
+  if($("lineLog")) $("lineLog").innerHTML = sim.log.map(l=>`<div>${l}</div>`).join("") || "Births and extinctions appear here.";
+}
+
+/* ---- spatial hash ---- */
+const HASH_CELL = 7;
+const HW = Math.ceil(GW/HASH_CELL), HH = Math.ceil(GH/HASH_CELL);
+let buckets = new Array(HW*HH);
+for(let i=0;i<buckets.length;i++) buckets[i] = [];
+function rebuildHash(){
+  for(let i=0;i<buckets.length;i++) buckets[i].length = 0;
+  for(const c of sim.creatures){
+    const bx = clamp((c.x/HASH_CELL)|0, 0, HW-1);
+    const by = clamp((c.y/HASH_CELL)|0, 0, HH-1);
+    buckets[by*HW+bx].push(c);
+  }
+}
+function neighbours(c, out){
+  out.length = 0;
+  const bx = clamp((c.x/HASH_CELL)|0, 0, HW-1);
+  const by = clamp((c.y/HASH_CELL)|0, 0, HH-1);
+  for(let y=by-1;y<=by+1;y++){
+    if(y<0||y>=HH) continue;
+    for(let x=bx-1;x<=bx+1;x++){
+      if(x<0||x>=HW) continue;
+      const b = buckets[y*HW+x];
+      for(let i=0;i<b.length;i++) if(b[i] !== c) out.push(b[i]);
+    }
+  }
+  return out;
+}
+
+/* ========================================================= simulation step */
+const nbuf = [];
+function step(){
+  sim.tick++;
+
+  /* plants regrow */
+  const gr = 0.0032 * sim.grow;
+  for(let i=0;i<NC;i++){
+    if(world.water[i]) continue;
+    const f = world.fert[i];
+    if(f <= 0) continue;
+    const p = world.plant[i];
+    if(p < f) world.plant[i] = p + gr*f*(1 - p/Math.max(f,0.03));
+  }
+
+  rebuildHash();
+  const cs = sim.creatures;
+  const newborn = [];
+
+  for(let ci=0; ci<cs.length; ci++){
+    const c = cs[ci];
+    if(!c.alive) continue;
+    const g = c.g;
+    c.age++;
+
+    /* ---- senses ---- */
+    let steer = null;
+    const carn = g.diet > 0.5;
+    const nb = neighbours(c, nbuf);
+
+    if(carn){
+      let best = null, bd = g.sense*g.sense;
+      for(let i=0;i<nb.length;i++){
+        const o = nb[i];
+        if(!o.alive) continue;
+        if(o.g.size > g.size*0.95) continue;
+        const dx = o.x-c.x, dy = o.y-c.y, d2 = dx*dx+dy*dy;
+        if(d2 < bd){ bd = d2; best = o; }
+      }
+      if(best){
+        steer = Math.atan2(best.y-c.y, best.x-c.x);
+        const reach = 0.45*(g.size + best.g.size) + 0.35;
+        if(bd < reach*reach){
+          best.alive = false; sim.deaths++;
+          c.energy += 5.5*best.g.size + best.energy*0.45;
+        }
+      }
+    } else {
+      /* flee big carnivores */
+      let threat = null, td = (g.sense*0.8)*(g.sense*0.8);
+      for(let i=0;i<nb.length;i++){
+        const o = nb[i];
+        if(!o.alive || o.g.diet <= 0.5) continue;
+        if(o.g.size < g.size*1.05) continue;
+        const dx = o.x-c.x, dy = o.y-c.y, d2 = dx*dx+dy*dy;
+        if(d2 < td){ td = d2; threat = o; }
+      }
+      if(threat) steer = Math.atan2(c.y-threat.y, c.x-threat.x);
+    }
+
+    /* graze: sample cells inside sense radius, steer to the richest */
+    if(!carn && !steer){
+      const here = idx(clamp(c.x|0,0,GW-1), clamp(c.y|0,0,GH-1));
+      let bestP = world.plant[here], bx = -1, by = -1;
+      const samples = 6;
+      for(let s=0;s<samples;s++){
+        const a = rnd()*Math.PI*2, r = 1 + rnd()*g.sense;
+        const sx = clamp((c.x + Math.cos(a)*r)|0, 0, GW-1);
+        const sy = clamp((c.y + Math.sin(a)*r)|0, 0, GH-1);
+        const si = idx(sx,sy);
+        if(world.water[si]) continue;
+        if(world.plant[si] > bestP + 0.04){ bestP = world.plant[si]; bx = sx; by = sy; }
+      }
+      if(bx >= 0){ steer = Math.atan2(by+0.5-c.y, bx+0.5-c.x); c.tx = bx; c.ty = by; }
+    }
+
+    /* ---- move ---- */
+    if(steer !== null){
+      let d = steer - c.dir;
+      while(d > Math.PI) d -= Math.PI*2;
+      while(d < -Math.PI) d += Math.PI*2;
+      c.dir += clamp(d, -0.34, 0.34);
+    } else {
+      c.dir += (rnd()*2-1) * 0.42;
+    }
+    const sp = g.speed * 0.16;
+    let nx = c.x + Math.cos(c.dir)*sp;
+    let ny = c.y + Math.sin(c.dir)*sp;
+    if(nx < 0.6 || nx > GW-1.6){ c.dir = Math.PI - c.dir; nx = clamp(nx, 0.6, GW-1.6); }
+    if(ny < 0.6 || ny > GH-1.6){ c.dir = -c.dir; ny = clamp(ny, 0.6, GH-1.6); }
+    const ni = idx(nx|0, ny|0);
+    if(world.water[ni]){ c.dir += Math.PI*0.7; }
+    else { c.x = nx; c.y = ny; }
+
+    /* ---- eat plants ---- */
+    if(g.diet < 0.98){
+      const i = idx(clamp(c.x|0,0,GW-1), clamp(c.y|0,0,GH-1));
+      const avail = world.plant[i];
+      if(avail > 0.03){
+        const bite = Math.min(avail, 0.055*g.size);
+        world.plant[i] = avail - bite;
+        c.energy += bite * 11 * (1 - g.diet*0.85);
+      }
+    }
+
+    /* ---- metabolism ---- */
+    const cost = 0.015*g.size*g.size + 0.019*Math.pow(g.speed,1.7)*g.size + g.sense*0.0007 + 0.005;
+    c.energy -= cost;
+
+    /* ---- death ---- */
+    const lifespan = 900 + 700*g.size;
+    if(c.energy <= 0 || c.age > lifespan){ c.alive = false; sim.deaths++; continue; }
+
+    /* ---- reproduce ---- */
+    const thresh = 16*g.size*g.fec;
+    if(c.energy > thresh && sim.creatures.length + newborn.length < sim.cap){
+      c.energy *= 0.46;
+      const child = {
+        id: sim.nextId++,
+        x: clamp(c.x + rr(-1.2,1.2), 1, GW-2),
+        y: clamp(c.y + rr(-1.2,1.2), 1, GH-2),
+        dir: rnd()*Math.PI*2,
+        g: mkGenome(g, sim.mut),
+        energy: c.energy*0.82,
+        age: 0, gen: c.gen+1, kids: 0, tx:-1, ty:-1,
+        hue: 0, alive: true
+      };
+      child.hue = hueOf(child.g);
+      c.kids++;
+      newborn.push(child);
+      sim.births++;
+      if(child.gen > sim.generation){
+        sim.generation = child.gen;
+        if(child.gen % 10 === 0) pushLog(`Generation ${child.gen} reached`);
+      }
+    }
+  }
+
+  /* compact + append */
+  let w = 0;
+  for(let i=0;i<cs.length;i++){ if(cs[i].alive) cs[w++] = cs[i]; }
+  cs.length = w;
+  for(const n of newborn) cs.push(n);
+  if(view.selected && !view.selected.alive) { view.selected = null; }
+
+  /* sample history */
+  if(sim.tick % 12 === 0) sample();
+}
+
+function sample(){
+  let herb = 0, carn = 0, bio = 0;
+  const sum = {size:0, speed:0, sense:0, diet:0, fec:0};
+  for(const c of sim.creatures){
+    if(c.g.diet > 0.5) carn++; else herb++;
+    for(const k in sum) sum[k] += c.g[k];
+  }
+  for(let i=0;i<NC;i++) bio += world.plant[i];
+  const n = Math.max(1, sim.creatures.length);
+  const row = {
+    t: sim.tick, herb, carn, bio: bio/NC,
+    size: sum.size/n, speed: sum.speed/n, sense: sum.sense/n,
+    diet: sum.diet/n, fec: sum.fec/n, gen: sim.generation
+  };
+  sim.history.push(row);
+  if(sim.history.length > 900) sim.history.shift();
+  if(herb + carn === 0 && sim.history.length > 2){
+    const prev = sim.history[sim.history.length-2];
+    if(prev.herb + prev.carn > 0) pushLog("Extinction — all lineages gone");
+  }
+  return row;
+}
+
+/* ========================================================= rendering */
+const cv = $("world"), ctx = cv.getContext("2d", { alpha:false });
+let dpr = 1, VW = 800, VH = 600, cell = 6, offX = 0, offY = 0;
+const plantCv = document.createElement("canvas");
+plantCv.width = GW; plantCv.height = GH;
+const pctx = plantCv.getContext("2d");
+const pimg = pctx.createImageData(GW, GH);
+
+function resize(){
+  const r = $("stage").getBoundingClientRect();
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  VW = Math.max(240, Math.floor(r.width));
+  VH = Math.max(200, Math.floor(r.height));
+  cv.width = Math.floor(VW*dpr); cv.height = Math.floor(VH*dpr);
+  cell = Math.min(VW/GW, VH/GH);
+  offX = (VW - GW*cell)/2;
+  offY = (VH - GH*cell)/2;
+  sizeChart($("chPop")); sizeChart($("chHist"));
+  drawCharts();
+}
+function sizeChart(c){
+  if(!c) return;
+  const r = c.getBoundingClientRect();
+  c.width = Math.max(120, Math.floor(r.width * dpr));
+  c.height = Math.max(80, Math.floor((r.height||130) * dpr));
+}
+
+function paintPlants(){
+  const d = pimg.data;
+  for(let i=0;i<NC;i++){
+    const o = i*4;
+    if(world.water[i]){
+      d[o] = 18; d[o+1] = 54; d[o+2] = 78; d[o+3] = 255;
+      continue;
+    }
+    const n = grain[i];
+    const p = world.plant[i]*n, f = world.fert[i];
+    const base = view.fert ? 10 + f*26 : 11;
+    d[o]   = 8 + p*30 + (view.fert ? f*14 : 0);
+    d[o+1] = base + p*140;
+    d[o+2] = 19 + p*40;
+    d[o+3] = 255;
+  }
+  pctx.putImageData(pimg, 0, 0);
+}
+
+function render(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(view.trails){
+    ctx.fillStyle = "rgba(6,16,11,0.26)";
+    ctx.fillRect(0,0,VW,VH);
+  } else {
+    ctx.fillStyle = "#050d09";
+    ctx.fillRect(0,0,VW,VH);
+  }
+  paintPlants();
+  ctx.imageSmoothingEnabled = true;
+  if(view.trails) ctx.globalAlpha = 0.72;
+  ctx.drawImage(plantCv, offX, offY, GW*cell, GH*cell);
+  ctx.globalAlpha = 1;
+
+  /* target lines */
+  const cs = sim.creatures;
+  if(view.targets){
+    ctx.strokeStyle = "rgba(226,255,238,.14)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let i=0;i<cs.length;i++){
+      const c = cs[i];
+      if(c.tx < 0 || c.g.diet > 0.5) continue;
+      ctx.moveTo(offX + c.x*cell, offY + c.y*cell);
+      ctx.lineTo(offX + (c.tx+0.5)*cell, offY + (c.ty+0.5)*cell);
+    }
+    ctx.stroke();
+  }
+
+  /* creatures */
+  for(let i=0;i<cs.length;i++){
+    const c = cs[i];
+    const x = offX + c.x*cell, y = offY + c.y*cell;
+    const rad = Math.max(1.6, c.g.size*cell*0.58);
+    const light = clamp(46 + c.energy*1.2, 42, 78);
+    if(view.sense && cell > 2){
+      ctx.beginPath();
+      ctx.arc(x, y, c.g.sense*cell, 0, Math.PI*2);
+      ctx.strokeStyle = `hsla(${c.hue},70%,60%,0.07)`;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, rad, 0, Math.PI*2);
+    ctx.fillStyle = `hsl(${c.hue},${c.g.diet>0.5?76:70}%,${light}%)`;
+    ctx.fill();
+    if(rad > 2){
+      ctx.lineWidth = Math.max(0.6, rad*0.26);
+      ctx.strokeStyle = "rgba(3,10,6,.55)";
+      ctx.stroke();
+    }
+    if(rad > 2.4){
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(c.dir)*rad*1.75, y + Math.sin(c.dir)*rad*1.75);
+      ctx.strokeStyle = `hsla(${c.hue},80%,78%,0.75)`;
+      ctx.lineWidth = Math.max(0.8, rad*0.32);
+      ctx.stroke();
+    }
+  }
+
+  const sel = view.selected;
+  if(sel && sel.alive){
+    const x = offX + sel.x*cell, y = offY + sel.y*cell;
+    const rad = Math.max(4, sel.g.size*cell*0.58);
+    ctx.beginPath(); ctx.arc(x, y, rad+4.5, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(255,255,255,.92)"; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, sel.g.sense*cell, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+
+/* ---- charts ---- */
+function drawCharts(){ drawPop(); drawHist(); drawAvg(); }
+
+function drawPop(){
+  const c = $("chPop"); if(!c || !c.width) return;
+  const x = c.getContext("2d"), W = c.width, H = c.height;
+  x.setTransform(1,0,0,1,0,0);
+  x.fillStyle = "#09140e"; x.fillRect(0,0,W,H);
+  const h = sim.history;
+  if(h.length < 2){
+    x.fillStyle = "#4b6b59"; x.font = `${12*dpr}px system-ui`;
+    x.fillText("collecting data…", 10*dpr, H/2);
+    return;
+  }
+  let maxP = 10;
+  for(const r of h) maxP = Math.max(maxP, r.herb + r.carn);
+  const px = i => (i/(h.length-1))*W;
+  const py = v => H - (v/maxP)*(H-6) - 3;
+
+  /* grid */
+  x.strokeStyle = "#16301f"; x.lineWidth = 1;
+  for(let i=1;i<4;i++){
+    const yy = (H/4)*i;
+    x.beginPath(); x.moveTo(0,yy); x.lineTo(W,yy); x.stroke();
+  }
+  /* herbivores area */
+  x.beginPath(); x.moveTo(0, H);
+  for(let i=0;i<h.length;i++) x.lineTo(px(i), py(h[i].herb));
+  x.lineTo(W, H); x.closePath();
+  x.fillStyle = "rgba(74,222,128,.34)"; x.fill();
+  x.strokeStyle = "#4ade80"; x.lineWidth = 1.4*dpr;
+  x.beginPath();
+  for(let i=0;i<h.length;i++){ const yy = py(h[i].herb); i?x.lineTo(px(i),yy):x.moveTo(px(i),yy); }
+  x.stroke();
+  /* carnivores stacked */
+  x.beginPath(); x.moveTo(0, H);
+  for(let i=0;i<h.length;i++) x.lineTo(px(i), py(h[i].herb + h[i].carn));
+  x.lineTo(W, H); x.closePath();
+  x.fillStyle = "rgba(248,113,113,.2)"; x.fill();
+  x.strokeStyle = "#f87171"; x.lineWidth = 1.2*dpr;
+  x.beginPath();
+  for(let i=0;i<h.length;i++){ const yy = py(h[i].herb + h[i].carn); i?x.lineTo(px(i),yy):x.moveTo(px(i),yy); }
+  x.stroke();
+  /* biomass */
+  let maxB = 0.02; for(const r of h) maxB = Math.max(maxB, r.bio);
+  x.strokeStyle = "rgba(226,255,238,.5)"; x.setLineDash([4*dpr,3*dpr]); x.lineWidth = 1*dpr;
+  x.beginPath();
+  for(let i=0;i<h.length;i++){
+    const yy = H - (h[i].bio/maxB)*(H-8) - 4;
+    i?x.lineTo(px(i),yy):x.moveTo(px(i),yy);
+  }
+  x.stroke(); x.setLineDash([]);
+  x.fillStyle = "#6f8f7d"; x.font = `${10.5*dpr}px system-ui`;
+  x.fillText(`peak ${maxP}`, 6*dpr, 13*dpr);
+}
+
+function drawHist(){
+  const c = $("chHist"); if(!c || !c.width) return;
+  const x = c.getContext("2d"), W = c.width, H = c.height;
+  x.setTransform(1,0,0,1,0,0);
+  x.fillStyle = "#09140e"; x.fillRect(0,0,W,H);
+  const key = $("selGene").value;
+  const gene = GENES.find(g=>g.k===key);
+  const BINS = 26;
+  const hb = new Float32Array(BINS), cb = new Float32Array(BINS);
+  for(const cr of sim.creatures){
+    const t = clamp((cr.g[key]-gene.min)/(gene.max-gene.min), 0, 0.9999);
+    const b = (t*BINS)|0;
+    if(cr.g.diet > 0.5) cb[b]++; else hb[b]++;
+  }
+  let mx = 1;
+  for(let i=0;i<BINS;i++) mx = Math.max(mx, hb[i]+cb[i]);
+  const bw = W/BINS;
+  for(let i=0;i<BINS;i++){
+    const hH = (hb[i]/mx)*(H-20), cH = (cb[i]/mx)*(H-20);
+    x.fillStyle = "rgba(74,222,128,.78)";
+    x.fillRect(i*bw+1, H-14-hH, bw-2, hH);
+    x.fillStyle = "rgba(248,113,113,.78)";
+    x.fillRect(i*bw+1, H-14-hH-cH, bw-2, cH);
+  }
+  x.strokeStyle = "#16301f"; x.beginPath(); x.moveTo(0,H-14); x.lineTo(W,H-14); x.stroke();
+  x.fillStyle = "#6f8f7d"; x.font = `${10.5*dpr}px system-ui`;
+  x.fillText(gene.min.toFixed(1), 3*dpr, H-3*dpr);
+  const lbl = gene.max.toFixed(1);
+  x.fillText(lbl, W - x.measureText(lbl).width - 3*dpr, H-3*dpr);
+  x.fillText(gene.label, W/2 - x.measureText(gene.label).width/2, H-3*dpr);
+}
+
+function drawAvg(){
+  const host = $("avgBars"); if(!host) return;
+  const n = Math.max(1, sim.creatures.length);
+  const sum = {size:0,speed:0,sense:0,diet:0,fec:0};
+  for(const c of sim.creatures) for(const k in sum) sum[k] += c.g[k];
+  host.innerHTML = GENES.map(g=>{
+    const v = sum[g.k]/n;
+    const pct = clamp((v-g.min)/(g.max-g.min),0,1)*100;
+    const txt = g.k==="diet" ? `${(v*100)|0}%` : v.toFixed(2);
+    return `<div class="gb"><span>${g.label}</span><span class="track"><span class="fill" style="width:${pct.toFixed(1)}%"></span></span><b>${txt}</b></div>`;
+  }).join("");
+}
+
+function drawInspector(){
+  const sel = view.selected;
+  if(!sel || !sel.alive){
+    $("inspEmpty").style.display = "block";
+    $("inspBody").style.display = "none";
+    return;
+  }
+  $("inspEmpty").style.display = "none";
+  $("inspBody").style.display = "block";
+  $("inspName").textContent = `Organism #${sel.id}`;
+  $("inspDiet").textContent = sel.g.diet > 0.5 ? "carnivore" : (sel.g.diet > 0.2 ? "omnivore" : "herbivore");
+  $("inspGen").textContent = sel.gen;
+  $("inspAge").textContent = sel.age;
+  $("inspE").textContent = sel.energy.toFixed(1);
+  $("inspBars").innerHTML = GENES.map(g=>{
+    const v = sel.g[g.k];
+    const pct = clamp((v-g.min)/(g.max-g.min),0,1)*100;
+    const txt = g.k==="diet" ? `${(v*100)|0}%` : v.toFixed(2);
+    return `<div class="gb"><span>${g.label}</span><span class="track"><span class="fill" style="width:${pct.toFixed(1)}%;background:linear-gradient(90deg,hsl(${sel.hue},50%,34%),hsl(${sel.hue},72%,60%))"></span></span><b>${txt}</b></div>`;
+  }).join("");
+}
+
+/* ---- HUD ---- */
+function drawHud(fps){
+  let herb = 0, carn = 0;
+  for(const c of sim.creatures){ if(c.g.diet > 0.5) carn++; else herb++; }
+  $("cHerb").textContent = herb;
+  $("cCarn").textContent = carn;
+  $("cGen").textContent = sim.generation;
+  $("cTick").textContent = sim.tick;
+  $("cFps").textContent = fps|0;
+}
+
+/* ========================================================= main loop */
+let last = performance.now(), fps = 60, acc = 0, frames = 0;
+function frame(now){
+  const dt = now - last; last = now;
+  frames++;
+  acc += dt;
+  if(acc > 420){ fps = frames*1000/acc; acc = 0; frames = 0; }
+
+  if(sim.running){
+    const n = sim.speed;
+    for(let i=0;i<n;i++) step();
+  }
+  render();
+  if(!frame.hudSkip || frame.hudSkip > 6){ drawHud(fps); frame.hudSkip = 0; }
+  frame.hudSkip = (frame.hudSkip||0) + 1;
+  if(!frame.chartSkip || frame.chartSkip > 24){
+    if($("tab-charts").classList.contains("on")) drawCharts();
+    if($("tab-inspect").classList.contains("on")) drawInspector();
+    frame.chartSkip = 0;
+  }
+  frame.chartSkip = (frame.chartSkip||0) + 1;
+  requestAnimationFrame(frame);
+}
+
+/* ========================================================= interaction */
+let brush = "off";
+const BRUSHES = [
+  { k:"off",    label:"Off / select", col:"#275036" },
+  { k:"lush",   label:"Lush soil",    col:"#4ade80" },
+  { k:"barren", label:"Barren",       col:"#8a7a52" },
+  { k:"water",  label:"Water",        col:"#38bdf8" },
+  { k:"land",   label:"Fill water",   col:"#a3e635" },
+  { k:"colony", label:"Colony",       col:"#fbbf24" }
+];
+function buildBrushes(){
+  $("brushList").innerHTML = BRUSHES.map(b=>
+    `<button class="btn sm" data-brush="${b.k}" aria-pressed="${b.k===brush}" style="border-left:3px solid ${b.col}">${b.label}</button>`
+  ).join("");
+  $("brushList").querySelectorAll("[data-brush]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      brush = btn.dataset.brush;
+      buildBrushes();
+      $("brushRing").style.display = (brush==="off") ? "none" : "block";
+    });
+  });
+}
+
+function toCell(ev){
+  const r = cv.getBoundingClientRect();
+  const px = (ev.clientX - r.left - offX) / cell;
+  const py = (ev.clientY - r.top - offY) / cell;
+  return { cx: px, cy: py, inside: px>=0 && py>=0 && px<GW && py<GH };
+}
+function paintAt(cx, cy){
+  const R = +$("sBrush").value;
+  const x0 = clamp((cx-R)|0, 0, GW-1), x1 = clamp((cx+R)|0, 0, GW-1);
+  const y0 = clamp((cy-R)|0, 0, GH-1), y1 = clamp((cy+R)|0, 0, GH-1);
+  for(let y=y0;y<=y1;y++){
+    for(let x=x0;x<=x1;x++){
+      const d = Math.hypot(x-cx, y-cy);
+      if(d > R) continue;
+      const i = idx(x,y);
+      const t = 1 - d/R;
+      if(brush==="lush"){ world.water[i]=0; world.fert[i]=clamp(world.fert[i]+0.5*t,0,1); }
+      else if(brush==="barren"){ world.fert[i]=clamp(world.fert[i]-0.5*t,0.01,1); world.plant[i]=Math.min(world.plant[i], world.fert[i]); }
+      else if(brush==="water"){ if(t>0.25){ world.water[i]=1; world.plant[i]=0; world.fert[i]=0; } }
+      else if(brush==="land"){ if(t>0.25 && world.water[i]){ world.water[i]=0; world.fert[i]=0.7; } }
+    }
+  }
+}
+function selectAt(cx, cy){
+  let best = null, bd = 25;
+  for(const c of sim.creatures){
+    const d = (c.x-cx)*(c.x-cx) + (c.y-cy)*(c.y-cy);
+    if(d < bd){ bd = d; best = c; }
+  }
+  view.selected = best;
+  drawInspector();
+  if(best){
+    document.querySelector('[data-tab="inspect"]').click();
+    toast(`Organism #${best.id} · gen ${best.gen}`);
+  }
+}
+
+let painting = false;
+cv.addEventListener("pointerdown", ev=>{
+  cv.setPointerCapture(ev.pointerId);
+  const p = toCell(ev);
+  if(!p.inside) return;
+  if(brush === "colony"){ releaseColony(p.cx, p.cy, 24, founder); return; }
+  if(brush === "off"){ selectAt(p.cx, p.cy); return; }
+  painting = true; paintAt(p.cx, p.cy);
+});
+cv.addEventListener("pointermove", ev=>{
+  const r = cv.getBoundingClientRect();
+  const ring = $("brushRing");
+  if(brush !== "off" && brush !== "colony"){
+    ring.style.display = "block";
+    ring.style.left = (ev.clientX - r.left) + "px";
+    ring.style.top = (ev.clientY - r.top) + "px";
+    const d = (+$("sBrush").value)*cell*2;
+    ring.style.width = d + "px"; ring.style.height = d + "px";
+  } else ring.style.display = "none";
+  if(!painting) return;
+  const p = toCell(ev);
+  if(p.inside) paintAt(p.cx, p.cy);
+});
+cv.addEventListener("pointerup", ()=>{ painting = false; });
+cv.addEventListener("pointercancel", ()=>{ painting = false; });
+cv.addEventListener("pointerleave", ()=>{ $("brushRing").style.display = "none"; });
+
+/* tabs */
+document.querySelectorAll('.tabs button').forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll('.tabs button').forEach(o=>o.setAttribute("aria-selected", o===b));
+    document.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle("on", p.id === "tab-"+b.dataset.tab));
+    if(b.dataset.tab === "charts"){ sizeChart($("chPop")); sizeChart($("chHist")); drawCharts(); }
+    if(b.dataset.tab === "inspect") drawInspector();
+    if(b.dataset.tab === "data") renderSlots();
+  });
+});
+
+/* founder sliders */
+const fmt = {
+  size: v=>v.toFixed(2), speed: v=>v.toFixed(2), sense: v=>String(v|0),
+  diet: v=>`${(v*100)|0}%`, fec: v=>v.toFixed(2)
+};
+const sliderMap = [["gSize","size","vSize"],["gSpeed","speed","vSpeed"],["gSense","sense","vSense"],["gDiet","diet","vDiet"],["gFec","fec","vFec"]];
+function syncFounderInputs(){
+  for(const [id,key,out] of sliderMap){
+    $(id).value = founder[key];
+    $(out).textContent = fmt[key](founder[key]);
+  }
+}
+for(const [id,key,out] of sliderMap){
+  $(id).addEventListener("input", ()=>{
+    founder[key] = +$(id).value;
+    $(out).textContent = fmt[key](founder[key]);
+  });
+}
+$("sMut").addEventListener("input", e=>{ sim.mut = +e.target.value; $("vMut").textContent = `${Math.round(sim.mut*100)}%`; });
+$("sGrow").addEventListener("input", e=>{ sim.grow = +e.target.value; $("vGrow").textContent = `${(+e.target.value).toFixed(2)}×`; });
+$("sCap").addEventListener("input", e=>{ sim.cap = +e.target.value; $("vCap").textContent = e.target.value; });
+$("sBrush").addEventListener("input", e=>{ $("vBrush").textContent = e.target.value; });
+
+$("bRelease").addEventListener("click", ()=>{
+  const n = releaseColony(GW/2 + rr(-30,30), GH/2 + rr(-18,18), 24, founder);
+  toast(n ? `Released ${n} founders` : "No dry ground there");
+});
+$("bRandomG").addEventListener("click", ()=>{
+  founder.size = +rr(0.5,1.9).toFixed(2);
+  founder.speed = +rr(0.4,2.1).toFixed(2);
+  founder.sense = Math.round(rr(3,26));
+  founder.diet = rnd() < 0.3 ? +rr(0.6,1).toFixed(2) : +rr(0,0.25).toFixed(2);
+  founder.fec = +rr(0.7,1.5).toFixed(2);
+  syncFounderInputs();
+});
+
+/* play controls */
+function setRunning(r){
+  sim.running = r;
+  $("bPlay").textContent = r ? "Pause" : "Play";
+  $("pausedTag").style.display = r ? "none" : "block";
+}
+$("bPlay").addEventListener("click", ()=>setRunning(!sim.running));
+$("bStep").addEventListener("click", ()=>{ step(); render(); drawHud(fps); drawCharts(); });
+$("segSpeed").querySelectorAll("button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    sim.speed = +b.dataset.sp;
+    $("segSpeed").querySelectorAll("button").forEach(o=>o.setAttribute("aria-pressed", o===b));
+  });
+});
+$("bReset").addEventListener("click", ()=>resetWorld(world.recipe, true));
+
+/* view toggles */
+function bindToggle(id, key){
+  $(id).addEventListener("click", ()=>{
+    view[key] = !view[key];
+    $(id).setAttribute("aria-pressed", view[key]);
+  });
+}
+bindToggle("tFert","fert"); bindToggle("tTrail","trails");
+bindToggle("tSense","sense"); bindToggle("tTargets","targets");
+
+/* terrain buttons */
+document.querySelectorAll("[data-gen]").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    world.seed = $("iSeed").value || "genepool";
+    genTerrain(b.dataset.gen);
+    toast(`Terrain: ${b.dataset.gen}`);
+  });
+});
+$("bSeed").addEventListener("click", ()=>{
+  world.seed = $("iSeed").value || "genepool";
+  genTerrain(world.recipe);
+  toast("World re-seeded");
+});
+
+/* inspector actions */
+$("bClone").addEventListener("click", ()=>{
+  const s = view.selected;
+  if(!s || !s.alive) return;
+  const n = releaseColony(s.x, s.y, 12, s.g);
+  toast(n ? `Cloned ${n}×` : "No room");
+});
+$("bAdoptGenes").addEventListener("click", ()=>{
+  const s = view.selected;
+  if(!s || !s.alive) return;
+  for(const g of GENES) founder[g.k] = s.g[g.k];
+  syncFounderInputs();
+  toast("Founder genome updated");
+});
+$("selGene").addEventListener("change", drawHist);
+
+/* ========================================================= scenarios */
+const SCENARIOS = [
+  { k:"eden",     name:"Eden",       blurb:"Rich uniform plain, gentle herbivores", recipe:"uniform",
+    setup(){ sim.grow = 1.4; sim.mut = 0.06;
+      releaseColony(GW*0.5, GH*0.5, 40, {size:1,speed:1,sense:10,diet:0,fec:1}); } },
+  { k:"arms",     name:"Arms race",  blurb:"Herbivores meet fast predators", recipe:"patches",
+    setup(){ sim.grow = 1.2; sim.mut = 0.09;
+      releaseColony(GW*0.28, GH*0.5, 50, {size:0.9,speed:1,sense:12,diet:0,fec:1});
+      releaseColony(GW*0.74, GH*0.5, 12, {size:1.5,speed:1.5,sense:16,diet:0.9,fec:1.1}); } },
+  { k:"island",   name:"Island",     blurb:"Bounded land, hard carrying capacity", recipe:"island",
+    setup(){ sim.grow = 1; sim.mut = 0.07;
+      releaseColony(GW*0.5, GH*0.5, 34, {size:1,speed:0.9,sense:9,diet:0,fec:1}); } },
+  { k:"drought",  name:"Drought",    blurb:"Thin food, selection for efficiency", recipe:"desert",
+    setup(){ sim.grow = 0.45; sim.mut = 0.08;
+      releaseColony(GW*0.5, GH*0.18, 30, {size:1.1,speed:1.2,sense:14,diet:0,fec:0.9}); } },
+  { k:"isles",    name:"Archipelago",blurb:"Separate gene pools drift apart", recipe:"archipelago",
+    setup(){ sim.grow = 1.2; sim.mut = 0.12;
+      for(let i=0;i<5;i++) releaseColony(rr(10,GW-10), rr(8,GH-8), 16, {size:1,speed:1,sense:10,diet:0,fec:1}); } },
+  { k:"rivers",   name:"Floodplain", blurb:"Fertile banks, water barriers", recipe:"rivers",
+    setup(){ sim.grow = 1.5; sim.mut = 0.07;
+      releaseColony(GW*0.3, GH*0.5, 26, {size:1,speed:1.1,sense:11,diet:0,fec:1});
+      releaseColony(GW*0.7, GH*0.3, 8, {size:1.4,speed:1.4,sense:15,diet:0.85,fec:1}); } }
+];
+function buildScenarios(){
+  $("scenList").innerHTML = SCENARIOS.map(s=>
+    `<button class="scen" data-scen="${s.k}"><b>${s.name}</b><small>${s.blurb}</small></button>`
+  ).join("");
+  $("scenList").querySelectorAll("[data-scen]").forEach(b=>{
+    b.addEventListener("click", ()=>runScenario(b.dataset.scen));
+  });
+}
+function runScenario(k){
+  const s = SCENARIOS.find(x=>x.k===k) || SCENARIOS[0];
+  world.seed = $("iSeed").value || "genepool";
+  resetWorld(s.recipe, false);
+  rnd = mulberry32(hashStr(world.seed + "|" + k));
+  s.setup();
+  $("sMut").value = sim.mut; $("vMut").textContent = `${Math.round(sim.mut*100)}%`;
+  $("sGrow").value = sim.grow; $("vGrow").textContent = `${sim.grow.toFixed(2)}×`;
+  sim.scenario = k;
+  setRunning(true);
+  toast(`Scenario: ${s.name}`);
+}
+
+function resetWorld(recipe, reseedCreatures){
+  genTerrain(recipe || "patches");
+  sim.creatures.length = 0;
+  sim.tick = 0; sim.generation = 0; sim.births = 0; sim.deaths = 0;
+  sim.history.length = 0; sim.log.length = 0;
+  sim.nextId = 1; view.selected = null;
+  pushLog("World reset");
+  if(reseedCreatures){
+    rnd = mulberry32(hashStr(world.seed + "|reset"));
+    releaseColony(GW*0.5, GH*0.5, 30, founder);
+  }
+  drawCharts(); drawInspector();
+}
+
+/* ========================================================= persistence */
+const SLOT_KEY = "genepool_slots_v1";
+const PREF_KEY = "genepool_prefs_v1";
+
+function serialize(){
+  return {
+    v: 1, seed: world.seed, recipe: world.recipe, tick: sim.tick,
+    mut: sim.mut, grow: sim.grow, cap: sim.cap,
+    founder: Object.assign({}, founder),
+    generation: sim.generation,
+    creatures: sim.creatures.map(c=>({
+      x:+c.x.toFixed(2), y:+c.y.toFixed(2), d:+c.dir.toFixed(2), e:+c.energy.toFixed(2),
+      a:c.age, g:c.gen,
+      k:[+c.g.size.toFixed(3),+c.g.speed.toFixed(3),+c.g.sense.toFixed(2),+c.g.diet.toFixed(3),+c.g.fec.toFixed(3)]
+    })),
+    history: sim.history.slice(-240).map(r=>[r.t,r.herb,r.carn,+r.bio.toFixed(4),+r.size.toFixed(3),+r.speed.toFixed(3),+r.sense.toFixed(2),+r.diet.toFixed(3),+r.fec.toFixed(3)])
+  };
+}
+function deserialize(d){
+  if(!d || d.v !== 1) throw new Error("bad save");
+  world.seed = d.seed || "genepool";
+  $("iSeed").value = world.seed;
+  genTerrain(d.recipe || "patches");
+  sim.creatures.length = 0;
+  sim.nextId = 1;
+  for(const c of (d.creatures||[])){
+    const g = { size:c.k[0], speed:c.k[1], sense:c.k[2], diet:c.k[3], fec:c.k[4] };
+    const o = spawn(c.x, c.y, g, c.g);
+    if(o){ o.dir = c.d; o.energy = c.e; o.age = c.a; }
+  }
+  sim.tick = d.tick|0; sim.generation = d.generation|0;
+  sim.mut = d.mut ?? 0.06; sim.grow = d.grow ?? 1; sim.cap = d.cap ?? 600;
+  $("sMut").value = sim.mut; $("vMut").textContent = `${Math.round(sim.mut*100)}%`;
+  $("sGrow").value = sim.grow; $("vGrow").textContent = `${sim.grow.toFixed(2)}×`;
+  $("sCap").value = sim.cap; $("vCap").textContent = String(sim.cap);
+  if(d.founder){ Object.assign(founder, d.founder); syncFounderInputs(); }
+  sim.history.length = 0;
+  for(const r of (d.history||[])){
+    sim.history.push({ t:r[0], herb:r[1], carn:r[2], bio:r[3], size:r[4], speed:r[5], sense:r[6], diet:r[7], fec:r[8], gen:0 });
+  }
+  view.selected = null;
+  drawCharts(); drawInspector();
+}
+function loadSlots(){
+  try{ return JSON.parse(localStorage.getItem(SLOT_KEY) || "[]"); }catch(e){ return []; }
+}
+function saveSlots(list){
+  try{ localStorage.setItem(SLOT_KEY, JSON.stringify(list)); return true; }catch(e){ return false; }
+}
+function renderSlots(){
+  const list = loadSlots();
+  const host = $("slotList");
+  if(!list.length){ host.innerHTML = `<div class="empty">No saved worlds yet.</div>`; return; }
+  host.innerHTML = list.map((s,i)=>
+    `<div class="slot"><b>${s.name}</b><small>${s.pop} org · t${s.data.tick}</small>
+      <button class="btn sm" data-load="${i}">Load</button>
+      <button class="btn sm" data-del="${i}">✕</button></div>`
+  ).join("");
+  host.querySelectorAll("[data-load]").forEach(b=>b.addEventListener("click", ()=>{
+    const s = loadSlots()[+b.dataset.load];
+    if(!s) return;
+    try{ deserialize(s.data); toast(`Loaded “${s.name}”`); }
+    catch(e){ toast("That save could not be read"); }
+  }));
+  host.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click", ()=>{
+    const list2 = loadSlots(); list2.splice(+b.dataset.del,1);
+    saveSlots(list2); renderSlots(); toast("Deleted");
+  }));
+}
+$("bSave").addEventListener("click", ()=>{
+  const name = ($("slotName").value || `World ${new Date().toLocaleTimeString()}`).slice(0,28);
+  const list = loadSlots();
+  list.unshift({ name, pop: sim.creatures.length, at: Date.now(), data: serialize() });
+  while(list.length > 8) list.pop();
+  if(saveSlots(list)){ $("slotName").value = ""; renderSlots(); toast(`Saved “${name}”`); }
+  else toast("Storage full — delete a slot");
+});
+
+/* ---- exports ---- */
+function historyCsv(){
+  const head = "tick,herbivores,carnivores,plant_biomass,mean_size,mean_speed,mean_sense,mean_diet,mean_fecundity,max_generation";
+  const rows = sim.history.map(r=>[r.t,r.herb,r.carn,r.bio.toFixed(5),r.size.toFixed(4),r.speed.toFixed(4),r.sense.toFixed(3),r.diet.toFixed(4),r.fec.toFixed(4),r.gen].join(","));
+  return head + "\n" + rows.join("\n") + "\n";
+}
+$("bCsv").addEventListener("click", ()=>{
+  if(sim.history.length < 2) sample();
+  const size = download(new Blob([historyCsv()], {type:"text/csv"}), `genepool-history-${sim.tick}.csv`);
+  toast(`CSV exported · ${(size/1024).toFixed(1)} KB`);
+});
+$("bJson").addEventListener("click", ()=>{
+  const size = download(new Blob([JSON.stringify(serialize())], {type:"application/json"}), `genepool-world-${sim.tick}.json`);
+  toast(`World JSON · ${(size/1024).toFixed(1)} KB`);
+});
+function snapshotCanvas(){
+  const pad = 54, W = 1100, H = Math.round(W*GH/GW) + pad;
+  const o = document.createElement("canvas");
+  o.width = W; o.height = H;
+  const x = o.getContext("2d");
+  x.fillStyle = "#06100c"; x.fillRect(0,0,W,H);
+  paintPlants();
+  x.imageSmoothingEnabled = true;
+  x.drawImage(plantCv, 0, pad, W, H-pad);
+  const sc = W/GW;
+  for(const c of sim.creatures){
+    const rad = Math.max(1.5, c.g.size*sc*0.58);
+    x.beginPath(); x.arc(c.x*sc, pad + c.y*sc, rad, 0, Math.PI*2);
+    x.fillStyle = `hsl(${c.hue},${c.g.diet>0.5?72:62}%,${clamp(42+c.energy*1.1,38,72)}%)`;
+    x.fill();
+  }
+  let herb = 0, carn = 0;
+  for(const c of sim.creatures){ if(c.g.diet>0.5) carn++; else herb++; }
+  x.fillStyle = "#e8f5ec"; x.font = "600 24px system-ui";
+  x.fillText("Genepool — Natural Selection Lab", 18, 32);
+  x.font = "14px system-ui"; x.fillStyle = "#8fae9d";
+  const meta = `tick ${sim.tick} · ${herb} herbivores · ${carn} carnivores · gen ${sim.generation} · seed “${world.seed}” · ${world.recipe}`;
+  x.fillText(meta, W - 18 - x.measureText(meta).width, 32);
+  return o;
+}
+$("bPng").addEventListener("click", ()=>{
+  const o = snapshotCanvas();
+  o.toBlob(b=>{
+    if(!b || !b.size){ toast("Snapshot failed"); return; }
+    download(b, `genepool-${sim.tick}.png`);
+    toast(`Snapshot saved · ${(b.size/1024).toFixed(0)} KB`);
+  }, "image/png");
+});
+$("bShare").addEventListener("click", async ()=>{
+  const p = new URLSearchParams();
+  p.set("seed", world.seed); p.set("r", world.recipe);
+  p.set("g", GENES.map(g=>founder[g.k]).join(","));
+  p.set("m", String(sim.mut)); p.set("w", String(sim.grow));
+  if(sim.scenario) p.set("s", sim.scenario);
+  const url = location.origin + location.pathname + "#" + p.toString();
+  let ok = false;
+  try{ await navigator.clipboard.writeText(url); ok = true; }catch(e){ ok = false; }
+  location.hash = p.toString();
+  toast(ok ? "Share link copied" : "Link is in the address bar");
+});
+
+/* ---- hash restore ---- */
+function applyHash(){
+  if(!location.hash || location.hash.length < 4) return false;
+  try{
+    const p = new URLSearchParams(location.hash.slice(1));
+    if(p.get("seed")) world.seed = p.get("seed");
+    $("iSeed").value = world.seed;
+    if(p.get("g")){
+      const parts = p.get("g").split(",").map(Number);
+      GENES.forEach((g,i)=>{ if(isFinite(parts[i])) founder[g.k] = clamp(parts[i], g.min, g.max); });
+      syncFounderInputs();
+    }
+    if(p.get("m")) { sim.mut = clamp(+p.get("m"),0,0.25); $("sMut").value = sim.mut; $("vMut").textContent = `${Math.round(sim.mut*100)}%`; }
+    if(p.get("w")) { sim.grow = clamp(+p.get("w"),0.1,3); $("sGrow").value = sim.grow; $("vGrow").textContent = `${sim.grow.toFixed(2)}×`; }
+    if(p.get("s")){ runScenario(p.get("s")); return true; }
+    genTerrain(p.get("r") || "patches");
+    releaseColony(GW*0.5, GH*0.5, 30, founder);
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---- keys ---- */
+let cursor = { cx: GW/2, cy: GH/2 };
+cv.addEventListener("pointermove", ev=>{ const p = toCell(ev); if(p.inside) cursor = p; });
+window.addEventListener("keydown", ev=>{
+  if(ev.target && /input|select|textarea/i.test(ev.target.tagName)) return;
+  const k = ev.key.toLowerCase();
+  if(k === " "){ ev.preventDefault(); setRunning(!sim.running); }
+  else if(k === "s"){ step(); render(); }
+  else if(k === "1"){ document.querySelector('#segSpeed button[data-sp="1"]').click(); }
+  else if(k === "2"){ document.querySelector('#segSpeed button[data-sp="4"]').click(); }
+  else if(k === "3"){ document.querySelector('#segSpeed button[data-sp="12"]').click(); }
+  else if(k === "r"){ resetWorld(world.recipe, true); }
+  else if(k === "c"){ releaseColony(cursor.cx, cursor.cy, 24, founder); }
+  else if(k === "p"){ $("bPng").click(); }
+});
+/* ========================================================= boot */
+function savePrefs(){
+  try{
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      founder, mut: sim.mut, grow: sim.grow, cap: sim.cap, recipe: world.recipe, seed: world.seed
+    }));
+  }catch(e){}
+}
+function loadPrefs(){
+  try{
+    const p = JSON.parse(localStorage.getItem(PREF_KEY) || "null");
+    if(!p) return false;
+    if(p.founder) Object.assign(founder, p.founder);
+    if(isFinite(p.mut)) sim.mut = p.mut;
+    if(isFinite(p.grow)) sim.grow = p.grow;
+    if(isFinite(p.cap)) sim.cap = p.cap;
+    if(p.seed) world.seed = p.seed;
+    if(p.recipe) world.recipe = p.recipe;
+    return true;
+  }catch(e){ return false; }
+}
+
+buildBrushes();
+buildScenarios();
+loadPrefs();
+syncFounderInputs();
+document.getElementById("sMut").value = sim.mut;
+document.getElementById("vMut").textContent = `${Math.round(sim.mut*100)}%`;
+document.getElementById("sGrow").value = sim.grow;
+document.getElementById("vGrow").textContent = `${sim.grow.toFixed(2)}×`;
+document.getElementById("sCap").value = sim.cap;
+document.getElementById("vCap").textContent = String(sim.cap);
+document.getElementById("iSeed").value = world.seed;
+
+resize();
+window.addEventListener("resize", ()=>{ clearTimeout(resize._t); resize._t = setTimeout(resize, 120); });
+window.addEventListener("orientationchange", ()=>setTimeout(resize, 250));
+window.addEventListener("beforeunload", savePrefs);
+setInterval(savePrefs, 20000);
+
+if(!applyHash()) runScenario("arms");
+renderSlots();
+pushLog("Lab ready");
+drawAvg();
+requestAnimationFrame(frame);
+
+/* expose a tiny test surface for automated checks */
+window.__genepool = {
+  step, sample, serialize, deserialize, historyCsv, snapshotCanvas,
+  state: sim, world, view, founder, releaseColony, runScenario, resetWorld
+};
+})();
+</script>
+</body>
+</html>
