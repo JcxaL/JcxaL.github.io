@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout That Changes With Zoom — UI Spotlight Day 160</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{--bg:#070b11;--ink:#e9eff8;--dim:#92a4bc;--line:#1e2a3c;--accent:#34d399;--warn:#fbbf24}
+  html,body{margin:0;min-height:100%}
+  body{background:radial-gradient(900px 520px at 15% -8%,#132a22 0%,transparent 58%),var(--bg);
+    color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:68px 16px 24px}
+  .back-link{position:fixed;top:14px;left:14px;z-index:40;text-decoration:none;color:var(--ink);
+    background:rgba(14,20,31,.74);border:1px solid var(--line);backdrop-filter:blur(10px);
+    padding:8px 14px;border-radius:999px;font-size:13px;font-weight:550}
+  .back-link:hover{border-color:var(--accent)}
+  .wrap{width:min(1080px,100%);margin-inline:auto}
+  h1{margin:0 0 4px;font-size:clamp(20px,3.6vw,30px);letter-spacing:-.02em;text-align:center}
+  .sub{margin:0 auto 18px;max-width:66ch;text-align:center;color:var(--dim);font-size:13.5px}
+  .panel{position:fixed;top:14px;right:14px;z-index:40;width:232px;background:rgba(13,19,29,.84);
+    border:1px solid var(--line);backdrop-filter:blur(12px);border-radius:14px;padding:12px}
+  .panel h2{margin:0 0 9px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .panel label{display:block;font-size:12px;color:var(--dim);margin-bottom:9px}
+  .panel label b{float:right;color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:4px 0 0}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:#24334a}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5px;
+    border-radius:50%;background:var(--accent);border:2px solid #0a0f18}
+  input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:#24334a}
+  input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid #0a0f18}
+  .tog{display:flex;gap:6px;flex-wrap:wrap}
+  .tog button{flex:1;min-width:62px;font:inherit;font-size:11.5px;color:var(--dim);background:#121b29;
+    border:1px solid var(--line);border-radius:9px;padding:6px 4px;cursor:pointer}
+  .tog button[aria-pressed="true"]{color:#06120d;background:var(--accent);border-color:var(--accent);font-weight:600}
+
+  .viewport{position:relative;user-select:none;-webkit-user-select:none;width:100%;aspect-ratio:16/10;border:1px solid var(--line);border-radius:18px;
+    overflow:hidden;background:#080c13;touch-action:none;cursor:grab;
+    box-shadow:0 30px 70px rgba(0,0,0,.5)}
+  .viewport:active{cursor:grabbing}
+  #far{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #near{position:absolute;inset:0;transform-origin:0 0;will-change:transform}
+  .node{position:absolute;border-radius:10px;user-select:none;-webkit-user-select:none;background:linear-gradient(180deg,#121c2b,#0c1320);
+    border:1px solid #223550;overflow:hidden;padding:9px;
+    content-visibility:auto;contain:layout paint style}
+  .node h3{margin:0 0 6px;font-size:11px;letter-spacing:.02em;color:#cfe0f2;font-weight:650}
+  .node .meta{font-size:9.5px;color:#6e829b;margin-bottom:7px}
+  .node .ln{height:6px;border-radius:3px;background:#1d2a3f;margin-bottom:5px}
+  .node .chip{display:inline-block;font-size:9px;padding:2px 6px;border-radius:999px;
+    background:#13301f;color:#7fe0b4;border:1px solid #1f5c3f;margin-right:4px}
+  .node input{width:100%;user-select:text;-webkit-user-select:text;font:inherit;font-size:10px;background:#0b1220;border:1px solid #223550;
+    color:#cfe0f2;border-radius:6px;padding:4px 6px;margin-top:5px}
+  .node.hot{border-color:var(--accent);box-shadow:0 0 0 1px rgba(52,211,153,.35)}
+
+  .hud{position:absolute;left:12px;bottom:12px;display:flex;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--dim)}
+  .pill{background:rgba(10,15,24,.82);border:1px solid var(--line);border-radius:999px;padding:4px 10px}
+  .pill b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .lodbar{position:absolute;right:12px;bottom:12px;background:rgba(10,15,24,.82);border:1px solid var(--line);
+    border-radius:10px;padding:8px 10px;font-size:11px;color:var(--dim);min-width:142px}
+  .lodbar i{display:block;height:5px;border-radius:3px;background:#1e2b40;margin:5px 0 7px}
+  .lodbar i span{display:block;height:100%;border-radius:3px;background:var(--accent)}
+  footer{margin:18px auto 0;text-align:center;color:#6c7f97;font-size:11.5px}
+  footer a{color:#92a4bc}
+  @media(min-width:881px){body{padding-right:262px}}
+  @media(max-width:880px){body{padding:62px 12px 20px}.panel{position:static;width:auto;max-width:420px;margin:0 auto 16px}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="panel">
+  <h2>Level of detail</h2>
+  <label>Nodes <b id="vN">1200</b><input type="range" id="rN" min="200" max="4000" step="100" value="1200"></label>
+  <label>Promote above <b id="vT">55%</b><input type="range" id="rT" min="20" max="120" step="5" value="55"></label>
+  <label>Zoom <b id="vZ">0.35×</b><input type="range" id="rZ" min="8" max="220" step="1" value="35"></label>
+  <div class="tog" style="margin-top:4px">
+    <button id="bCull" aria-pressed="true">Cull</button>
+    <button id="bShow" aria-pressed="false">Show tiles</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <h1>Layout That Changes With Zoom</h1>
+  <p class="sub">Thousands of cards on one infinite canvas. Far out, every node is a cheap cached thumbnail painted
+  into an atlas; cross the promote threshold and only the nodes inside the viewport become real, interactive DOM.
+  Pan and zoom never touch the DOM — drag to move, scroll or pinch to zoom.</p>
+
+  <div class="viewport" id="vp">
+    <canvas id="far"></canvas>
+    <div id="near"></div>
+    <div class="hud">
+      <span class="pill">nodes <b id="hN">0</b></span>
+      <span class="pill">in view <b id="hV">0</b></span>
+      <span class="pill">promoted <b id="hP">0</b></span>
+      <span class="pill">fps <b id="hF">60</b></span>
+    </div>
+    <div class="lodbar">
+      <div>LOD <b id="hL" style="color:#e9eff8">thumbnail</b></div>
+      <i><span id="hBar" style="width:20%"></span></i>
+      <div id="hNote">1/16-scale atlas layer</div>
+    </div>
+  </div>
+
+  <footer>Inspired by <a href="https://github.com/berkantay/gpucanvas" target="_blank" rel="noopener">berkantay/gpucanvas</a> · UI Spotlight Day 160 · Drop #2</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var vp = document.getElementById("vp"), far = document.getElementById("far");
+  var fx = far.getContext("2d"), near = document.getElementById("near");
+  var NW = 150, NH = 104, GAP = 22;                 // node size + gap in world units
+  var nodes = [], cols = 0, zoom = 0.35, ox = 0, oy = 0, thresh = 0.55;
+  var cull = true, showTiles = false, dpr = 1, vw = 0, vh = 0, promoted = new Map();
+  var THUMB = 1 / 16;                                // the atlas layer that is never evicted
+  var TITLES = ["Billing","Routing","Inbox","Queue","Runner","Atlas","Ledger","Signals","Vault","Pager",
+                "Spindle","Harbor","Lattice","Beacon","Quarry","Ember","Relay","Drift","Pylon","Kiln"];
+  var COLS = ["#1e4d3a","#2a3f63","#4a3560","#5a3a2a","#1f4a55"];
+
+  function rnd(seed){ return function(){ seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+
+  function build(n){
+    var r = rnd(99);
+    nodes.length = 0; cols = Math.ceil(Math.sqrt(n) * 1.35);
+    for(var i=0;i<n;i++){
+      nodes.push({
+        i: i, x: (i % cols) * (NW + GAP), y: ((i / cols) | 0) * (NH + GAP),
+        title: TITLES[(r() * TITLES.length) | 0] + "-" + (100 + ((r() * 880) | 0)),
+        tone: COLS[(r() * COLS.length) | 0], w1: 40 + r() * 55, w2: 30 + r() * 60, w3: 50 + r() * 45,
+        hot: r() > 0.88, val: ""
+      });
+    }
+    // thumbnails: one tiny raster per node, cached once, reused at every far zoom
+    var tw = Math.max(8, Math.round(NW * THUMB * 6)), th = Math.max(6, Math.round(NH * THUMB * 6));
+    nodes.forEach(function(nd){
+      var c = document.createElement("canvas"); c.width = tw; c.height = th;
+      var g = c.getContext("2d");
+      g.fillStyle = "#0e1522"; g.fillRect(0, 0, tw, th);
+      g.fillStyle = nd.tone; g.fillRect(0, 0, tw, 2.5);
+      g.fillStyle = "#24334a";
+      g.fillRect(3, 5, tw * (nd.w1 / 160), 2);
+      g.fillRect(3, 9, tw * (nd.w2 / 160), 2);
+      g.fillRect(3, 13, tw * (nd.w3 / 160), 2);
+      if(nd.hot){ g.fillStyle = "#34d399"; g.fillRect(tw - 7, 5, 4, 3); }
+      nd.thumb = c;
+    });
+    unpromoteAll();
+    document.getElementById("hN").textContent = n;
+  }
+
+  function unpromoteAll(){
+    promoted.forEach(function(el){ el.remove(); });
+    promoted.clear();
+  }
+
+  function makeEl(nd){
+    var d = document.createElement("div"); d.className = "node" + (nd.hot ? " hot" : "");
+    d.style.width = NW + "px"; d.style.height = NH + "px";
+    d.style.transform = "translate(" + nd.x + "px," + nd.y + "px)";
+    d.innerHTML =
+      '<h3>' + nd.title + '</h3>' +
+      '<div class="meta">live DOM · id ' + nd.i + '</div>' +
+      '<div class="ln" style="width:' + nd.w1 + '%"></div>' +
+      '<div class="ln" style="width:' + nd.w2 + '%"></div>' +
+      (nd.hot ? '<span class="chip">active</span>' : '') +
+      '<input placeholder="type here — it is real DOM">';
+    var inp = d.querySelector("input");
+    inp.value = nd.val;
+    inp.addEventListener("input", function(){ nd.val = inp.value; });
+    return d;
+  }
+
+  function resize(){
+    var r = vp.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    vw = r.width; vh = r.height;
+    far.width = Math.round(vw * dpr); far.height = Math.round(vh * dpr);
+  }
+
+  var frames = 0, fpsT = performance.now();
+  function draw(){
+    var world = { x: -ox / zoom, y: -oy / zoom, w: vw / zoom, h: vh / zoom };
+    var promote = zoom >= thresh;
+    fx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fx.clearRect(0, 0, vw, vh);
+    fx.fillStyle = "#080c13"; fx.fillRect(0, 0, vw, vh);
+
+    var inView = 0, drawn = 0;
+    var live = new Set();
+    for(var i=0;i<nodes.length;i++){
+      var nd = nodes[i];
+      var vis = nd.x + NW > world.x && nd.x < world.x + world.w &&
+                nd.y + NH > world.y && nd.y < world.y + world.h;
+      if(!vis && cull) continue;
+      if(vis) inView++;
+      var sx = nd.x * zoom + ox, sy = nd.y * zoom + oy, sw = NW * zoom, sh = NH * zoom;
+      if(promote && vis){ live.add(nd.i); continue; }     // real DOM handles it
+      // atlas thumbnail — one cheap blit, never evicted
+      fx.drawImage(nd.thumb, sx, sy, sw, sh); drawn++;
+      if(showTiles){
+        fx.strokeStyle = "rgba(251,191,36,.5)"; fx.lineWidth = 1;
+        fx.strokeRect(sx + .5, sy + .5, sw - 1, sh - 1);
+      }
+    }
+
+    // sync the promoted DOM layer
+    promoted.forEach(function(el, id){ if(!live.has(id)){ el.remove(); promoted.delete(id); } });
+    if(promote){
+      live.forEach(function(id){
+        if(!promoted.has(id)){ var el = makeEl(nodes[id]); near.appendChild(el); promoted.set(id, el); }
+      });
+    }
+    near.style.transform = "translate(" + ox + "px," + oy + "px) scale(" + zoom + ")";
+
+    document.getElementById("hV").textContent = inView;
+    document.getElementById("hP").textContent = promoted.size;
+    var hl = document.getElementById("hL"), bar = document.getElementById("hBar");
+    hl.textContent = promote ? "live DOM" : zoom > thresh * 0.55 ? "sharp raster" : "thumbnail";
+    hl.style.color = promote ? "#34d399" : zoom > thresh * 0.55 ? "#fbbf24" : "#e9eff8";
+    bar.style.width = Math.min(100, zoom / 2.2 * 100) + "%";
+    bar.style.background = promote ? "#34d399" : "#fbbf24";
+    document.getElementById("hNote").textContent = promote
+      ? promoted.size + " nodes rasterised by the browser"
+      : drawn + " atlas blits this frame";
+
+    frames++;
+    var now = performance.now();
+    if(now - fpsT > 500){
+      document.getElementById("hF").textContent = Math.round(frames * 1000 / (now - fpsT));
+      frames = 0; fpsT = now;
+    }
+    requestAnimationFrame(draw);
+  }
+
+  // ---- pan / zoom (never touches the DOM layer's children) ----
+  var drag = null;
+  vp.addEventListener("pointerdown", function(e){
+    if(e.target.tagName === "INPUT") return;
+    drag = { x: e.clientX, y: e.clientY, ox: ox, oy: oy }; vp.setPointerCapture(e.pointerId);
+  });
+  vp.addEventListener("pointermove", function(e){
+    if(!drag) return;
+    ox = drag.ox + (e.clientX - drag.x); oy = drag.oy + (e.clientY - drag.y);
+  });
+  vp.addEventListener("pointerup", function(){ drag = null; });
+  vp.addEventListener("pointercancel", function(){ drag = null; });
+  vp.addEventListener("wheel", function(e){
+    e.preventDefault();
+    var r = vp.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    var k = Math.exp(-e.deltaY * 0.0016), nz = Math.max(0.08, Math.min(2.2, zoom * k));
+    ox = mx - (mx - ox) * (nz / zoom); oy = my - (my - oy) * (nz / zoom);
+    zoom = nz; syncZoom();
+  }, { passive: false });
+
+  function syncZoom(){
+    document.getElementById("rZ").value = Math.round(zoom * 100);
+    document.getElementById("vZ").textContent = zoom.toFixed(2) + "×";
+  }
+
+  document.getElementById("rN").addEventListener("input", function(){
+    document.getElementById("vN").textContent = this.value; build(+this.value); });
+  document.getElementById("rT").addEventListener("input", function(){
+    thresh = +this.value / 100; document.getElementById("vT").textContent = this.value + "%"; });
+  document.getElementById("rZ").addEventListener("input", function(){
+    var nz = +this.value / 100, cxs = vw / 2, cys = vh / 2;
+    ox = cxs - (cxs - ox) * (nz / zoom); oy = cys - (cys - oy) * (nz / zoom);
+    zoom = nz; syncZoom(); });
+  document.getElementById("bCull").addEventListener("click", function(){
+    cull = !cull; this.setAttribute("aria-pressed", cull); });
+  document.getElementById("bShow").addEventListener("click", function(){
+    showTiles = !showTiles; this.setAttribute("aria-pressed", showTiles); });
+  window.addEventListener("resize", resize);
+
+  resize(); build(1200); syncZoom();
+  ox = 60; oy = 40;
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
