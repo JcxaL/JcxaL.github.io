@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Drop 4 — Creatures That Chase the Pointer</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#0b0802;color:#fdf3df;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body{padding:84px 18px 70px;display:flex;flex-direction:column;align-items:center;gap:22px}
+.back-link{position:fixed;left:14px;top:14px;z-index:20;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:#fdeccd;font-size:13.5px;
+  background:rgba(40,28,6,.76);backdrop-filter:blur(12px);border:1px solid rgba(251,191,36,.34)}
+.back-link:hover{background:rgba(58,40,8,.9)}
+h1{margin:0;font-size:clamp(22px,4.4vw,34px);letter-spacing:-.4px;text-align:center}
+h1 b{color:#fbbf24}
+.sub{margin:0;max-width:690px;text-align:center;color:#bda880;font-size:14.5px;line-height:1.65}
+.sub code{background:#1b1405;border:1px solid rgba(251,191,36,.24);border-radius:6px;padding:1px 6px;
+  font-size:12.5px;color:#fcd34d}
+
+.panel{position:fixed;right:14px;top:14px;z-index:20;width:228px;padding:12px;border-radius:14px;
+  background:rgba(28,20,4,.86);backdrop-filter:blur(14px);border:1px solid rgba(251,191,36,.3);
+  box-shadow:0 20px 50px rgba(0,0,0,.55)}
+.panel h2{margin:0 0 8px;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:#a08e62}
+.panel label{display:flex;justify-content:space-between;font-size:12px;color:#d8c69c;margin:10px 0 3px}
+.panel output{color:#fbbf24;font-variant-numeric:tabular-nums}
+.panel input[type=range]{width:100%;accent-color:#fbbf24;margin:0}
+.panel .hintrow{margin-top:10px;font-size:11.5px;color:#a08e62;line-height:1.5}
+
+.grid{display:grid;gap:14px;width:min(100%,1080px);grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.tile{position:relative;border-radius:18px;overflow:hidden;background:
+  radial-gradient(120% 90% at 50% 0%,#1d1505 0%,#0d0903 70%);
+  border:1px solid rgba(251,191,36,.22);box-shadow:0 18px 46px rgba(0,0,0,.45);aspect-ratio:1/.92}
+.tile canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.tile .label{position:absolute;left:12px;top:11px;font-size:11.5px;color:#bda880;pointer-events:none;
+  letter-spacing:.3px}
+.tile .label b{color:#fbbf24;font-size:13px;display:block;letter-spacing:0}
+.tile .state{position:absolute;right:12px;top:11px;font-size:10.5px;color:#8b7a52;pointer-events:none;
+  font-variant-numeric:tabular-nums}
+footer{color:#8b7a52;font-size:12px;text-align:center;line-height:1.7;max-width:660px}
+footer a{color:#dcb55e}
+/* the tuning panel is fixed: give the column room so it never sits on top */
+@media (min-width:901px){ body{padding-right:268px;padding-left:268px} }
+@media (max-width:900px){ .panel{position:static;width:min(100%,1080px)} body{padding-top:66px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Creatures that <b>chase the pointer</b></h1>
+<p class="sub">Nothing here is keyframed. A chain of joints eases toward the one ahead of it with a
+bend cap, so the body whips head-to-tail; the feet plant where they land and only lift in diagonal
+pairs; and the more feet are in the air, the less grip the body has — <code>traction = 0.16 + planted/total × 0.84</code>.
+Move the pointer over a tile. Leave it alone and it wanders off on its own.</p>
+
+<div class="panel">
+  <h2>Tuning</h2>
+  <label>ease <output id="eV">0.52</output></label>
+  <input type="range" id="ease" min="12" max="95" value="52">
+  <label>bend cap <output id="bV">26°</output></label>
+  <input type="range" id="bend" min="6" max="60" value="26">
+  <label>segments <output id="sV">×1.0</output></label>
+  <input type="range" id="seg" min="40" max="220" value="100">
+  <label>drive <output id="dV">1.00</output></label>
+  <input type="range" id="drive" min="20" max="220" value="100">
+  <div class="hintrow">ease rules the feel: low is languid, high is snappy. Each joint gets
+    <code style="font-size:11px">ease − i × 0.06</code>, so the tail always lags.</div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<footer>
+  Inspired by <a href="https://github.com/rightkik/cursor-critters">rightkik/cursor-critters</a> —
+  procedural creatures that walk, turn and chase the pointer · UI Spotlight Day 161 · Drop #4
+</footer>
+
+<script>
+"use strict";
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const wrap = a => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
+
+const G = { ease: .52, bend: 26 * Math.PI / 180, segScale: 1, drive: 1 };
+
+const SPECIES = [
+  { key: 'cat',     name: 'cat',     note: 'short body · 4 legs · snappy',
+    seg: 9,  link: 13, legs: 4, legAt: [2, 6], reach: 26, size: 9.5,  hue: 44, speed: 1.0, easeMul: 1.15 },
+  { key: 'naga',    name: 'naga',    note: 'long body · 6 legs · languid',
+    seg: 26, link: 10, legs: 6, legAt: [3, 9, 15], reach: 22, size: 7.5, hue: 28, speed: .82, easeMul: .72 },
+  { key: 'skitter', name: 'skitter', note: 'tiny body · 8 legs · frantic',
+    seg: 7,  link: 9,  legs: 8, legAt: [1, 2, 4, 5], reach: 30, size: 6.5, hue: 58, speed: 1.3, easeMul: 1.35 }
+];
+
+/* ---------- two-link IK: where the knee goes ---------- */
+function knee(ax, ay, bx, by, l1, l2, side) {
+  let dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || .001;
+  const dd = Math.min(d, l1 + l2 - .01);
+  const a = (l1 * l1 - l2 * l2 + dd * dd) / (2 * dd);
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  const ux = dx / d, uy = dy / d;
+  return { x: ax + ux * a - uy * h * side, y: ay + uy * a + ux * h * side };
+}
+
+class Critter {
+  constructor(spec, w, h) {
+    this.s = spec;
+    this.x = w / 2; this.y = h / 2;
+    this.ang = Math.random() * TAU; this.vel = 0; this.turn = 0;
+    this.joints = []; this.target = { x: w / 2, y: h / 2 };
+    this.wander = { x: w / 2, y: h / 2, t: 0 };
+    this.idle = 2; this.build(w, h);
+  }
+  build(w, h) {
+    const n = Math.max(4, Math.round(this.s.seg * G.segScale));
+    this.joints = [];
+    for (let i = 0; i < n; i++) this.joints.push({ x: this.x - i * this.s.link, y: this.y });
+    this.feet = [];
+    const pairs = this.s.legAt;
+    for (let p = 0; p < pairs.length; p++) for (const side of [-1, 1]) {
+      const j = Math.min(pairs[p], n - 2);
+      this.feet.push({ j, side, x: this.x, y: this.y, fx: this.x, fy: this.y,
+        tx: this.x, ty: this.y, t: 1, planted: true, phase: (p + (side > 0 ? 1 : 0)) % 2 });
+    }
+  }
+  step(dt, w, h, pointer) {
+    const S = this.s;
+    /* --- where does it want to go --- */
+    if (pointer.active) { this.target = pointer; this.idle = 0; }
+    else {
+      this.idle += dt;
+      if (this.idle > 1.5) {
+        this.wander.t -= dt;
+        if (this.wander.t <= 0) {
+          this.wander.t = 1.1 + Math.random() * 1.6;
+          this.wander.x = 40 + Math.random() * (w - 80);
+          this.wander.y = 40 + Math.random() * (h - 80);
+        }
+        this.target = this.wander;
+      }
+    }
+    /* --- steering: force builds, then decays; the body leans into turns --- */
+    const dx = this.target.x - this.x, dy = this.target.y - this.y;
+    const dist = Math.hypot(dx, dy);
+    const want = Math.atan2(dy, dx);
+    const off = wrap(want - this.ang);
+    this.turn += off * 9 * dt;
+    this.turn *= Math.pow(.0016, dt);
+    this.ang += clamp(this.turn, -7, 7) * dt;
+    const planted = this.feet.reduce((n, f) => n + (f.planted ? 1 : 0), 0);
+    const traction = .16 + (planted / this.feet.length) * .84;
+    const align = 1 - Math.min(1, Math.abs(off) / 2.4) * .72;   /* facing away? drag */
+    const push = dist > 26 ? 980 * S.speed * G.drive : -260;
+    this.vel += push * traction * align * dt;
+    this.vel *= Math.pow(.02, dt);
+    this.vel = clamp(this.vel, -70, 430 * S.speed * G.drive);
+    this.x += Math.cos(this.ang) * this.vel * dt;
+    this.y += Math.sin(this.ang) * this.vel * dt;
+    const m = 22;
+    if (this.x < m) { this.x = m; this.ang = wrap(Math.PI - this.ang); }
+    if (this.x > w - m) { this.x = w - m; this.ang = wrap(Math.PI - this.ang); }
+    if (this.y < m) { this.y = m; this.ang = -this.ang; }
+    if (this.y > h - m) { this.y = h - m; this.ang = -this.ang; }
+
+    /* --- body: each joint eases toward the one ahead, bend-capped --- */
+    this.joints[0].x = this.x; this.joints[0].y = this.y;
+    for (let i = 1; i < this.joints.length; i++) {
+      const p = this.joints[i - 1], c = this.joints[i];
+      const parent = i === 1 ? this.ang + Math.PI
+        : Math.atan2(p.y - this.joints[i - 2].y, p.x - this.joints[i - 2].x);
+      let a = Math.atan2(c.y - p.y, c.x - p.x);
+      a = parent + clamp(wrap(a - parent), -G.bend, G.bend);
+      const rate = clamp((G.ease * S.easeMul) - i * .06, .12, .98);
+      const k = 1 - Math.pow(1 - rate, dt * 60);
+      c.x += (p.x + Math.cos(a) * S.link - c.x) * k;
+      c.y += (p.y + Math.sin(a) * S.link - c.y) * k;
+    }
+    /* --- feet: plant where they land, lift in diagonal pairs --- */
+    let liftCount = 0;
+    for (const f of this.feet) if (!f.planted) liftCount++;
+    const maxLift = Math.max(1, Math.floor(this.feet.length / 2));
+    for (const f of this.feet) {
+      const j = this.joints[f.j], jp = this.joints[Math.max(0, f.j - 1)];
+      const bodyAng = Math.atan2(j.y - jp.y, j.x - jp.x);
+      const px = -Math.sin(bodyAng) * f.side, py = Math.cos(bodyAng) * f.side;
+      const ax = j.x + px * S.reach, ay = j.y + py * S.reach;
+      if (f.planted) {
+        const stretched = Math.hypot(f.x - ax, f.y - ay) > S.reach * .78;
+        /* the count has to be live: a snapshot lets every foot lift at once */
+        const partnerBusy = this.feet.some(o => !o.planted && o.phase === f.phase);
+        if (stretched && !partnerBusy && liftCount < maxLift) {
+          f.planted = false; f.t = 0; liftCount++;
+          f.fx = f.x; f.fy = f.y;
+          f.tx = ax + Math.cos(this.ang) * S.reach * .55;
+          f.ty = ay + Math.sin(this.ang) * S.reach * .55;
+        }
+      } else {
+        f.t += dt * (7 + Math.abs(this.vel) / 26);
+        if (f.t >= 1) { f.t = 1; f.planted = true; f.x = f.tx; f.y = f.ty; }
+        else {
+          const u = f.t;
+          f.x = f.fx + (f.tx - f.fx) * u;
+          f.y = f.fy + (f.ty - f.fy) * u;
+          f.lift = Math.sin(u * Math.PI) * 9;
+        }
+      }
+      if (f.planted) f.lift = 0;
+    }
+    this.plantedRatio = planted / this.feet.length;
+  }
+  draw(g, dpr) {
+    const S = this.s, J = this.joints;
+    const hue = S.hue;
+    /* legs */
+    for (const f of this.feet) {
+      const j = J[f.j];
+      const hipA = Math.atan2(f.y - j.y, f.x - j.x);
+      const hx = j.x + Math.cos(hipA) * 3, hy = j.y + Math.sin(hipA) * 3;
+      const fx = f.x, fy = f.y - (f.lift || 0);
+      const kp = knee(hx, hy, fx, fy, S.reach * .66, S.reach * .66, f.side);
+      g.lineWidth = 2.4; g.lineCap = 'round';
+      g.strokeStyle = 'hsla(' + hue + ',85%,62%,' + (f.planted ? .95 : .6) + ')';
+      g.beginPath(); g.moveTo(hx, hy); g.lineTo(kp.x, kp.y); g.lineTo(fx, fy); g.stroke();
+      g.fillStyle = f.planted ? 'hsla(' + hue + ',95%,72%,.95)' : 'hsla(' + hue + ',80%,60%,.45)';
+      g.beginPath(); g.arc(fx, fy, f.planted ? 3.1 : 2.2, 0, TAU); g.fill();
+    }
+    /* body as a tapered spine */
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (let i = J.length - 1; i >= 0; i--) {
+      const t = i / J.length;
+      const r = S.size * (1 - t * .72) + 1.5;
+      g.fillStyle = 'hsla(' + (hue + t * 18) + ',' + (72 - t * 26) + '%,' + (60 - t * 24) + '%,1)';
+      g.beginPath(); g.arc(J[i].x, J[i].y, r, 0, TAU); g.fill();
+    }
+    /* head */
+    const h0 = J[0];
+    g.fillStyle = 'hsl(' + hue + ',95%,68%)';
+    g.beginPath(); g.arc(h0.x, h0.y, S.size * 1.12, 0, TAU); g.fill();
+    const ex = Math.cos(this.ang), ey = Math.sin(this.ang);
+    const px = -ey, py = ex;
+    for (const side of [-1, 1]) {
+      g.fillStyle = '#140d02';
+      g.beginPath();
+      g.arc(h0.x + ex * S.size * .5 + px * side * S.size * .45,
+            h0.y + ey * S.size * .5 + py * side * S.size * .45, S.size * .26, 0, TAU);
+      g.fill();
+    }
+  }
+}
+
+/* ---------------------------------------------------------------- mount - */
+const grid = document.getElementById('grid');
+const views = [];
+for (const spec of SPECIES) {
+  const tile = document.createElement('div');
+  tile.className = 'tile';
+  tile.innerHTML = '<div class="label"><b>' + spec.name + '</b>' + spec.note + '</div>'
+                 + '<div class="state">—</div>';
+  const cv = document.createElement('canvas');
+  tile.appendChild(cv); grid.appendChild(tile);
+  const v = { spec, cv, g: cv.getContext('2d'), tile, state: tile.querySelector('.state'),
+    pointer: { x: 0, y: 0, active: false }, w: 1, h: 1, dpr: 1 };
+  const place = e => {
+    const r = cv.getBoundingClientRect();
+    v.pointer.x = (e.clientX - r.left); v.pointer.y = (e.clientY - r.top);
+    v.pointer.active = true;
+  };
+  cv.addEventListener('pointermove', place);
+  cv.addEventListener('pointerdown', e => { place(e); e.preventDefault(); });
+  cv.addEventListener('pointerleave', () => { v.pointer.active = false; });
+  cv.addEventListener('pointercancel', () => { v.pointer.active = false; });
+  views.push(v);
+}
+function resize() {
+  for (const v of views) {
+    const r = v.cv.getBoundingClientRect();
+    v.dpr = Math.min(2, window.devicePixelRatio || 1);
+    v.cv.width = Math.max(1, Math.round(r.width * v.dpr));
+    v.cv.height = Math.max(1, Math.round(r.height * v.dpr));
+    v.w = r.width; v.h = r.height;
+    if (!v.critter) v.critter = new Critter(v.spec, v.w, v.h);
+  }
+}
+resize();
+addEventListener('resize', resize);
+
+/* fixed-timestep physics so the feel is the same at any refresh rate */
+const DT = 1 / 120;
+let acc = 0, last = performance.now(), frames = 0, fpsT = 0, fps = 60;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function frame(now) {
+  let dt = (now - last) / 1000; last = now;
+  dt = clamp(dt, 0, .1);
+  acc += dt;
+  let guard = 0;
+  while (acc >= DT && guard++ < 16) {
+    acc -= DT;
+    for (const v of views) if (v.critter) v.critter.step(DT, v.w, v.h, v.pointer);
+  }
+  for (const v of views) {
+    const g = v.g;
+    g.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
+    g.clearRect(0, 0, v.w, v.h);
+    if (v.critter) {
+      v.critter.draw(g, v.dpr);
+      if (v.pointer.active) {
+        g.strokeStyle = 'hsla(' + v.spec.hue + ',90%,65%,.35)'; g.lineWidth = 1;
+        g.beginPath(); g.arc(v.pointer.x, v.pointer.y, 11, 0, TAU); g.stroke();
+      }
+    }
+  }
+  frames++; fpsT += dt;
+  if (fpsT > .5) {
+    fps = Math.round(frames / fpsT); frames = 0; fpsT = 0;
+    for (const v of views) if (v.critter) v.state.textContent =
+      (v.pointer.active ? 'chasing' : 'wandering') + ' · grip '
+      + Math.round(v.critter.plantedRatio * 100) + '% · ' + fps + 'fps';
+  }
+  requestAnimationFrame(frame);
+}
+if (!reduced) requestAnimationFrame(frame);
+else { for (const v of views) { v.critter.step(DT, v.w, v.h, v.pointer); v.critter.draw(v.g, 1); } }
+
+/* ------------------------------------------------------------- controls - */
+const $ = id => document.getElementById(id);
+$('ease').addEventListener('input', e => { G.ease = +e.target.value / 100; $('eV').textContent = G.ease.toFixed(2); });
+$('bend').addEventListener('input', e => {
+  G.bend = +e.target.value * Math.PI / 180; $('bV').textContent = e.target.value + '°';
+});
+$('seg').addEventListener('input', e => {
+  G.segScale = +e.target.value / 100; $('sV').textContent = '×' + G.segScale.toFixed(1);
+  for (const v of views) if (v.critter) v.critter.build(v.w, v.h);
+});
+$('drive').addEventListener('input', e => { G.drive = +e.target.value / 100; $('dV').textContent = G.drive.toFixed(2); });
+</script>
+</body>
+</html>

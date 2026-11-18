@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Drop 5 — The Code Field That Slides, Fails and Merges</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#09060f;color:#efe9fb;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body{padding:84px 18px 70px;display:flex;flex-direction:column;align-items:center;gap:24px}
+.back-link{position:fixed;left:14px;top:14px;z-index:60;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:#e6ddfb;font-size:13.5px;
+  background:rgba(26,18,44,.78);backdrop-filter:blur(12px);border:1px solid rgba(167,139,250,.36)}
+.back-link:hover{background:rgba(40,28,66,.92)}
+h1{margin:0;font-size:clamp(22px,4.4vw,34px);letter-spacing:-.4px;text-align:center}
+h1 b{color:#a78bfa}
+.sub{margin:0;max-width:700px;text-align:center;color:#a99cc4;font-size:14.5px;line-height:1.65}
+.sub code{background:#161029;border:1px solid rgba(167,139,250,.26);border-radius:6px;padding:1px 6px;
+  font-size:12.5px;color:#c4b5fd}
+
+.panel{position:fixed;right:14px;top:14px;z-index:60;width:232px;padding:12px;border-radius:14px;
+  background:rgba(22,15,38,.88);backdrop-filter:blur(14px);border:1px solid rgba(167,139,250,.3);
+  box-shadow:0 20px 50px rgba(0,0,0,.6)}
+.panel h2{margin:0 0 8px;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:#8e82ad}
+.panel label{display:flex;justify-content:space-between;font-size:12px;color:#c5b9e2;margin:10px 0 3px}
+.panel output{color:#a78bfa;font-variant-numeric:tabular-nums}
+.panel input[type=range]{width:100%;accent-color:#a78bfa;margin:0}
+.panel .note{margin-top:11px;font-size:11.5px;color:#8e82ad;line-height:1.5}
+
+/* ---------------- the component ---------------- */
+.card{width:min(100%,430px);padding:22px 20px 18px;border-radius:20px;
+  background:linear-gradient(#171029,#110b20);border:1px solid rgba(167,139,250,.22);
+  box-shadow:0 20px 50px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px}
+.card .head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.card .head h3{margin:0;font-size:15px;font-weight:650}
+.card .head small{font-size:11px;color:#8e82ad;font-variant-numeric:tabular-nums}
+
+.otp{position:relative;display:flex;flex-direction:column;gap:12px}
+.row{position:relative;height:62px;touch-action:manipulation}
+.plate{position:absolute;top:0;left:0;height:62px;border-radius:14px;pointer-events:none;
+  background:linear-gradient(#2a1f4d,#1d1438);border:1px solid rgba(167,139,250,.75);
+  box-shadow:0 0 0 3px rgba(167,139,250,.14),0 10px 26px rgba(124,88,230,.3);opacity:0;
+  transition:opacity .18s ease,background .25s ease,border-color .25s ease}
+.otp[data-focus="1"] .plate{opacity:1}
+.cells{position:relative;display:flex;gap:8px;height:62px}
+.cell{flex:1 1 0;min-width:0;border-radius:14px;display:grid;place-items:center;
+  background:rgba(255,255,255,.028);border:1px solid rgba(167,139,250,.2);
+  font-size:23px;font-weight:620;font-variant-numeric:tabular-nums;color:#efe9fb;
+  transition:border-color .25s ease,background .25s ease,color .25s ease}
+.cell .d{display:block;line-height:1}
+.real{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;background:transparent;
+  font-size:16px;color:transparent;caret-color:transparent;padding:0;
+  -webkit-text-fill-color:transparent;outline:none}
+.copy{min-height:18px;font-size:12.5px;color:#a99cc4;display:flex;align-items:center;gap:8px}
+.copy b{color:#c4b5fd;font-weight:620}
+.chip{align-self:flex-start;display:none;align-items:center;gap:8px;padding:7px 12px;border-radius:11px;
+  font:inherit;font-size:12.5px;cursor:pointer;color:#dcd2f7;
+  background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.36)}
+.chip:hover{background:rgba(167,139,250,.24)}
+.chip i{width:6px;height:6px;border-radius:50%;background:#a78bfa;display:block}
+.otp[data-chip="1"] .chip{display:inline-flex}
+
+/* phases */
+.otp[data-phase="bad"] .cell{border-color:rgba(248,113,113,.75);color:#fca5a5;background:rgba(248,113,113,.07)}
+.otp[data-phase="bad"] .plate{background:linear-gradient(#3a1b26,#2a1420);border-color:rgba(248,113,113,.8)}
+.otp[data-phase="bad"] .copy{color:#fca5a5}
+.otp[data-phase="ok"] .cell,.otp[data-phase="merging"] .cell{border-color:rgba(52,211,153,.7);color:#6ee7b7}
+.otp[data-phase="ok"] .plate,.otp[data-phase="merging"] .plate,.otp[data-phase="pill"] .plate{
+  background:linear-gradient(#17412f,#10301f);border-color:rgba(52,211,153,.85);opacity:1;
+  box-shadow:0 0 0 3px rgba(52,211,153,.14),0 10px 26px rgba(16,185,129,.28)}
+.otp[data-phase="merging"] .cells,.otp[data-phase="pill"] .cells{opacity:0;transition:opacity .22s ease}
+.otp[data-phase="locked"] .cell{opacity:.5}
+.verified{position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:9px;
+  font-size:14.5px;font-weight:620;color:#6ee7b7;pointer-events:none}
+.otp[data-phase="pill"] .verified{display:flex}
+.row.shake{animation:shake .42s cubic-bezier(.36,.07,.19,.97)}
+@keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}
+  30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:#8e82ad}
+.foot button{font:inherit;font-size:12px;padding:6px 11px;border-radius:9px;cursor:pointer;
+  background:rgba(167,139,250,.12);color:#c4b5fd;border:1px solid rgba(167,139,250,.3)}
+.foot button[disabled]{opacity:.4;cursor:default}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.cards{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;width:min(100%,920px)}
+footer{color:#7a6f99;font-size:12px;text-align:center;line-height:1.7;max-width:680px}
+footer a{color:#b9a7f0}
+/* the tuning panel is fixed: give the column room so it never sits on top */
+@media (min-width:901px){ body{padding-right:268px;padding-left:268px} }
+@media (max-width:900px){ .panel{position:static;width:min(100%,430px)} body{padding-top:66px} }
+@media (prefers-reduced-motion:reduce){ .row.shake{animation:none} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>The code field that <b>slides, fails and merges</b></h1>
+<p class="sub">One real <code>&lt;input&gt;</code> hides under the cells, so paste, keyboards and
+<code>autocomplete="one-time-code"</code> all keep working. A spring carries the focus plate between cells,
+digits fade up out of a 6px blur, a wrong code dissolves them right to left, and a right one melts the whole
+row into a single pill. The first code is <b style="color:#c4b5fd">204816</b> — getting it wrong is the better demo.</p>
+
+<div class="panel">
+  <h2>Plate spring</h2>
+  <label>stiffness <output id="kV">240</output></label>
+  <input type="range" id="k" min="60" max="700" value="240">
+  <label>damping <output id="dV">31</output></label>
+  <input type="range" id="d" min="6" max="70" value="31">
+  <label>entry blur <output id="bV">6px</output></label>
+  <input type="range" id="blur" min="0" max="18" value="6">
+  <div class="note">k = 240, c = 31 is the source's own pairing — just past critical, so the plate arrives
+    without a wobble. Drop damping to 10 and it rings.</div>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<footer>
+  Inspired by <a href="https://github.com/theShipar/modern-otp-input-v2">theShipar/modern-otp-input-v2</a> —
+  an animated one-time-code input with a sliding focus plate, attempt feedback and a verified pill ·
+  UI Spotlight Day 161 · Drop #5
+</footer>
+
+<script>
+"use strict";
+/* ======================================================== spring solver ==
+   x chases target and v survives retargeting, so interrupting the plate
+   mid-flight looks like it kept its momentum instead of restarting.       */
+class Spring {
+  constructor(x) { this.x = x; this.to = x; this.v = 0; }
+  set(to) { this.to = to; }
+  jump(x) { this.x = this.to = x; this.v = 0; }
+  step(dt, k, c) {
+    const n = Math.min(8, Math.max(1, Math.ceil(dt / (1 / 240)))), h = dt / n;
+    for (let i = 0; i < n; i++) {
+      this.v += (-k * (this.x - this.to) - c * this.v) * h;
+      this.x += this.v * h;
+    }
+    return this.x;
+  }
+}
+const CFG = { k: 240, c: 31, blur: 6 };
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ============================================================ component == */
+class CodeField {
+  constructor(host, opts) {
+    this.n = opts.len; this.code = opts.code;
+    this.maxTries = opts.tries || 3;
+    this.tries = 0; this.phase = 'idle'; this.locked = false; this.prev = '';
+    this.defaultCopy = opts.copy;
+    host.innerHTML =
+      '<div class="head"><h3>' + opts.title + '</h3><small>' + this.n + ' digits</small></div>'
+      + '<div class="otp" data-phase="idle" data-focus="0" data-chip="0">'
+      +   '<div class="row">'
+      +     '<div class="plate"></div>'
+      +     '<div class="cells">' + Array.from({ length: this.n },
+              () => '<div class="cell"><span class="d"></span></div>').join('') + '</div>'
+      +     '<input class="real" inputmode="numeric" autocomplete="one-time-code" '
+      +       'aria-label="' + opts.title + '" maxlength="' + this.n + '">'
+      +     '<div class="verified">✓ Verified</div>'
+      +   '</div>'
+      +   '<button class="chip" type="button" tabindex="-1"><i></i>From Mail · ' + opts.hint + '</button>'
+      +   '<div class="copy">' + opts.copy + '</div>'
+      +   '<div class="foot"><span class="tries">attempt 0 of ' + this.maxTries + '</span>'
+      +     '<button class="resend" type="button" disabled>Resend</button></div>'
+      +   '<div class="sr" role="status" aria-live="polite"></div>'
+      + '</div>';
+    this.el = host.querySelector('.otp');
+    this.row = host.querySelector('.row');
+    this.plate = host.querySelector('.plate');
+    this.cells = [...host.querySelectorAll('.cell')];
+    this.input = host.querySelector('.real');
+    this.copy = host.querySelector('.copy');
+    this.triesEl = host.querySelector('.tries');
+    this.resend = host.querySelector('.resend');
+    this.sr = host.querySelector('.sr');
+    this.chip = host.querySelector('.chip');
+    this.x = new Spring(0); this.w = new Spring(40);
+    this.bind();
+    requestAnimationFrame(() => this.measure(true));
+  }
+  bind() {
+    this.input.addEventListener('focus', () => {
+      this.el.dataset.focus = '1';
+      if (!this.input.value && !this.locked) this.el.dataset.chip = '1';
+      this.measure();
+    });
+    this.input.addEventListener('blur', () => {
+      this.el.dataset.focus = '0'; this.el.dataset.chip = '0';
+    });
+    this.input.addEventListener('input', () => this.onInput());
+    this.input.addEventListener('keyup', () => this.measure());
+    this.input.addEventListener('click', () => this.measure());
+    this.row.addEventListener('pointerdown', e => {
+      if (e.target.closest('.chip')) return;
+      e.preventDefault(); this.input.focus();
+    });
+    /* pointerdown + preventDefault: a plain click blurs the input, which
+       hides the chip before the click ever lands on it */
+    this.chip.addEventListener('pointerdown', e => { e.preventDefault(); this.autofill(); });
+    this.chip.addEventListener('click', () => this.autofill());
+    this.resend.addEventListener('click', () => this.reset());
+  }
+  get index() { return Math.min(this.input.value.length, this.n - 1); }
+  measure(jump) {
+    const c = this.cells[this.index];
+    if (!c) return;
+    const r = c.getBoundingClientRect(), rowR = this.row.getBoundingClientRect();
+    const merged = this.phase === 'merging' || this.phase === 'pill';
+    const x = merged ? 0 : r.left - rowR.left;
+    const w = merged ? rowR.width : r.width;
+    this.x.set(x); this.w.set(w);
+    if (jump || reduced) { this.x.jump(x); this.w.jump(w); }
+  }
+  /* a new digit fades up out of a blur; a deleted one fades out */
+  paint() {
+    const v = this.input.value;
+    for (let i = 0; i < this.n; i++) {
+      const span = this.cells[i].querySelector('.d');
+      const was = this.prev[i] || '', now = v[i] || '';
+      if (was === now) continue;
+      span.getAnimations().forEach(a => a.cancel());
+      span.style.opacity = '';
+      span.textContent = now;
+      if (reduced) continue;
+      if (now) span.animate(
+        [{ opacity: 0, filter: 'blur(' + CFG.blur + 'px)', transform: 'translateY(7px) scale(.92)' },
+         { opacity: 1, filter: 'blur(0px)', transform: 'none' }],
+        { duration: 240, easing: 'cubic-bezier(.2,.85,.25,1)' });
+      else span.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'ease-out' });
+    }
+    this.prev = v;
+  }
+  onInput() {
+    const clean = this.input.value.replace(/\D+/g, '').slice(0, this.n);
+    if (clean !== this.input.value) this.input.value = clean;
+    this.paint(); this.measure();
+    if (this.phase === 'bad') { this.phase = 'idle'; this.el.dataset.phase = 'idle';
+      this.copy.textContent = this.defaultCopy; }
+    this.el.dataset.chip = clean.length ? '0' : this.el.dataset.focus;
+    if (clean.length === this.n) setTimeout(() => this.verify(), 160);
+  }
+  verify() {
+    if (this.locked || this.phase === 'ok') return;
+    const ok = this.input.value === this.code;
+    this.input.readOnly = true;
+    if (!reduced) this.cells.forEach((c, i) => c.animate(
+      [{ transform: 'none' }, { transform: 'translateY(-6px)' }, { transform: 'none' }],
+      { duration: 320, delay: i * 45, easing: 'ease-in-out' }));
+    setTimeout(() => ok ? this.succeed() : this.fail(), this.n * 45 + 110);
+  }
+  succeed() {
+    this.phase = 'ok'; this.el.dataset.phase = 'ok';
+    this.copy.innerHTML = '<b>Welcome back, Marguerite.</b>';
+    this.say('Code accepted.');
+    this.resend.disabled = false;
+    this.resend.textContent = 'Switch account';
+    setTimeout(() => {
+      this.phase = 'merging'; this.el.dataset.phase = 'merging'; this.measure();
+      setTimeout(() => { this.phase = 'pill'; this.el.dataset.phase = 'pill'; }, 340);
+    }, 460);
+  }
+  fail() {
+    this.tries++;
+    this.phase = 'bad'; this.el.dataset.phase = 'bad';
+    this.triesEl.textContent = 'attempt ' + this.tries + ' of ' + this.maxTries;
+    this.row.classList.remove('shake'); void this.row.offsetWidth; this.row.classList.add('shake');
+    this.cells.forEach((c, i) => {
+      const span = c.querySelector('.d');
+      if (reduced) { span.textContent = ''; return; }
+      const a = span.animate([{ opacity: 1, filter: 'blur(0px)' }, { opacity: 0, filter: 'blur(5px)' }],
+        { duration: 220, delay: (this.n - 1 - i) * 55, easing: 'ease-in', fill: 'forwards' });
+      a.onfinish = () => { span.textContent = ''; a.cancel(); };
+    });
+    const out = this.tries >= this.maxTries;
+    this.copy.textContent = out ? 'Too many attempts · try again later' : 'That code did not match';
+    this.say(out ? 'Too many attempts.' : 'Incorrect code, ' + (this.maxTries - this.tries) + ' attempts left.');
+    setTimeout(() => {
+      this.input.value = ''; this.prev = '';
+      if (out) this.lock();
+      else { this.input.readOnly = false; this.input.focus(); }
+      this.measure();
+    }, this.n * 55 + 250);
+  }
+  lock() {
+    this.locked = true; this.phase = 'locked';
+    this.el.dataset.phase = 'locked';
+    this.input.readOnly = true; this.el.dataset.focus = '0';
+    let t = 30;
+    this.resend.disabled = true;
+    this.resend.textContent = 'Resend (' + t + 's)';
+    clearInterval(this.iv);
+    this.iv = setInterval(() => {
+      t--;
+      this.resend.textContent = t > 0 ? 'Resend (' + t + 's)' : 'Resend';
+      if (t <= 0) { clearInterval(this.iv); this.resend.disabled = false; }
+    }, 1000);
+  }
+  reset() {
+    clearInterval(this.iv);
+    this.locked = false; this.tries = 0; this.phase = 'idle';
+    this.el.dataset.phase = 'idle';
+    this.input.readOnly = false; this.input.value = ''; this.prev = '';
+    this.cells.forEach(c => {
+      const s = c.querySelector('.d');
+      s.getAnimations().forEach(a => a.cancel());
+      s.textContent = ''; s.style.opacity = '';
+    });
+    this.copy.textContent = this.defaultCopy;
+    this.triesEl.textContent = 'attempt 0 of ' + this.maxTries;
+    this.resend.textContent = 'Resend'; this.resend.disabled = true;
+    this.measure(); this.input.focus();
+    this.say('Code cleared.');
+  }
+  autofill() {
+    const now = performance.now();
+    if (this.locked || now - (this.lastFill || -1e4) < 500) return;   /* one per gesture */
+    this.lastFill = now;
+    this.input.focus();
+    this.el.dataset.chip = '0';
+    let i = 0;
+    const tick = () => {
+      if (i >= this.code.length) return;
+      this.input.value = this.code.slice(0, ++i);
+      this.paint(); this.measure();
+      if (i < this.code.length) setTimeout(tick, 110);
+      else setTimeout(() => this.verify(), 230);
+    };
+    tick();
+  }
+  say(msg) { this.sr.textContent = msg; }
+  frame(dt) {
+    const x = this.x.step(dt, CFG.k, CFG.c), w = this.w.step(dt, CFG.k, CFG.c);
+    this.plate.style.transform = 'translate3d(' + x.toFixed(2) + 'px,0,0)';
+    this.plate.style.width = Math.max(0, w).toFixed(2) + 'px';
+  }
+}
+
+/* =============================================================== mount === */
+const fields = [];
+const defs = [
+  { title: 'Sign in', len: 6, code: '204816', hint: '204 816', tries: 3,
+    copy: 'We sent a code to m@oyelaran.studio' },
+  { title: 'Confirm transfer', len: 4, code: '7721', hint: '7721', tries: 2,
+    copy: 'Confirm the transfer with the code we texted you' },
+  { title: 'Pair device', len: 5, code: '30914', hint: '309 14', tries: 3,
+    copy: 'Enter the code shown on the other screen' }
+];
+const wrap = document.getElementById('cards');
+for (const d of defs) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  wrap.appendChild(card);
+  fields.push(new CodeField(card, d));
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  for (const f of fields) f.frame(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+addEventListener('resize', () => { for (const f of fields) f.measure(true); });
+
+/* controls */
+const $ = id => document.getElementById(id);
+$('k').addEventListener('input', e => { CFG.k = +e.target.value; $('kV').textContent = CFG.k; });
+$('d').addEventListener('input', e => { CFG.c = +e.target.value; $('dV').textContent = CFG.c; });
+$('blur').addEventListener('input', e => { CFG.blur = +e.target.value; $('bV').textContent = CFG.blur + 'px'; });
+</script>
+</body>
+</html>
