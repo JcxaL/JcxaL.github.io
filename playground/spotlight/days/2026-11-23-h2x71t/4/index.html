@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>The Surface Is a Field · Drop 4</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#f6ecd9;
+  background:radial-gradient(900px 600px at 30% -10%,#2a2010,#0a0806 60%),#080705;
+  padding:64px 16px 72px;display:flex;flex-direction:column;align-items:center;gap:26px
+}
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:40;text-decoration:none;font-size:12px;
+  color:#fbeccb;background:#14100ab3;border:1px solid #4a3a16;backdrop-filter:blur(10px);
+  padding:7px 13px;border-radius:999px;transition:.16s
+}
+.back-link:hover{background:#221a0cCC;border-color:#fbbf24;color:#fff}
+.head{max-width:760px;text-align:center}
+h1{font-size:clamp(20px,4vw,30px);margin:0 0 8px;letter-spacing:-.02em}
+h1 em{font-style:normal;color:#fbbf24}
+.sub{margin:0 auto;max-width:62ch;color:#b6a483;font-size:13.5px}
+.grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;
+  width:min(96vw,760px)
+}
+.tex{
+  position:relative;aspect-ratio:4/3;border:1px solid #3b2f14;border-radius:16px;
+  overflow:hidden;background:#0d0b07;touch-action:none;cursor:crosshair
+}
+.tex .lab{
+  position:absolute;left:12px;top:11px;z-index:3;font-size:10.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:#d7bd82;pointer-events:none
+}
+.tex .desc{
+  position:absolute;left:0;right:0;bottom:0;z-index:3;font-size:11.5px;
+  color:#b8a684;pointer-events:none;padding:22px 12px 10px;
+  background:linear-gradient(transparent,#0d0b07 62%)
+}
+.tex .lab::after{
+  content:"";position:absolute;left:-12px;right:-500px;top:-11px;height:40px;z-index:-1;
+  background:linear-gradient(#0d0b07 38%,transparent)
+}
+.cell{
+  position:absolute;background:#fbbf24;border-radius:2px;
+  will-change:transform,opacity;pointer-events:none
+}
+.panel{
+  position:fixed;top:14px;right:14px;width:212px;z-index:50;
+  background:#110e08cc;border:1px solid #4a3a16;border-radius:14px;padding:12px 13px;
+  backdrop-filter:blur(12px);box-shadow:0 14px 40px #0009
+}
+.panel h2{font-size:10px;letter-spacing:.17em;text-transform:uppercase;color:#a08d63;margin:0 0 9px}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.row label{font-size:11px;color:#bba888;flex:0 0 56px}
+.row input[type=range]{flex:1;accent-color:#fbbf24;min-width:0;height:16px}
+.row .v{flex:0 0 40px;text-align:right;font-size:11px;color:#f6ecd9;font-variant-numeric:tabular-nums}
+.row.sw{justify-content:space-between}
+.sw button{
+  font:inherit;font-size:11px;color:#f1dfbc;background:#1b1509;border:1px solid #4a3a16;
+  padding:4px 9px;border-radius:7px;cursor:pointer
+}
+.sw button.on{background:#4a3505;border-color:#fbbf24;color:#ffe6a8}
+footer{font-size:11.5px;color:#7c6e55;text-align:center}
+footer a{color:#d4ad55}
+@media(max-width:820px){
+  .panel{position:static;width:min(96vw,760px)}
+  body{padding-top:54px}
+}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="head">
+  <h1>The surface is <em>a field</em></h1>
+  <p class="sub">Each panel is a grid of plain elements and one pointer. Every cell reads its own distance
+  to the pointer, turns that into a falloff, and springs toward a target transform — so a flat sheet behaves
+  like a material you can push around.</p>
+</div>
+
+<div class="panel">
+  <h2>Field</h2>
+  <div class="row"><label>Radius</label><input type="range" id="rad" min="30" max="260" step="5" value="120"><span class="v" id="vrad"></span></div>
+  <div class="row"><label>Force</label><input type="range" id="frc" min="0.1" max="2" step="0.05" value="1"><span class="v" id="vfrc"></span></div>
+  <div class="row"><label>Spring</label><input type="range" id="spr" min="0.04" max="0.45" step="0.01" value="0.16"><span class="v" id="vspr"></span></div>
+  <div class="row"><label>Density</label><input type="range" id="den" min="8" max="26" step="1" value="15"><span class="v" id="vden"></span></div>
+  <div class="row sw"><span style="font-size:11px;color:#bba888">Idle drift</span><button id="drf" class="on">on</button></div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<footer>Inspired by <a href="https://textures.dev" target="_blank" rel="noopener">textures.dev</a> · UI Spotlight Day 166 · Drop #4</footer>
+
+<script>
+(function(){
+'use strict';
+var opt = { radius:120, force:1, spring:0.16, density:15, drift:true };
+
+function smooth(f){ return f*f*(3-2*f); }
+
+var TEXTURES = [
+  { name:'settle', desc:'Bars gather toward the pointer inside their column.',
+    cols:function(d){ return d; }, rows:function(d){ return Math.round(d*0.55); },
+    cell:function(cw,ch){ return { w:Math.max(2,cw*0.26), h:ch*0.62, r:2 }; },
+    target:function(c,dx,dy,f,out){
+      out.tx = dx*f*0.55; out.ty = dy*f*0.75;
+      out.sx = 1 + f*0.5; out.sy = 1 - f*0.25;
+      out.rot = 0; out.op = 0.3 + f*0.7;
+    }},
+  { name:'warp', desc:'Tiles stretch by their distance, trailing the pointer.',
+    cols:function(d){ return d; }, rows:function(d){ return Math.round(d*0.75); },
+    cell:function(cw,ch){ return { w:cw*0.6, h:ch*0.6, r:3 }; },
+    target:function(c,dx,dy,f,out){
+      out.sx = 1 + f*1.7; out.sy = 1 + f*1.7;
+      out.tx = -dx*f*0.18; out.ty = -dy*f*0.18;
+      out.rot = 0; out.op = 0.22 + f*0.78;
+    }},
+  { name:'pillars', desc:'Columns rise into a smoothed pyramid under the cursor.',
+    cols:function(d){ return d; }, rows:function(d){ return Math.round(d*0.62); },
+    cell:function(cw,ch){ return { w:Math.max(3,cw*0.42), h:ch*0.5, r:99, origin:'50% 100%' }; },
+    target:function(c,dx,dy,f,out){
+      out.sy = 1 + Math.pow(f,1.4)*4.2; out.sx = 1 + f*0.25;
+      out.tx = 0; out.ty = 0; out.rot = 0; out.op = 0.25 + f*0.75;
+    }},
+  { name:'twist', desc:'Every bar turns to point straight at the pointer.',
+    cols:function(d){ return Math.round(d*0.8); }, rows:function(d){ return Math.round(d*0.55); },
+    cell:function(cw,ch){ return { w:Math.max(8,cw*0.72), h:Math.max(2,ch*0.14), r:99 }; },
+    target:function(c,dx,dy,f,out){
+      out.rot = Math.atan2(-dy,-dx)*180/Math.PI;
+      out.sx = 1 + f*0.9; out.sy = 1 + f*0.6;
+      out.tx = 0; out.ty = 0; out.op = 0.28 + f*0.72;
+    }}
+];
+
+var HUES = ['#fbbf24','#f59e0b','#fcd34d','#fb923c'];
+var panels = [];
+
+function build(panel){
+  var host = panel.el, tex = panel.tex;
+  var r = host.getBoundingClientRect();
+  if(r.width < 2) return;
+  panel.w = r.width; panel.h = r.height;
+  var cols = Math.max(3, tex.cols(opt.density)), rows = Math.max(3, tex.rows(opt.density));
+  var cw = r.width/cols, ch = r.height/rows;
+  var spec = tex.cell(cw, ch);
+  // drop and rebuild the cells
+  [].forEach.call(host.querySelectorAll('.cell'), function(n){ n.remove(); });
+  panel.cells = [];
+  for(var j=0;j<rows;j++) for(var i=0;i<cols;i++){
+    var d = document.createElement('div');
+    d.className = 'cell';
+    var cx = (i+0.5)*cw, cy = (j+0.5)*ch;
+    d.style.width = spec.w + 'px';
+    d.style.height = spec.h + 'px';
+    d.style.left = (cx - spec.w/2) + 'px';
+    d.style.top  = (cy - spec.h/2) + 'px';
+    d.style.borderRadius = spec.r + 'px';
+    d.style.background = HUES[(i+j) % HUES.length];
+    if(spec.origin) d.style.transformOrigin = spec.origin;
+    d.style.opacity = 0.3;
+    host.appendChild(d);
+    panel.cells.push({ el:d, cx:cx, cy:cy,
+      cur:{ tx:0, ty:0, sx:1, sy:1, rot:0, op:0.3 },
+      tgt:{ tx:0, ty:0, sx:1, sy:1, rot:0, op:0.3 } });
+  }
+}
+
+function step(panel, now){
+  var cells = panel.cells, R = opt.radius, k = opt.spring;
+  var px = panel.px, py = panel.py;
+  if(!panel.active && opt.drift){
+    var a = now*0.0007 + panel.phase;
+    px = panel.w*(0.5 + 0.33*Math.cos(a));
+    py = panel.h*(0.5 + 0.3*Math.sin(a*1.37));
+  } else if(!panel.active){
+    px = -9999; py = -9999;
+  }
+  for(var i=0;i<cells.length;i++){
+    var c = cells[i];
+    var dx = c.cx - px, dy = c.cy - py;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    var f = dist >= R ? 0 : smooth(1 - dist/R) * opt.force;
+    if(f > 1) f = 1;
+    panel.tex.target(c, dx, dy, f, c.tgt);
+    var cur = c.cur, tgt = c.tgt;
+    cur.tx += (tgt.tx - cur.tx)*k;
+    cur.ty += (tgt.ty - cur.ty)*k;
+    cur.sx += (tgt.sx - cur.sx)*k;
+    cur.sy += (tgt.sy - cur.sy)*k;
+    cur.op += (tgt.op - cur.op)*k;
+    var dr = tgt.rot - cur.rot;
+    while(dr > 180) dr -= 360;
+    while(dr < -180) dr += 360;
+    cur.rot += dr*k;
+    c.el.style.transform =
+      'translate(' + cur.tx.toFixed(2) + 'px,' + cur.ty.toFixed(2) + 'px) ' +
+      'rotate(' + cur.rot.toFixed(2) + 'deg) ' +
+      'scale(' + cur.sx.toFixed(3) + ',' + cur.sy.toFixed(3) + ')';
+    c.el.style.opacity = cur.op.toFixed(3);
+  }
+}
+
+var grid = document.getElementById('grid');
+TEXTURES.forEach(function(tex,i){
+  var host = document.createElement('div');
+  host.className = 'tex';
+  var lab = document.createElement('div'); lab.className = 'lab'; lab.textContent = tex.name;
+  var des = document.createElement('div'); des.className = 'desc'; des.textContent = tex.desc;
+  host.appendChild(lab); host.appendChild(des);
+  grid.appendChild(host);
+  var p = { el:host, tex:tex, cells:[], px:-9999, py:-9999, active:false,
+            w:0, h:0, phase:i*1.9 };
+  panels.push(p);
+  host.addEventListener('pointermove', function(ev){
+    var r = host.getBoundingClientRect();
+    p.px = ev.clientX - r.left; p.py = ev.clientY - r.top; p.active = true;
+  });
+  host.addEventListener('pointerdown', function(ev){
+    host.setPointerCapture(ev.pointerId);
+    var r = host.getBoundingClientRect();
+    p.px = ev.clientX - r.left; p.py = ev.clientY - r.top; p.active = true;
+  });
+  host.addEventListener('pointerleave', function(){ p.active = false; });
+  host.addEventListener('pointerup', function(){ p.active = false; });
+  host.addEventListener('pointercancel', function(){ p.active = false; });
+});
+
+function rebuildAll(){ panels.forEach(build); }
+rebuildAll();
+if(window.ResizeObserver){
+  var ro = new ResizeObserver(function(){ rebuildAll(); });
+  panels.forEach(function(p){ ro.observe(p.el); });
+} else {
+  window.addEventListener('resize', rebuildAll);
+}
+
+function loop(now){
+  for(var i=0;i<panels.length;i++) step(panels[i], now);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function bind(id,vid,fmt,fn){
+  var el = document.getElementById(id), v = document.getElementById(vid);
+  function u(){ var n = parseFloat(el.value); fn(n); if(v) v.textContent = fmt(n); }
+  el.addEventListener('input', u); u();
+}
+bind('rad','vrad',function(v){ return (v|0)+'px'; }, function(v){ opt.radius = v; });
+bind('frc','vfrc',function(v){ return v.toFixed(2)+'×'; }, function(v){ opt.force = v; });
+bind('spr','vspr',function(v){ return v.toFixed(2); }, function(v){ opt.spring = v; });
+bind('den','vden',function(v){ return (v|0)+''; }, function(v){
+  opt.density = v|0;
+  if(panels[0].cells.length) rebuildAll();
+});
+document.getElementById('drf').onclick = function(){
+  opt.drift = !opt.drift;
+  this.classList.toggle('on', opt.drift);
+  this.textContent = opt.drift ? 'on' : 'off';
+};
+})();
+</script>
+</body>
+</html>

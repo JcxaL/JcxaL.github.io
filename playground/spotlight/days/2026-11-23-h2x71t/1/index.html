@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Two Buffers, One Pixel · Drop 1</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#dbe6f2;
+  background:radial-gradient(900px 600px at 70% -10%,#13243a,#070a10 60%),#05070b;
+  display:flex;flex-direction:column;align-items:center;gap:18px;
+  padding:64px 16px 70px;overflow-x:hidden
+}
+.back-link{
+  position:fixed;top:14px;left:14px;z-index:20;text-decoration:none;font-size:12px;
+  color:#cfe3f7;background:#0b121cb3;border:1px solid #27384d;backdrop-filter:blur(10px);
+  padding:7px 13px;border-radius:999px;transition:.16s
+}
+.back-link:hover{background:#13202eCC;border-color:#38bdf8;color:#fff}
+h1{font-size:clamp(20px,4vw,30px);margin:0;letter-spacing:-.02em;text-align:center}
+h1 em{font-style:normal;color:#38bdf8}
+.sub{margin:0;max-width:62ch;text-align:center;color:#8ba3bd;font-size:13.5px}
+.hero{
+  position:relative;border:1px solid #1d2d40;border-radius:16px;overflow:hidden;
+  background:#04060a;box-shadow:0 24px 60px #0009
+}
+canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+#hero{width:min(92vw,560px);height:auto;aspect-ratio:4/3}
+.strip{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:min(92vw,620px)}
+.cell{
+  border:1px solid #1d2d40;border-radius:12px;overflow:hidden;background:#04060a;
+  cursor:pointer;transition:.16s;position:relative;padding:0;line-height:0
+}
+.cell:hover{border-color:#38bdf8;transform:translateY(-2px)}
+.cell.sel{border-color:#38bdf8;box-shadow:0 0 0 1px #38bdf8,0 8px 24px #38bdf855}
+.cell canvas{width:120px;height:90px}
+.cell span{
+  position:absolute;left:0;right:0;bottom:0;font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:#bcd4ea;background:linear-gradient(transparent,#04060ae6);
+  padding:10px 6px 4px;line-height:1.2;text-align:center
+}
+.panel{
+  position:fixed;top:14px;right:14px;width:216px;z-index:15;
+  background:#0a1017cc;border:1px solid #27384d;border-radius:14px;padding:12px 13px;
+  backdrop-filter:blur(12px);box-shadow:0 14px 40px #0008
+}
+.panel h2{font-size:10px;letter-spacing:.17em;text-transform:uppercase;color:#7e94ab;margin:0 0 9px}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.row label{font-size:11px;color:#93a8be;flex:0 0 58px}
+.row input[type=range]{flex:1;accent-color:#38bdf8;min-width:0;height:16px}
+.row .v{flex:0 0 36px;text-align:right;font-size:11px;color:#dbe6f2;font-variant-numeric:tabular-nums}
+.row.sw{justify-content:space-between}
+.sw button{
+  font:inherit;font-size:11px;color:#cfe0f0;background:#141e2b;border:1px solid #2b3f55;
+  padding:4px 9px;border-radius:7px;cursor:pointer
+}
+.sw button.on{background:#0d3550;border-color:#38bdf8;color:#bfe7ff}
+footer{
+  font-size:11.5px;color:#60748a;text-align:center;margin-top:4px
+}
+footer a{color:#7ba9cf}
+@media(max-width:780px){
+  .panel{position:static;width:min(92vw,560px)}
+  body{padding-top:56px}
+}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<h1>Two buffers, <em>one pixel</em></h1>
+<p class="sub">Every effect is a plain function of time that writes into two buffers — an opaque
+<b>color</b> buffer and an additive <b>light</b> buffer — then they are composited and blown up
+with nearest-neighbour. Seeded randomness means frame <i>t</i> always looks the same.</p>
+
+<div class="hero"><canvas id="hero"></canvas></div>
+<div class="strip" id="strip"></div>
+
+<div class="panel">
+  <h2>Pixel bench</h2>
+  <div class="row"><label>Speed</label><input type="range" id="spd" min="0.1" max="3" step="0.05" value="1"><span class="v" id="vspd"></span></div>
+  <div class="row"><label>Light</label><input type="range" id="lit" min="0" max="2" step="0.05" value="1"><span class="v" id="vlit"></span></div>
+  <div class="row"><label>Pixels</label><input type="range" id="res" min="48" max="192" step="8" value="112"><span class="v" id="vres"></span></div>
+  <div class="row sw"><span style="font-size:11px;color:#93a8be">Dither</span><button id="dit" class="on">on</button></div>
+  <div class="row sw"><span style="font-size:11px;color:#93a8be">Light buffer</span><button id="sho">composite</button></div>
+</div>
+
+<footer>Inspired by <a href="https://github.com/patch-gg/pixelfx" target="_blank" rel="noopener">patch-gg/pixelfx</a> · UI Spotlight Day 166 · Drop #1</footer>
+
+<script>
+(function(){
+'use strict';
+var W = 112, H = 84;
+var opt = { speed:1, light:1, dither:true, showLight:false };
+
+/* seeded value noise so a given t always renders the same ------------- */
+function hash(x,y,s){
+  var n = Math.sin(x*127.1 + y*311.7 + s*74.7) * 43758.5453;
+  return n - Math.floor(n);
+}
+function vnoise(x,y,s){
+  var xi = Math.floor(x), yi = Math.floor(y), xf = x-xi, yf = y-yi;
+  var u = xf*xf*(3-2*xf), v = yf*yf*(3-2*yf);
+  var a = hash(xi,yi,s), b = hash(xi+1,yi,s), c = hash(xi,yi+1,s), d = hash(xi+1,yi+1,s);
+  return a + (b-a)*u + (c-a)*v + (a-b-c+d)*u*v;
+}
+/* periodic in t: blend two noise fields that swap over the loop */
+function loopNoise(x,y,t,s){
+  var a = vnoise(x, y - t*6, s);
+  var b = vnoise(x, y - (t-1)*6, s+13.7);
+  return a*(1-t) + b*t;
+}
+function ramp(stops,v){
+  v = v<0?0:v>1?1:v;
+  for(var i=0;i<stops.length-1;i++){
+    var a = stops[i], b = stops[i+1];
+    if(v>=a[0] && v<=b[0]){
+      var u = (v-a[0])/(b[0]-a[0]||1);
+      return [a[1]+(b[1]-a[1])*u, a[2]+(b[2]-a[2])*u, a[3]+(b[3]-a[3])*u];
+    }
+  }
+  var l = stops[stops.length-1];
+  return [l[1],l[2],l[3]];
+}
+var FIRE = [[0,0,0,0],[.2,90,14,6],[.45,214,74,18],[.72,250,170,46],[1,255,246,206]];
+var ICE  = [[0,0,0,0],[.25,18,54,94],[.55,84,170,224],[.8,186,236,255],[1,255,255,255]];
+var ARC  = [[0,0,0,0],[.3,54,24,96],[.6,150,88,236],[.85,222,186,255],[1,255,255,255]];
+var GLD  = [[0,0,0,0],[.3,96,56,8],[.6,230,164,42],[.85,255,226,140],[1,255,255,255]];
+
+/* ---- the effects: draw(color, light, t, w, h) ----------------------- */
+function px(buf,w,x,y,r,g,b,a){
+  if(x<0||y<0||x>=w||y>=buf.length/(4*w)) return;
+  var i = (y*w+x)*4;
+  if(a>=1){ buf[i]=r; buf[i+1]=g; buf[i+2]=b; buf[i+3]=255; return; }
+  buf[i]   = buf[i]  *(1-a) + r*a;
+  buf[i+1] = buf[i+1]*(1-a) + g*a;
+  buf[i+2] = buf[i+2]*(1-a) + b*a;
+  buf[i+3] = Math.max(buf[i+3], a*255);
+}
+function addLight(lt,w,x,y,r,g,b){
+  if(x<0||y<0||x>=w) return;
+  var i = (y*w+x)*3; if(i<0||i+2>=lt.length) return;
+  lt[i]+=r; lt[i+1]+=g; lt[i+2]+=b;
+}
+
+var EFFECTS = [
+  { name:'Bonfire', draw:function(c,l,t,w,h){
+      for(var y=0;y<h;y++) for(var x=0;x<w;x++){
+        var cx = (x-w/2)/(w*0.17);
+        var fy = 1 - y/h;
+        var n = loopNoise(x*0.16, y*0.14, t, 3.1);
+        var body = fy*1.7 - Math.abs(cx)*(0.8+fy*1.4) + n*0.75 - 0.35;
+        if(body<=0) continue;
+        var v = Math.min(1, body*1.25);
+        if(opt.dither) v = Math.round(v*7 + ((x+y)%2)*0.35)/7;
+        var col = ramp(FIRE, v);
+        px(c,w,x,y,col[0],col[1],col[2],1);
+        addLight(l,w,x,y,col[0]*0.016*v,col[1]*0.011*v,col[2]*0.004*v);
+      }
+    }},
+  { name:'Frost nova', draw:function(c,l,t,w,h){
+      var cx = w/2, cy = h/2, R = Math.min(w,h)*0.46*Math.pow(t,0.6);
+      for(var y=0;y<h;y++) for(var x=0;x<w;x++){
+        var dx = x-cx, dy = (y-cy)*1.25, d = Math.sqrt(dx*dx+dy*dy);
+        var ang = Math.atan2(dy,dx);
+        var spike = 0.78 + 0.3*Math.sin(ang*9 + hash(0,0,7)*6.28);
+        var edge = R*spike;
+        var band = 1 - Math.abs(d-edge)/(5.5+8*t);
+        if(band<=0) continue;
+        var v = band*(1-t*0.55);
+        if(opt.dither) v = Math.round(v*6 + ((x*3+y)%3)*0.3)/6;
+        if(v<=0.04) continue;
+        var col = ramp(ICE, Math.min(1,v));
+        px(c,w,x,y,col[0],col[1],col[2],Math.min(1,v*1.6));
+        addLight(l,w,x,y,col[0]*0.006*v,col[1]*0.013*v,col[2]*0.02*v);
+      }
+      for(var s=0;s<26;s++){
+        var a2 = hash(s,1,9)*6.28, r2 = R*(0.9+hash(s,2,9)*0.35);
+        var sx = Math.round(cx + Math.cos(a2)*r2), sy = Math.round(cy + Math.sin(a2)*r2*0.8);
+        px(c,w,sx,sy,235,250,255,1-t);
+        addLight(l,w,sx,sy,0.05,0.12,0.2);
+      }
+    }},
+  { name:'Arc bolt', draw:function(c,l,t,w,h){
+      var seed = Math.floor(t*6);
+      var flick = 0.55 + 0.45*Math.sin(t*44);
+      function bolt(x0,y0,x1,y1,sd,depth){
+        var steps = 22, px0 = x0, py0 = y0;
+        for(var i=1;i<=steps;i++){
+          var u = i/steps;
+          var jx = (hash(i,depth,sd)-0.5)*14*(1-Math.abs(u-0.5)*1.2);
+          var x = x0+(x1-x0)*u + jx, y = y0+(y1-y0)*u;
+          var n = Math.max(Math.abs(x-px0),Math.abs(y-py0))|0;
+          for(var k=0;k<=n;k++){
+            var lx = Math.round(px0+(x-px0)*(n?k/n:0)), ly = Math.round(py0+(y-py0)*(n?k/n:0));
+            px(c,w,lx,ly,250,244,255,flick);
+            px(c,w,lx+1,ly,180,140,255,0.5*flick);
+            addLight(l,w,lx,ly,0.11*flick,0.06*flick,0.22*flick);
+            addLight(l,w,lx+1,ly,0.05,0.03,0.11);
+            addLight(l,w,lx-1,ly,0.05,0.03,0.11);
+          }
+          px0 = x; py0 = y;
+          if(depth<2 && i%7===0 && hash(i,depth+5,sd)>0.55){
+            bolt(x,y,x+(hash(i,9,sd)-0.5)*40, y+14+hash(i,8,sd)*16, sd+i, depth+1);
+          }
+        }
+      }
+      bolt(w*0.5, 2, w*0.5+(hash(seed,0,2)-0.5)*26, h-3, seed, 0);
+      for(var x2=0;x2<w;x2++){
+        var gv = Math.max(0, 1-Math.abs(x2-w/2)/(w*0.5));
+        var col = ramp(ARC, gv*0.25*flick);
+        px(c,w,x2,h-1,col[0],col[1],col[2],0.4*gv);
+      }
+    }},
+  { name:'Pickup', draw:function(c,l,t,w,h){
+      var cx = w/2, cy = h/2 - Math.sin(t*6.2832)*3;
+      var spin = t*6.2832, s = 7 + Math.sin(t*12.566)*2.2;
+      for(var a=0;a<4;a++){
+        var th = spin + a*Math.PI/2;
+        for(var r=0;r<s;r++){
+          var fall = 1-r/s;
+          var x = Math.round(cx + Math.cos(th)*r), y = Math.round(cy + Math.sin(th)*r*0.8);
+          var col = ramp(GLD, 0.45+fall*0.55);
+          px(c,w,x,y,col[0],col[1],col[2],1);
+          addLight(l,w,x,y,0.09*fall,0.07*fall,0.02*fall);
+        }
+      }
+      for(var i=0;i<5;i++){
+        var pt = (t + i/5) % 1;
+        var px2 = Math.round(cx + Math.cos(i*2.4)*(6+pt*12));
+        var py2 = Math.round(cy - pt*20 + Math.sin(i*1.7)*3);
+        var al = 1-pt;
+        px(c,w,px2,py2,255,236,170,al);
+        addLight(l,w,px2,py2,0.08*al,0.06*al,0.01*al);
+      }
+      for(var y3=0;y3<h;y3++) for(var x3=0;x3<w;x3++){
+        var d = Math.hypot(x3-cx,(y3-cy)*1.3);
+        if(d<s+9){
+          var g = Math.max(0,1-d/(s+9));
+          addLight(l,w,x3,y3,g*g*0.5,g*g*0.36,g*g*0.08);
+        }
+      }
+    }}
+];
+
+/* ---------------------------------------------------- render plumbing */
+function makeView(cv, fxIndex, w, h){
+  var ctx = cv.getContext('2d');
+  var st = { cv:cv, ctx:ctx, fx:fxIndex, w:0, h:0, img:null, light:null };
+  resizeView(st,w,h);
+  return st;
+}
+function resizeView(st,w,h){
+  st.w = w; st.h = h;
+  st.cv.width = w; st.cv.height = h;
+  st.img = st.ctx.createImageData(w,h);
+  st.light = new Float32Array(w*h*3);
+}
+function renderView(st,t){
+  var w = st.w, h = st.h, d = st.img.data, lt = st.light, i;
+  for(i=0;i<d.length;i+=4){ d[i]=6; d[i+1]=8; d[i+2]=14; d[i+3]=255; }
+  lt.fill(0);
+  EFFECTS[st.fx].draw(d, lt, t, w, h);
+  var gain = opt.light;
+  for(i=0;i<w*h;i++){
+    var o = i*4, l3 = i*3;
+    if(opt.showLight){
+      d[o]   = Math.min(255, lt[l3]*255*gain);
+      d[o+1] = Math.min(255, lt[l3+1]*255*gain);
+      d[o+2] = Math.min(255, lt[l3+2]*255*gain);
+    } else {
+      d[o]   = Math.min(255, d[o]   + lt[l3]  *255*gain);
+      d[o+1] = Math.min(255, d[o+1] + lt[l3+1]*255*gain);
+      d[o+2] = Math.min(255, d[o+2] + lt[l3+2]*255*gain);
+    }
+    d[o+3] = 255;
+  }
+  st.ctx.putImageData(st.img,0,0);
+}
+
+var hero = makeView(document.getElementById('hero'), 0, W, H);
+var strip = document.getElementById('strip'), cells = [];
+EFFECTS.forEach(function(fx,i){
+  var b = document.createElement('button');
+  b.className = 'cell' + (i===0?' sel':'');
+  var cv = document.createElement('canvas');
+  var sp = document.createElement('span'); sp.textContent = fx.name;
+  b.appendChild(cv); b.appendChild(sp); strip.appendChild(b);
+  var st = makeView(cv, i, 60, 45);
+  cells.push({ btn:b, st:st });
+  b.onclick = function(){
+    hero.fx = i;
+    cells.forEach(function(c,k){ c.btn.classList.toggle('sel', k===i); });
+  };
+});
+
+var clock = 0, last = 0;
+function frame(ts){
+  var dt = Math.min(0.05, (ts-last)/1000 || 0.016); last = ts;
+  clock = (clock + dt*0.45*opt.speed) % 1;
+  renderView(hero, clock);
+  for(var i=0;i<cells.length;i++) renderView(cells[i].st, clock);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ----------------------------------------------------------- controls */
+function bind(id,vid,fmt,fn){
+  var el = document.getElementById(id), vl = document.getElementById(vid);
+  function upd(){ fn(parseFloat(el.value)); if(vl) vl.textContent = fmt(parseFloat(el.value)); }
+  el.addEventListener('input', upd); upd();
+}
+bind('spd','vspd',function(v){ return v.toFixed(2)+'×'; },function(v){ opt.speed = v; });
+bind('lit','vlit',function(v){ return Math.round(v*100)+'%'; },function(v){ opt.light = v; });
+bind('res','vres',function(v){ return (v|0)+'px'; },function(v){
+  W = v|0; H = Math.round(v*0.75);
+  resizeView(hero, W, H);
+});
+document.getElementById('dit').onclick = function(){
+  opt.dither = !opt.dither;
+  this.classList.toggle('on', opt.dither);
+  this.textContent = opt.dither ? 'on' : 'off';
+};
+document.getElementById('sho').onclick = function(){
+  opt.showLight = !opt.showLight;
+  this.classList.toggle('on', opt.showLight);
+  this.textContent = opt.showLight ? 'light only' : 'composite';
+};
+})();
+</script>
+</body>
+</html>
