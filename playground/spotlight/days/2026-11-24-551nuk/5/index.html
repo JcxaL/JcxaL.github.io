@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drop 5 — Charts Are a Spec, Not a Drawing</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--acc:#a78bfa;--dim:#8d85a6;--line:#232034}
+html,body{margin:0;min-height:100%}
+body{background:#08070d;color:#f0ecfa;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.back-link{position:fixed;top:14px;left:14px;z-index:40;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:#efe9fd;font-size:13px;font-weight:600;
+  background:rgba(18,14,30,.74);border:1px solid rgba(167,139,250,.3);backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px)}
+.back-link:hover{border-color:var(--acc)}
+.panel{position:fixed;top:14px;right:14px;z-index:40;width:208px;padding:13px;border-radius:15px;
+  background:rgba(18,14,30,.78);border:1px solid rgba(167,139,250,.26);backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);font-size:11.5px;color:#bdb2d6}
+.panel h3{margin:0 0 8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+.panel label{margin:8px 0 2px;display:flex;justify-content:space-between;gap:8px}
+.panel b{color:#f6f2ff;font-weight:600;font-variant-numeric:tabular-nums}
+.panel input[type=range]{width:100%;accent-color:var(--acc);margin:0}
+.panel button{width:100%;margin-top:9px;background:var(--acc);color:#17122b;border:0;border-radius:9px;
+  padding:7px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
+.panel .note{margin-top:10px;line-height:1.5;color:#7d7496;font-size:10.5px}
+@media (max-width:900px){.panel{display:none}}
+.wrap{max-width:1060px;margin:0 auto;padding:84px 18px 30px}
+.head{margin-bottom:24px}
+.head h1{margin:0 0 10px;font-size:clamp(22px,4.6vw,34px);font-weight:300}
+.head p{margin:0;max-width:62ch;color:var(--dim);font-size:14px;line-height:1.65}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
+.card{background:#0f0d18;border:1px solid var(--line);border-radius:16px;padding:14px}
+.card h2{margin:0 0 2px;font-size:13.5px;font-weight:650}
+.card .sub{margin:0 0 10px;font-size:11.5px;color:var(--dim);display:flex;justify-content:space-between;gap:8px}
+.card .sub em{font-style:normal;font-family:ui-monospace,Menlo,monospace;color:#6f6a85;font-size:10.5px}
+.card svg{display:block;width:100%;height:auto;overflow:visible;touch-action:none}
+.card svg:focus{outline:2px solid var(--acc);outline-offset:3px;border-radius:8px}
+.read{margin-top:9px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#9f98bb;min-height:2.4em;
+  line-height:1.5}
+.read b{color:#efe9fd;font-weight:600}
+.spec{margin-top:16px;background:#0b0a12;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.spec .ph{padding:9px 12px;border-bottom:1px solid var(--line);font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--dim);font-weight:700;display:flex;justify-content:space-between}
+.spec pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+  line-height:1.65;color:#cfc7e6;overflow:auto;max-height:190px}
+.spec .k{color:#a78bfa}.spec .s{color:#7fd6a8}.spec .n{color:#f3b765}
+footer{padding:32px 18px 56px;text-align:center;color:#6a6280;font-size:12px;line-height:1.7}
+footer a{color:#9a8fbd}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* keep the control panel from covering anything interactive */
+@media (min-width:901px){.wrap{margin-left:auto;margin-right:224px}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="panel">
+  <h3>Spec</h3>
+  <label>draw-in <b id="vD">900ms</b></label><input type="range" id="sD" min="150" max="2200" value="900">
+  <label>stagger <b id="vS">40ms</b></label><input type="range" id="sS" min="0" max="160" value="40">
+  <button id="shuffle">New data</button>
+  <button id="replay">Replay draw-in</button>
+  <div class="note">One JSON spec per chart: type, data, encoding, options. The renderer tweens from wherever the marks already are, so new data never restarts the chart.</div>
+</div>
+
+<div class="wrap">
+  <div class="head">
+    <h1>A chart is a <span style="color:var(--acc)">spec</span>, not a drawing.</h1>
+    <p>Three charts, no chart library, no canvas: every mark is an SVG element placed from a small JSON spec. They draw in when they scroll into view, tween from their current positions when the data changes, answer the keyboard, and carry a data table for screen readers.</p>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="spec">
+    <div class="ph"><span>spec for the focused chart</span><span id="specName">bars</span></div>
+    <pre id="specOut"></pre>
+  </div>
+</div>
+
+<footer>
+  Inspired by <a href="https://github.com/Junhan2/ztd-charts" target="_blank" rel="noopener">Junhan2/ztd-charts</a> · UI Spotlight Day 167 · Drop #5<br>
+  Three of its chart types rebuilt as plain SVG driven by the same kind of spec object.
+</footer>
+
+<script>
+(function(){
+'use strict';
+var SVGNS = 'http://www.w3.org/2000/svg';
+var OPT = {draw:900, stagger:40};
+var LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+var RING = ['Direct','Search','Social','Email','Referral'];
+var COLS = ['#a78bfa','#38bdf8','#34d399','#fbbf24','#f87171'];
+
+function rnd(n, lo, hi){
+  var a = [];
+  for (var i=0;i<n;i++) a.push(Math.round(lo + Math.random()*(hi-lo)));
+  return a;
+}
+var SPECS = [
+  {id:'bars', type:'bar', title:'Sessions by day', note:'comparison',
+   data:{x:LABELS, y:rnd(7, 18, 100)},
+   encoding:{x:'day', y:'sessions'}, options:{highlight:3, round:7}},
+  {id:'area', type:'area-line', title:'Revenue, 24 weeks', note:'trend · drag a range',
+   data:{x:null, y:rnd(24, 20, 100)},
+   encoding:{x:'week', y:'usd (k)'}, options:{smooth:true, band:true}},
+  {id:'ring', type:'donut', title:'Where traffic comes from', note:'proportion',
+   data:{x:RING, y:rnd(5, 12, 60)},
+   encoding:{theta:'share', color:'channel'}, options:{inner:0.62, highlight:0}}
+];
+
+function el(name, attrs){
+  var n = document.createElementNS(SVGNS, name);
+  for (var k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+function ease(t){ return 1 - Math.pow(1 - t, 3); }
+
+/* a tiny tween registry: every mark animates from where it already is */
+var tweens = [];
+function tween(obj, key, to, dur, delay, apply){
+  for (var i=tweens.length-1;i>=0;i--) if (tweens[i].o === obj && tweens[i].k === key) tweens.splice(i,1);
+  tweens.push({o:obj, k:key, from:obj[key], to:to, d:dur, t:-delay, apply:apply});
+}
+function stepTweens(dt){
+  for (var i=tweens.length-1;i>=0;i--){
+    var w = tweens[i];
+    w.t += dt;
+    if (w.t < 0) continue;
+    var p = Math.min(1, w.t / w.d);
+    w.o[w.k] = w.from + (w.to - w.from) * ease(p);
+    w.apply(w.o);
+    if (p >= 1) tweens.splice(i, 1);
+  }
+}
+
+/* ---------------- charts ---------------- */
+function makeCard(spec){
+  var card = document.createElement('div'); card.className = 'card';
+  var h2 = document.createElement('h2'); h2.textContent = spec.title;
+  var sub = document.createElement('p'); sub.className = 'sub';
+  sub.innerHTML = '<span>' + spec.note + '</span><em>type: ' + spec.type + '</em>';
+  var svg = el('svg', {viewBox:'0 0 300 170', tabindex:'0', role:'img',
+                       'aria-label':spec.title + ', ' + spec.type + ' chart'});
+  var read = document.createElement('div'); read.className = 'read';
+  var table = document.createElement('div'); table.className = 'sr';
+  card.appendChild(h2); card.appendChild(sub); card.appendChild(svg);
+  card.appendChild(read); card.appendChild(table);
+  document.getElementById('grid').appendChild(card);
+  return {spec:spec, svg:svg, read:read, table:table, marks:[], cursor:-1, card:card};
+}
+
+function buildBar(c){
+  var sp = c.spec, n = sp.data.y.length, W = 300, H = 170, pad = {l:26, r:6, t:10, b:22};
+  c.svg.textContent = '';
+  var iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, bw = iw / n * .66;
+  for (var i=0;i<4;i++){
+    var gy = pad.t + ih * i/3;
+    c.svg.appendChild(el('line', {x1:pad.l, y1:gy, x2:W-pad.r, y2:gy, stroke:'#231f33', 'stroke-width':1}));
+  }
+  c.marks = sp.data.y.map(function(v, i){
+    var x = pad.l + iw * (i + .5) / n - bw/2;
+    var r = el('rect', {x:x, y:pad.t+ih, width:bw, height:0, rx:sp.options.round,
+                        fill: i === sp.options.highlight ? COLS[0] : '#2f2a46'});
+    c.svg.appendChild(r);
+    var t = el('text', {x:x+bw/2, y:H-7, 'text-anchor':'middle', fill:'#6f6a85',
+                        'font-size':9, 'font-family':'ui-monospace,Menlo,monospace'});
+    t.textContent = sp.data.x[i];
+    c.svg.appendChild(t);
+    var m = {v:0, node:r, i:i};
+    m.apply = function(o){
+      var mx = Math.max.apply(null, sp.data.y) || 1;
+      var hgt = ih * (o.v / mx);
+      o.node.setAttribute('height', Math.max(0, hgt));
+      o.node.setAttribute('y', pad.t + ih - hgt);
+    };
+    return m;
+  });
+}
+function buildArea(c){
+  var sp = c.spec, n = sp.data.y.length, W = 300, H = 170, pad = {l:26, r:6, t:12, b:20};
+  c.svg.textContent = '';
+  var iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  for (var i=0;i<4;i++){
+    var gy = pad.t + ih * i/3;
+    c.svg.appendChild(el('line', {x1:pad.l, y1:gy, x2:W-pad.r, y2:gy, stroke:'#231f33', 'stroke-width':1}));
+  }
+  var fill = el('path', {fill:'url(#gr5)', stroke:'none'});
+  var defs = el('defs');
+  var lg = el('linearGradient', {id:'gr5', x1:0, y1:0, x2:0, y2:1});
+  lg.appendChild(el('stop', {offset:'0%', 'stop-color':'#a78bfa', 'stop-opacity':'.42'}));
+  lg.appendChild(el('stop', {offset:'100%', 'stop-color':'#a78bfa', 'stop-opacity':'0'}));
+  defs.appendChild(lg); c.svg.appendChild(defs);
+  var line = el('path', {fill:'none', stroke:'#a78bfa', 'stroke-width':2, 'stroke-linejoin':'round', 'stroke-linecap':'round'});
+  var sel = el('rect', {fill:'rgba(167,139,250,.14)', stroke:'#a78bfa', 'stroke-width':1, y:pad.t, height:ih, width:0, x:0, rx:3, visibility:'hidden'});
+  var dot = el('circle', {r:3.4, fill:'#f6f2ff', visibility:'hidden'});
+  c.svg.appendChild(fill); c.svg.appendChild(line); c.svg.appendChild(sel); c.svg.appendChild(dot);
+  c.geom = {pad:pad, iw:iw, ih:ih, n:n, sel:sel, dot:dot};
+  c.marks = sp.data.y.map(function(v, i){
+    var m = {v:0, i:i};
+    m.apply = function(){ redrawArea(c); };
+    return m;
+  });
+  function redrawArea(c2){
+    var mx = Math.max.apply(null, sp.data.y) || 1;
+    var pts = c2.marks.map(function(m, i){
+      return [pad.l + iw * i/(n-1), pad.t + ih - ih * (m.v/mx)];
+    });
+    var d = pts.map(function(p, i){ return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
+    line.setAttribute('d', d);
+    fill.setAttribute('d', d + ' L' + pts[n-1][0].toFixed(1) + ' ' + (pad.t+ih) + ' L' + pts[0][0].toFixed(1) + ' ' + (pad.t+ih) + ' Z');
+    c2.pts = pts;
+  }
+  c.redraw = redrawArea;
+}
+function buildDonut(c){
+  var sp = c.spec, W = 300, H = 170, cx = 150, cy = 86, R = 62, r0 = R * sp.options.inner;
+  c.svg.textContent = '';
+  c.marks = sp.data.y.map(function(v, i){
+    var p = el('path', {fill:COLS[i % COLS.length], 'fill-opacity':.9});
+    c.svg.appendChild(p);
+    var m = {v:0, node:p, i:i};
+    m.apply = function(){ redrawDonut(c); };
+    return m;
+  });
+  var lbl = el('text', {x:cx, y:cy+1, 'text-anchor':'middle', fill:'#f0ecfa', 'font-size':17, 'font-weight':600,
+                        'font-family':'system-ui'});
+  var lbl2 = el('text', {x:cx, y:cy+16, 'text-anchor':'middle', fill:'#8d85a6', 'font-size':9.5,
+                         'font-family':'ui-monospace,Menlo,monospace'});
+  c.svg.appendChild(lbl); c.svg.appendChild(lbl2);
+  c.geom = {cx:cx, cy:cy, R:R, r0:r0, lbl:lbl, lbl2:lbl2};
+  function redrawDonut(c2){
+    var tot = c2.marks.reduce(function(s, m){ return s + Math.max(0, m.v); }, 0) || 1;
+    var a = -Math.PI/2;
+    c2.marks.forEach(function(m, i){
+      var sweep = Math.max(0, m.v) / tot * Math.PI*2;
+      m.node.setAttribute('d', arcPath(cx, cy, r0, R, a, a + sweep));
+      m.a0 = a; m.a1 = a + sweep;
+      a += sweep;
+    });
+    var hi = sp.options.highlight;
+    var cur = c2.cursor >= 0 ? c2.cursor : hi;
+    lbl.textContent = Math.round(sp.data.y[cur] / (sp.data.y.reduce(function(s,v){return s+v;},0) || 1) * 100) + '%';
+    lbl2.textContent = sp.data.x[cur];
+    c2.marks.forEach(function(m, i){ m.node.setAttribute('fill-opacity', i === cur ? 1 : .42); });
+  }
+  c.redraw = redrawDonut;
+}
+function arcPath(cx, cy, r0, r1, a0, a1){
+  if (a1 - a0 < 0.0001) return '';
+  var big = (a1 - a0) > Math.PI ? 1 : 0;
+  function P(r, a){ return [(cx + Math.cos(a)*r).toFixed(2), (cy + Math.sin(a)*r).toFixed(2)]; }
+  var p1 = P(r1, a0), p2 = P(r1, a1), p3 = P(r0, a1), p4 = P(r0, a0);
+  return 'M' + p1 + ' A' + r1 + ' ' + r1 + ' 0 ' + big + ' 1 ' + p2 +
+         ' L' + p3 + ' A' + r0 + ' ' + r0 + ' 0 ' + big + ' 0 ' + p4 + ' Z';
+}
+
+/* ---------------- animate to data ---------------- */
+function animate(c, first){
+  var sp = c.spec;
+  c.marks.forEach(function(m, i){
+    tween(m, 'v', sp.data.y[i], OPT.draw / 1000, (first ? i * OPT.stagger / 1000 : 0), m.apply);
+  });
+  var rows = sp.data.x
+    ? sp.data.x.map(function(x, i){ return x + ': ' + sp.data.y[i]; })
+    : sp.data.y.map(function(v, i){ return 'week ' + (i+1) + ': ' + v; });
+  c.table.textContent = sp.title + '. ' + rows.join(', ') + '.';
+}
+
+/* ---------------- interaction ---------------- */
+function wire(c){
+  var sp = c.spec;
+  function say(html){ c.read.innerHTML = html; }
+  function pt(e){
+    var r = c.svg.getBoundingClientRect();
+    return (e.clientX - r.left) / r.width * 300;
+  }
+  if (sp.type === 'bar'){
+    c.svg.addEventListener('pointermove', function(e){
+      var x = pt(e), n = sp.data.y.length, pad = 26, iw = 300 - 32;
+      var i = Math.max(0, Math.min(n-1, Math.floor((x - pad) / iw * n)));
+      c.cursor = i;
+      c.marks.forEach(function(m, j){ m.node.setAttribute('fill', j === i ? COLS[0] : '#2f2a46'); });
+      say('<b>' + sp.data.x[i] + '</b> · ' + sp.data.y[i] + ' ' + sp.encoding.y);
+    });
+    c.svg.addEventListener('pointerleave', function(){
+      c.marks.forEach(function(m, j){ m.node.setAttribute('fill', j === sp.options.highlight ? COLS[0] : '#2f2a46'); });
+      say('Hover or use ← → to read a bar.');
+    });
+    say('Hover or use ← → to read a bar.');
+  } else if (sp.type === 'area-line'){
+    var drag = null;
+    function idxAt(x){
+      var g = c.geom;
+      return Math.max(0, Math.min(g.n-1, Math.round((x - g.pad.l) / g.iw * (g.n-1))));
+    }
+    function showRange(a, b){
+      var g = c.geom, lo = Math.min(a,b), hi = Math.max(a,b);
+      var x1 = g.pad.l + g.iw * lo/(g.n-1), x2 = g.pad.l + g.iw * hi/(g.n-1);
+      g.sel.setAttribute('x', x1); g.sel.setAttribute('width', Math.max(1, x2-x1));
+      g.sel.setAttribute('visibility', 'visible');
+      var seg = sp.data.y.slice(lo, hi+1);
+      var ch = seg[seg.length-1] - seg[0];
+      say('weeks <b>' + (lo+1) + '–' + (hi+1) + '</b> · change <b>' + (ch >= 0 ? '+' : '') + ch +
+          '</b> · high <b>' + Math.max.apply(null, seg) + '</b> · low <b>' + Math.min.apply(null, seg) + '</b>');
+    }
+    c.svg.addEventListener('pointerdown', function(e){
+      drag = idxAt(pt(e)); c.svg.setPointerCapture(e.pointerId); showRange(drag, drag);
+    });
+    c.svg.addEventListener('pointermove', function(e){
+      var i = idxAt(pt(e));
+      c.cursor = i;
+      if (c.pts && c.pts[i]){
+        c.geom.dot.setAttribute('cx', c.pts[i][0]); c.geom.dot.setAttribute('cy', c.pts[i][1]);
+        c.geom.dot.setAttribute('visibility', 'visible');
+      }
+      if (drag === null) say('week <b>' + (i+1) + '</b> · ' + sp.data.y[i] + ' ' + sp.encoding.y + ' — drag to compare a range');
+      else showRange(drag, i);
+    });
+    function up(e){ drag = null; try{ c.svg.releasePointerCapture(e.pointerId); }catch(_){} }
+    c.svg.addEventListener('pointerup', up);
+    c.svg.addEventListener('pointercancel', up);
+    c.svg.addEventListener('pointerleave', function(){
+      c.geom.dot.setAttribute('visibility','hidden'); c.geom.sel.setAttribute('visibility','hidden');
+      drag = null; say('Drag across the line to compare a range.');
+    });
+    say('Drag across the line to compare a range.');
+  } else {
+    c.svg.addEventListener('pointermove', function(e){
+      var r = c.svg.getBoundingClientRect();
+      var x = (e.clientX - r.left) / r.width * 300 - c.geom.cx;
+      var y = (e.clientY - r.top) / r.height * 170 - c.geom.cy;
+      var a = Math.atan2(y, x); if (a < -Math.PI/2) a += Math.PI*2;
+      var hit = -1;
+      c.marks.forEach(function(m, i){ if (a >= m.a0 && a < m.a1) hit = i; });
+      if (hit >= 0){ c.cursor = hit; c.redraw(c); say('<b>' + sp.data.x[hit] + '</b> · ' + sp.data.y[hit] + ' ' + sp.encoding.theta); }
+    });
+    c.svg.addEventListener('pointerleave', function(){
+      c.cursor = -1; c.redraw(c); say('Hover a wedge, or use ← → .');
+    });
+    say('Hover a wedge, or use ← → .');
+  }
+  c.svg.addEventListener('keydown', function(e){
+    var n = sp.data.y.length;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){
+      e.preventDefault();
+      c.cursor = ((c.cursor < 0 ? 0 : c.cursor) + (e.key === 'ArrowRight' ? 1 : -1) + n) % n;
+      if (sp.type === 'bar'){
+        c.marks.forEach(function(m, j){ m.node.setAttribute('fill', j === c.cursor ? COLS[0] : '#2f2a46'); });
+        say('<b>' + sp.data.x[c.cursor] + '</b> · ' + sp.data.y[c.cursor] + ' ' + sp.encoding.y);
+      } else if (sp.type === 'donut'){
+        c.redraw(c);
+        say('<b>' + sp.data.x[c.cursor] + '</b> · ' + sp.data.y[c.cursor] + ' ' + sp.encoding.theta);
+      } else {
+        var g = c.geom;
+        if (c.pts && c.pts[c.cursor]){
+          g.dot.setAttribute('cx', c.pts[c.cursor][0]); g.dot.setAttribute('cy', c.pts[c.cursor][1]);
+          g.dot.setAttribute('visibility','visible');
+        }
+        say('week <b>' + (c.cursor+1) + '</b> · ' + sp.data.y[c.cursor] + ' ' + sp.encoding.y);
+      }
+    }
+  });
+  c.svg.addEventListener('focus', function(){ showSpec(c); });
+  c.card.addEventListener('pointerenter', function(){ showSpec(c); });
+}
+
+function showSpec(c){
+  var sp = c.spec;
+  var shown = {type:sp.type, data:{x:sp.data.x ? sp.data.x.slice(0,3).concat(['…']) : null,
+               y:sp.data.y.slice(0,4).concat(['…'])}, encoding:sp.encoding, options:sp.options};
+  var j = JSON.stringify(shown, null, 2)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>')
+    .replace(/\b(\d+\.?\d*)\b/g, '<span class="n">$1</span>');
+  document.getElementById('specOut').innerHTML = j;
+  document.getElementById('specName').textContent = sp.id;
+}
+
+/* ---------------- boot ---------------- */
+var cards = SPECS.map(function(sp){
+  var c = makeCard(sp);
+  if (sp.type === 'bar') buildBar(c);
+  else if (sp.type === 'area-line') buildArea(c);
+  else buildDonut(c);
+  wire(c);
+  return c;
+});
+showSpec(cards[0]);
+
+var seen = {};
+function drawIn(c, first){ animate(c, first !== false); }
+if ('IntersectionObserver' in window){
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if (!e.isIntersecting) return;
+      cards.forEach(function(c){ if (c.card === e.target && !seen[c.spec.id]){ seen[c.spec.id] = 1; drawIn(c); } });
+    });
+  }, {threshold:.25});
+  cards.forEach(function(c){ io.observe(c.card); });
+} else cards.forEach(function(c){ drawIn(c); });
+
+var last = performance.now();
+(function loop(now){
+  stepTweens(Math.min(.05, (now - last)/1000)); last = now;
+  requestAnimationFrame(loop);
+})(last);
+
+document.getElementById('shuffle').addEventListener('click', function(){
+  SPECS[0].data.y = rnd(7, 18, 100);
+  SPECS[1].data.y = rnd(24, 20, 100);
+  SPECS[2].data.y = rnd(5, 12, 60);
+  cards.forEach(function(c){ animate(c, false); showSpec(c); });   /* tween, never restart */
+  showSpec(cards[0]);
+});
+document.getElementById('replay').addEventListener('click', function(){
+  cards.forEach(function(c){ c.marks.forEach(function(m){ m.v = 0; m.apply(m); }); animate(c, true); });
+});
+function ctl(id, vid, key, suffix){
+  var s = document.getElementById(id), v = document.getElementById(vid);
+  s.addEventListener('input', function(){ OPT[key] = +s.value; v.textContent = s.value + suffix; });
+}
+ctl('sD','vD','draw','ms'); ctl('sS','vS','stagger','ms');
+if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  OPT.draw = 1; OPT.stagger = 0;
+}
+})();
+</script>
+</body>
+</html>

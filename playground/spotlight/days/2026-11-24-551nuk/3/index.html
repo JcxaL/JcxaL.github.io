@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drop 3 — Letters Woven From Threads</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--acc:#f87171;--dim:#8d7580}
+html,body{margin:0;min-height:100%}
+body{background:#08060a;color:#f6eef0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow-x:hidden}
+.back-link{position:fixed;top:14px;left:14px;z-index:40;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:#fbe9ea;font-size:13px;font-weight:600;
+  background:rgba(22,12,16,.72);border:1px solid rgba(248,113,113,.3);backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px)}
+.back-link:hover{border-color:var(--acc)}
+.panel{position:fixed;top:14px;right:14px;z-index:40;width:208px;padding:13px;border-radius:15px;
+  background:rgba(22,12,16,.76);border:1px solid rgba(248,113,113,.26);backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);font-size:11.5px;color:#cdb3b9}
+.panel h3{margin:0 0 8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);font-weight:700}
+.panel label{margin:8px 0 2px;display:flex;justify-content:space-between;gap:8px}
+.panel b{color:#fff0f1;font-weight:600;font-variant-numeric:tabular-nums}
+.panel input[type=range]{width:100%;accent-color:var(--acc);margin:0}
+.panel .note{margin-top:10px;line-height:1.5;color:#8a7077;font-size:10.5px}
+@media (max-width:820px){.panel{display:none}}
+.wrap{max-width:1080px;margin:0 auto;padding:84px 18px 40px}
+.head{text-align:center;margin-bottom:26px}
+.head h1{margin:0 0 10px;font-size:clamp(22px,4.6vw,34px);font-weight:300;letter-spacing:-.01em}
+.head p{margin:0 auto;max-width:56ch;color:var(--dim);font-size:14px;line-height:1.65}
+.typebar{display:flex;gap:9px;justify-content:center;margin:22px auto 30px;max-width:460px}
+.typebar input{flex:1;min-width:0;background:#140d12;border:1px solid #352530;border-radius:12px;
+  padding:11px 14px;color:#f6eef0;font-size:15px;font-family:inherit;letter-spacing:.06em}
+.typebar input:focus{outline:none;border-color:var(--acc)}
+.row{position:relative;margin:0 0 14px;border-radius:18px;overflow:hidden;background:#0a070c;
+  border:1px solid #241820}
+.row canvas{display:block;width:100%;height:170px}
+@media (max-width:620px){.row canvas{height:116px}}
+.row .tag{position:absolute;top:10px;left:14px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.34);font-weight:600}
+footer{padding:30px 18px 54px;text-align:center;color:#6b5760;font-size:12px;line-height:1.7}
+footer a{color:#a18a92}
+
+/* keep the control panel from covering anything interactive */
+@media (min-width:821px){.wrap{margin-left:auto;margin-right:224px}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<div class="panel">
+  <h3>Threads</h3>
+  <label>density <b id="vD">1.0</b></label><input type="range" id="sD" min="40" max="220" value="100">
+  <label>speed <b id="vS">1.0</b></label><input type="range" id="sS" min="0" max="250" value="100">
+  <label>reach <b id="vR">1.0</b></label><input type="range" id="sR" min="20" max="240" value="100">
+  <label>splay <b id="vP">1.0</b></label><input type="range" id="sP" min="0" max="250" value="100">
+  <div class="note">Each pixel column of the word is one thread. It runs straight through the letter, then bends until it lies flat — the bend is what makes the shape.</div>
+</div>
+
+<div class="wrap">
+  <div class="head">
+    <h1>The letters are not drawn. They are <span style="color:var(--acc)">woven</span>.</h1>
+    <p>A word is scanned column by column. Every column becomes a filament that runs straight where the letter is solid and bends flat where it ends, lit by a sweep travelling along the weave.</p>
+  </div>
+  <div class="typebar">
+    <input id="word" value="THREADS" maxlength="11" spellcheck="false" aria-label="Type a word">
+  </div>
+  <div class="row"><span class="tag">silk · ember</span><canvas data-p="0"></canvas></div>
+  <div class="row"><span class="tag">fine wire · xdr blue</span><canvas data-p="1"></canvas></div>
+  <div class="row"><span class="tag">glow · violet</span><canvas data-p="2"></canvas></div>
+</div>
+
+<footer>
+  Inspired by <a href="https://github.com/kubai087/pro-threads" target="_blank" rel="noopener">kubai087/pro-threads</a> · UI Spotlight Day 167 · Drop #3<br>
+  The original solves the threads in a WebGL 2 fragment shader; this one weaves them as canvas paths.
+</footer>
+
+<script>
+(function(){
+'use strict';
+/* ---------- palettes: a ramp that shifts hue as it brightens ---------- */
+function ramp(stops){
+  return function(t){
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    var n = stops.length - 1, i = Math.min(n - 1, Math.floor(t * n)), f = t * n - i;
+    var a = stops[i], b = stops[i+1];
+    return 'rgb(' + Math.round(a[0]+(b[0]-a[0])*f) + ',' +
+                    Math.round(a[1]+(b[1]-a[1])*f) + ',' +
+                    Math.round(a[2]+(b[2]-a[2])*f) + ')';
+  };
+}
+var PRESETS = [
+  {name:'silk',      pal:ramp([[26,11,6],[120,42,16],[255,154,60],[255,236,205]]), gap:4.2, lw:1.5, blur:0,  bend:.55},
+  {name:'fine wire', pal:ramp([[8,20,38],[36,98,170],[124,196,255],[238,248,255]]), gap:2.6, lw:0.9, blur:0,  bend:.42},
+  {name:'glow',      pal:ramp([[20,10,36],[84,40,160],[180,140,245],[244,232,255]]), gap:6.4, lw:2.3, blur:9, bend:.8}
+];
+var P = {density:1, speed:1, reach:1, splay:1};
+
+function h32(n){ n = (n ^ 61) ^ (n >>> 16); n = n + (n << 3); n = n ^ (n >>> 4);
+  n = Math.imul(n, 0x27d4eb2d); n = n ^ (n >>> 15); return (n >>> 0) / 4294967296; }
+
+var mask = document.createElement('canvas');
+var mctx = mask.getContext('2d', {willReadFrequently:true});
+var rows = [];
+
+document.querySelectorAll('.row canvas').forEach(function(cv){
+  rows.push({cv:cv, ctx:cv.getContext('2d'), preset:PRESETS[+cv.dataset.p], threads:[], w:0, h:0});
+});
+
+function buildRow(r, word){
+  var dpr = Math.min(window.devicePixelRatio || 1, 1.5);   /* fill-rate, not sharpness, is the budget here */
+  var box = r.cv.getBoundingClientRect();
+  var w = Math.max(1, Math.round(box.width)), h = Math.max(1, Math.round(box.height));
+  r.w = w; r.h = h;
+  r.cv.width = Math.round(w * dpr); r.cv.height = Math.round(h * dpr);
+  r.ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  mask.width = w; mask.height = h;
+  mctx.setTransform(1,0,0,1,0,0);
+  mctx.clearRect(0,0,w,h);
+  mctx.fillStyle = '#fff';
+  mctx.textAlign = 'center'; mctx.textBaseline = 'middle';
+  var size = Math.min(h * 0.78, w * 1.7 / Math.max(3, word.length));
+  mctx.font = '800 ' + size + 'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+  var tr = mctx.measureText(word).width;
+  if (tr > w * 0.88){ size *= (w * 0.88) / tr;
+    mctx.font = '800 ' + size + 'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'; }
+  mctx.fillText(word, w/2, h/2 + size*0.02);
+
+  var data;
+  try { data = mctx.getImageData(0,0,w,h).data; } catch(e){ r.threads = []; return; }
+
+  var gap = Math.max(1.6, r.preset.gap / P.density);
+  r.threads = [];
+  for (var x = gap/2; x < w; x += gap){
+    var xi = Math.round(x), spans = [], y = 0, inSpan = false, start = 0;
+    for (y = 0; y < h; y++){
+      var on = data[(y*w + xi)*4 + 3] > 120;
+      if (on && !inSpan){ inSpan = true; start = y; }
+      else if (!on && inSpan){ inSpan = false; if (y - start > 2) spans.push([start, y]); }
+    }
+    if (inSpan && h - start > 2) spans.push([start, h]);
+    if (spans.length) r.threads.push({x:xi, spans:spans, k:h32(xi * 2654435761 + spans.length)});
+  }
+}
+
+var NB = 12;                       /* brightness buckets: one stroke each, not one per thread */
+function drawRow(r, t){
+  var g = r.ctx, w = r.w, h = r.h, pr = r.preset;
+  g.clearRect(0,0,w,h);
+  if (!r.threads.length) return;
+  var body = [], ends = [], i, k;
+  for (i=0;i<NB;i++){ body.push(new Path2D()); ends.push(new Path2D()); }
+
+  var band = w * 0.26 * P.reach;
+  var sweep = ((t * 110 * P.speed) % (w + band * 2)) - band;
+
+  for (i=0;i<r.threads.length;i++){
+    var th = r.threads[i], x = th.x;
+    var d = (x - sweep) / band;
+    var lit = Math.exp(-d*d) * 0.95;                       /* the travelling swell */
+    var breathe = 0.5 + 0.5 * Math.sin(t * 0.9 + th.k * 6.28);
+    var v = Math.min(0.999, 0.2 + 0.34 * th.k + 0.16 * breathe + lit);
+    k = (v * NB) | 0;
+    var bp = body[k], ep = ends[k];
+    var side = x < w/2 ? -1 : 1;
+    var flat = (10 + 42 * th.k) * pr.bend * P.splay * side;
+    var bend = (9 + 20 * th.k) * pr.bend;
+    for (var sp=0;sp<th.spans.length;sp++){
+      var y0 = th.spans[sp][0], y1 = th.spans[sp][1];
+      bp.moveTo(x, y0); bp.lineTo(x, y1);                   /* straight through the letter */
+      ep.moveTo(x, y0);                                     /* then bending until it lies flat */
+      ep.quadraticCurveTo(x, y0 - bend, x + flat, y0 - bend * 1.25);
+      ep.moveTo(x, y1);
+      ep.quadraticCurveTo(x, y1 + bend, x + flat, y1 + bend * 1.25);
+    }
+  }
+
+  g.globalCompositeOperation = 'lighter';
+  g.lineCap = 'round';
+  for (k=0;k<NB;k++){
+    var v2 = (k + 0.5) / NB;
+    var col = pr.pal(v2);
+    g.strokeStyle = col;
+    if (pr.blur && v2 > 0.45){                              /* glow = a wide soft pass under the thread */
+      g.lineWidth = pr.lw * (2.4 + 2.6 * P.reach);
+      g.globalAlpha = (0.03 + 0.1 * v2) * P.reach;
+      g.stroke(body[k]);
+    }
+    g.lineWidth = pr.lw;
+    g.globalAlpha = 0.2 + 0.8 * v2;
+    g.stroke(body[k]);
+    g.globalAlpha = (0.2 + 0.8 * v2) * 0.34;
+    g.stroke(ends[k]);
+  }
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+}
+
+var word = 'THREADS';
+function rebuild(){ rows.forEach(function(r){ buildRow(r, word); }); }
+
+var t0 = performance.now(), raf = 0;
+function loop(now){
+  var t = (now - t0) / 1000;
+  for (var i=0;i<rows.length;i++) drawRow(rows[i], t);
+  raf = requestAnimationFrame(loop);
+}
+
+/* pause when scrolled away — a row off screen does no work */
+var visible = true;
+if ('IntersectionObserver' in window){
+  var io = new IntersectionObserver(function(es){
+    var any = es.some(function(e){ return e.isIntersecting; });
+    if (any && !visible){ visible = true; t0 = performance.now() - 1; raf = requestAnimationFrame(loop); }
+    else if (!any && visible){ visible = false; cancelAnimationFrame(raf); }
+  }, {rootMargin:'80px'});
+  rows.forEach(function(r){ io.observe(r.cv); });
+}
+
+var inp = document.getElementById('word');
+inp.addEventListener('input', function(){
+  var v = inp.value.trim().toUpperCase();
+  word = v || 'THREADS';
+  rebuild();
+});
+function ctl(id, vid, key, div){
+  var s = document.getElementById(id), v = document.getElementById(vid);
+  s.addEventListener('input', function(){
+    P[key] = (+s.value) / div;
+    v.textContent = P[key].toFixed(1);
+    if (key === 'density') rebuild();
+  });
+}
+ctl('sD','vD','density',100); ctl('sS','vS','speed',100);
+ctl('sR','vR','reach',100);   ctl('sP','vP','splay',100);
+
+var rt = 0;
+window.addEventListener('resize', function(){ clearTimeout(rt); rt = setTimeout(rebuild, 140); });
+rebuild();
+raf = requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
