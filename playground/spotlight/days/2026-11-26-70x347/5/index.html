@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Components Drawn in ASCII — UI Spotlight Day 169 · Drop 5</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--ink:#efe9ff;--dim:#9f92c8;--accent:#a78bfa;--line:rgba(167,139,250,.22)}
+  body{background:#09070f;color:var(--ink);font:400 14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+  body.light{background:#f4f1fb}
+  .back-link,.panel,.credit{background:rgba(18,13,32,.72);border:1px solid var(--line);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  body.light .back-link,body.light .panel,body.light .credit{background:rgba(255,255,255,.76);color:#2b2342}
+  .back-link{position:fixed;top:14px;left:14px;z-index:40;padding:8px 14px;border-radius:999px;color:var(--ink);text-decoration:none;font-size:13px;font-weight:550}
+  body.light .back-link{color:#2b2342}
+  .back-link:hover{border-color:var(--accent);color:var(--accent)}
+  .panel{position:fixed;top:14px;right:14px;z-index:40;width:220px;border-radius:14px;padding:12px}
+  .panel h2{font-size:10px;letter-spacing:.17em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+  .panel label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin:9px 0 3px}
+  .panel label b{color:inherit;font-variant-numeric:tabular-nums}
+  .panel input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:16px;background:transparent}
+  .panel input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:rgba(167,139,250,.38)}
+  .panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:#fff;border:2px solid var(--accent)}
+  .panel input[type=range]::-moz-range-track{height:3px;background:rgba(167,139,250,.38)}
+  .panel input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid var(--accent)}
+  .grid4{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .panel button{padding:7px 5px;border-radius:9px;border:1px solid var(--line);background:rgba(167,139,250,.12);color:inherit;font:inherit;font-size:11px;font-weight:550;cursor:pointer}
+  .panel button[aria-pressed="true"]{background:rgba(167,139,250,.32);border-color:var(--accent)}
+  .credit{position:fixed;left:14px;bottom:14px;z-index:40;padding:6px 12px;border-radius:999px;font-size:11px;color:var(--dim)}
+  #sea{position:fixed;inset:0;display:block;touch-action:none}
+  @media(max-width:860px){.panel{width:170px;padding:9px}.panel label{margin:6px 0 2px}.credit{font-size:10px}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<canvas id="sea"></canvas>
+
+<div class="panel">
+  <h2>ASCII engine</h2>
+  <label>Cell size <b id="vSz">13 px</b></label>
+  <input type="range" id="sz" min="8" max="22" step="1" value="13">
+  <label>Creatures <b id="vN">3</b></label>
+  <input type="range" id="n" min="0" max="7" step="1" value="3">
+  <label>Pointer wake <b id="vW">1.0</b></label>
+  <input type="range" id="w" min="0" max="2.5" step="0.1" value="1">
+  <div class="grid4">
+    <button class="stg" data-v="spine">Spine</button>
+    <button class="stg" data-v="silhouette">Silhouette</button>
+    <button class="stg" data-v="shaded">Shaded</button>
+    <button class="stg" data-v="full" aria-pressed="true">Full</button>
+  </div>
+  <div class="grid4">
+    <button id="btnTheme">Light theme</button>
+    <button id="btnStill" aria-pressed="false">Still frame</button>
+  </div>
+</div>
+
+<div class="credit">Inspired by stackedlol/ascii-sharks · UI Spotlight Day 169 · Drop #5</div>
+
+<script>
+(function(){
+'use strict';
+var $=function(i){return document.getElementById(i);};
+var cv=$('sea'),cx=cv.getContext('2d');
+var CELL=13,stage='full',light=false,still=false,wake=1,want=3;
+var cols=0,rows=0,cw=0,ch=0,DPR=1;
+var RAMP=' .:-=+*o%#@';
+var chars,inks;                       /* grid buffers */
+var hot={x:-99,y:-99,down:false};
+var comps=[],fish=[],t0=performance.now(),progress=.37,toggleOn=true,series=[];
+
+function theme(){
+  return light
+    ? {bg:'#f4f1fb',frame:'#b6a9e0',text:'#2b2342',dim:'#6f63a0',accent:'#6d4bd8',fish:'#3b2f66'}
+    : {bg:'#09070f',frame:'#3b3160',text:'#efe9ff',dim:'#9f92c8',accent:'#a78bfa',fish:'#c9b8ff'};
+}
+function resize(){
+  DPR=Math.min(devicePixelRatio||1,2);
+  cv.width=Math.round(innerWidth*DPR);cv.height=Math.round(innerHeight*DPR);
+  cv.style.width=innerWidth+'px';cv.style.height=innerHeight+'px';
+  cw=CELL*0.6;ch=CELL*1.05;
+  cols=Math.max(24,Math.floor(innerWidth/cw));
+  rows=Math.max(14,Math.floor(innerHeight/ch));
+  chars=new Array(cols*rows);inks=new Uint8Array(cols*rows);
+  layout();
+}
+/* ---------- the "components" ---------- */
+function put(x,y,s,ink){
+  for(var i=0;i<s.length;i++){
+    var X=x+i;if(X<0||X>=cols||y<0||y>=rows)continue;
+    chars[y*cols+X]=s[i];inks[y*cols+X]=ink;
+  }
+}
+function box(x,y,w,h,title,ink){
+  put(x,y,'┌'+Array(w-1).join('─')+'┐',ink);
+  for(var r=1;r<h;r++){ put(x,y+r,'│',ink);put(x+w,y+r,'│',ink); }
+  put(x,y+h,'└'+Array(w-1).join('─')+'┘',ink);
+  if(title) put(x+2,y,'┤ '+title+' ├',3);
+}
+function layout(){
+  comps=[];
+  var wide=cols>=96,pw=wide?30:Math.min(cols-8,42);
+  var x0=3,y0=2;
+  comps.push({k:'progress',x:x0,y:y0,w:pw,h:5});
+  comps.push(wide?{k:'toggle',x:x0+pw+4,y:y0,w:pw,h:5}:{k:'toggle',x:x0,y:y0+7,w:pw,h:5});
+  var third=wide?{x:x0+2*(pw+4),y:y0}:{x:x0,y:y0+14};
+  comps.push({k:'spark',x:third.x,y:third.y,w:Math.min(pw,cols-third.x-4),h:5});
+  comps.push({k:'button',x:x0,y:rows-7,w:Math.min(46,cols-8),h:3});
+}
+function hit(c,gx,gy){ return gx>=c.x&&gx<=c.x+c.w&&gy>=c.y&&gy<=c.y+c.h; }
+function drawComponents(){
+  var gx=Math.floor(hot.x/cw),gy=Math.floor(hot.y/ch);
+  comps.forEach(function(c){
+    var over=hit(c,gx,gy);
+    box(c.x,c.y,c.w,c.h,c.k.toUpperCase(),over?3:1);
+    if(c.k==='progress'){
+      var inner=c.w-6,fill=Math.round(inner*progress);
+      put(c.x+2,c.y+2,'uploading reef scan',2);
+      put(c.x+2,c.y+3,'['+Array(fill+1).join('█')+Array(inner-fill+1).join('░')+']',3);
+      put(c.x+c.w-7,c.y+2,(Math.round(progress*100)+'%  ').slice(0,4),2);
+    } else if(c.k==='toggle'){
+      put(c.x+2,c.y+2,'pointer currents',2);
+      put(c.x+2,c.y+3,toggleOn?'(──●) ON ':'(●──) OFF',toggleOn?3:2);
+      put(c.x+c.w-14,c.y+3,over?'click to flip':'             ',2);
+    } else if(c.k==='spark'){
+      put(c.x+2,c.y+2,'shoal density',2);
+      var bars='▁▂▃▄▅▆▇█',s='';
+      for(var i=0;i<Math.max(0,c.w-5);i++){
+        var v=series[(series.length-(c.w-5)+i+series.length)%series.length]||0;
+        s+=bars[Math.max(0,Math.min(7,Math.round(v*7)))];
+      }
+      put(c.x+2,c.y+3,s,3);
+    } else {
+      var label=' [ release a shark ] ';
+      put(c.x+2,c.y+1,over?'>'+label+'<':' '+label+' ',over?3:2);
+      put(c.x+c.w-17,c.y+1,(fish.length+' in the water      ').slice(0,16),1);
+    }
+  });
+}
+/* ---------- creatures, drawn in four stages ---------- */
+function Fish(kind){
+  this.kind=kind||'shark';
+  this.x=Math.random()*cols;this.y=4+Math.random()*(rows-8);
+  this.dir=Math.random()<.5?-1:1;
+  this.sp=(this.kind==='shark'?5.5:9)*(0.6+Math.random()*0.8);
+  this.len=this.kind==='shark'?(20+Math.random()*14):(8+Math.random()*5);
+  this.th=this.kind==='shark'?4.4:2.3;
+  this.ph=Math.random()*6.3;
+}
+Fish.prototype.step=function(dt,tt){
+  this.x+=this.dir*this.sp*dt;
+  this.y+=Math.sin(tt*1.2+this.ph)*2.2*dt;
+  if(toggleOn&&hot.x>0){
+    var gx=hot.x/cw,gy=hot.y/ch,dx=this.x-gx,dy=this.y-gy,d=Math.hypot(dx,dy*2);
+    if(d<14){ this.x+=dx/d*(14-d)*dt*5*wake; this.y+=dy/d*(14-d)*dt*2.4*wake; }
+  }
+  if(this.x<-this.len-4){this.x=cols+this.len;}
+  if(this.x>cols+this.len+4){this.x=-this.len;}
+  this.y=Math.max(2,Math.min(rows-3,this.y));
+};
+Fish.prototype.paint=function(tt){
+  var pts=[],n=14;
+  for(var i=0;i<=n;i++){
+    var u=i/n,
+        sx=this.x-this.dir*u*this.len,
+        sy=this.y+Math.sin(tt*5-u*3.1+this.ph)*(0.5+u*1.9)*(this.kind==='shark'?1:.6);
+    pts.push([sx,sy]);
+  }
+  var x0=Math.floor(Math.min(this.x,pts[n][0]))-3,x1=Math.ceil(Math.max(this.x,pts[n][0]))+3;
+  var y0=Math.floor(this.y-this.th*2.4)-2,y1=Math.ceil(this.y+this.th*2.4)+2;
+  for(var gy=Math.max(0,y0);gy<=Math.min(rows-1,y1);gy++){
+    for(var gx=Math.max(0,x0);gx<=Math.min(cols-1,x1);gx++){
+      var best=1e9,bu=0;
+      for(var k=0;k<n;k++){
+        var ax=pts[k][0],ay=pts[k][1],bx=pts[k+1][0],by=pts[k+1][1];
+        var vx=bx-ax,vy=by-ay,wx=gx+.5-ax,wy=gy+.5-ay;
+        var L=vx*vx+vy*vy,t=L?Math.max(0,Math.min(1,(wx*vx+wy*vy)/L)):0;
+        var dx=wx-vx*t,dy=(wy-vy*t)*1.68,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<best){best=d;bu=(k+t)/n;}
+      }
+      var rad=this.th*Math.sin(Math.pow(bu,.62)*Math.PI*0.96)+ (bu>.84?this.th*1.4*(bu-.84)/.16:0);
+      if(stage==='spine'){
+        if(best<0.55){ chars[gy*cols+gx]=this.dir>0?'~':'~';inks[gy*cols+gx]=4; }
+        continue;
+      }
+      if(best>rad)continue;
+      var v=1-best/Math.max(.001,rad),chr;
+      if(stage==='silhouette') chr='█';
+      else if(stage==='shaded') chr=RAMP[Math.max(1,Math.min(RAMP.length-1,Math.round(v*(RAMP.length-1))))];
+      else {
+        chr=RAMP[Math.max(1,Math.min(RAMP.length-1,Math.round(v*(RAMP.length-1))))];
+        if(bu<.1&&Math.abs(gy+.5-this.y)<.8) chr=this.dir>0?'>':'<';         /* snout */
+        if(bu>.88) chr='/';                                                  /* tail */
+        if(bu>.22&&bu<.3&&(gy+.5)<this.y-rad*.45) chr='^';                   /* dorsal */
+        if(bu<.22&&bu>.14&&Math.abs(gy+.5-this.y+rad*.3)<.6) chr='o';        /* eye */
+      }
+      chars[gy*cols+gx]=chr;inks[gy*cols+gx]=4;
+    }
+  }
+};
+/* ---------- render ---------- */
+function render(tt){
+  var T=theme();
+  for(var i=0;i<chars.length;i++){chars[i]=undefined;inks[i]=0;}
+  /* ambient water texture */
+  for(var y=0;y<rows;y++)for(var x=0;x<cols;x++){
+    var v=Math.sin(x*.21+tt*.5+y*.13)+Math.sin(x*.07-tt*.3+y*.31);
+    if(v>1.9){chars[y*cols+x]='·';inks[y*cols+x]=0;}
+  }
+  /* pointer wake */
+  if(wake>0&&hot.x>0){
+    var hx=hot.x/cw,hy=hot.y/ch;
+    for(var yy=Math.max(0,(hy-7)|0);yy<Math.min(rows,hy+7);yy++)
+      for(var xx=Math.max(0,(hx-12)|0);xx<Math.min(cols,hx+12);xx++){
+        var d=Math.hypot(xx-hx,(yy-hy)*2);
+        var ring=Math.sin(d*.9-tt*6)*(1-d/12);
+        if(d<12&&ring>.62/Math.max(.2,wake)){chars[yy*cols+xx]='∘';inks[yy*cols+xx]=1;}
+      }
+  }
+  fish.forEach(function(f){f.paint(tt);});
+  drawComponents();
+
+  cx.setTransform(DPR,0,0,DPR,0,0);
+  cx.fillStyle=T.bg;cx.fillRect(0,0,innerWidth,innerHeight);
+  cx.font='500 '+CELL+'px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+  cx.textBaseline='top';
+  var cols5=[T.dim,T.frame,T.text,T.accent,T.fish];
+  for(var ink=0;ink<5;ink++){
+    cx.fillStyle=cols5[ink];
+    for(var r=0;r<rows;r++){
+      var run='',start=-1;
+      for(var c=0;c<=cols;c++){
+        var idx=r*cols+c,ok=c<cols&&chars[idx]!==undefined&&inks[idx]===ink;
+        if(ok){ if(start<0){start=c;run='';} run+=chars[idx]; }
+        else if(start>=0){ cx.fillText(run,start*cw,r*ch); start=-1; }
+      }
+    }
+  }
+}
+/* ---------- loop & input ---------- */
+var last=performance.now();
+function frame(now){
+  var dt=Math.min(.05,(now-last)/1000);last=now;
+  var tt=(now-t0)/1000;
+  if(!still){
+    progress=(progress+dt*0.09)%1;
+    if(series.length<240) series.push(Math.random());
+    if(Math.random()<dt*6){series.push(0.35+0.5*Math.abs(Math.sin(tt*.7))+Math.random()*.15);series.shift();}
+    fish.forEach(function(f){f.step(dt,tt);});
+  }
+  render(still?12.5:tt);
+  requestAnimationFrame(frame);
+}
+function setFish(n){
+  while(fish.length<n) fish.push(new Fish(fish.length%3===2?'fish':'shark'));
+  while(fish.length>n) fish.pop();
+}
+cv.addEventListener('pointermove',function(e){hot.x=e.clientX;hot.y=e.clientY;});
+cv.addEventListener('pointerleave',function(){hot.x=hot.y=-99;});
+cv.addEventListener('pointerdown',function(e){
+  hot.x=e.clientX;hot.y=e.clientY;
+  var gx=Math.floor(e.clientX/cw),gy=Math.floor(e.clientY/ch);
+  comps.forEach(function(c){
+    if(!hit(c,gx,gy))return;
+    if(c.k==='toggle') toggleOn=!toggleOn;
+    if(c.k==='button'){ fish.push(new Fish('shark')); $('n').value=Math.min(7,fish.length); $('vN').textContent=fish.length; }
+    if(c.k==='progress') progress=0;
+  });
+});
+$('sz').addEventListener('input',function(){CELL=+this.value;$('vSz').textContent=CELL+' px';resize();});
+$('n').addEventListener('input',function(){want=+this.value;$('vN').textContent=want;setFish(want);});
+$('w').addEventListener('input',function(){wake=+this.value;$('vW').textContent=wake.toFixed(1);});
+Array.prototype.forEach.call(document.querySelectorAll('.stg'),function(b){
+  b.addEventListener('click',function(){
+    stage=b.dataset.v;
+    Array.prototype.forEach.call(document.querySelectorAll('.stg'),function(x){x.setAttribute('aria-pressed',x===b);});
+  });
+});
+$('btnTheme').addEventListener('click',function(){light=!light;document.body.classList.toggle('light',light);this.textContent=light?'Dark theme':'Light theme';});
+$('btnStill').addEventListener('click',function(){still=!still;this.setAttribute('aria-pressed',still);});
+addEventListener('resize',resize);
+for(var s=0;s<240;s++) series.push(.3+Math.random()*.5);
+resize();setFish(3);requestAnimationFrame(frame);
+window.__drop={cells:function(){return cols*rows;},fish:function(){return fish.length;},stage:function(){return stage;},
+  painted:function(){var n=0;for(var i=0;i<chars.length;i++)if(chars[i]!==undefined)n++;return n;},
+  comps:function(){return comps.map(function(c){return c.k;});},
+  click:function(k){var c=comps.filter(function(q){return q.k===k;})[0];if(!c)return false;
+    cv.dispatchEvent(new PointerEvent('pointerdown',{clientX:(c.x+2)*cw,clientY:(c.y+1)*ch,bubbles:true}));return true;},
+  toggled:function(){return toggleOn;}};
+})();
+</script>
+</body>
+</html>
