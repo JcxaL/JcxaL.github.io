@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Drag First, Then Ask Where · Drop 4</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:radial-gradient(900px 620px at 20% 0%,#2a2208 0%,#0a0a0c 60%);
+    color:#f4efe4;overflow:hidden;touch-action:none;
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%
+  }
+  .desk{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;padding:96px 18px 120px}
+  .file{
+    position:relative;width:148px;padding:15px 14px 13px;border-radius:15px;cursor:grab;user-select:none;
+    background:linear-gradient(165deg,rgba(251,191,36,.14),rgba(16,16,20,.94));
+    border:1px solid rgba(251,191,36,.26);box-shadow:0 12px 30px rgba(0,0,0,.45);
+    transition:transform .22s cubic-bezier(.2,.9,.3,1.3),box-shadow .22s,opacity .2s;
+    touch-action:none
+  }
+  .file:hover{transform:translateY(-3px);box-shadow:0 18px 38px rgba(0,0,0,.55)}
+  .file.dragging{opacity:.32;cursor:grabbing}
+  .file .ext{
+    display:inline-block;font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;
+    color:#0a0a0c;background:#fbbf24;border-radius:5px;padding:4px 6px
+  }
+  .file h3{margin:11px 0 3px;font-size:14px;font-weight:650;word-break:break-word}
+  .file small{color:#9d9686;font:500 11.5px/1 ui-monospace,Menlo,monospace}
+
+  .ghost{
+    position:fixed;z-index:60;pointer-events:none;padding:9px 12px;border-radius:11px;
+    background:rgba(251,191,36,.95);color:#19160c;font:650 12.5px/1 system-ui,sans-serif;
+    box-shadow:0 14px 34px rgba(0,0,0,.5);transform:translate(-50%,-50%) scale(.96);display:none
+  }
+
+  .wheel{position:fixed;z-index:55;pointer-events:none;display:none;left:0;top:0}
+  .wheel svg{overflow:visible;display:block}
+  .wedge{
+    fill:rgba(22,22,27,.9);stroke:rgba(251,191,36,.26);stroke-width:1;
+    transform-box:fill-box;transform-origin:center;
+    transition:fill .12s linear,stroke .12s linear
+  }
+  .wedge.sel{fill:rgba(251,191,36,.9);stroke:#fde68a}
+  .wedge.more{fill:rgba(56,189,248,.16);stroke:rgba(56,189,248,.4)}
+  .wedge.more.sel{fill:rgba(56,189,248,.85);stroke:#bae6fd}
+  .wlabel{font:600 11px/1 system-ui,sans-serif;fill:#e9e2d2;pointer-events:none;text-anchor:middle;dominant-baseline:middle}
+  .wlabel.sel{fill:#19160c;font-weight:750}
+  .hub{fill:rgba(10,10,12,.92);stroke:rgba(255,255,255,.16)}
+  .hubtext{font:700 9px/1 ui-monospace,Menlo,monospace;fill:#8a8477;text-anchor:middle;dominant-baseline:middle;letter-spacing:.1em}
+  .caption{
+    position:absolute;left:50%;transform:translate(-50%,-50%);white-space:nowrap;
+    padding:8px 15px;border-radius:999px;background:rgba(10,10,12,.92);border:1px solid rgba(255,255,255,.14);
+    font:650 13px/1 system-ui,sans-serif;color:#f4efe4;box-shadow:0 10px 28px rgba(0,0,0,.5)
+  }
+  .caption b{color:#fbbf24}
+
+  .result{
+    position:fixed;z-index:58;min-width:212px;padding:12px 14px;border-radius:13px;
+    background:rgba(16,16,20,.96);border:1px solid rgba(255,255,255,.14);box-shadow:0 16px 40px rgba(0,0,0,.6);
+    transform:translate(-50%,0) scale(.94);opacity:0;transition:.22s cubic-bezier(.2,.9,.3,1.25);pointer-events:none
+  }
+  .result.show{opacity:1;transform:translate(-50%,0) scale(1)}
+  .result .t{font:650 12.5px/1.3 system-ui,sans-serif}
+  .result .s{margin-top:5px;font:500 11px/1 ui-monospace,Menlo,monospace;color:#9d9686}
+  .result .track{margin-top:9px;height:4px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}
+  .result .fillbar{height:100%;width:0;background:#fbbf24;transition:width .8s linear}
+
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:70;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;text-decoration:none;font-weight:600;font-size:13px;color:#f4efe4;
+    background:rgba(20,20,24,.62);border:1px solid rgba(255,255,255,.12);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 8px 26px rgba(0,0,0,.45);transition:.2s
+  }
+  .back-link:hover{transform:translateY(-1px);border-color:rgba(251,191,36,.55)}
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:70;width:236px;padding:13px 14px 14px;border-radius:16px;
+    background:rgba(18,18,22,.74);border:1px solid rgba(255,255,255,.1);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 12px 36px rgba(0,0,0,.5)
+  }
+  .panel h2{margin:0 0 10px;font-size:10px;letter-spacing:.17em;text-transform:uppercase;color:#8a8477;font-weight:700}
+  .row{display:flex;align-items:center;gap:9px;margin:9px 0}
+  .row label{flex:0 0 58px;font-size:11.5px;color:#9d9686}
+  .row output{flex:0 0 40px;text-align:right;font:600 11.5px/1 ui-monospace,Menlo,monospace;color:#fbbf24}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:20px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:rgba(255,255,255,.16)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:#fbbf24;border:2px solid #121216}
+  input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:rgba(255,255,255,.16)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fbbf24;border:2px solid #121216}
+  .seg{display:flex;gap:4px;margin-top:11px;background:rgba(255,255,255,.05);border-radius:10px;padding:3px}
+  .seg button{
+    flex:1;appearance:none;border:0;background:transparent;color:#9d9686;border-radius:8px;
+    padding:8px 3px;font:600 11px/1.3 system-ui,sans-serif;cursor:pointer
+  }
+  .seg button[aria-pressed="true"]{background:#fbbf24;color:#19160c}
+  .seg button small{display:block;margin-top:3px;font:600 9.5px/1 ui-monospace,Menlo,monospace;opacity:.7;letter-spacing:.05em}
+  .hintbar{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:44px;z-index:40;text-align:center;
+    font-size:12px;color:#8a8477;pointer-events:none;width:min(92vw,620px)
+  }
+  .hintbar kbd{
+    display:inline-block;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.16);font:600 11px/1.4 ui-monospace,Menlo,monospace;color:#d8d0bd
+  }
+  footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:41;padding:10px 16px;text-align:center;font-size:11.5px;
+    color:#6f6a60;background:linear-gradient(transparent,rgba(10,10,12,.94) 55%);pointer-events:none
+  }
+  footer a{color:#9d9686;pointer-events:auto}
+  @media (max-width:760px){ .panel{display:none} .hintbar{bottom:40px;font-size:11px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div class="desk" id="desk"></div>
+
+<div class="ghost" id="ghost"></div>
+<div class="wheel" id="wheel"><div class="caption" id="caption"></div></div>
+<div class="result" id="result">
+  <div class="t" id="rt"></div>
+  <div class="s" id="rs"></div>
+  <div class="track"><div class="fillbar" id="rf"></div></div>
+</div>
+
+<div class="panel">
+  <h2>Wheel</h2>
+  <div class="row"><label for="rRad">Radius</label><input id="rRad" type="range" min="90" max="200" step="5" value="132"><output id="oRad">132</output></div>
+  <div class="row"><label for="rDead">Dead zone</label><input id="rDead" type="range" min="10" max="70" step="2" value="30"><output id="oDead">30</output></div>
+  <div class="row"><label for="rPage">Per page</label><input id="rPage" type="range" min="4" max="8" step="1" value="6"><output id="oPage">6</output></div>
+  <div class="row"><label for="rFan">Fan-in</label><input id="rFan" type="range" min="0" max="60" step="5" value="22"><output id="oFan">22</output></div>
+  <div class="seg" role="group" aria-label="Wheel">
+    <button data-w="convert" aria-pressed="true">Convert<br><small>shift</small></button>
+    <button data-w="tools" aria-pressed="false">Tools<br><small>alt</small></button>
+    <button data-w="actions" aria-pressed="false">Actions<br><small>ctrl</small></button>
+  </div>
+</div>
+
+<div class="hintbar" id="hintbar">
+  Start dragging a file — the wheel appears under the pointer. Tap <kbd>shift</kbd> <kbd>alt</kbd> <kbd>ctrl</kbd> mid-drag to swap wheels, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> <kbd>enter</kbd> to pick by key, <kbd>esc</kbd> to cancel.
+</div>
+
+<footer>Inspired by <a href="https://github.com/Manan-Santoki/OpenShelf" target="_blank" rel="noopener">Manan-Santoki/OpenShelf</a> · UI Spotlight Day 170 · Drop #4 — the menu is summoned by the drag, not before it</footer>
+
+<script>
+(function(){
+"use strict";
+var P={R:132, dead:30, page:6, fan:22, wheel:"convert"};
+
+var FILES=[
+  {name:"loom-draft.heic", ext:"HEIC", size:"4.2 MB", kind:"image"},
+  {name:"warp-notes.pdf",  ext:"PDF",  size:"812 KB", kind:"pdf"},
+  {name:"shuttle-run.mov", ext:"MOV",  size:"96.4 MB",kind:"video"},
+  {name:"setts.csv",       ext:"CSV",  size:"18 KB",  kind:"data"}
+];
+/* which wedges a file gets depends on what it is — and never its own format */
+var WHEELS={
+  convert:{
+    image:["JPEG","PNG","WebP","AVIF","TIFF","PDF","GIF","BMP"],
+    pdf:["PNG","JPEG","DOCX","TXT","PNG × pages","WebP"],
+    video:["MP4","GIF","WebM","MOV → MP4","Audio only","ProRes","Frames"],
+    data:["JSON","TSV","XLSX","Markdown","SQL","Parquet"]
+  },
+  tools:{
+    image:["Crop","Compress","Resize","Rotate","Strip EXIF","Upscale"],
+    pdf:["Split","Pages","Merge","Sign","Compress","OCR"],
+    video:["Trim","Mute","Loop","Poster","Speed","Caption"],
+    data:["Preview","Sort","Dedupe","Columns","Chart","Schema"]
+  },
+  actions:{
+    any:["Shelf","Add to Shelf","AirDrop","Copy","Move","Copy Path","Terminal","Tag"]
+  }
+};
+function wedgesFor(file){
+  var set=WHEELS[P.wheel];
+  var list=set[file.kind]||set.any||[];
+  return list.slice();
+}
+
+/* ------------------------------------------------------------------ desk */
+var desk=document.getElementById("desk");
+FILES.forEach(function(f,i){
+  var el=document.createElement("div");
+  el.className="file"; el.tabIndex=0;
+  el.innerHTML='<span class="ext"></span><h3></h3><small></small>';
+  el.children[0].textContent=f.ext;
+  el.children[1].textContent=f.name;
+  el.children[2].textContent=f.size;
+  el.dataset.i=String(i);
+  desk.appendChild(el);
+  el.addEventListener("pointerdown",start);
+});
+
+/* ----------------------------------------------------------------- wheel */
+var wheelEl=document.getElementById("wheel"),
+    caption=document.getElementById("caption"),
+    ghost=document.getElementById("ghost"),
+    NS="http://www.w3.org/2000/svg";
+var drag=null;
+
+function polar(cx,cy,r,a){ return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; }
+function wedgePath(cx,cy,r0,r1,a0,a1){
+  var p0=polar(cx,cy,r1,a0), p1=polar(cx,cy,r1,a1),
+      p2=polar(cx,cy,r0,a1), p3=polar(cx,cy,r0,a0);
+  var large=(a1-a0)>Math.PI?1:0;
+  return "M"+p0[0]+" "+p0[1]+"A"+r1+" "+r1+" 0 "+large+" 1 "+p1[0]+" "+p1[1]+
+         "L"+p2[0]+" "+p2[1]+"A"+r0+" "+r0+" 0 "+large+" 0 "+p3[0]+" "+p3[1]+"Z";
+}
+
+function buildWheel(){
+  var all=drag.all, page=drag.page, per=P.page;
+  var pages=Math.ceil(all.length/per);
+  var slice=all.slice(page*per,(page+1)*per);
+  var labels=slice.slice();
+  drag.paged = pages>1;
+  if(drag.paged){ labels.push("More"); if(page>0) labels.push("Back"); }
+  drag.labels=labels;
+  drag.pages=pages;
+
+  var R=P.R, r0=P.dead, size=(R+34)*2, c=size/2;
+  var old=wheelEl.querySelector("svg");
+  if(old) old.remove();
+  var svg=document.createElementNS(NS,"svg");
+  svg.setAttribute("width",size); svg.setAttribute("height",size);
+  svg.setAttribute("viewBox","0 0 "+size+" "+size);
+  var n=labels.length, step=Math.PI*2/n, gap=0.035;
+  drag.geom={n:n,step:step,c:c,R:R,r0:r0,size:size};
+  for(var i=0;i<n;i++){
+    var a0=-Math.PI/2+i*step+gap, a1=-Math.PI/2+(i+1)*step-gap;
+    var p=document.createElementNS(NS,"path");
+    p.setAttribute("d",wedgePath(c,c,r0,R,a0,a1));
+    p.setAttribute("class","wedge"+(labels[i]==="More"||labels[i]==="Back"?" more":""));
+    p.style.opacity="0";
+    p.style.transform="scale(.82)";
+    p.style.transition="opacity .18s ease "+(i*P.fan)+"ms, transform .26s cubic-bezier(.2,.9,.3,1.35) "+(i*P.fan)+"ms, fill .12s, stroke .12s";
+    svg.appendChild(p);
+    var mid=(a0+a1)/2, lp=polar(c,c,(R+r0)/2+4,mid);
+    var t=document.createElementNS(NS,"text");
+    t.setAttribute("x",lp[0]); t.setAttribute("y",lp[1]);
+    t.setAttribute("class","wlabel");
+    t.textContent=labels[i];
+    t.style.opacity="0";
+    t.style.transition="opacity .2s ease "+(i*P.fan+60)+"ms, fill .12s";
+    svg.appendChild(t);
+  }
+  var hub=document.createElementNS(NS,"circle");
+  hub.setAttribute("cx",c); hub.setAttribute("cy",c); hub.setAttribute("r",r0-4);
+  hub.setAttribute("class","hub");
+  svg.appendChild(hub);
+  var ht=document.createElementNS(NS,"text");
+  ht.setAttribute("x",c); ht.setAttribute("y",c); ht.setAttribute("class","hubtext");
+  ht.textContent="DROP";
+  svg.appendChild(ht);
+  wheelEl.insertBefore(svg,caption);
+  wheelEl.style.left=(drag.ox-c)+"px";
+  wheelEl.style.top=(drag.oy-c)+"px";
+  caption.style.top=(c-R-30)+"px";
+  requestAnimationFrame(function(){
+    Array.prototype.forEach.call(svg.querySelectorAll(".wedge"),function(p){
+      p.style.opacity="1"; p.style.transform="scale(1)";
+    });
+    Array.prototype.forEach.call(svg.querySelectorAll(".wlabel"),function(t){ t.style.opacity="1"; });
+  });
+  drag.sel=-1;
+  setCaption();
+}
+
+function setCaption(){
+  if(drag.sel<0) caption.innerHTML=drag.file.name+" · <b>"+drag.file.size+"</b>";
+  else caption.innerHTML="<b>"+drag.labels[drag.sel]+"</b>";
+}
+function paint(){
+  var svg=wheelEl.querySelector("svg");
+  if(!svg) return;
+  var w=svg.querySelectorAll(".wedge"), t=svg.querySelectorAll(".wlabel");
+  for(var i=0;i<w.length;i++){
+    var on=i===drag.sel;
+    w[i].classList.toggle("sel",on);
+    t[i].classList.toggle("sel",on);
+  }
+  setCaption();
+}
+function pick(x,y){
+  if(!drag||!drag.geom) return;
+  var dx=x-drag.ox, dy=y-drag.oy, d=Math.hypot(dx,dy);
+  var sel=-1;
+  if(d>=P.dead && d<=P.R+80){
+    var a=Math.atan2(dy,dx)+Math.PI/2;
+    a=((a%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+    sel=Math.floor(a/drag.geom.step)%drag.geom.n;
+  }
+  if(sel!==drag.sel){
+    drag.sel=sel;
+    paint();
+    clearTimeout(drag.dwell);
+    if(sel>=0 && drag.labels[sel]==="More"){
+      /* resting on More turns the page and keeps the wheel open */
+      drag.dwell=setTimeout(function(){ turn(1); },520);
+    } else if(sel>=0 && drag.labels[sel]==="Back"){
+      drag.dwell=setTimeout(function(){ turn(-1); },520);
+    }
+  }
+}
+function turn(d){
+  drag.page=(drag.page+d+drag.pages)%drag.pages;
+  buildWheel(); paint();
+}
+
+/* ------------------------------------------------------------ drag cycle */
+function start(ev){
+  if(drag) return;
+  var el=ev.currentTarget, i=+el.dataset.i;
+  el.setPointerCapture(ev.pointerId);
+  drag={ el:el, file:FILES[i], ox:ev.clientX, oy:ev.clientY, page:0, sel:-1, id:ev.pointerId, opened:false };
+  drag.all=wedgesFor(drag.file);
+  el.classList.add("dragging");
+  ghost.style.display="block";
+  ghost.textContent=drag.file.name;
+  moveGhost(ev.clientX,ev.clientY);
+  wheelEl.style.display="block";
+  buildWheel();
+  document.getElementById("hintbar").style.opacity=".35";
+  el.addEventListener("pointermove",move);
+  el.addEventListener("pointerup",end);
+  el.addEventListener("pointercancel",cancel);
+}
+function moveGhost(x,y){
+  ghost.style.left=x+"px"; ghost.style.top=(y-34)+"px";
+}
+function move(ev){
+  if(!drag) return;
+  moveGhost(ev.clientX,ev.clientY);
+  pick(ev.clientX,ev.clientY);
+}
+function end(ev){
+  if(!drag) return;
+  var sel=drag.sel, label=sel>=0?drag.labels[sel]:null;
+  if(label==="More"){ turn(1); return; }
+  if(label==="Back"){ turn(-1); return; }
+  var file=drag.file, x=ev.clientX, y=ev.clientY;
+  close();
+  if(label) run(label,file,x,y);
+}
+function cancel(){ close(); }
+function close(){
+  if(!drag) return;
+  clearTimeout(drag.dwell);
+  drag.el.classList.remove("dragging");
+  drag.el.removeEventListener("pointermove",move);
+  drag.el.removeEventListener("pointerup",end);
+  drag.el.removeEventListener("pointercancel",cancel);
+  wheelEl.style.display="none";
+  var svg=wheelEl.querySelector("svg"); if(svg) svg.remove();
+  ghost.style.display="none";
+  document.getElementById("hintbar").style.opacity="1";
+  drag=null;
+}
+
+/* the action runs where you dropped it */
+var result=document.getElementById("result"), rtm=0;
+function run(label,file,x,y){
+  clearTimeout(rtm);
+  result.style.left=Math.min(Math.max(x,130),innerWidth-130)+"px";
+  result.style.top=Math.min(y+16,innerHeight-130)+"px";
+  document.getElementById("rt").textContent=label+" — "+file.name;
+  document.getElementById("rs").textContent="working…";
+  var bar=document.getElementById("rf");
+  bar.style.transition="none"; bar.style.width="0";
+  result.classList.add("show");
+  requestAnimationFrame(function(){
+    bar.style.transition="width .8s linear";
+    bar.style.width="100%";
+  });
+  rtm=setTimeout(function(){
+    document.getElementById("rs").textContent="saved next to the original";
+    rtm=setTimeout(function(){ result.classList.remove("show"); },1200);
+  },850);
+}
+
+/* ------------------------------------------------- keys during the drag */
+addEventListener("keydown",function(ev){
+  if(drag){
+    if(ev.key==="Escape"){ close(); return; }
+    if(ev.key==="Shift"||ev.key==="Alt"||ev.key==="Control"){
+      P.wheel = ev.key==="Shift"?"convert":(ev.key==="Alt"?"tools":"actions");
+      syncSeg();
+      drag.all=wedgesFor(drag.file); drag.page=0;
+      buildWheel(); paint();
+      ev.preventDefault(); return;
+    }
+    if(ev.key==="ArrowRight"||ev.key==="ArrowLeft"){
+      var n=drag.geom.n, d=ev.key==="ArrowRight"?1:-1;
+      drag.sel=((drag.sel<0?0:drag.sel+d)+n)%n;
+      paint(); ev.preventDefault(); return;
+    }
+    if(ev.key==="Enter"&&drag.sel>=0){
+      var label=drag.labels[drag.sel], f=drag.file, ox=drag.ox, oy=drag.oy;
+      if(label==="More"){ turn(1); return; }
+      if(label==="Back"){ turn(-1); return; }
+      close(); run(label,f,ox,oy); ev.preventDefault();
+    }
+  }
+});
+
+/* ------------------------------------------------------------- controls */
+function syncSeg(){
+  Array.prototype.forEach.call(document.querySelectorAll(".seg button"),function(b){
+    b.setAttribute("aria-pressed",String(b.dataset.w===P.wheel));
+  });
+}
+Array.prototype.forEach.call(document.querySelectorAll(".seg button"),function(b){
+  b.addEventListener("click",function(){ P.wheel=b.dataset.w; syncSeg(); });
+});
+function bindR(id,out,key){
+  var el=document.getElementById(id), o=document.getElementById(out);
+  el.addEventListener("input",function(){
+    P[key]=+el.value; o.textContent=el.value;
+    if(drag){ buildWheel(); paint(); }
+  });
+}
+bindR("rRad","oRad","R"); bindR("rDead","oDead","dead"); bindR("rPage","oPage","page"); bindR("rFan","oFan","fan");
+})();
+</script>
+</body>
+</html>

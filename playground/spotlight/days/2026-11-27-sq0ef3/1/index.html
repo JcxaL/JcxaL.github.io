@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Walk Is Solved, Not Keyframed · Drop 1</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden}
+  body{
+    background:var(--sky,#dfe4ea);
+    font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    transition:background .6s linear;
+    -webkit-text-size-adjust:100%
+  }
+  canvas{display:block;width:100%;height:100%;touch-action:manipulation}
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:9;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;text-decoration:none;font-weight:600;font-size:13px;
+    color:var(--ink,#1d2430);background:rgba(255,255,255,.52);border:1px solid rgba(255,255,255,.6);
+    backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+    box-shadow:0 6px 22px rgba(0,0,0,.14);transition:.2s
+  }
+  .back-link:hover{transform:translateY(-1px);background:rgba(255,255,255,.72)}
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:9;width:225px;padding:13px 14px 15px;border-radius:16px;
+    background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);
+    backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);
+    box-shadow:0 10px 34px rgba(0,0,0,.16);color:var(--ink,#1d2430)
+  }
+  .panel h2{margin:0 0 10px;font-size:10px;letter-spacing:.17em;text-transform:uppercase;opacity:.62;font-weight:700}
+  .row{display:flex;align-items:center;gap:9px;margin:9px 0}
+  .row label{flex:0 0 58px;font-size:11.5px;opacity:.72}
+  .row output{flex:0 0 38px;text-align:right;font:600 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:20px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:rgba(29,36,48,.26)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:currentColor;border:2px solid rgba(255,255,255,.85)}
+  input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:rgba(29,36,48,.26)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:currentColor;border:2px solid rgba(255,255,255,.85)}
+  .toggles{display:flex;gap:6px;margin-top:11px}
+  .toggles button{
+    flex:1;appearance:none;border:1px solid rgba(29,36,48,.18);background:rgba(255,255,255,.42);
+    color:inherit;border-radius:9px;padding:7px 4px;font:600 11px/1 system-ui,sans-serif;cursor:pointer;transition:.15s
+  }
+  .toggles button[aria-pressed="true"]{background:var(--ink,#1d2430);color:var(--sky,#fff);border-color:transparent}
+  footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:8;padding:11px 16px;text-align:center;
+    font-size:11.5px;color:var(--ink,#1d2430);opacity:.52;pointer-events:none
+  }
+  footer a{color:inherit;pointer-events:auto}
+  @media (max-width:720px){ .panel{display:none} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+<canvas id="cv" aria-label="Line-art figures walking"></canvas>
+<div class="panel">
+  <h2>Gait solver</h2>
+  <div class="row"><label for="rSpeed">Speed</label><input id="rSpeed" type="range" min="20" max="160" value="72"><output id="oSpeed">72</output></div>
+  <div class="row"><label for="rStride">Stride</label><input id="rStride" type="range" min="30" max="90" value="54"><output id="oStride">54</output></div>
+  <div class="row"><label for="rInk">Ink</label><input id="rInk" type="range" min="1" max="5" step="0.5" value="2.5"><output id="oInk">2.5</output></div>
+  <div class="row"><label for="rTau">Hour</label><input id="rTau" type="range" min="0" max="1000" value="420"><output id="oTau">10:04</output></div>
+  <div class="toggles">
+    <button id="bCycle" aria-pressed="true">Day cycle</button>
+    <button id="bBones" aria-pressed="false">Bones</button>
+  </div>
+</div>
+<footer>Inspired by <a href="https://github.com/JDhruv14/line-art-animation" target="_blank" rel="noopener">JDhruv14/line-art-animation</a> · UI Spotlight Day 170 · Drop #1 — the pose is computed every frame, never keyframed</footer>
+
+<script>
+(function(){
+"use strict";
+var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+var W=0,H=0,DPR=1;
+function fit(){
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=innerWidth; H=innerHeight;
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+fit(); addEventListener("resize",fit);
+
+/* ----------------------------------------------- time of day -> palette */
+function lerp(a,b,t){ return a+(b-a)*t; }
+function mix(c1,c2,t){
+  return [Math.round(lerp(c1[0],c2[0],t)),Math.round(lerp(c1[1],c2[1],t)),Math.round(lerp(c1[2],c2[2],t))];
+}
+function rgb(c,a){ return "rgba("+c[0]+","+c[1]+","+c[2]+","+(a===undefined?1:a)+")"; }
+var STOPS=[ /* tau, sky, ink, paper */
+  [0.00,[22,28,52],[214,222,238],[30,38,64]],
+  [0.22,[74,74,104],[246,240,230],[96,92,118]],
+  [0.30,[232,186,150],[52,44,48],[246,224,198]],
+  [0.50,[214,228,238],[26,32,42],[250,248,243]],
+  [0.72,[246,196,150],[46,36,38],[250,226,198]],
+  [0.82,[108,86,118],[244,238,232],[118,96,124]],
+  [1.00,[22,28,52],[214,222,238],[30,38,64]]
+];
+function palette(tau){
+  tau=((tau%1)+1)%1;
+  for(var i=0;i<STOPS.length-1;i++){
+    if(tau>=STOPS[i][0]&&tau<=STOPS[i+1][0]){
+      var t=(tau-STOPS[i][0])/(STOPS[i+1][0]-STOPS[i][0]);
+      return { sky:mix(STOPS[i][1],STOPS[i+1][1],t), ink:mix(STOPS[i][2],STOPS[i+1][2],t), paper:mix(STOPS[i][3],STOPS[i+1][3],t), night: tau<0.25||tau>0.80 };
+    }
+  }
+  return { sky:STOPS[0][1], ink:STOPS[0][2], paper:STOPS[0][3], night:true };
+}
+
+/* ------------------------------------------------------------ gait solver */
+function minJerk(t){ return t*t*t*(10-15*t+6*t*t); }
+
+function Walker(o){
+  this.x=o.x; this.scale=o.scale; this.speed=o.speed; this.phase=o.phase||0;
+  this.coat=o.coat; this.bag=o.bag; this.hue=o.hue||0; this.hat=o.hat;
+  this.tip=0;                                  /* hat-tip animation 0..1 */
+  this.thigh=26; this.shin=26; this.hip=14; this.torso=34;
+}
+Walker.prototype.solve=function(t,stride,speed){
+  var s={}, cycle=stride/Math.max(1,speed), ph=((t/cycle)+this.phase)%1;
+  s.cycle=cycle;
+  var duty=0.62;                               /* fraction of the cycle a foot is planted */
+  var travel=this.x;
+  var legs=[], i;
+  for(i=0;i<2;i++){
+    var p=(ph+i*0.5)%1, foot, lift=0;
+    if(p<duty){
+      /* stance: the foot is pinned to the ground, so it slides back under the body */
+      var u=p/duty;
+      foot = stride*0.5 - u*stride;
+    } else {
+      /* swing: minimum-jerk from back foot to front foot, heel first */
+      var v=(p-duty)/(1-duty), e=minJerk(v);
+      foot = -stride*0.5 + e*stride;
+      lift = Math.sin(v*Math.PI)*stride*0.22;
+    }
+    legs.push({x:foot, y:-lift, planted:p<duty, p:p});
+  }
+  /* hip height comes from what the planted leg can reach */
+  var reach=this.thigh+this.shin, hipY=0;
+  for(i=0;i<2;i++){
+    if(!legs[i].planted) continue;
+    var dx=legs[i].x, dy=legs[i].y;
+    var h=Math.sqrt(Math.max(1,reach*reach*0.97 - dx*dx));
+    hipY = hipY===0 ? h : Math.min(hipY,h);
+  }
+  if(hipY===0) hipY=reach*0.92;
+  s.legs=legs; s.hipY=hipY; s.ph=ph; s.travel=travel;
+  s.lean = -0.06 - speed*0.0006;
+  s.armSwing = Math.sin(ph*Math.PI*2);
+  return s;
+};
+function ik(hx,hy,fx,fy,a,b,sign){
+  var dx=fx-hx, dy=fy-hy, d=Math.sqrt(dx*dx+dy*dy);
+  d=Math.min(d,a+b-0.01); d=Math.max(d,0.01);
+  var ux=dx/d, uy=dy/d;
+  var x=(d*d+a*a-b*b)/(2*d), hh=Math.sqrt(Math.max(0,a*a-x*x));
+  return { x:hx+ux*x - uy*hh*sign, y:hy+uy*x + ux*hh*sign };
+}
+
+/* -------------------------------------------------------------- ink pens */
+function pen(ctx,pts,w,ink,closed){
+  /* two slightly offset passes = a hand-inked line */
+  for(var pass=0;pass<2;pass++){
+    ctx.beginPath();
+    var o=pass? 0.5 : 0;
+    ctx.moveTo(pts[0][0]+o,pts[0][1]-o*0.4);
+    for(var i=1;i<pts.length;i++){
+      var p=pts[i], q=pts[i-1];
+      ctx.quadraticCurveTo((q[0]+p[0])/2+o,(q[1]+p[1])/2-o*0.4,p[0]+o,p[1]-o*0.4);
+    }
+    if(closed) ctx.closePath();
+    ctx.lineWidth = pass? w*0.5 : w;
+    ctx.globalAlpha = pass? 0.4 : 1;
+    ctx.strokeStyle=ink;
+    ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+}
+
+var walkers=[
+  new Walker({x:0,scale:1.0,speed:1.0,phase:0.00,coat:true, bag:true, hat:true}),
+  new Walker({x:0,scale:0.72,speed:1.28,phase:0.37,coat:false,bag:false,hat:false}),
+  new Walker({x:0,scale:1.26,speed:0.82,phase:0.66,coat:true, bag:false,hat:true})
+];
+var offs=[0.08,0.46,0.78];
+
+var P={speed:72,stride:54,ink:2.5,tau:0.42,cycle:true,bones:false};
+var t0=performance.now(), raf=0;
+
+function drawWalker(w,pal,px,py,sc,t){
+  var s=w.solve(t*w.speed, P.stride, P.speed*w.speed);
+  var ink=rgb(pal.ink);
+  ctx.save();
+  ctx.translate(px,py);
+  /* contact shadow sits on the ground, not on the figure */
+  var sg=ctx.createRadialGradient(0,2,1,0,2,34*sc);
+  sg.addColorStop(0,rgb(pal.ink,0.22)); sg.addColorStop(1,rgb(pal.ink,0));
+  ctx.fillStyle=sg;
+  ctx.beginPath(); ctx.ellipse(0,2,34*sc,6*sc,0,0,6.2832); ctx.fill();
+  ctx.scale(sc,sc); ctx.rotate(s.lean*0.25);
+  ctx.lineCap="round"; ctx.lineJoin="round";
+  var lw=P.ink;
+
+  var hipX=0, hipY=-s.hipY;
+  var shoulderY=hipY-w.torso;
+  var bob=Math.sin(s.ph*Math.PI*4)*1.2;
+
+  /* far leg, then near leg */
+  for(var i=1;i>=0;i--){
+    var L=s.legs[i], far=(i===1);
+    var knee=ik(hipX,hipY+bob,L.x,L.y,w.thigh,w.shin,1);
+    ctx.globalAlpha=far?0.55:1;
+    pen(ctx,[[hipX,hipY+bob],[knee.x,knee.y],[L.x,L.y]],lw,ink);
+    /* shoe placed from the ankle, pitched by the foot's phase */
+    var pitch = L.planted? 0 : -0.5 + L.p*0.6;
+    ctx.save(); ctx.translate(L.x,L.y); ctx.rotate(pitch*0.5);
+    pen(ctx,[[-3,0],[8,0.5],[9,-2.5]],lw*0.9,ink);
+    ctx.restore();
+    ctx.globalAlpha=1;
+  }
+
+  /* coat: the hem opens and closes with the stride */
+  if(w.coat){
+    var sway=s.armSwing*6;
+    ctx.globalAlpha=0.9;
+    pen(ctx,[[-7,hipY-18+bob],[-9-sway*0.4,hipY+10+bob],[-4-sway,hipY+20+bob]],lw*0.9,ink);
+    pen(ctx,[[7,hipY-18+bob],[10+sway*0.4,hipY+10+bob],[5+sway,hipY+20+bob]],lw*0.9,ink);
+    ctx.globalAlpha=1;
+  }
+
+  /* torso */
+  pen(ctx,[[hipX,hipY+bob],[hipX+s.armSwing*0.6,shoulderY+bob]],lw*1.15,ink);
+
+  /* arms swing against the legs; a pendulum on the forearm */
+  var aSw=-s.armSwing;
+  for(var k=0;k<2;k++){
+    var dirn=k? 1:-1, sw=aSw*dirn*19;
+    var elbow={x:sw*0.6, y:shoulderY+16+bob+Math.abs(sw)*0.05};
+    var hand={x:sw, y:shoulderY+30+bob};
+    ctx.globalAlpha=k?1:0.55;
+    pen(ctx,[[0,shoulderY+2+bob],[elbow.x,elbow.y],[hand.x,hand.y]],lw*0.95,ink);
+    if(w.bag&&k===1){
+      ctx.globalAlpha=1;
+      var bx=hand.x, by=hand.y;
+      pen(ctx,[[bx-8,by+3],[bx+8,by+3],[bx+8,by+17],[bx-8,by+17]],lw*0.9,ink,true);
+      pen(ctx,[[bx-3,by+3],[bx,by-2],[bx+3,by+3]],lw*0.7,ink);
+    }
+    ctx.globalAlpha=1;
+  }
+
+  /* head + hat, with the tip animation */
+  var headY=shoulderY-11+bob, tipA=w.tip*0.9;
+  ctx.beginPath(); ctx.arc(0,headY,8,0,6.2832);
+  ctx.lineWidth=lw; ctx.strokeStyle=ink; ctx.stroke();
+  if(w.hat){
+    ctx.save();
+    ctx.translate(0,headY-6);
+    ctx.rotate(-tipA*0.7); ctx.translate(0,-w.tip*8);
+    pen(ctx,[[-11,0],[11,0]],lw,ink);
+    pen(ctx,[[-7,0],[-6,-9],[6,-9],[7,0]],lw,ink);
+    ctx.restore();
+  }
+  if(pal.night){
+    /* a small lantern glow so night reads as night */
+    var g=ctx.createRadialGradient(0,headY,2,0,headY,46);
+    g.addColorStop(0,"rgba(255,214,150,.26)"); g.addColorStop(1,"rgba(255,214,150,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,headY,46,0,6.2832); ctx.fill();
+  }
+
+  if(P.bones){
+    ctx.globalAlpha=.9;
+    for(var j=0;j<2;j++){
+      var LL=s.legs[j], kn=ik(hipX,hipY+bob,LL.x,LL.y,w.thigh,w.shin,1);
+      ctx.fillStyle="rgba(230,70,90,.9)";
+      [[hipX,hipY+bob],[kn.x,kn.y],[LL.x,LL.y]].forEach(function(pt){
+        ctx.beginPath(); ctx.arc(pt[0],pt[1],2.4,0,6.2832); ctx.fill();
+      });
+    }
+    ctx.strokeStyle="rgba(230,70,90,.5)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(-60,0); ctx.lineTo(60,0); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+  return s;
+}
+
+var hitBoxes=[];
+function frame(now){
+  raf=requestAnimationFrame(frame);
+  var t=(now-t0)/1000;
+  if(P.cycle){ P.tau=(P.tau+0.00022)%1; syncTau(); }
+  var pal=palette(P.tau);
+  document.body.style.setProperty("--sky",rgb(pal.sky));
+  document.body.style.setProperty("--ink",rgb(pal.ink));
+
+  /* ground + sky wash */
+  var sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,rgb(pal.sky));
+  sky.addColorStop(1,rgb(mix(pal.sky,pal.paper,0.55)));
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+
+  var baseY=H*0.78;
+  ctx.strokeStyle=rgb(pal.ink,0.28); ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(0,baseY+1); ctx.lineTo(W,baseY+1); ctx.stroke();
+
+  /* sun / moon arc */
+  var ang=(P.tau-0.25)*Math.PI*2, sx=W*0.5+Math.cos(ang)*W*0.42, sy=baseY-Math.sin(ang)*H*0.46;
+  ctx.beginPath(); ctx.arc(sx,sy,pal.night?12:18,0,6.2832);
+  ctx.fillStyle=pal.night?"rgba(234,238,252,.85)":"rgba(255,232,170,.92)";
+  ctx.fill();
+
+  hitBoxes.length=0;
+  for(var i=0;i<walkers.length;i++){
+    var w=walkers[i];
+    var sc=w.scale*Math.min(2.3,Math.max(0.85,H/430));
+    var span=W+260;
+    var px=((t*P.speed*w.speed + offs[i]*span)%span)-130;
+    var py=baseY - (1-w.scale)*H*0.018;
+    w.tip = Math.max(0, w.tip-0.016);
+    drawWalker(w,pal,px,py,sc,t);
+    hitBoxes.push({x:px,y:py-90*sc,w:60*sc,h:110*sc,i:i});
+  }
+  ctx.fillStyle=rgb(pal.ink,0.4);
+  ctx.font="600 11px ui-monospace,SFMono-Regular,Menlo,monospace";
+  ctx.fillText("tap a figure — they tip the hat", 16, H-34);
+}
+
+function syncTau(){
+  var mins=Math.round(P.tau*1440), hh=Math.floor(mins/60), mm=mins%60;
+  document.getElementById("oTau").textContent=(hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;
+  document.getElementById("rTau").value=String(Math.round(P.tau*1000));
+}
+function bind(id,out,key,scale){
+  var el=document.getElementById(id), o=document.getElementById(out);
+  el.addEventListener("input",function(){
+    P[key]=parseFloat(el.value)*(scale||1);
+    o.textContent=el.value;
+    if(key==="tau"){ P.cycle=false; document.getElementById("bCycle").setAttribute("aria-pressed","false"); syncTau(); }
+  });
+}
+bind("rSpeed","oSpeed","speed");
+bind("rStride","oStride","stride");
+bind("rInk","oInk","ink");
+document.getElementById("rTau").addEventListener("input",function(){
+  P.tau=parseFloat(this.value)/1000; P.cycle=false;
+  document.getElementById("bCycle").setAttribute("aria-pressed","false"); syncTau();
+});
+document.getElementById("bCycle").addEventListener("click",function(){
+  P.cycle=!P.cycle; this.setAttribute("aria-pressed",String(P.cycle));
+});
+document.getElementById("bBones").addEventListener("click",function(){
+  P.bones=!P.bones; this.setAttribute("aria-pressed",String(P.bones));
+});
+cv.addEventListener("pointerdown",function(ev){
+  var x=ev.clientX, y=ev.clientY, best=-1, bd=1e9;
+  for(var i=0;i<hitBoxes.length;i++){
+    var b=hitBoxes[i], cxx=b.x, cyy=b.y+b.h/2, d=Math.abs(x-cxx)+Math.abs(y-cyy)*0.4;
+    if(d<bd && d<120){ bd=d; best=b.i; }
+  }
+  if(best>=0) walkers[best].tip=1;
+});
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden){ cancelAnimationFrame(raf); raf=0; }
+  else if(!raf){ t0=performance.now()-1000; raf=requestAnimationFrame(frame); }
+});
+syncTau();
+raf=requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

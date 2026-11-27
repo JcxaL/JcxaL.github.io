@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Slider Is a Shader · Drop 5</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:#07070b;color:#ece9f6;overflow:hidden;touch-action:none;
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%
+  }
+  #stage{position:fixed;inset:0;overflow:hidden}
+  /* real slides, in the document. the GPU layer draws over them. */
+  #track{position:absolute;inset:0;display:flex;will-change:transform}
+  .slide{
+    position:relative;flex:0 0 100%;height:100%;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:10px;padding:40px
+  }
+  .slide .idx{font:800 clamp(80px,20vw,210px)/0.85 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.05em;opacity:.95}
+  .slide h2{margin:4px 0 0;font:700 clamp(19px,3.6vw,30px)/1.2 system-ui,sans-serif;letter-spacing:-.01em}
+  .slide p{margin:0;font-size:13.5px;opacity:.72;max-width:34ch;text-align:center}
+  #gl{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #track.hidden{opacity:0}
+
+  .dots{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:50px;z-index:30;display:flex;gap:9px;padding:9px 13px;
+    border-radius:999px;background:rgba(12,12,18,.7);border:1px solid rgba(255,255,255,.1);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+  }
+  .dots button{
+    appearance:none;border:0;width:9px;height:9px;padding:0;border-radius:50%;cursor:pointer;
+    background:rgba(255,255,255,.3);transition:.2s
+  }
+  .dots button[aria-current="true"]{background:#a78bfa;width:26px;border-radius:999px}
+  .back-link{
+    position:fixed;top:14px;left:14px;z-index:40;display:inline-flex;align-items:center;gap:7px;
+    padding:9px 15px;border-radius:999px;text-decoration:none;font-weight:600;font-size:13px;color:#ece9f6;
+    background:rgba(14,14,20,.6);border:1px solid rgba(255,255,255,.12);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 8px 26px rgba(0,0,0,.45);transition:.2s
+  }
+  .back-link:hover{transform:translateY(-1px);border-color:rgba(167,139,250,.6)}
+  .panel{
+    position:fixed;top:14px;right:14px;z-index:40;width:236px;padding:13px 14px 14px;border-radius:16px;
+    background:rgba(14,14,20,.74);border:1px solid rgba(255,255,255,.1);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 12px 36px rgba(0,0,0,.5)
+  }
+  .panel h2{margin:0 0 9px;font-size:10px;letter-spacing:.17em;text-transform:uppercase;color:#8e8aa6;font-weight:700}
+  .fx{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .fx button{
+    appearance:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#cfc9e6;
+    border-radius:9px;padding:8px 5px;font:600 11.5px/1 system-ui,sans-serif;cursor:pointer;transition:.15s
+  }
+  .fx button[aria-pressed="true"]{background:#a78bfa;color:#190f33;border-color:transparent}
+  .fx button.wide{grid-column:1/-1}
+  .row{display:flex;align-items:center;gap:9px;margin:10px 0 2px}
+  .row label{flex:0 0 56px;font-size:11.5px;color:#8e8aa6}
+  .row output{flex:0 0 40px;text-align:right;font:600 11.5px/1 ui-monospace,Menlo,monospace;color:#a78bfa}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:20px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:rgba(255,255,255,.16)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:#a78bfa;border:2px solid #0e0e14}
+  input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:rgba(255,255,255,.16)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#a78bfa;border:2px solid #0e0e14}
+  .hud{margin-top:11px;display:flex;justify-content:space-between;font:600 10.5px/1.4 ui-monospace,Menlo,monospace;color:#6f6b86}
+  .hud b{color:#a78bfa}
+  .hud b.idle{color:#4b5563}
+  .note{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:94px;z-index:30;font-size:12px;color:#8e8aa6;
+    text-align:center;pointer-events:none;width:min(92vw,560px)
+  }
+  footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:31;padding:10px 16px;text-align:center;font-size:11.5px;
+    color:#6f6b86;background:linear-gradient(transparent,rgba(7,7,11,.94) 55%);pointer-events:none
+  }
+  footer a{color:#9d97b8;pointer-events:auto}
+  @media (max-width:760px){ .panel{display:none} .dots{bottom:46px} .note{bottom:86px;font-size:11px} }
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<div id="stage">
+  <div id="track"></div>
+  <canvas id="gl"></canvas>
+</div>
+
+<div class="dots" id="dots" role="tablist" aria-label="Slides"></div>
+<div class="note" id="note">Drag, flick, scroll or use <b>←</b> <b>→</b>. The spring carries the position; the shader draws the gap between slides.</div>
+
+<div class="panel">
+  <h2>Effect plugin</h2>
+  <div class="fx" id="fx">
+    <button data-e="0" aria-pressed="true">Crossfade</button>
+    <button data-e="1" aria-pressed="false">Liquid</button>
+    <button data-e="2" aria-pressed="false">Glitch</button>
+    <button data-e="3" aria-pressed="false">Dissolve</button>
+    <button data-e="4" aria-pressed="false" class="wide">Weave</button>
+  </div>
+  <div class="row"><label for="rStiff">Stiffness</label><input id="rStiff" type="range" min="40" max="400" step="10" value="170"><output id="oStiff">170</output></div>
+  <div class="row"><label for="rDamp">Damping</label><input id="rDamp" type="range" min="8" max="46" step="1" value="24"><output id="oDamp">24</output></div>
+  <div class="row"><label for="rSnap">Snap</label><input id="rSnap" type="range" min="0" max="1" step="1" value="1"><output id="oSnap">on</output></div>
+  <div class="hud"><span>renderer</span><b id="hRend">—</b></div>
+  <div class="hud"><span>state</span><b id="hState" class="idle">idle</b></div>
+</div>
+
+<footer>Inspired by <a href="https://github.com/niklasp/gpuslider" target="_blank" rel="noopener">niklasp/gpuslider</a> · UI Spotlight Day 170 · Drop #5 — HTML slides underneath, one GPU canvas over the top</footer>
+
+<script>
+(function(){
+"use strict";
+var SLIDES=[
+  {n:"01", t:"Slides stay in the document", s:"Content, links and keyboard order come from the markup, not the canvas.", a:"#3b1d6e", b:"#a78bfa"},
+  {n:"02", t:"A canvas sits over them",     s:"It is created only when a slider needs it, and only the layer the browser can use.", a:"#0b3b4a", b:"#38bdf8"},
+  {n:"03", t:"One spring, solved exactly",  s:"Drag, flick, wheel and arrow keys all push the same spring.", a:"#4a1430", b:"#f472b6"},
+  {n:"04", t:"Transitions are plugins",     s:"Each effect is a fragment shader swapped in at runtime.", a:"#123b22", b:"#34d399"},
+  {n:"05", t:"Nothing draws while still",   s:"When the spring settles the loop stops, and the GPU goes quiet.", a:"#4a3410", b:"#fbbf24"}
+];
+var N=SLIDES.length;
+
+/* --------------------------------------------- real slides in the document */
+var track=document.getElementById("track");
+SLIDES.forEach(function(s){
+  var d=document.createElement("section");
+  d.className="slide";
+  d.style.background="radial-gradient(120% 90% at 50% 0%,"+s.b+"33 0%,"+s.a+" 55%,#07070b 100%)";
+  d.innerHTML='<div class="idx"></div><h2></h2><p></p>';
+  d.children[0].textContent=s.n;
+  d.children[0].style.color=s.b;
+  d.children[1].textContent=s.t;
+  d.children[2].textContent=s.s;
+  track.appendChild(d);
+});
+var dots=document.getElementById("dots");
+SLIDES.forEach(function(s,i){
+  var b=document.createElement("button");
+  b.setAttribute("role","tab");
+  b.setAttribute("aria-label","Slide "+(i+1));
+  b.setAttribute("aria-current",String(i===0));
+  b.addEventListener("click",function(){ target=i; wake(); });
+  dots.appendChild(b);
+});
+
+/* ------------------------------------------------------- slide textures */
+var cvs=document.getElementById("gl");
+var tiles=[];
+function paintTile(i,w,h){
+  var c=tiles[i]||(tiles[i]=document.createElement("canvas"));
+  c.width=w; c.height=h;
+  var g=c.getContext("2d"), s=SLIDES[i];
+  var rg=g.createRadialGradient(w/2,0,10,w/2,0,Math.max(w,h)*1.1);
+  rg.addColorStop(0,s.b); rg.addColorStop(.42,s.a); rg.addColorStop(1,"#07070b");
+  g.fillStyle=rg; g.fillRect(0,0,w,h);
+  /* a quiet grid so distortions are legible */
+  g.strokeStyle="rgba(255,255,255,.055)"; g.lineWidth=1;
+  var step=Math.max(42,Math.round(w/26));
+  g.beginPath();
+  for(var x=0;x<w;x+=step){ g.moveTo(x+.5,0); g.lineTo(x+.5,h); }
+  for(var y=0;y<h;y+=step){ g.moveTo(0,y+.5); g.lineTo(w,y+.5); }
+  g.stroke();
+  g.textAlign="center"; g.textBaseline="middle";
+  var big=Math.min(h*0.34,w*0.21);
+  g.fillStyle=s.b;
+  g.font="800 "+big+"px ui-monospace,SFMono-Regular,Menlo,monospace";
+  g.fillText(s.n,w/2,h/2-big*0.33);
+  g.fillStyle="#f4f1ff";
+  g.font="700 "+Math.min(30,w*0.034)+"px system-ui,-apple-system,sans-serif";
+  g.fillText(s.t,w/2,h/2+big*0.3);
+  g.fillStyle="rgba(236,233,246,.72)";
+  g.font="500 "+Math.min(15,w*0.018)+"px system-ui,-apple-system,sans-serif";
+  wrap(g,s.s,w/2,h/2+big*0.3+30,w*0.56,20);
+  return c;
+}
+function wrap(g,text,x,y,maxW,lh){
+  var words=text.split(" "), line="", lines=[];
+  for(var i=0;i<words.length;i++){
+    var test=line?line+" "+words[i]:words[i];
+    if(g.measureText(test).width>maxW && line){ lines.push(line); line=words[i]; }
+    else line=test;
+  }
+  lines.push(line);
+  for(i=0;i<lines.length;i++) g.fillText(lines[i],x,y+i*lh);
+}
+
+/* ------------------------------------------------------------- WebGL 2 */
+var VERT="#version 300 es\n"+
+"in vec2 aPos; out vec2 vUv;\n"+
+"void main(){ vUv = aPos*0.5+0.5; vUv.y = 1.0 - vUv.y; gl_Position = vec4(aPos,0.0,1.0); }";
+var FRAG="#version 300 es\n"+
+"precision highp float;\n"+
+"in vec2 vUv; out vec4 frag;\n"+
+"uniform sampler2D uA; uniform sampler2D uB;\n"+
+"uniform float uT; uniform float uTime; uniform int uE;\n"+
+"float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }\n"+
+"void main(){\n"+
+"  vec2 uvA=vUv, uvB=vUv;\n"+
+"  float t=clamp(uT,0.0,1.0);\n"+
+"  float m=smoothstep(0.0,1.0,t);\n"+
+"  float bell=sin(t*3.14159265);\n"+
+"  if(uE==1){\n"+
+"    float w = sin(vUv.y*11.0 + uTime*1.6)*0.07*bell + sin(vUv.x*7.0 - uTime*1.1)*0.035*bell;\n"+
+"    uvA.x += w*(1.0-t)*1.7; uvB.x -= w*t*1.7;\n"+
+"    uvA.y += w*0.4*bell; uvB.y -= w*0.4*bell;\n"+
+"  } else if(uE==2){\n"+
+"    float band=floor(vUv.y*20.0);\n"+
+"    float off=(hash(vec2(band, floor(uTime*20.0)))-0.5)*0.2*bell;\n"+
+"    uvA.x+=off; uvB.x+=off;\n"+
+"    float sp=0.022*bell;\n"+
+"    vec4 c;\n"+
+"    c.r = mix(texture(uA,uvA+vec2(sp,0.0)).r, texture(uB,uvB+vec2(sp,0.0)).r, m);\n"+
+"    c.g = mix(texture(uA,uvA).g, texture(uB,uvB).g, m);\n"+
+"    c.b = mix(texture(uA,uvA-vec2(sp,0.0)).b, texture(uB,uvB-vec2(sp,0.0)).b, m);\n"+
+"    c.a = 1.0;\n"+
+"    frag=c; return;\n"+
+"  } else if(uE==3){\n"+
+"    float px = mix(2.0, 72.0, bell);\n"+
+"    vec2 grid = vec2(px*1.6, px);\n"+
+"    vec2 cell = (floor(vUv*grid)+0.5)/grid;\n"+
+"    uvA=cell; uvB=cell;\n"+
+"    m = step(hash(floor(vUv*grid)), m);\n"+
+"  } else if(uE==4){\n"+
+"    float cols=16.0;\n"+
+"    float ci=floor(vUv.x*cols);\n"+
+"    float dir=mod(ci,2.0)*2.0-1.0;\n"+
+"    float p=clamp(m*1.5 - (ci/cols)*0.45, 0.0, 1.0);\n"+
+"    float c=vUv.y + dir*p;\n"+
+"    uvA.y=c; uvB.y=c-dir;\n"+
+"    m = (c>=0.0 && c<=1.0) ? 0.0 : 1.0;\n"+
+"  }\n"+
+"  vec4 a=texture(uA,clamp(uvA,0.0,1.0));\n"+
+"  vec4 b=texture(uB,clamp(uvB,0.0,1.0));\n"+
+"  frag = mix(a,b,m);\n"+
+"}";
+
+var gl=null, prog=null, U={}, texes=[], ok=false;
+function compile(type,src){
+  var sh=gl.createShader(type);
+  gl.shaderSource(sh,src); gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){
+    throw new Error(gl.getShaderInfoLog(sh)||"shader compile failed");
+  }
+  return sh;
+}
+function initGL(){
+  try{
+    gl=cvs.getContext("webgl2",{antialias:false,alpha:false,powerPreference:"high-performance"});
+    if(!gl) return false;
+    prog=gl.createProgram();
+    gl.attachShader(prog,compile(gl.VERTEX_SHADER,VERT));
+    gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,FRAG));
+    gl.bindAttribLocation(prog,0,"aPos");
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||"link failed");
+    gl.useProgram(prog);
+    var vao=gl.createVertexArray(); gl.bindVertexArray(vao);
+    var buf=gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1, 3,-1, -1,3]),gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+    U.A=gl.getUniformLocation(prog,"uA");
+    U.B=gl.getUniformLocation(prog,"uB");
+    U.T=gl.getUniformLocation(prog,"uT");
+    U.TIME=gl.getUniformLocation(prog,"uTime");
+    U.E=gl.getUniformLocation(prog,"uE");
+    gl.uniform1i(U.A,0); gl.uniform1i(U.B,1);
+    for(var i=0;i<N;i++){
+      var tx=gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D,tx);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      texes.push(tx);
+    }
+    return true;
+  }catch(e){
+    console.warn("WebGL2 unavailable:",e.message);
+    return false;
+  }
+}
+function uploadAll(){
+  if(!ok) return;
+  var w=cvs.width, h=cvs.height;
+  for(var i=0;i<N;i++){
+    var c=paintTile(i,w,h);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D,texes[i]);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
+  }
+}
+function resize(){
+  var dpr=Math.min(2,window.devicePixelRatio||1);
+  var w=Math.round(innerWidth*dpr), h=Math.round(innerHeight*dpr);
+  if(cvs.width===w && cvs.height===h) return;
+  cvs.width=w; cvs.height=h;
+  if(ok){ gl.viewport(0,0,w,h); uploadAll(); }
+  wake();
+}
+
+/* ------------------------------------------------- the spring, solved */
+var pos=0, vel=0, target=0, effect=0, stiff=170, damp=24, snap=true;
+function stepSpring(dt){
+  /* semi-implicit, clamped so a long frame can never explode it */
+  var steps=Math.min(6,Math.max(1,Math.ceil(dt/0.008)));
+  var h=dt/steps;
+  for(var i=0;i<steps;i++){
+    var a=-stiff*(pos-target)-damp*vel;
+    vel+=a*h; pos+=vel*h;
+  }
+}
+
+/* -------------------------------------------------------------- render */
+var raf=0, running=false, lastT=0, time=0;
+function render(){
+  var i0=Math.floor(pos), t=pos-i0;
+  var a=((i0%N)+N)%N, b=((i0+1)%N+N)%N;
+  if(ok){
+    gl.useProgram(prog);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texes[a]);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,texes[b]);
+    gl.uniform1i(U.A,0);
+    gl.uniform1i(U.B,1);
+    gl.uniform1f(U.T,t);
+    gl.uniform1f(U.TIME,time);
+    gl.uniform1i(U.E,effect);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  } else {
+    track.style.transform="translateX("+(-pos*100)+"%)";
+  }
+  var cur=Math.round(((pos%N)+N)%N)%N;
+  Array.prototype.forEach.call(dots.children,function(d,i){
+    d.setAttribute("aria-current",String(i===cur));
+  });
+}
+function loop(now){
+  var dt=Math.min(0.05,(now-lastT)/1000)||0.016;
+  lastT=now; time+=dt;
+  stepSpring(dt);
+  if(snap && !dragging){
+    var near=Math.round(pos);
+    if(Math.abs(target-near)<0.001) target=near;
+  }
+  render();
+  var still = Math.abs(vel)<0.0015 && Math.abs(pos-target)<0.0015;
+  if(still && !dragging){
+    pos=target; vel=0; render();
+    running=false; raf=0;
+    setState(false);
+    return;
+  }
+  raf=requestAnimationFrame(loop);
+}
+function wake(){
+  if(running) return;
+  running=true; lastT=performance.now();
+  setState(true);
+  raf=requestAnimationFrame(loop);
+}
+function setState(on){
+  var el=document.getElementById("hState");
+  el.textContent=on?"drawing":"idle";
+  el.className=on?"":"idle";
+}
+
+/* ------------------------------------------------------------- input */
+var dragging=false, startX=0, startPos=0, lastX=0, lastTime=0, vx=0;
+function down(ev){
+  if(ev.target.closest(".panel")||ev.target.closest(".dots")||ev.target.closest(".back-link")||ev.target.closest("footer")) return;
+  dragging=true; startX=ev.clientX; startPos=pos; lastX=ev.clientX; lastTime=performance.now(); vx=0;
+  cvs.setPointerCapture&&cvs.setPointerCapture(ev.pointerId);
+  wake();
+}
+function movep(ev){
+  if(!dragging) return;
+  var w=innerWidth;
+  pos=startPos-(ev.clientX-startX)/w;
+  var now=performance.now(), dt=(now-lastTime)/1000;
+  if(dt>0){ vx=-((ev.clientX-lastX)/w)/dt; lastX=ev.clientX; lastTime=now; }
+  target=pos; vel=0;
+  wake();
+}
+function up(){
+  if(!dragging) return;
+  dragging=false;
+  vel=vx;
+  /* a flick throws the spring to the next slide */
+  var predicted=pos+vel*0.22;
+  target = snap ? Math.round(predicted) : predicted;
+  wake();
+}
+var stage=document.getElementById("stage");
+stage.addEventListener("pointerdown",down);
+addEventListener("pointermove",movep,{passive:true});
+addEventListener("pointerup",up);
+addEventListener("pointercancel",up);
+var wheelT=0;
+addEventListener("wheel",function(ev){
+  if(ev.target.closest(".panel")) return;
+  var d=Math.abs(ev.deltaX)>Math.abs(ev.deltaY)?ev.deltaX:ev.deltaY;
+  clearTimeout(wheelT);
+  target = snap ? Math.round(pos + (d>0?1:-1)) : pos + d/600;
+  wake();
+},{passive:true});
+addEventListener("keydown",function(ev){
+  if(ev.key==="ArrowRight"){ target=Math.round(target)+1; wake(); ev.preventDefault(); }
+  else if(ev.key==="ArrowLeft"){ target=Math.round(target)-1; wake(); ev.preventDefault(); }
+  else if(ev.key>="1"&&ev.key<="5"){ target=+ev.key-1; wake(); }
+});
+
+/* ------------------------------------------------------------ controls */
+Array.prototype.forEach.call(document.querySelectorAll("#fx button"),function(b){
+  b.addEventListener("click",function(){
+    Array.prototype.forEach.call(document.querySelectorAll("#fx button"),function(o){
+      o.setAttribute("aria-pressed",String(o===b));
+    });
+    effect=+b.dataset.e;
+    /* show it off: nudge to the next slide so the new shader actually runs */
+    target=Math.round(target)+1; wake();
+  });
+});
+document.getElementById("rStiff").addEventListener("input",function(){
+  stiff=+this.value; document.getElementById("oStiff").textContent=this.value; wake();
+});
+document.getElementById("rDamp").addEventListener("input",function(){
+  damp=+this.value; document.getElementById("oDamp").textContent=this.value; wake();
+});
+document.getElementById("rSnap").addEventListener("input",function(){
+  snap=this.value==="1"; document.getElementById("oSnap").textContent=snap?"on":"off";
+});
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden && raf){ cancelAnimationFrame(raf); raf=0; running=false; setState(false); }
+});
+var rzT=0;
+addEventListener("resize",function(){ clearTimeout(rzT); rzT=setTimeout(resize,120); });
+
+/* -------------------------------------------------------------- start */
+ok=initGL();
+document.getElementById("hRend").textContent = ok ? "WebGL 2" : "DOM fallback";
+if(!ok){
+  cvs.style.display="none";
+  document.getElementById("note").textContent="No WebGL 2 here — the same slider runs on the real slides, with a plain slide transition.";
+} else {
+  track.classList.add("hidden");
+}
+resize();
+if(ok) uploadAll();
+render();
+setTimeout(function(){ target=1; wake(); },900);
+})();
+</script>
+</body>
+</html>
