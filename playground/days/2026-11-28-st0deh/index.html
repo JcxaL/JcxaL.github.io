@@ -1,0 +1,1105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Percolate — Pour-Over Brew Lab</title>
+<meta name="description" content="Simulate a pour-over: grind, temperature, pour schedule and agitation drive a real extraction model. Plot it on the brewing control chart, save recipes, export a brew card.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#140f0c; --bg2:#1d1713; --panel:#241c17; --line:#3a2d24;
+  --ink:#f3e7dc; --dim:#b39c8a; --faint:#7d6a5c;
+  --crema:#e8a05c; --roast:#c2703c; --teal:#6fb3a0; --ok:#8ec07c; --warn:#e2605a;
+  --r:14px;
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 700px at 12% -10%, #2a1f17 0%, transparent 60%),
+    radial-gradient(900px 600px at 100% 100%, #1b2522 0%, transparent 55%),
+    var(--bg);
+  color:var(--ink);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:none}
+
+.wrap{max-width:1240px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:14px}
+
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:40px;height:40px;border-radius:12px;flex:0 0 auto;position:relative;
+  background:linear-gradient(150deg,var(--crema),var(--roast));box-shadow:0 6px 20px rgba(232,160,92,.22)}
+.mark::after{content:"";position:absolute;inset:11px 10px 8px;border-radius:0 0 50% 50%/0 0 70% 70%;
+  background:#2b1b10;box-shadow:inset 0 3px 0 rgba(255,255,255,.18)}
+h1{font-size:23px;letter-spacing:-.4px;font-weight:650}
+h1 span{color:var(--crema)}
+.tagline{color:var(--dim);font-size:12.5px;margin-top:1px}
+.tabs{display:flex;gap:4px;padding:4px;background:#1b1511;border:1px solid var(--line);border-radius:999px}
+.tabs button{padding:7px 14px;border-radius:999px;font-size:13px;color:var(--dim);font-weight:600;transition:.18s}
+.tabs button[aria-selected="true"]{background:linear-gradient(160deg,var(--crema),var(--roast));color:#231307}
+.tabs button:hover:not([aria-selected="true"]){color:var(--ink)}
+
+.grid{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:14px;align-items:start}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0)) ,var(--panel);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.card>h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);
+  padding:12px 14px 0;font-weight:700}
+
+.stage{position:relative}
+.frame{position:relative;line-height:0}
+#brewCanvas{display:block;width:100%;height:auto;touch-action:none;background:#120d0a}
+.hud{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}
+.chip{background:rgba(18,13,10,.72);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(8px);
+  border-radius:10px;padding:6px 9px;font-size:11.5px;color:var(--dim);line-height:1.25}
+.chip b{display:block;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;font-weight:650}
+.chip.good b{color:var(--ok)} .chip.bad b{color:var(--warn)}
+.verdict{position:absolute;bottom:10px;left:10px;right:10px;pointer-events:none;line-height:1.4;background:rgba(18,13,10,.76);
+  border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:9px 11px;font-size:12.5px;color:var(--dim);
+  backdrop-filter:blur(8px)}
+.verdict b{color:var(--crema)}
+
+.transport{display:flex;align-items:center;gap:8px;padding:10px;border-top:1px solid var(--line);flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:#1b1511;border-radius:10px;padding:8px 13px;font-size:13px;
+  font-weight:600;color:var(--ink);transition:.16s}
+.btn:hover{border-color:var(--crema);color:var(--crema)}
+.btn.primary{background:linear-gradient(160deg,var(--crema),var(--roast));color:#231307;border-color:transparent}
+.btn.primary:hover{filter:brightness(1.08);color:#231307}
+.btn.sm{padding:5px 9px;font-size:12px}
+.spd{display:flex;gap:2px;margin-left:auto;background:#1b1511;border:1px solid var(--line);border-radius:10px;padding:3px}
+.spd button{padding:4px 9px;border-radius:7px;font-size:12px;color:var(--dim);font-weight:600}
+.spd button[aria-pressed="true"]{background:var(--line);color:var(--ink)}
+
+.pane{padding:12px 14px 14px;display:none;flex-direction:column;gap:12px}
+.pane.on{display:flex}
+
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.field{flex:1 1 150px;min-width:140px}
+.field label{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--dim);
+  margin-bottom:5px;gap:8px}
+.field label i{font-style:normal;color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none}
+input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:99px;
+  background:linear-gradient(90deg,var(--roast),var(--crema))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;margin-top:-6px;
+  border-radius:50%;background:#fff4e8;border:3px solid var(--roast);box-shadow:0 2px 6px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-track{height:5px;border-radius:99px;background:var(--roast)}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#fff4e8;border:3px solid var(--roast)}
+.seg{display:flex;gap:4px;flex-wrap:wrap}
+.seg button{border:1px solid var(--line);background:#1b1511;border-radius:9px;padding:7px 10px;font-size:12.5px;
+  color:var(--dim);font-weight:600;transition:.16s;flex:1 1 auto}
+.seg button[aria-pressed="true"]{border-color:var(--crema);color:var(--crema);background:rgba(232,160,92,.1)}
+.hint{font-size:11.5px;color:var(--faint)}
+.hint b{color:var(--dim);font-weight:600}
+
+table.pours{width:100%;border-collapse:collapse;font-size:13px}
+table.pours th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+  padding:0 6px 6px;font-weight:700}
+table.pours td{padding:3px 4px;border-top:1px solid var(--line)}
+table.pours input{width:100%;background:#1b1511;border:1px solid var(--line);border-radius:8px;padding:6px 7px;
+  font-variant-numeric:tabular-nums;font-size:13px}
+table.pours input:focus{outline:none;border-color:var(--crema)}
+.del{color:var(--faint);font-size:16px;line-height:1;padding:4px 7px;border-radius:8px}
+.del:hover{color:var(--warn);background:rgba(226,96,90,.12)}
+.sum{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);padding-top:4px}
+.sum b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+.charts{display:grid;grid-template-columns:1fr;gap:12px}
+.chartbox{border:1px solid var(--line);border-radius:12px;background:#1b1511;padding:10px}
+.chartbox h3{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:8px;font-weight:700}
+.chartbox canvas{display:block;width:100%;height:auto}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+.rec{display:flex;flex-direction:column;gap:7px;max-height:280px;overflow:auto}
+.rec-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#1b1511;
+  border-radius:11px;padding:8px 10px}
+.rec-item .nm{flex:1;min-width:0}
+.rec-item .nm b{display:block;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-item .nm span{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.empty{font-size:12.5px;color:var(--faint);text-align:center;padding:16px;border:1px dashed var(--line);border-radius:11px}
+.namerow{display:flex;gap:7px}
+.namerow input{flex:1;background:#1b1511;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
+.namerow input:focus{outline:none;border-color:var(--crema)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,16px);background:#2b211a;color:var(--ink);
+  border:1px solid var(--line);border-radius:12px;padding:10px 16px;font-size:13px;opacity:0;pointer-events:none;
+  transition:.28s cubic-bezier(.2,.9,.2,1);z-index:60;box-shadow:0 14px 40px rgba(0,0,0,.5)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+footer{color:var(--faint);font-size:11.5px;text-align:center;padding-top:4px}
+footer a{color:var(--dim)}
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  h1{font-size:20px} .tagline{display:none}
+  .two{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div>
+        <h1>Perc<span>olate</span></h1>
+        <div class="tagline">Pour-over brew lab · extraction model, control chart, recipe book</div>
+      </div>
+    </div>
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-pane="brew" aria-selected="true">Brew</button>
+      <button role="tab" data-pane="pours" aria-selected="false">Pours</button>
+      <button role="tab" data-pane="charts" aria-selected="false">Charts</button>
+      <button role="tab" data-pane="recipes" aria-selected="false">Recipes</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card stage">
+      <div class="frame">
+      <canvas id="brewCanvas" width="640" height="520" aria-label="Brewer cross-section"></canvas>
+      <div class="hud">
+        <div class="chip"><b id="hTime">0:00</b>time</div>
+        <div class="chip"><b id="hWater">0 g</b>poured</div>
+        <div class="chip"><b id="hTds">0.00%</b>TDS</div>
+        <div class="chip"><b id="hEy">0.0%</b>yield</div>
+        <div class="chip"><b id="hFlow">0.0</b>ml/s drawdown</div>
+      </div>
+      <div class="verdict" id="verdict">Press <b>Brew</b> — or tap the bed to stir. Space plays/pauses, R resets.</div>
+      </div>
+      <div class="transport">
+        <button class="btn primary" id="play">▶ Brew</button>
+        <button class="btn" id="reset">⟲ Reset</button>
+        <button class="btn" id="stir" title="Agitate the slurry">≈ Stir</button>
+        <div class="spd" id="spd">
+          <button data-s="1" aria-pressed="true">1×</button>
+          <button data-s="4" aria-pressed="false">4×</button>
+          <button data-s="12" aria-pressed="false">12×</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="pane on" id="pane-brew">
+        <div>
+          <div class="hint" style="margin-bottom:6px"><b>Brewer</b></div>
+          <div class="seg" id="methodSeg"></div>
+        </div>
+        <div>
+          <div class="hint" style="margin-bottom:6px"><b>Bean &amp; roast</b></div>
+          <div class="seg" id="beanSeg"></div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="dose">Dose <i><span id="doseV">18</span> g</i></label>
+            <input type="range" id="dose" min="10" max="40" step="0.5" value="18">
+          </div>
+          <div class="field">
+            <label for="ratio">Ratio <i>1:<span id="ratioV">16</span></i></label>
+            <input type="range" id="ratio" min="10" max="20" step="0.5" value="16">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="grind">Grind <i><span id="grindV">700</span> µm</i></label>
+            <input type="range" id="grind" min="300" max="1200" step="10" value="700">
+            <div class="hint" id="grindLabel">medium</div>
+          </div>
+          <div class="field">
+            <label for="temp">Water <i><span id="tempV">94</span> °C</i></label>
+            <input type="range" id="temp" min="80" max="100" step="1" value="94">
+            <div class="hint" id="tempLabel">standard</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="agit">Agitation <i><span id="agitV">0.35</span></i></label>
+            <input type="range" id="agit" min="0" max="1" step="0.05" value="0.35">
+            <div class="hint">swirl &amp; stir intensity · raises rate, risks fines</div>
+          </div>
+          <div class="field">
+            <label for="bloom">Bloom <i><span id="bloomV">40</span> s</i></label>
+            <input type="range" id="bloom" min="0" max="90" step="5" value="40">
+            <div class="hint">degassing rest after the first pour</div>
+          </div>
+        </div>
+        <div class="hint" id="recipeSummary"></div>
+      </div>
+
+      <div class="pane" id="pane-pours">
+        <div class="hint"><b>Pour schedule</b> — each pour adds water over its own duration. The playhead follows it.</div>
+        <table class="pours">
+          <thead><tr><th style="width:34%">at (s)</th><th style="width:30%">water (g)</th><th style="width:28%">over (s)</th><th></th></tr></thead>
+          <tbody id="pourBody"></tbody>
+        </table>
+        <div class="row">
+          <button class="btn sm" id="addPour">+ Add pour</button>
+          <button class="btn sm" id="evenPours">Even 4-pour</button>
+          <button class="btn sm" id="singlePour">Single pour</button>
+        </div>
+        <div class="sum"><span>Scheduled water</span><b><span id="pourTotal">0</span> g of <span id="pourTarget">288</span> g</b></div>
+        <div class="hint" id="pourWarn"></div>
+      </div>
+
+      <div class="pane" id="pane-charts">
+        <div class="charts">
+          <div class="chartbox">
+            <h3>Brewing control chart · TDS × yield</h3>
+            <canvas id="ccCanvas" width="560" height="380"></canvas>
+            <div class="hint" style="margin-top:6px">Dots are past brews from this browser. The box is the classic ideal window (1.15–1.35% TDS, 18–22% yield).</div>
+          </div>
+          <div class="two">
+            <div class="chartbox">
+              <h3>Extraction over time</h3>
+              <canvas id="exCanvas" width="420" height="300"></canvas>
+            </div>
+            <div class="chartbox">
+              <h3>Cup profile</h3>
+              <canvas id="rdCanvas" width="420" height="300"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-recipes">
+        <div class="namerow">
+          <input id="recName" placeholder="Recipe name" maxlength="40">
+          <button class="btn" id="saveRec">Save</button>
+        </div>
+        <div class="row">
+          <button class="btn sm" id="exportJson">↓ recipe.json</button>
+          <button class="btn sm" id="exportCard">↓ brew card .png</button>
+          <button class="btn sm" id="shareLink">⧉ Copy share link</button>
+          <button class="btn sm" id="clearHist">Clear brew history</button>
+        </div>
+        <div class="hint"><b>Saved recipes</b> — stored in this browser only.</div>
+        <div class="rec" id="recList"></div>
+      </div>
+    </section>
+  </div>
+
+  <footer>Percolate · Daily Playground day 172 · an extraction model, not a coffee oracle — but the trends are real.</footer>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(() => {
+"use strict";
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const lerp = (a,b,t) => a+(b-a)*t;
+const fmtT = s => Math.floor(s/60)+":"+String(Math.floor(s%60)).padStart(2,"0");
+
+/* ---------- brewer + bean models ---------- */
+const METHODS = {
+  v60:     {name:"V60",       perm:1.00, retain:2.00, immersion:false, steep:0,   cone:true,  note:"fast cone, pour-controlled"},
+  chemex:  {name:"Chemex",    perm:0.58, retain:2.35, immersion:false, steep:0,   cone:true,  note:"thick filter, slow drawdown"},
+  switch:  {name:"Switch",    perm:0.92, retain:2.10, immersion:true,  steep:150, cone:true,  note:"immersion, then release"},
+  press:   {name:"French press", perm:1.60, retain:2.05, immersion:true, steep:240, cone:false, note:"full immersion, plunge at 4:00"}
+};
+const BEANS = {
+  light:  {name:"Light",  emax:27.5, k:0.86, acid:1.25, body:0.85, color:"#8a5a32"},
+  medium: {name:"Medium", emax:30.0, k:1.00, acid:1.00, body:1.00, color:"#6b3c21"},
+  dark:   {name:"Dark",   emax:32.0, k:1.16, acid:0.72, body:1.18, color:"#482714"},
+  decaf:  {name:"Decaf",  emax:29.0, k:1.08, acid:0.92, body:0.95, color:"#5c3520"}
+};
+const K0 = 0.0062;
+
+/* ---------- state ---------- */
+const S = {
+  method:"v60", bean:"medium", dose:18, ratio:16, grind:700, temp:94, agit:0.35, bloom:40,
+  pours:[{t:0,g:50,d:10},{t:45,g:80,d:15},{t:78,g:80,d:15},{t:108,g:78,d:15}]
+};
+let speed = 1, history = [], recipes = [];
+const sim = newSim();
+
+function target(){ return S.dose*S.ratio; }
+function lastPourEnd(){ return S.pours.reduce((m,p)=>Math.max(m,p.t+Math.max(.5,p.d)),0); }
+function plungeAt(){ const M=METHODS[S.method]; return M.immersion ? Math.max(lastPourEnd(), M.steep) : 0; }
+
+function newSim(){
+  return {t:0, poured:0, inBed:0, slurry:0, cupW:0, cupS:0, ext:0, uni:1, flow:0, rate:0,
+          running:false, finished:false, curve:[], stir:0, co2:1, logged:false, acc:0, sampleAt:0};
+}
+function resetSim(keepRunning){
+  const r = sim.running && keepRunning;
+  Object.assign(sim, newSim());
+  sim.running = !!r;
+  seedParts(); drips.length = 0;
+  paint(); updateHUD(); drawCharts();
+}
+
+/* ---------- the model ---------- */
+function step(dt){
+  const M = METHODS[S.method], B = BEANS[S.bean];
+  const tgt = target(), retained = S.dose*M.retain;
+
+  // 1. inflow from the pour schedule
+  let rate = 0;
+  for(const p of S.pours){
+    const d = Math.max(.5, p.d);
+    if(sim.t >= p.t && sim.t < p.t+d) rate += p.g/d;
+  }
+  if(sim.poured + rate*dt > tgt*1.001) rate = Math.max(0,(tgt - sim.poured)/dt);
+  sim.rate = rate;
+  sim.poured += rate*dt;
+  sim.inBed  += rate*dt;
+
+  // 2. percolation — finer grind and a deeper bed choke the flow
+  const fines = Math.pow(700/S.grind, 1.8);
+  const bedLoad = Math.pow(S.dose/18, 0.6);
+  let cap = M.perm*3.2/(fines*bedLoad);
+  if(M.immersion && sim.t < plungeAt()) cap = 0;
+  const drainable = Math.max(0, sim.inBed - retained);
+  const head = clamp(0.3 + sim.inBed/(S.dose*2.4), 0.3, 1.7);
+  const flow = drainable > 0.001 ? Math.min(drainable/dt, cap*head) : 0;
+  sim.flow = flow;
+
+  // 3. extraction into the slurry (well-mixed), then the draining water carries solids out
+  const area = Math.pow(700/S.grind, 0.95);
+  const fT = Math.exp((S.temp-93)/16);
+  const stirBoost = 1 + 0.9*sim.stir;
+  const wet = clamp(sim.inBed/(S.dose*1.6), 0, 1);
+  const k = B.k*K0*area*fT*(1+0.45*S.agit)*stirBoost*(0.18+0.82*wet);
+  const cap_g = B.emax/100*S.dose;
+  if(sim.inBed > 0.2){
+    const dissolve = Math.max(0,(cap_g - sim.ext))*k*dt;
+    sim.ext += dissolve; sim.slurry += dissolve;
+  }
+  if(flow > 0){
+    const w = flow*dt;
+    const c = sim.inBed > 0.01 ? sim.slurry/sim.inBed : 0;
+    const carried = Math.min(sim.slurry, c*w);
+    sim.inBed -= w; sim.slurry -= carried;
+    sim.cupW += w; sim.cupS += carried;
+  }
+
+  // 4. uniformity — flooding the bed and hammering fines both cost clarity
+  if(sim.inBed > S.dose*4.2) sim.uni -= 0.16*dt*clamp(sim.inBed/(S.dose*4.2)-1,0,2);
+  if(rate > cap*1.9 && cap > 0) sim.uni -= 0.07*dt;
+  if(S.grind < 480 && S.agit > 0.55) sim.uni -= 0.05*dt*(S.agit-0.55)*4;
+  if(sim.stir > 0.4) sim.uni -= 0.05*dt*sim.stir;
+  sim.uni = clamp(sim.uni, 0.3, 1);
+
+  // 5. housekeeping
+  sim.stir = Math.max(0, sim.stir - dt*0.55);
+  sim.co2  = Math.max(0, sim.co2 - dt/Math.max(12, S.bloom*1.4));
+  sim.t += dt;
+
+  if(sim.t >= sim.sampleAt){
+    sim.sampleAt = sim.t + 0.5;
+    sim.curve.push({t:sim.t, ey:ey(), tds:tds()});
+    if(sim.curve.length > 2400) sim.curve.shift();
+  }
+  const done = sim.t > lastPourEnd()+0.5 && sim.poured >= tgt-0.5 && drainable <= 0.05 &&
+               (!M.immersion || sim.t > plungeAt());
+  if(done || sim.t > 1200) finish();
+}
+const ey  = () => sim.ext/S.dose*100;
+const tds = () => sim.cupW > 1 ? sim.cupS/(sim.cupW+sim.cupS)*100 : 0;
+
+function finish(){
+  sim.running = false; sim.finished = true;
+  if(!sim.logged && sim.cupW > 5){
+    sim.logged = true;
+    history.push({ey:+ey().toFixed(2), tds:+tds().toFixed(3), uni:+sim.uni.toFixed(3),
+                  m:S.method, b:S.bean, t:Math.round(sim.t), at:Date.now()});
+    if(history.length > 60) history.shift();
+    save("percolate_history_v1", history);
+    toast("Brew finished — "+ey().toFixed(1)+"% yield, "+tds().toFixed(2)+"% TDS");
+  }
+  $("play").textContent = "▶ Brew";
+  updateHUD();
+}
+
+function profile(){
+  const e = ey(), d = tds(), u = sim.uni, B = BEANS[S.bean];
+  const bell = (x,c,w) => Math.exp(-((x-c)**2)/(2*w*w));
+  return {
+    acidity:   clamp((1.25 - (e-16)*0.085)*B.acid*(0.75+0.25*u), 0, 1.15),
+    sweetness: clamp(bell(e,20.4,2.9)*(0.55+0.45*u), 0, 1.1),
+    bitterness:clamp((e-18.5)/6.2 + (1-u)*0.42 + Math.max(0,S.temp-97)*0.05, 0, 1.2),
+    body:      clamp((d-0.85)/0.75*B.body, 0, 1.15),
+    clarity:   clamp(u*1.05 - Math.max(0,e-23)/7, 0, 1.1)
+  };
+}
+function verdictText(){
+  if(!sim.finished){
+    if(sim.t < 0.5) return null;
+    const M = METHODS[S.method], pct = Math.round(clamp(sim.poured/target(),0,1)*100);
+    if(sim.rate > 0.01) return "<b>Pouring</b> — "+sim.poured.toFixed(0)+" g in ("+pct+"%), bed holding "+sim.inBed.toFixed(0)+" g.";
+    if(M.immersion && sim.t < plungeAt()) return "<b>Steeping</b> — "+Math.ceil(plungeAt()-sim.t)+" s to release · yield so far "+ey().toFixed(1)+"%.";
+    if(sim.t < S.bloom && sim.poured > 0) return "<b>Blooming</b> — CO₂ is pushing water off the bed; extraction is slow here.";
+    if(sim.flow > 0.02) return "<b>Drawing down</b> at "+sim.flow.toFixed(1)+" ml/s · "+sim.cupW.toFixed(0)+" g in the cup.";
+    return "<b>Resting</b> between pours — yield "+ey().toFixed(1)+"%.";
+  }
+  const e = ey(), d = tds(), p = profile();
+  let s;
+  if(e < 17.5) s = "<b>Under-developed.</b> Sour and thin — grind finer, pour hotter, or give it longer in the bed.";
+  else if(e > 23) s = "<b>Over-extracted.</b> Dry and bitter at the finish — coarsen up or cut the contact time.";
+  else if(d < 1.1) s = "<b>Tasty but weak.</b> The yield is right; there just isn't enough coffee in the water. Tighten the ratio.";
+  else if(d > 1.42) s = "<b>Tasty and heavy.</b> Nicely extracted, but syrupy — loosen the ratio if you want clarity.";
+  else s = "<b>In the window.</b> Ideal yield and strength — this is the one to save.";
+  if(sim.uni < 0.72) s += " Channelling cost you clarity.";
+  else if(p.sweetness > 0.8) s += " Sweetness is peaking.";
+  return s;
+}
+
+/* ---------- brewer canvas ---------- */
+const CW = 640, CH = 520;
+const bc = $("brewCanvas");
+let bctx = bc.getContext("2d");
+const parts = [], drips = [];
+function fit(c, w, h){
+  const dpr = Math.min(2, window.devicePixelRatio||1);
+  const cssW = c.clientWidth || w;
+  const cssH = Math.round(cssW*h/w);
+  c.style.height = cssH+"px";
+  c.width = Math.round(cssW*dpr); c.height = Math.round(cssH*dpr);
+  const ctx = c.getContext("2d");
+  const s = c.width/w; ctx.setTransform(s,0,0,s,0,0);
+  return ctx;
+}
+function seedParts(){
+  parts.length = 0;
+  for(let i=0;i<150;i++) parts.push({x:Math.random(), y:Math.random(), r:0.7+Math.random()*1.9, s:Math.random()});
+}
+seedParts();
+
+function paint(){
+  const M = METHODS[S.method], B = BEANS[S.bean], ctx = bctx;
+  ctx.clearRect(0,0,CW,CH);
+  const g = ctx.createLinearGradient(0,0,0,CH);
+  g.addColorStop(0,"#1b130d"); g.addColorStop(1,"#0e0a07");
+  ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+  ctx.fillStyle = "rgba(232,160,92,.05)";
+  ctx.beginPath(); ctx.ellipse(CW/2, 470, 210, 26, 0, 0, 7); ctx.fill();
+
+  const cx = CW/2, topY = 108, botY = 300, topR = M.cone?118:86, botR = M.cone?22:86;
+  const tgt = target();
+
+  // kettle stream
+  if(sim.rate > 0.01){
+    const w = clamp(sim.rate/6,.18,1);
+    ctx.strokeStyle = "rgba(205,228,235,"+(0.3+0.4*w)+")"; ctx.lineWidth = 1.6+5*w;
+    ctx.lineCap = "round"; ctx.beginPath();
+    const wob = Math.sin(sim.t*7)*5;
+    ctx.moveTo(cx+wob, 34); ctx.quadraticCurveTo(cx+wob*.4, 70, cx, topY+16); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.06)";
+    ctx.beginPath(); ctx.ellipse(cx+wob, 30, 20, 7, 0, 0, 7); ctx.fill();
+  }
+
+  // --- dripper body
+  const bedH = clamp(S.dose*1.55, 14, 74);
+  const bedTop = botY - bedH;
+  const rAt = y => lerp(botR, topR, clamp((botY-y)/(botY-topY),0,1));
+  function wall(){
+    ctx.beginPath();
+    ctx.moveTo(cx-topR, topY); ctx.lineTo(cx-botR, botY);
+    ctx.lineTo(cx+botR, botY); ctx.lineTo(cx+topR, topY);
+    ctx.closePath();
+  }
+  ctx.save(); wall(); ctx.clip();
+
+  // water column in the bed
+  const colH = clamp(sim.inBed*1.05, 0, 190);
+  if(colH > 0.5){
+    const wTop = Math.max(topY+2, bedTop - colH);
+    const wg = ctx.createLinearGradient(0,wTop,0,bedTop);
+    const dark = clamp(tds()/1.6,0,1);
+    wg.addColorStop(0, "rgba("+Math.round(150-60*dark)+","+Math.round(95-40*dark)+",55,.78)");
+    wg.addColorStop(1, "rgba(70,40,22,.92)");
+    ctx.fillStyle = wg; ctx.fillRect(cx-topR, wTop, topR*2, Math.max(0,bedTop-wTop));
+    ctx.fillStyle = "rgba(255,226,186,.20)";
+    ctx.fillRect(cx-topR, wTop, topR*2, 2.2);
+    // crust + bloom bubbles
+    const bub = sim.co2*clamp(sim.inBed/20,0,1);
+    for(let i=0;i<34;i++){
+      const p = parts[i]; if(!p) continue;
+      const bx = cx + (p.x-.5)*rAt(wTop+8)*1.85;
+      const by = bedTop - ((sim.t*18*(0.4+p.s) + p.y*200)%Math.max(8,colH));
+      const rr = p.r*(0.6+1.5*bub);
+      if(rr < 0.4) continue;
+      ctx.fillStyle = "rgba(246,214,170,"+(0.1+0.4*bub)+")";
+      ctx.beginPath(); ctx.arc(bx, by, rr, 0, 7); ctx.fill();
+    }
+  }
+  // coffee bed
+  const bg = ctx.createLinearGradient(0,bedTop,0,botY);
+  const wetFrac = clamp(sim.inBed/(S.dose*1.2),0,1);
+  bg.addColorStop(0, wetFrac>0.05 ? "#4b2c18" : "#6d4527");
+  bg.addColorStop(1, "#2b1708");
+  ctx.fillStyle = bg; ctx.fillRect(cx-topR, bedTop, topR*2, bedH+2);
+  for(let i=40;i<parts.length;i++){
+    const p = parts[i]; if(!p) continue;
+    const py = bedTop + p.y*bedH;
+    const px = cx + (p.x-.5)*rAt(py)*1.95;
+    ctx.fillStyle = "rgba("+(p.s>.5?"28,16,8":"150,104,66")+","+(0.25+0.5*p.s)+")";
+    ctx.beginPath(); ctx.arc(px, py, clamp(S.grind/700*p.r,0.5,3), 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = "rgba(255,255,255,.07)"; ctx.fillRect(cx-topR, bedTop, topR*2, 1.5);
+  ctx.restore();
+
+  // dripper outline / filter ribs
+  ctx.strokeStyle = "rgba(246,231,214,.42)"; ctx.lineWidth = 2.4; wall(); ctx.stroke();
+  ctx.strokeStyle = "rgba(246,231,214,.10)"; ctx.lineWidth = 1;
+  for(let i=1;i<9;i++){
+    const f = i/9;
+    ctx.beginPath();
+    ctx.moveTo(lerp(cx-topR,cx-botR,0)+ (topR*2)*f, topY);
+    ctx.lineTo(cx-botR + (botR*2)*f, botY); ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(246,231,214,.5)";
+  ctx.fillRect(cx-topR-14, topY-8, topR*2+28, 8);
+  ctx.font = "600 11px system-ui"; ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(179,156,138,.9)";
+  ctx.fillText(M.name.toUpperCase()+" · "+BEANS[S.bean].name.toUpperCase()+" ROAST", cx, topY-16);
+
+  // immersion valve state
+  if(M.immersion){
+    const open = sim.t >= plungeAt();
+    ctx.fillStyle = open ? "rgba(142,192,124,.9)" : "rgba(226,96,90,.9)";
+    ctx.beginPath(); ctx.arc(cx+botR+22, botY-6, 5, 0, 7); ctx.fill();
+    ctx.textAlign = "left"; ctx.fillStyle = "rgba(179,156,138,.9)";
+    ctx.fillText(open ? "released" : "steeping "+Math.max(0,Math.ceil(plungeAt()-sim.t))+"s", cx+botR+32, botY-2);
+  }
+
+  // drips
+  if(sim.flow > 0.02 && Math.random() < clamp(sim.flow/2.2,0.12,1))
+    drips.push({x:cx+(Math.random()-.5)*5, y:botY+4, v:60+Math.random()*40});
+  for(let i=drips.length-1;i>=0;i--){
+    const d = drips[i];
+    d.y += d.v/60*(speed>1?2:1); d.v += 2.4;
+    if(d.y > 392){ drips.splice(i,1); continue; }
+    ctx.fillStyle = "rgba(190,120,62,.85)";
+    ctx.beginPath(); ctx.ellipse(d.x, d.y, 2.1, 4.2, 0, 0, 7); ctx.fill();
+  }
+  if(sim.flow > 0.6){
+    ctx.strokeStyle = "rgba(190,120,62,.4)"; ctx.lineWidth = clamp(sim.flow*0.7,1,4);
+    ctx.beginPath(); ctx.moveTo(cx, botY+4); ctx.lineTo(cx, 392); ctx.stroke();
+  }
+
+  // carafe
+  const jx = cx-96, jy = 346, jw = 192, jh = 118;
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(jx, jy, jw, jh, [8,8,26,26]); ctx.clip();
+  const fill = clamp(sim.cupW/Math.max(1,tgt-S.dose*METHODS[S.method].retain), 0, 1);
+  const lh = fill*(jh-10);
+  const cg = ctx.createLinearGradient(0,jy+jh-lh,0,jy+jh);
+  const strength = clamp(tds()/1.5,0,1);
+  cg.addColorStop(0, "rgba("+Math.round(168-70*strength)+","+Math.round(104-48*strength)+","+Math.round(58-20*strength)+",.95)");
+  cg.addColorStop(1, "rgba(44,22,10,.98)");
+  ctx.fillStyle = cg; ctx.fillRect(jx, jy+jh-lh, jw, lh);
+  if(lh > 2){
+    ctx.fillStyle = "rgba(255,226,186,.22)"; ctx.fillRect(jx, jy+jh-lh, jw, 2);
+  }
+  ctx.restore();
+  ctx.strokeStyle = "rgba(246,231,214,.34)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(jx, jy, jw, jh, [8,8,26,26]); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(jx+jw, jy+24); ctx.quadraticCurveTo(jx+jw+30, jy+52, jx+jw, jy+86); ctx.stroke();
+  ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(179,156,138,.85)";
+  ctx.fillText(sim.cupW.toFixed(0)+" g in the cup", cx, jy+jh+20);
+
+  // scale ticks on the left
+  ctx.textAlign = "right"; ctx.fillStyle = "rgba(125,106,92,.8)"; ctx.font = "500 10px system-ui";
+  for(let i=0;i<=4;i++){
+    const f = i/4, y = 300 - f*170;
+    ctx.fillText(Math.round(f*tgt)+"g", cx-topR-22, y+3);
+    ctx.fillStyle = "rgba(125,106,92,.25)"; ctx.fillRect(cx-topR-18, y, 8, 1);
+    ctx.fillStyle = "rgba(125,106,92,.8)";
+  }
+  // poured progress arc
+  ctx.textAlign = "left";
+  const pf = clamp(sim.poured/tgt,0,1);
+  ctx.fillStyle = "rgba(255,255,255,.07)"; ctx.fillRect(40, CH-26, CW-80, 5);
+  const pg = ctx.createLinearGradient(40,0,CW-40,0);
+  pg.addColorStop(0,"#c2703c"); pg.addColorStop(1,"#e8a05c");
+  ctx.fillStyle = pg; ctx.fillRect(40, CH-26, (CW-80)*pf, 5);
+  for(const p of S.pours){
+    const f = clamp(p.t/Math.max(1,lastPourEnd()+30),0,1);
+    ctx.fillStyle = "rgba(246,231,214,.35)"; ctx.fillRect(40+(CW-80)*f, CH-32, 1.5, 16);
+  }
+}
+
+/* ---------- charts (reusable: same fns draw the export card) ---------- */
+const EY0 = 13, EY1 = 27, TD0 = 0.7, TD1 = 1.75;
+function drawControl(ctx, W, H, opt){
+  const o = opt||{}, pad = {l:48, r:14, t:14, b:34};
+  const px = e => pad.l + (e-EY0)/(EY1-EY0)*(W-pad.l-pad.r);
+  const py = d => H-pad.b - (d-TD0)/(TD1-TD0)*(H-pad.t-pad.b);
+  ctx.fillStyle = o.bg || "#1b1511"; ctx.fillRect(0,0,W,H);
+  // quadrant washes
+  const mx = px(20), my = py(1.25);
+  const fills = [["rgba(226,96,90,.07)",pad.l,pad.t,mx-pad.l,my-pad.t],
+                 ["rgba(226,96,90,.10)",mx,pad.t,W-pad.r-mx,my-pad.t],
+                 ["rgba(110,120,140,.07)",pad.l,my,mx-pad.l,H-pad.b-my],
+                 ["rgba(194,112,60,.08)",mx,my,W-pad.r-mx,H-pad.b-my]];
+  for(const f of fills){ ctx.fillStyle = f[0]; ctx.fillRect(f[1],f[2],f[3],f[4]); }
+  // ideal window
+  ctx.fillStyle = "rgba(142,192,124,.14)";
+  ctx.fillRect(px(18), py(1.35), px(22)-px(18), py(1.15)-py(1.35));
+  ctx.strokeStyle = "rgba(142,192,124,.6)"; ctx.setLineDash([4,3]); ctx.lineWidth = 1;
+  ctx.strokeRect(px(18), py(1.35), px(22)-px(18), py(1.15)-py(1.35));
+  ctx.setLineDash([]);
+  // grid + axes
+  ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 1;
+  ctx.font = "500 10px system-ui"; ctx.fillStyle = "rgba(125,106,92,.95)"; ctx.textAlign = "center";
+  for(let e=14;e<=26;e+=2){
+    ctx.beginPath(); ctx.moveTo(px(e),pad.t); ctx.lineTo(px(e),H-pad.b); ctx.stroke();
+    ctx.fillText(e+"%", px(e), H-pad.b+14);
+  }
+  ctx.textAlign = "right";
+  for(let d=0.8;d<=1.7;d+=0.1){
+    ctx.beginPath(); ctx.moveTo(pad.l,py(d)); ctx.lineTo(W-pad.r,py(d)); ctx.stroke();
+    if(Math.abs(d*10%2)<0.01) ctx.fillText(d.toFixed(1)+"%", pad.l-6, py(d)+3);
+  }
+  ctx.strokeStyle = "rgba(255,255,255,.18)";
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,H-pad.b); ctx.stroke();
+  ctx.fillStyle = "rgba(125,106,92,.95)"; ctx.textAlign = "center";
+  ctx.fillText("extraction yield", (pad.l+W-pad.r)/2, H-4);
+  ctx.save(); ctx.translate(12,(pad.t+H-pad.b)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText("strength (TDS)",0,0); ctx.restore();
+  // labels
+  ctx.font = "700 9px system-ui"; ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(226,96,90,.75)"; ctx.fillText("UNDER · STRONG", pad.l+6, pad.t+13);
+  ctx.textAlign = "right"; ctx.fillText("BITTER · STRONG", W-pad.r-6, pad.t+13);
+  ctx.fillStyle = "rgba(140,150,170,.75)"; ctx.textAlign = "left";
+  ctx.fillText("SOUR · WEAK", pad.l+6, H-pad.b-7);
+  ctx.textAlign = "right"; ctx.fillStyle = "rgba(194,112,60,.8)";
+  ctx.fillText("HARSH · WEAK", W-pad.r-6, H-pad.b-7);
+  // history
+  for(const h of history){
+    if(h.ey < EY0 || h.ey > EY1) continue;
+    ctx.fillStyle = "rgba(179,156,138,.42)";
+    ctx.beginPath(); ctx.arc(px(h.ey), py(clamp(h.tds,TD0,TD1)), 3.2, 0, 7); ctx.fill();
+  }
+  // trace of the live brew
+  if(sim.curve.length > 1){
+    ctx.strokeStyle = "rgba(111,179,160,.55)"; ctx.lineWidth = 1.6; ctx.beginPath();
+    let started = false;
+    for(const c of sim.curve){
+      if(c.tds < TD0 || c.ey < EY0) continue;
+      const X = px(clamp(c.ey,EY0,EY1)), Y = py(clamp(c.tds,TD0,TD1));
+      started ? ctx.lineTo(X,Y) : (ctx.moveTo(X,Y), started = true);
+    }
+    ctx.stroke();
+  }
+  // the cup in hand
+  const e = ey(), d = tds();
+  if(d > TD0*0.5 && e > 1){
+    const X = px(clamp(e,EY0,EY1)), Y = py(clamp(d,TD0,TD1));
+    ctx.shadowColor = "rgba(232,160,92,.8)"; ctx.shadowBlur = 14;
+    ctx.fillStyle = "#e8a05c"; ctx.beginPath(); ctx.arc(X,Y,6,0,7); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.font = "700 11px system-ui"; ctx.fillStyle = "#f3e7dc";
+    ctx.textAlign = X > W*0.7 ? "right" : "left";
+    ctx.fillText(e.toFixed(1)+"% · "+d.toFixed(2)+"%", X + (X>W*0.7?-12:12), Y+4);
+  }
+}
+function drawExtract(ctx, W, H){
+  const pad = {l:40,r:40,t:14,b:26};
+  ctx.fillStyle = "#1b1511"; ctx.fillRect(0,0,W,H);
+  const tmax = Math.max(60, lastPourEnd()+40, sim.t+5);
+  const px = t => pad.l + t/tmax*(W-pad.l-pad.r);
+  const pyE = v => H-pad.b - clamp(v/30,0,1)*(H-pad.t-pad.b);
+  const pyD = v => H-pad.b - clamp(v/1.8,0,1)*(H-pad.t-pad.b);
+  ctx.strokeStyle = "rgba(255,255,255,.07)";
+  ctx.font = "500 9.5px system-ui"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(125,106,92,.95)";
+  for(let i=0;i<=4;i++){
+    const t = tmax*i/4;
+    ctx.beginPath(); ctx.moveTo(px(t),pad.t); ctx.lineTo(px(t),H-pad.b); ctx.stroke();
+    ctx.fillText(fmtT(t), px(t), H-pad.b+13);
+  }
+  // pour bands
+  for(const p of S.pours){
+    ctx.fillStyle = "rgba(232,160,92,.10)";
+    ctx.fillRect(px(p.t), pad.t, Math.max(1.5, px(p.t+Math.max(.5,p.d))-px(p.t)), H-pad.t-pad.b);
+  }
+  // ideal yield band
+  ctx.fillStyle = "rgba(142,192,124,.10)";
+  ctx.fillRect(pad.l, pyE(22), W-pad.l-pad.r, pyE(18)-pyE(22));
+  const line = (key, color, mapper) => {
+    if(sim.curve.length < 2) return;
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    sim.curve.forEach((c,i) => i ? ctx.lineTo(px(c.t), mapper(c[key])) : ctx.moveTo(px(c.t), mapper(c[key])));
+    ctx.stroke();
+  };
+  line("ey","#e8a05c",pyE);
+  line("tds","#6fb3a0",pyD);
+  ctx.textAlign = "left"; ctx.font = "600 10px system-ui";
+  ctx.fillStyle = "#e8a05c"; ctx.fillText("yield 0–30%", pad.l+2, pad.t+10);
+  ctx.textAlign = "right"; ctx.fillStyle = "#6fb3a0"; ctx.fillText("TDS 0–1.8%", W-pad.r-2, pad.t+10);
+  if(sim.t > 0.6){
+    ctx.strokeStyle = "rgba(246,231,214,.35)"; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px(sim.t),pad.t); ctx.lineTo(px(sim.t),H-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+function drawRadar(ctx, W, H){
+  ctx.fillStyle = "#1b1511"; ctx.fillRect(0,0,W,H);
+  const p = profile();
+  const axes = [["acidity",p.acidity],["sweetness",p.sweetness],["bitterness",p.bitterness],
+                ["body",p.body],["clarity",p.clarity]];
+  const cx = W/2, cy = H/2+6, R = Math.min(W,H)*0.33;
+  ctx.strokeStyle = "rgba(255,255,255,.1)"; ctx.lineWidth = 1;
+  for(let r=1;r<=4;r++){
+    ctx.beginPath();
+    axes.forEach((a,i) => {
+      const ang = -Math.PI/2 + i/axes.length*Math.PI*2;
+      const x = cx+Math.cos(ang)*R*r/4, y = cy+Math.sin(ang)*R*r/4;
+      i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+    ctx.closePath(); ctx.stroke();
+  }
+  ctx.font = "600 10px system-ui"; ctx.textAlign = "center";
+  axes.forEach((a,i) => {
+    const ang = -Math.PI/2 + i/axes.length*Math.PI*2;
+    ctx.strokeStyle = "rgba(255,255,255,.08)";
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(ang)*R, cy+Math.sin(ang)*R); ctx.stroke();
+    ctx.fillStyle = "rgba(179,156,138,.95)";
+    ctx.fillText(a[0], cx+Math.cos(ang)*(R+17), cy+Math.sin(ang)*(R+17)+3);
+  });
+  ctx.beginPath();
+  axes.forEach((a,i) => {
+    const ang = -Math.PI/2 + i/axes.length*Math.PI*2;
+    const v = clamp(a[1],0,1.05);
+    const x = cx+Math.cos(ang)*R*v, y = cy+Math.sin(ang)*R*v;
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  });
+  ctx.closePath();
+  const rg = ctx.createRadialGradient(cx,cy,4,cx,cy,R);
+  rg.addColorStop(0,"rgba(232,160,92,.55)"); rg.addColorStop(1,"rgba(194,112,60,.22)");
+  ctx.fillStyle = rg; ctx.fill();
+  ctx.strokeStyle = "#e8a05c"; ctx.lineWidth = 2; ctx.stroke();
+  axes.forEach((a,i) => {
+    const ang = -Math.PI/2 + i/axes.length*Math.PI*2;
+    const v = clamp(a[1],0,1.05);
+    ctx.fillStyle = "#f3e7dc";
+    ctx.beginPath(); ctx.arc(cx+Math.cos(ang)*R*v, cy+Math.sin(ang)*R*v, 2.6, 0, 7); ctx.fill();
+  });
+}
+let ccx, exx, rdx;
+function sizeCharts(){
+  ccx = fit($("ccCanvas"), 560, 380);
+  exx = fit($("exCanvas"), 420, 300);
+  rdx = fit($("rdCanvas"), 420, 300);
+}
+function drawCharts(){
+  if(!ccx) return;
+  drawControl(ccx, 560, 380); drawExtract(exx, 420, 300); drawRadar(rdx, 420, 300);
+}
+
+/* ---------- storage ---------- */
+function save(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function load(k,d){ try{ const r = localStorage.getItem(k); return r ? JSON.parse(r) : d; }catch(e){ return d; } }
+let toastT;
+function toast(msg){
+  const el = $("toast"); el.textContent = msg; el.classList.add("on");
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2300);
+}
+function download(name, blob){
+  const u = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = u; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(u); a.remove(); }, 1500);
+}
+const packed = () => ({m:S.method,b:S.bean,d:S.dose,r:S.ratio,g:S.grind,t:S.temp,a:S.agit,bl:S.bloom,
+                       p:S.pours.map(p=>[+p.t.toFixed(1),+p.g.toFixed(1),+p.d.toFixed(1)])});
+function unpack(o){
+  if(!o) return false;
+  if(METHODS[o.m]) S.method = o.m;
+  if(BEANS[o.b]) S.bean = o.b;
+  S.dose = clamp(+o.d||18,10,40); S.ratio = clamp(+o.r||16,10,20);
+  S.grind = clamp(+o.g||700,300,1200); S.temp = clamp(+o.t||94,80,100);
+  S.agit = clamp(+o.a||0,0,1); S.bloom = clamp(o.bl==null?40:+o.bl,0,90);
+  if(Array.isArray(o.p) && o.p.length)
+    S.pours = o.p.slice(0,10).map(a => ({t:clamp(+a[0]||0,0,600), g:clamp(+a[1]||1,1,500), d:clamp(+a[2]||5,0.5,180)}));
+  return true;
+}
+
+/* ---------- UI ---------- */
+function buildSegs(){
+  const ms = $("methodSeg"); ms.innerHTML = "";
+  for(const k in METHODS){
+    const b = document.createElement("button");
+    b.textContent = METHODS[k].name; b.setAttribute("aria-pressed", k===S.method);
+    b.title = METHODS[k].note;
+    b.onclick = () => { S.method = k; syncAll(); resetSim(false); toast(METHODS[k].name+" — "+METHODS[k].note); };
+    ms.appendChild(b);
+  }
+  const bs = $("beanSeg"); bs.innerHTML = "";
+  for(const k in BEANS){
+    const b = document.createElement("button");
+    b.textContent = BEANS[k].name; b.setAttribute("aria-pressed", k===S.bean);
+    b.onclick = () => { S.bean = k; syncAll(); resetSim(false); };
+    bs.appendChild(b);
+  }
+}
+const grindWord = g => g<420?"espresso-fine · risky in a cone":g<560?"fine":g<760?"medium":g<980?"medium-coarse":"coarse · press territory";
+const tempWord  = t => t<86?"cool — expect under-extraction":t<91?"gentle":t<96?"standard":"near boiling — watch the bitterness";
+
+function rescalePours(){
+  const tgt = target(), tot = S.pours.reduce((a,p)=>a+p.g,0);
+  if(tot <= 0){ S.pours = [{t:0,g:tgt*0.17,d:10},{t:45,g:tgt*0.28,d:15},{t:78,g:tgt*0.28,d:15},{t:108,g:tgt*0.27,d:15}]; return; }
+  const f = tgt/tot;
+  S.pours.forEach(p => p.g = Math.round(p.g*f*10)/10);
+}
+function buildPours(){
+  const tb = $("pourBody"); tb.innerHTML = "";
+  S.pours.forEach((p, i) => {
+    const tr = document.createElement("tr");
+    const mk = (val, min, max, stepv, key) => {
+      const td = document.createElement("td");
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.value = val; inp.min = min; inp.max = max; inp.step = stepv;
+      inp.oninput = () => {
+        const v = parseFloat(inp.value);
+        if(!isFinite(v)) return;
+        S.pours[i][key] = clamp(v, min, max);
+        S.pours.sort((a,b)=>a.t-b.t);
+        syncPourSum(); resetSim(false);
+      };
+      inp.onblur = () => buildPours();
+      td.appendChild(inp); return td;
+    };
+    tr.appendChild(mk(p.t, 0, 600, 1, "t"));
+    tr.appendChild(mk(p.g, 1, 500, 1, "g"));
+    tr.appendChild(mk(p.d, 0.5, 180, 0.5, "d"));
+    const td = document.createElement("td");
+    const del = document.createElement("button");
+    del.className = "del"; del.textContent = "×"; del.title = "Remove pour";
+    del.onclick = () => { if(S.pours.length > 1){ S.pours.splice(i,1); buildPours(); resetSim(false); } };
+    td.appendChild(del); tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+  syncPourSum();
+}
+function syncPourSum(){
+  const tot = S.pours.reduce((a,p)=>a+p.g,0), tgt = target();
+  $("pourTotal").textContent = tot.toFixed(0);
+  $("pourTarget").textContent = tgt.toFixed(0);
+  const diff = tot - tgt;
+  $("pourWarn").innerHTML = Math.abs(diff) < 1
+    ? "Schedule matches the recipe water."
+    : (diff > 0 ? "Schedule pours <b>"+diff.toFixed(0)+" g more</b> than the recipe — the extra is ignored once the target is hit."
+                : "Schedule is <b>"+(-diff).toFixed(0)+" g short</b> — the brew will stop early.");
+  $("recipeSummary").innerHTML = "<b>"+S.dose.toFixed(1)+" g</b> coffee · <b>"+tgt.toFixed(0)+" g</b> water · 1:"+S.ratio
+    + " · "+S.pours.length+" pour"+(S.pours.length>1?"s":"")+" ending at "+fmtT(lastPourEnd())
+    + (METHODS[S.method].immersion ? " · release at "+fmtT(plungeAt()) : "");
+}
+function syncAll(){
+  $("doseV").textContent = S.dose.toFixed(S.dose%1?1:0); $("dose").value = S.dose;
+  $("ratioV").textContent = S.ratio.toFixed(S.ratio%1?1:0); $("ratio").value = S.ratio;
+  $("grindV").textContent = S.grind; $("grind").value = S.grind;
+  $("tempV").textContent = S.temp; $("temp").value = S.temp;
+  $("agitV").textContent = S.agit.toFixed(2); $("agit").value = S.agit;
+  $("bloomV").textContent = S.bloom; $("bloom").value = S.bloom;
+  $("grindLabel").textContent = grindWord(S.grind);
+  $("tempLabel").textContent = tempWord(S.temp);
+  for(const b of $("methodSeg").children) b.setAttribute("aria-pressed", METHODS[b.textContent]===undefined ? false : b.textContent===METHODS[S.method].name);
+  for(const b of $("beanSeg").children) b.setAttribute("aria-pressed", b.textContent===BEANS[S.bean].name);
+  syncPourSum();
+  save("percolate_last_v1", packed());
+}
+function updateHUD(){
+  $("hTime").textContent = fmtT(sim.t);
+  $("hWater").textContent = sim.poured.toFixed(0)+" g";
+  $("hTds").textContent = tds().toFixed(2)+"%";
+  $("hEy").textContent = ey().toFixed(1)+"%";
+  $("hFlow").textContent = sim.flow.toFixed(1);
+  const e = ey(), d = tds();
+  $("hEy").parentElement.className = "chip"+(sim.t>2 ? (e>=18&&e<=22 ? " good" : (e>23||(e<17&&sim.finished) ? " bad":"")) : "");
+  $("hTds").parentElement.className = "chip"+(sim.t>2 ? (d>=1.15&&d<=1.35 ? " good" : (d>1.5 ? " bad":"")) : "");
+  const v = verdictText();
+  if(v) $("verdict").innerHTML = v;
+}
+
+/* ---------- recipes ---------- */
+function renderRecipes(){
+  const el = $("recList"); el.innerHTML = "";
+  if(!recipes.length){ el.innerHTML = '<div class="empty">No saved recipes yet — dial one in, then hit Save.</div>'; return; }
+  recipes.slice().reverse().forEach(r => {
+    const row = document.createElement("div"); row.className = "rec-item";
+    const nm = document.createElement("div"); nm.className = "nm";
+    const b = document.createElement("b"); b.textContent = r.name;
+    const sp = document.createElement("span");
+    sp.textContent = (METHODS[r.p.m]||{name:"?"}).name+" · "+r.p.d+"g 1:"+r.p.r+" · "+r.p.g+"µm · "+r.p.t+"°C"
+      + (r.ey ? " · "+r.ey.toFixed(1)+"% yield" : "");
+    nm.append(b, sp);
+    const ld = document.createElement("button"); ld.className = "btn sm"; ld.textContent = "Load";
+    ld.onclick = () => { unpack(r.p); buildPours(); syncAll(); resetSim(false); toast('Loaded "'+r.name+'"'); };
+    const dl = document.createElement("button"); dl.className = "del"; dl.textContent = "×";
+    dl.onclick = () => { recipes = recipes.filter(x => x.id !== r.id); save("percolate_recipes_v1", recipes); renderRecipes(); };
+    row.append(nm, ld, dl); el.appendChild(row);
+  });
+}
+function saveRecipe(){
+  const name = ($("recName").value || "").trim() ||
+    (METHODS[S.method].name+" "+S.dose+"g 1:"+S.ratio);
+  recipes.push({id:Date.now()+"-"+Math.random().toString(36).slice(2,7), name:name.slice(0,40),
+                p:packed(), ey:sim.t>2?+ey().toFixed(2):null, tds:sim.t>2?+tds().toFixed(3):null});
+  if(recipes.length > 40) recipes.shift();
+  save("percolate_recipes_v1", recipes);
+  $("recName").value = ""; renderRecipes(); toast('Saved "'+name+'"');
+}
+function exportCard(){
+  const W = 900, H = 1240, c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,"#1d1510"); g.addColorStop(1,"#120d09");
+  x.fillStyle = g; x.fillRect(0,0,W,H);
+  x.fillStyle = "#e8a05c"; x.font = "700 46px system-ui"; x.textAlign = "left";
+  x.fillText("Percolate brew card", 56, 86);
+  x.fillStyle = "#b39c8a"; x.font = "500 20px system-ui";
+  x.fillText(new Date().toLocaleString()+" · "+METHODS[S.method].name+" · "+BEANS[S.bean].name+" roast", 56, 120);
+  const rows = [
+    ["Dose", S.dose.toFixed(1)+" g"], ["Water", target().toFixed(0)+" g (1:"+S.ratio+")"],
+    ["Grind", S.grind+" µm — "+grindWord(S.grind).split(" · ")[0]], ["Temperature", S.temp+" °C"],
+    ["Agitation", S.agit.toFixed(2)], ["Bloom", S.bloom+" s"],
+    ["Pours", S.pours.map(p => p.g.toFixed(0)+"g @"+fmtT(p.t)).join("   ")],
+    ["Brew time", fmtT(sim.t)], ["Yield", ey().toFixed(1)+" %"],
+    ["Strength (TDS)", tds().toFixed(2)+" %"], ["Uniformity", (sim.uni*100).toFixed(0)+" %"]
+  ];
+  let y = 182;
+  rows.forEach(r => {
+    x.fillStyle = "#7d6a5c"; x.font = "600 19px system-ui"; x.fillText(r[0].toUpperCase(), 56, y);
+    x.fillStyle = "#f3e7dc"; x.font = "600 23px system-ui"; x.fillText(r[1], 300, y);
+    x.strokeStyle = "rgba(255,255,255,.06)"; x.beginPath(); x.moveTo(56,y+13); x.lineTo(W-56,y+13); x.stroke();
+    y += 44;
+  });
+  x.save(); x.translate(56, y+16); drawControl(x, 788, 420, {bg:"#1b1511"}); x.restore();
+  x.save(); x.translate(56, y+456); drawRadar(x, 390, 300); x.restore();
+  x.save(); x.translate(458, y+456); drawExtract(x, 386, 300); x.restore();
+  const v = (verdictText()||"").replace(/<[^>]+>/g,"");
+  x.fillStyle = "#b39c8a"; x.font = "500 19px system-ui";
+  wrapText(x, v, 56, H-54, W-112, 24);
+  c.toBlob(b => {
+    if(!b || b.size < 1000){ toast("Card export failed"); return; }
+    download("percolate-brew-card.png", b);
+    toast("Brew card saved ("+Math.round(b.size/1024)+" KB)");
+  }, "image/png");
+}
+function wrapText(x, text, px0, py0, maxW, lh){
+  const words = String(text).split(/\s+/); let line = "", yy = py0;
+  for(const w of words){
+    const test = line ? line+" "+w : w;
+    if(x.measureText(test).width > maxW){ x.fillText(line, px0, yy); line = w; yy += lh; }
+    else line = test;
+  }
+  if(line) x.fillText(line, px0, yy);
+}
+
+/* ---------- wiring ---------- */
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-pane]"); if(!b) return;
+  for(const t of $("tabs").children) t.setAttribute("aria-selected", t===b);
+  for(const p of document.querySelectorAll(".pane")) p.classList.toggle("on", p.id === "pane-"+b.dataset.pane);
+  if(b.dataset.pane === "charts"){ sizeCharts(); drawCharts(); }
+});
+[["dose",v=>{S.dose=v; rescalePours(); buildPours();}],["ratio",v=>{S.ratio=v; rescalePours(); buildPours();}],
+ ["grind",v=>S.grind=v],["temp",v=>S.temp=v],["agit",v=>S.agit=v],["bloom",v=>S.bloom=v]
+].forEach(([id,fn]) => {
+  $(id).addEventListener("input", e => { fn(parseFloat(e.target.value)); syncAll(); resetSim(false); });
+});
+$("play").onclick = () => {
+  if(sim.finished) resetSim(false);
+  sim.running = !sim.running;
+  $("play").textContent = sim.running ? "❙❙ Pause" : "▶ Brew";
+};
+$("reset").onclick = () => { resetSim(false); $("play").textContent = "▶ Brew"; };
+$("stir").onclick = () => { sim.stir = 1; toast("Stirred — faster extraction, a little less clarity"); };
+$("spd").addEventListener("click", e => {
+  const b = e.target.closest("button[data-s]"); if(!b) return;
+  speed = +b.dataset.s;
+  for(const x of $("spd").children) x.setAttribute("aria-pressed", x===b);
+});
+bc.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  sim.stir = 1;
+  if(!sim.running && !sim.finished){ sim.running = true; $("play").textContent = "❙❙ Pause"; }
+}, {passive:false});
+$("addPour").onclick = () => {
+  const t = Math.round(lastPourEnd()+15);
+  S.pours.push({t, g:Math.round(target()*0.15), d:12});
+  buildPours(); resetSim(false);
+};
+$("evenPours").onclick = () => {
+  const tgt = target();
+  S.pours = [{t:0,g:Math.round(S.dose*2.5),d:8}];
+  const rest = tgt - S.pours[0].g, n = 3;
+  for(let i=0;i<n;i++) S.pours.push({t:S.bloom+10+i*32, g:Math.round(rest/n), d:14});
+  buildPours(); resetSim(false); toast("Bloom + 3 even pours");
+};
+$("singlePour").onclick = () => {
+  S.pours = [{t:0, g:target(), d:Math.round(target()/8)}];
+  buildPours(); resetSim(false); toast("One continuous pour");
+};
+$("saveRec").onclick = saveRecipe;
+$("exportCard").onclick = exportCard;
+$("exportJson").onclick = () => {
+  const data = {app:"percolate", version:1, saved:new Date().toISOString(),
+    method:S.method, bean:S.bean, dose:S.dose, ratio:S.ratio, water:target(),
+    grind_um:S.grind, temp_c:S.temp, agitation:S.agit, bloom_s:S.bloom,
+    pours:S.pours.map(p=>({at_s:p.t, water_g:p.g, over_s:p.d})),
+    result:{brew_time_s:Math.round(sim.t), yield_pct:+ey().toFixed(2), tds_pct:+tds().toFixed(3),
+            uniformity:+sim.uni.toFixed(3), cup_g:+sim.cupW.toFixed(1), profile:profile()}};
+  download("percolate-recipe.json", new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
+  toast("recipe.json saved");
+};
+$("shareLink").onclick = async () => {
+  const hash = "#r=" + btoa(JSON.stringify(packed())).replace(/=+$/,"");
+  const url = location.origin + location.pathname + hash;
+  location.hash = hash.slice(1);
+  try{ await navigator.clipboard.writeText(url); toast("Share link copied"); }
+  catch(e){ toast("Link is in the address bar"); }
+};
+$("clearHist").onclick = () => { history = []; save("percolate_history_v1", history); drawCharts(); toast("Brew history cleared"); };
+window.addEventListener("keydown", e => {
+  if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if(e.code === "Space"){ e.preventDefault(); $("play").click(); }
+  else if(e.key === "r" || e.key === "R") $("reset").click();
+  else if(e.key === "s" || e.key === "S") saveRecipe();
+  else if(e.key === "a" || e.key === "A") $("stir").click();
+});
+let rz;
+window.addEventListener("resize", () => {
+  clearTimeout(rz);
+  rz = setTimeout(() => { bctx = fit(bc, CW, CH); sizeCharts(); paint(); drawCharts(); }, 120);
+});
+
+/* ---------- boot + loop ---------- */
+history = load("percolate_history_v1", []) || [];
+recipes = load("percolate_recipes_v1", []) || [];
+let booted = false;
+if(location.hash.startsWith("#r=")){
+  try{ booted = unpack(JSON.parse(atob(location.hash.slice(3)))); }catch(e){}
+}
+if(!booted) unpack(load("percolate_last_v1", null));
+buildSegs(); buildPours(); renderRecipes();
+bctx = fit(bc, CW, CH); sizeCharts(); syncAll(); paint(); drawCharts(); updateHUD();
+if(booted) toast("Recipe loaded from the share link");
+
+let prev = performance.now(), chartTick = 0;
+function frame(now){
+  const dtReal = Math.min(0.05, (now-prev)/1000); prev = now;
+  if(sim.running){
+    sim.acc += dtReal*speed;
+    let guard = 0;
+    while(sim.acc > 0.02 && guard++ < 400){ step(0.02); sim.acc -= 0.02; }
+    updateHUD();
+    if(++chartTick % 6 === 0 && document.getElementById("pane-charts").classList.contains("on")) drawCharts();
+  }
+  if(sim.running || sim.stir > 0.01 || drips.length) paint();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.addEventListener("hashchange", () => {
+  if(location.hash.startsWith("#r=")){
+    try{ if(unpack(JSON.parse(atob(location.hash.slice(3))))){ buildPours(); syncAll(); resetSim(false); } }catch(e){}
+  }
+});
+})();
+</script>
+</body>
+</html>

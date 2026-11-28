@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 4 — Dials That Click Into Place</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0a06;--card:#17130c;--ink:#fdf6e7;--dim:#bda887;--line:rgba(251,191,36,.22);
+  --amber:#fbbf24;--deep:#b45309}
+html,body{min-height:100%}
+body{background:radial-gradient(900px 600px at 20% -10%,#241c0e 0%,transparent 62%),var(--bg);
+  color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:72px 18px 90px;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+.back-link{position:fixed;top:14px;left:14px;z-index:40;display:inline-flex;gap:6px;align-items:center;
+  padding:8px 14px;border-radius:999px;background:rgba(18,14,8,.74);border:1px solid var(--line);
+  backdrop-filter:blur(12px);color:var(--ink);text-decoration:none;font-size:13px;font-weight:600}
+.back-link:hover{border-color:var(--amber);color:var(--amber)}
+.panel{position:fixed;top:14px;right:14px;z-index:40;width:230px;padding:13px;border-radius:16px;
+  background:rgba(18,14,8,.74);border:1px solid var(--line);backdrop-filter:blur(14px);font-size:12px}
+.panel h3{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.panel label{display:flex;justify-content:space-between;color:var(--dim);margin:9px 0 3px}
+.panel label b{color:var(--ink);font-variant-numeric:tabular-nums}
+.panel input[type=range]{width:100%;accent-color:var(--amber);height:18px}
+.panel .hint{margin-top:9px;color:#9c8865;font-size:11px;line-height:1.4}
+main{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:30px}
+header h1{font-size:clamp(28px,6vw,52px);line-height:1.03;letter-spacing:-.032em}
+header h1 em{font-style:normal;color:var(--amber)}
+header p{color:var(--dim);max-width:66ch;margin-top:12px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;color:#fde68a}
+.rack{display:grid;gap:16px;grid-template-columns:repeat(3,1fr)}
+.unit{background:var(--card);border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:18px 16px 14px;
+  display:flex;flex-direction:column;align-items:center;gap:10px}
+.unit h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);align-self:flex-start}
+.dial{position:relative;width:min(220px,58vw);aspect-ratio:1;touch-action:none;cursor:grab;outline:none}
+.dial:active{cursor:grabbing}
+.dial:focus-visible{border-radius:50%;box-shadow:0 0 0 3px rgba(251,191,36,.45)}
+.dial canvas{display:block;width:100%;height:auto}
+.readout{font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;
+  display:flex;align-items:baseline;gap:5px}
+.readout small{font-size:12px;color:var(--dim);font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.sub{font-size:12px;color:#9c8865;text-align:center;min-height:1.3em}
+footer{max-width:1000px;margin:46px auto 0;color:#8b7a5c;font-size:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:14px}
+footer a{color:#c9b492}
+@media (max-width:860px){.rack{grid-template-columns:1fr}.panel{display:none}body{padding-top:62px}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<aside class="panel">
+  <h3>Detent physics</h3>
+  <label>Snap strength <b id="vSnap">0.26</b></label>
+  <input type="range" id="snap" min="0" max="0.6" step="0.02" value="0.26">
+  <label>Friction <b id="vFric">0.86</b></label>
+  <input type="range" id="fric" min="0.6" max="0.98" step="0.01" value="0.86">
+  <label>Throw <b id="vThrow">1.0×</b></label>
+  <input type="range" id="throw" min="0.3" max="2" step="0.1" value="1">
+  <div class="hint">Snap is a spring toward the nearest notch, applied every frame — the dial still has
+    momentum between notches, so a fast flick rolls past several before settling.</div>
+</aside>
+
+<main>
+  <header>
+    <h1>A dial that <em>clicks</em> into place</h1>
+    <p>A slider tells you nothing on the way past. A detented dial does: angle is continuous while you
+      drag, but a spring pulls toward the nearest notch, momentum carries you past a few on a flick, and
+      each notch crossed fires a tick — a ring flash, and a real <code>navigator.vibrate</code> where the
+      device has one. Three dials, three detent counts: fine, stepped, and free with soft notches.</p>
+  </header>
+
+  <section class="rack" id="rack"></section>
+</main>
+
+<footer>
+  Inspired by the Detent Dial in <a href="https://github.com/guanmo-ai/ui-moments" target="_blank" rel="noopener">guanmo-ai/ui-moments</a>
+  — a gallery of interactive UI and motion · UI Spotlight Day 171 · Drop #4
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const TAU = Math.PI*2;
+  const clamp = (v,a,b) => v<a?a:v>b?b:v;
+  const P = {snap:0.26, fric:0.86, throw:1.0};
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const SPECS = [
+    {id:"vol",  label:"12 notches · volume", notches:12, soft:1.0, unit:"db",
+     fmt:i => (i*2-12), tag:i => ["muted","whisper","quiet","low","easy","soft","room","full","loud","big","hot","peak","max"][i] || ""},
+    {id:"mode", label:"5 notches · hard stepped", notches:5, soft:1.9, unit:"mode",
+     fmt:i => ["ECO","CITY","TOUR","SPORT","RACE"][i], tag:i => ["lowest draw","stop and go","long haul","sharpened","no filter"][i]},
+    {id:"free", label:"24 notches · soft, free-spinning", notches:24, soft:0.34, unit:"deg",
+     fmt:i => Math.round(i*360/24), tag:i => "bearing " + String(Math.round(i*360/24)).padStart(3,"0") + "°"}
+  ];
+
+  function makeDial(spec){
+    const unit = document.createElement("div"); unit.className = "unit";
+    unit.innerHTML =
+      '<h2>'+spec.label+'</h2>'+
+      '<div class="dial" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="'+(spec.notches-1)+
+      '" aria-valuenow="0" aria-label="'+spec.label+'"><canvas width="440" height="440"></canvas></div>'+
+      '<div class="readout"><span class="val">–</span><small>'+spec.unit+'</small></div>'+
+      '<div class="sub"></div>';
+    $("rack").appendChild(unit);
+
+    const el = unit.querySelector(".dial"), cv = unit.querySelector("canvas");
+    const valEl = unit.querySelector(".val"), subEl = unit.querySelector(".sub");
+    let ctx = cv.getContext("2d");
+    const st = {a:0, v:0, drag:false, lastIdx:0, flash:0, grab:0, prevA:0};
+    const step = TAU/spec.notches;
+
+    function fit(){
+      const dpr = Math.min(2, devicePixelRatio||1);
+      const w = el.clientWidth || 220;
+      cv.style.height = w+"px";
+      cv.width = Math.round(w*dpr); cv.height = Math.round(w*dpr);
+      ctx = cv.getContext("2d");
+      const s = cv.width/440; ctx.setTransform(s,0,0,s,0,0);
+    }
+
+    function nearest(a){ return Math.round(a/step); }
+    function idx(){ return ((nearest(st.a) % spec.notches) + spec.notches) % spec.notches; }
+
+    function tick(){
+      st.flash = 1;
+      if(!reduce && navigator.vibrate) { try{ navigator.vibrate(8); }catch(e){} }
+    }
+
+    function draw(){
+      const C = 220, R = 182;
+      ctx.clearRect(0,0,440,440);
+      // body
+      const g = ctx.createLinearGradient(60,40,380,400);
+      g.addColorStop(0,"#3a2d18"); g.addColorStop(1,"#171209");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(C,C,R,0,TAU); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,.1)"; ctx.lineWidth = 2; ctx.stroke();
+      // value arc — how far round the dial has travelled
+      const a0 = -Math.PI/2, a1 = a0 + idx()*step;
+      if(idx() > 0){
+        ctx.strokeStyle = "rgba(251,191,36,.55)"; ctx.lineWidth = 7; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.arc(C, C, R-12, a0, a1); ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.arc(C, C, R-12, a1, a0 + TAU); ctx.stroke();
+
+      // detent ring
+      for(let i=0;i<spec.notches;i++){
+        const ang = -Math.PI/2 + i*step;
+        const on = i === idx();
+        const r0 = R-22, r1 = on ? R-46 : R-36;
+        ctx.strokeStyle = on ? "#fde68a" : "rgba(253,230,138,.34)";
+        ctx.lineWidth = on ? 5 : 2.4; ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(C+Math.cos(ang)*r0, C+Math.sin(ang)*r0);
+        ctx.lineTo(C+Math.cos(ang)*r1, C+Math.sin(ang)*r1);
+        ctx.stroke();
+      }
+      // flash ring on a crossed notch
+      if(st.flash > 0.01){
+        ctx.strokeStyle = "rgba(251,191,36,"+(st.flash*0.6)+")";
+        ctx.lineWidth = 2+10*st.flash;
+        ctx.beginPath(); ctx.arc(C,C,R-6+st.flash*8,0,TAU); ctx.stroke();
+      }
+      // knob
+      const kg = ctx.createRadialGradient(C-40,C-56,10,C,C,150);
+      kg.addColorStop(0,"#584324"); kg.addColorStop(1,"#15100a");
+      ctx.fillStyle = kg; ctx.beginPath(); ctx.arc(C,C,R-62,0,TAU); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 1.6; ctx.stroke();
+      // knurling follows the live angle, so motion is visible between notches
+      for(let i=0;i<48;i++){
+        const ang = st.a + i/48*TAU;
+        const r0 = R-66, r1 = R-78;
+        ctx.strokeStyle = "rgba(255,236,190,"+(0.09+0.19*Math.abs(Math.cos(ang)))+")";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(C+Math.cos(ang)*r0, C+Math.sin(ang)*r0);
+        ctx.lineTo(C+Math.cos(ang)*r1, C+Math.sin(ang)*r1);
+        ctx.stroke();
+      }
+      // pointer
+      const pa = -Math.PI/2 + st.a;
+      ctx.save(); ctx.shadowColor = "rgba(251,191,36,.7)"; ctx.shadowBlur = 16;
+      ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 7; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(C+Math.cos(pa)*(R-150), C+Math.sin(pa)*(R-150));
+      ctx.lineTo(C+Math.cos(pa)*(R-74),  C+Math.sin(pa)*(R-74));
+      ctx.stroke(); ctx.restore();
+      ctx.fillStyle = "rgba(253,230,138,.9)";
+      ctx.beginPath(); ctx.arc(C,C,7,0,TAU); ctx.fill();
+    }
+
+    function physics(){
+      if(!st.drag){
+        // spring toward the nearest notch + friction on the carried momentum
+        const to = nearest(st.a)*step;
+        st.v += (to - st.a) * P.snap * spec.soft;
+        st.v *= P.fric;
+        st.a += st.v;
+        if(Math.abs(st.v) < 1e-4 && Math.abs(to-st.a) < 1e-4){ st.a = to; st.v = 0; }
+      }
+      const i = idx();
+      if(i !== st.lastIdx){ st.lastIdx = i; tick(); sync(); }
+      st.flash *= 0.86;
+    }
+    function sync(){
+      const i = idx();
+      valEl.textContent = spec.fmt(i);
+      subEl.textContent = spec.tag(i);
+      el.setAttribute("aria-valuenow", i);
+      el.setAttribute("aria-valuetext", spec.fmt(i)+" "+spec.unit);
+    }
+
+    const angleOf = e => {
+      const r = el.getBoundingClientRect();
+      return Math.atan2(e.clientY - (r.top+r.height/2), e.clientX - (r.left+r.width/2)) + Math.PI/2;
+    };
+    el.addEventListener("pointerdown", e => {
+      el.setPointerCapture(e.pointerId);
+      st.drag = true; st.v = 0; st.grab = angleOf(e) - st.a; st.prevA = st.a;
+    });
+    el.addEventListener("pointermove", e => {
+      if(!st.drag) return;
+      e.preventDefault();
+      let want = angleOf(e) - st.grab;
+      // unwrap so a drag across the top does not jump a full turn
+      while(want - st.a >  Math.PI) want -= TAU;
+      while(want - st.a < -Math.PI) want += TAU;
+      const delta = (want - st.a) * P.throw;
+      st.a += delta;
+      st.v = delta;                               // momentum handed to the spring on release
+      const i = idx();
+      if(i !== st.lastIdx){ st.lastIdx = i; tick(); sync(); }
+    });
+    const release = () => { st.drag = false; };
+    el.addEventListener("pointerup", release);
+    el.addEventListener("pointercancel", release);
+    el.addEventListener("keydown", e => {
+      const d = e.key === "ArrowRight" || e.key === "ArrowUp" ? 1
+              : e.key === "ArrowLeft"  || e.key === "ArrowDown" ? -1 : 0;
+      if(!d) return;
+      e.preventDefault(); st.a += d*step; st.v = 0;
+      const i = idx(); if(i !== st.lastIdx){ st.lastIdx = i; tick(); sync(); }
+    });
+    el.addEventListener("wheel", e => {
+      e.preventDefault(); st.v += Math.sign(e.deltaY)*step*0.22;
+    }, {passive:false});
+
+    fit(); sync();
+    return {fit, frame(){ physics(); draw(); }, st};
+  }
+
+  const dials = SPECS.map(makeDial);
+  (function loop(){ for(const d of dials) d.frame(); requestAnimationFrame(loop); })();
+
+  for(const [id,key,fmt] of [["snap","snap",v=>(+v).toFixed(2)],["fric","fric",v=>(+v).toFixed(2)],
+                             ["throw","throw",v=>(+v).toFixed(1)+"×"]]){
+    $(id).addEventListener("input", e => {
+      P[key] = parseFloat(e.target.value);
+      $("v"+id[0].toUpperCase()+id.slice(1)).textContent = fmt(e.target.value);
+    });
+  }
+  let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => dials.forEach(d=>d.fit()), 130); });
+  window.__dialProbe = () => dials.map(d => +d.st.a.toFixed(4));
+})();
+</script>
+</body>
+</html>

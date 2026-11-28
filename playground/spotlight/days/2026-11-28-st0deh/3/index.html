@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop 3 — Type Motion for Streamed Text</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0b0a0d;--card:#151217;--ink:#f6eef0;--dim:#b49ca3;--line:rgba(248,113,113,.22);
+  --red:#f87171;--rose:#fb7185;--ok:#86efac}
+html,body{min-height:100%}
+body{background:radial-gradient(900px 620px at 80% -10%,#241a1e 0%,transparent 60%),var(--bg);
+  color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:72px 18px 90px;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+.back-link{position:fixed;top:14px;left:14px;z-index:40;display:inline-flex;gap:6px;align-items:center;
+  padding:8px 14px;border-radius:999px;background:rgba(18,14,18,.74);border:1px solid var(--line);
+  backdrop-filter:blur(12px);color:var(--ink);text-decoration:none;font-size:13px;font-weight:600}
+.back-link:hover{border-color:var(--red);color:var(--red)}
+.panel{position:fixed;top:14px;right:14px;z-index:40;width:232px;padding:13px;border-radius:16px;
+  background:rgba(18,14,18,.74);border:1px solid var(--line);backdrop-filter:blur(14px);font-size:12px}
+.panel h3{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.panel label{display:flex;justify-content:space-between;color:var(--dim);margin:9px 0 3px}
+.panel label b{color:var(--ink);font-variant-numeric:tabular-nums}
+.panel input[type=range]{width:100%;accent-color:var(--red);height:18px}
+.panel .btns{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.mini{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink);border-radius:9px;
+  padding:6px 9px;font:600 11.5px system-ui;cursor:pointer}
+.mini:hover{border-color:var(--red);color:var(--red)}
+.mini[aria-pressed=true]{background:rgba(248,113,113,.16);border-color:var(--red);color:var(--red)}
+main{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+@media (min-width:861px){header{padding-right:260px}}
+header h1{font-size:clamp(28px,6vw,52px);line-height:1.03;letter-spacing:-.032em}
+header h1 em{font-style:normal;color:var(--rose)}
+header p{color:var(--dim);max-width:66ch;margin-top:12px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;color:#fbcfe8}
+.cards{display:grid;gap:16px;grid-template-columns:repeat(3,1fr)}
+.card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:16px;
+  display:flex;flex-direction:column;gap:10px;min-height:290px}
+.card h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.card h2 i{font-style:normal;color:var(--rose)}
+.out{flex:1;font-size:15.5px;line-height:1.6}
+.meta{font-size:11.5px;color:#8d7a81;font-variant-numeric:tabular-nums;border-top:1px solid rgba(255,255,255,.07);
+  padding-top:8px;display:flex;justify-content:space-between;gap:8px}
+
+/* --- pattern: new-word-settle (words land, then settle) --- */
+.w{display:inline-block;white-space:pre-wrap}
+.w.pending{opacity:0}
+/* --- pattern: paced glyph reveal with a mask --- */
+.maskline{display:inline;background:linear-gradient(90deg,var(--ink) 0 var(--p,0%),rgba(246,238,240,.18) var(--p,0%) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+/* --- pattern: review-bound rewrite --- */
+.del{color:#8d7a81;text-decoration:line-through;text-decoration-color:rgba(248,113,113,.7)}
+.ins{color:var(--ok);background:rgba(134,239,172,.12);border-radius:4px;padding:0 2px}
+.review{display:flex;gap:7px;align-items:center;font-size:12px;color:var(--dim)}
+.caret{display:inline-block;width:2px;height:1.05em;background:var(--rose);vertical-align:-.16em;
+  margin-left:1px;animation:blink 1.05s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+footer{max-width:1000px;margin:46px auto 0;color:#7e6d74;font-size:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:14px}
+footer a{color:#b9a3aa}
+@media (max-width:860px){.cards{grid-template-columns:1fr}.panel{display:none}body{padding-top:62px}}
+@media (prefers-reduced-motion:reduce){.caret{animation:none}}
+</style>
+</head>
+<body>
+<a href="../" class="back-link">← All 5 drops</a>
+
+<aside class="panel">
+  <h3>Motion policy</h3>
+  <label>Pace <b id="vPace">14 tok/s</b></label>
+  <input type="range" id="pace" min="3" max="60" step="1" value="14">
+  <label>Settle <b id="vSettle">340 ms</b></label>
+  <input type="range" id="settle" min="80" max="900" step="20" value="340">
+  <label>Arrival jitter <b id="vJit">0.45</b></label>
+  <input type="range" id="jit" min="0" max="1" step="0.05" value="0.45">
+  <div class="btns">
+    <button class="mini" id="catchup" aria-pressed="true">catchUp</button>
+    <button class="mini" id="flush">flush</button>
+    <button class="mini" id="replay">replay</button>
+  </div>
+</aside>
+
+<main>
+  <header>
+    <h1>Text that <em>arrives</em>, not text that appears</h1>
+    <p>Generated text does not land as a finished paragraph — it arrives in tokens, at an uneven rate, and
+      sometimes it rewrites what it already wrote. Three patterns handle that: words that
+      <code>settle</code> as they land, a paced reveal that <code>catchUp</code>s when the buffer runs
+      ahead, and a review-bound rewrite that holds its diff until you accept it. Each panel streams the
+      same copy under a different policy.</p>
+  </header>
+
+  <section class="cards">
+    <div class="card">
+      <h2>Pattern <i>new-word-settle</i></h2>
+      <div class="out" id="out1"></div>
+      <div class="meta"><span id="m1">idle</span><span id="m1b"></span></div>
+    </div>
+    <div class="card">
+      <h2>Policy <i>pace + catchUp</i></h2>
+      <div class="out"><span class="maskline" id="out2"></span><span class="caret" id="car2"></span></div>
+      <div class="meta"><span id="m2">idle</span><span id="m2b"></span></div>
+    </div>
+    <div class="card">
+      <h2>Lifecycle <i>review-bound</i></h2>
+      <div class="out" id="out3"></div>
+      <div class="review" id="rev3"></div>
+      <div class="meta"><span id="m3">idle</span><span id="m3b"></span></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Inspired by <a href="https://github.com/akhildesai20/glyptide" target="_blank" rel="noopener">akhildesai20/glyptide</a>
+  — curated text motion for generative interfaces (pace · catchUp · flush, transient / persistent / review-bound)
+  · UI Spotlight Day 171 · Drop #3
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const P = {pace:14, settle:340, jitter:0.45, catchUp:true};
+
+  const COPY = "A model does not hand you a paragraph. It hands you tokens, unevenly, and the interface "+
+    "decides whether that looks like thinking or like jitter. Pace the reveal, let it catch up when the "+
+    "buffer runs ahead, and never move the line that the reader has already started reading.";
+  const REWRITE_BEFORE = "The interface should probably try to animate the text a little bit when it changes.";
+  const REWRITE_AFTER  = "The interface should hold the line still and let only the changed words move.";
+
+  /* a stand-in for a token stream: emits word-ish chunks on an uneven clock */
+  function stream(text, onToken, onDone){
+    const toks = text.match(/\S+\s*/g) || [];
+    let i = 0, stop = false, timer = 0;
+    const tick = () => {
+      if(stop || i >= toks.length){ if(!stop) onDone && onDone(); return; }
+      const burst = 1 + (Math.random() < P.jitter*0.5 ? Math.floor(Math.random()*3) : 0);
+      for(let b=0;b<burst && i<toks.length;b++) onToken(toks[i++], i, toks.length);
+      const base = 1000/P.pace;
+      const wait = base * (1 + (Math.random()-0.5)*1.6*P.jitter) / burst;
+      timer = setTimeout(tick, Math.max(12, wait));
+    };
+    timer = setTimeout(tick, 120);
+    return {cancel(){ stop = true; clearTimeout(timer); },
+            flush(){ stop = true; clearTimeout(timer);
+                     while(i < toks.length) onToken(toks[i++], i, toks.length);
+                     onDone && onDone(); }};
+  }
+
+  /* ---------- panel 1: words settle as they land ---------- */
+  let s1;
+  function run1(){
+    const out = $("out1"); out.textContent = ""; s1 && s1.cancel();
+    let n = 0, t0 = performance.now();
+    s1 = stream(COPY, tok => {
+      const w = document.createElement("span");
+      w.className = "w"; w.textContent = tok; out.appendChild(w); n++;
+      $("m1").textContent = n + " words";
+      if(reduce) return;
+      w.animate(
+        [{opacity:0, filter:"blur(5px)", transform:"translateY(.42em) scale(.97)"},
+         {opacity:1, filter:"blur(0)",   transform:"translateY(0) scale(1)"}],
+        {duration:P.settle, easing:"cubic-bezier(.17,.84,.26,1)", fill:"backwards"});
+    }, () => { $("m1b").textContent = ((performance.now()-t0)/1000).toFixed(1)+"s"; });
+  }
+
+  /* ---------- panel 2: paced mask reveal with catch-up ---------- */
+  let s2, raf2 = 0;
+  function run2(){
+    const out = $("out2"); out.textContent = COPY; s2 && s2.cancel(); cancelAnimationFrame(raf2);
+    let arrived = 0, shown = 0, done = false, t0 = performance.now();
+    const total = COPY.length;
+    s2 = stream(COPY, tok => { arrived += tok.length; }, () => done = true);
+    const loop = () => {
+      const lag = arrived - shown;
+      // pace: glyphs per frame; catchUp: spend more when the buffer is ahead
+      let gpf = P.pace/60 * (COPY.length/ (COPY.match(/\S+\s*/g)||[1]).length);
+      if(P.catchUp && lag > 14) gpf *= 1 + Math.min(5, lag/22);
+      shown = Math.min(arrived, shown + gpf);
+      out.style.setProperty("--p", (shown/total*100).toFixed(2)+"%");
+      $("m2").textContent = Math.round(shown)+" / "+total+" glyphs";
+      $("m2b").textContent = "lag " + Math.max(0, Math.round(lag));
+      $("car2").style.opacity = (done && shown >= arrived-0.5) ? 0 : 1;
+      if(!(done && shown >= arrived-0.5)) raf2 = requestAnimationFrame(loop);
+      else $("m2b").textContent = ((performance.now()-t0)/1000).toFixed(1)+"s";
+    };
+    out.style.setProperty("--p","0%");
+    raf2 = requestAnimationFrame(loop);
+  }
+
+  /* ---------- panel 3: review-bound rewrite, word-level diff ---------- */
+  let s3;
+  /* word-level LCS diff so deletions and insertions group into readable runs */
+  function diff(a, b){
+    const A = a.split(/\s+/), B = b.split(/\s+/);
+    const m = A.length, n = B.length;
+    const L = Array.from({length:m+1}, () => new Uint16Array(n+1));
+    for(let i=m-1;i>=0;i--)
+      for(let j=n-1;j>=0;j--)
+        L[i][j] = A[i] === B[j] ? L[i+1][j+1]+1 : Math.max(L[i+1][j], L[i][j+1]);
+    const out = [];
+    let i = 0, j = 0;
+    while(i < m && j < n){
+      if(A[i] === B[j]){ out.push({k:"same", w:B[j]}); i++; j++; }
+      else if(L[i+1][j] >= L[i][j+1]){ out.push({k:"del", w:A[i]}); i++; }
+      else { out.push({k:"ins", w:B[j]}); j++; }
+    }
+    while(i < m) out.push({k:"del", w:A[i++]});
+    while(j < n) out.push({k:"ins", w:B[j++]});
+    return out;
+  }
+  function run3(){
+    const out = $("out3"), rev = $("rev3");
+    out.textContent = REWRITE_BEFORE; rev.textContent = ""; s3 && s3.cancel();
+    $("m3").textContent = "persistent"; $("m3b").textContent = "";
+    setTimeout(() => {
+      const parts = diff(REWRITE_BEFORE, REWRITE_AFTER);
+      out.textContent = ""; $("m3").textContent = "rewriting…";
+      let k = 0;
+      const emit = () => {
+        if(k >= parts.length){
+          $("m3").textContent = "review-bound"; $("m3b").textContent = parts.filter(p=>p.k!=="same").length+" edits";
+          showReview(parts); return;
+        }
+        const p = parts[k++];
+        const sp = document.createElement("span");
+        sp.className = p.k === "del" ? "del" : p.k === "ins" ? "ins" : "";
+        sp.textContent = p.w + " ";
+        out.appendChild(sp);
+        if(!reduce && p.k !== "same")
+          sp.animate([{opacity:0, transform:"translateY(-.3em)"},{opacity:1, transform:"none"}],
+                     {duration:P.settle, easing:"cubic-bezier(.17,.84,.26,1)"});
+        setTimeout(emit, Math.max(16, 1000/P.pace/(p.k==="same"?2.4:1)));
+      };
+      emit();
+    }, 900);
+  }
+  function showReview(parts){
+    const rev = $("rev3"); rev.textContent = "";
+    const mk = (label, fn) => { const b = document.createElement("button"); b.className = "mini";
+      b.textContent = label; b.onclick = fn; rev.appendChild(b); };
+    const note = document.createElement("span"); note.textContent = "held until reviewed";
+    rev.appendChild(note);
+    mk("Accept", () => {
+      $("out3").textContent = "";
+      REWRITE_AFTER.split(/\s+/).forEach((w,i) => {
+        const sp = document.createElement("span"); sp.className = "w"; sp.textContent = w+" ";
+        $("out3").appendChild(sp);
+        if(!reduce) sp.animate([{opacity:.3},{opacity:1}],{duration:260, delay:i*22, fill:"backwards"});
+      });
+      $("rev3").textContent = ""; $("m3").textContent = "persistent · accepted";
+    });
+    mk("Discard", () => {
+      $("out3").textContent = REWRITE_BEFORE;
+      $("rev3").textContent = ""; $("m3").textContent = "persistent · discarded";
+    });
+  }
+
+  function runAll(){ run1(); run2(); run3(); }
+  $("pace").addEventListener("input", e => { P.pace = +e.target.value; $("vPace").textContent = P.pace+" tok/s"; });
+  $("settle").addEventListener("input", e => { P.settle = +e.target.value; $("vSettle").textContent = P.settle+" ms"; });
+  $("jit").addEventListener("input", e => { P.jitter = +e.target.value; $("vJit").textContent = P.jitter.toFixed(2); });
+  $("catchup").addEventListener("click", e => {
+    P.catchUp = !P.catchUp; e.currentTarget.setAttribute("aria-pressed", P.catchUp);
+  });
+  $("flush").addEventListener("click", () => { s1 && s1.flush(); s2 && s2.flush(); });
+  $("replay").addEventListener("click", runAll);
+  runAll();
+  window.__typeProbe = () => ({w:$("out1").children.length, p:$("out2").style.getPropertyValue("--p"),
+                               rev:$("rev3").children.length});
+})();
+</script>
+</body>
+</html>
